@@ -84,3 +84,76 @@ class Client:
 
     async def _handle_pong(self, msg: Message) -> None:
         pass  # Client responding to our ping
+
+    async def _handle_nick(self, msg: Message) -> None:
+        if not msg.params:
+            await self.send_numeric(replies.ERR_NONICKNAMEGIVEN, "No nickname given")
+            return
+
+        nick = msg.params[0]
+
+        # Enforce server name prefix
+        expected_prefix = f"{self.server.config.name}-"
+        if not nick.startswith(expected_prefix):
+            await self.send_numeric(
+                replies.ERR_ERRONEUSNICKNAME,
+                nick,
+                f"Nickname must start with {expected_prefix}",
+            )
+            return
+
+        if nick in self.server.clients:
+            await self.send_numeric(
+                replies.ERR_NICKNAMEINUSE, nick, "Nickname is already in use"
+            )
+            return
+
+        old_nick = self.nick
+        if old_nick and old_nick in self.server.clients:
+            del self.server.clients[old_nick]
+
+        self.nick = nick
+        self.server.clients[nick] = self
+        await self._try_register()
+
+    async def _handle_user(self, msg: Message) -> None:
+        if self._registered:
+            await self.send_numeric(
+                replies.ERR_ALREADYREGISTRED, "You may not reregister"
+            )
+            return
+        if len(msg.params) < 4:
+            await self.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "USER", "Not enough parameters"
+            )
+            return
+
+        self.user = msg.params[0]
+        self.realname = msg.params[3]
+        await self._try_register()
+
+    async def _try_register(self) -> None:
+        if self.nick and self.user and not self._registered:
+            self._registered = True
+            await self._send_welcome()
+
+    async def _send_welcome(self) -> None:
+        await self.send_numeric(
+            replies.RPL_WELCOME,
+            f"Welcome to {self.server.config.name} IRC Network {self.prefix}",
+        )
+        await self.send_numeric(
+            replies.RPL_YOURHOST,
+            f"Your host is {self.server.config.name}, running agentirc",
+        )
+        await self.send_numeric(
+            replies.RPL_CREATED,
+            "This server was created today",
+        )
+        await self.send_numeric(
+            replies.RPL_MYINFO,
+            self.server.config.name,
+            "agentirc",
+            "o",
+            "o",
+        )
