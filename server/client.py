@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import TYPE_CHECKING
 
 from protocol.message import Message
@@ -170,7 +171,7 @@ class Client:
             self.server.config.name,
             "agentirc",
             "o",
-            "o",
+            "ov",
         )
 
     async def _handle_join(self, msg: Message) -> None:
@@ -288,13 +289,108 @@ class Client:
             await self._send_names(channel)
 
     async def _send_names(self, channel: Channel) -> None:
-        nicks = " ".join(m.nick for m in channel.members)
+        nicks = " ".join(
+            f"{channel.get_prefix(m)}{m.nick}" for m in channel.members
+        )
         await self.send_numeric(
             replies.RPL_NAMREPLY, "=", channel.name, nicks
         )
         await self.send_numeric(
             replies.RPL_ENDOFNAMES, channel.name, "End of /NAMES list"
         )
+
+    async def _handle_mode(self, msg: Message) -> None:
+        if not msg.params:
+            await self.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "MODE", "Not enough parameters"
+            )
+            return
+
+        target = msg.params[0]
+        if target.startswith("#"):
+            await self._handle_channel_mode(msg)
+        else:
+            await self._handle_user_mode(msg)
+
+    async def _handle_channel_mode(self, msg: Message) -> None:
+        channel_name = msg.params[0]
+        channel = self.server.channels.get(channel_name)
+        if not channel:
+            await self.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel"
+            )
+            return
+
+        if len(msg.params) == 1:
+            await self.send_numeric(
+                replies.RPL_CHANNELMODEIS, channel_name, "+"
+            )
+            return
+
+        modestring = msg.params[1]
+        if not channel.is_operator(self):
+            await self.send_numeric(
+                replies.ERR_CHANOPRIVSNEEDED,
+                channel_name,
+                "You're not channel operator",
+            )
+            return
+
+        if len(msg.params) < 3:
+            await self.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "MODE", "Not enough parameters"
+            )
+            return
+
+        target_nick = msg.params[2]
+        target_client = self.server.clients.get(target_nick)
+        if not target_client or target_client not in channel.members:
+            await self.send_numeric(
+                replies.ERR_USERNOTINCHANNEL,
+                target_nick,
+                channel_name,
+                "They aren't on that channel",
+            )
+            return
+
+        adding = True
+        applied_modes = []
+        for ch in modestring:
+            if ch == "+":
+                adding = True
+            elif ch == "-":
+                adding = False
+            elif ch == "o":
+                if adding:
+                    channel.operators.add(target_client)
+                else:
+                    channel.operators.discard(target_client)
+                applied_modes.append(("+" if adding else "-") + "o")
+            elif ch == "v":
+                if adding:
+                    channel.voiced.add(target_client)
+                else:
+                    channel.voiced.discard(target_client)
+                applied_modes.append(("+" if adding else "-") + "v")
+
+        if applied_modes:
+            mode_msg = Message(
+                prefix=self.prefix,
+                command="MODE",
+                params=[channel_name, "".join(applied_modes), target_nick],
+            )
+            for member in list(channel.members):
+                await member.send(mode_msg)
+
+    async def _handle_user_mode(self, msg: Message) -> None:
+        target_nick = msg.params[0]
+        if target_nick != self.nick:
+            await self.send_numeric(
+                replies.ERR_USERSDONTMATCH,
+                "Can't change mode for other users",
+            )
+            return
+        await self.send_numeric(replies.RPL_UMODEIS, "+")
 
     async def _handle_privmsg(self, msg: Message) -> None:
         if len(msg.params) < 2:
@@ -324,6 +420,7 @@ class Client:
             for member in list(channel.members):
                 if member is not self:
                     await member.send(relay)
+            await self._notify_mentions(target, text)
         else:
             recipient = self.server.clients.get(target)
             if not recipient:
@@ -332,6 +429,38 @@ class Client:
                 )
                 return
             await recipient.send(relay)
+            await self._notify_mentions(None, text)
+
+    async def _notify_mentions(
+        self, channel_name: str | None, text: str
+    ) -> None:
+        mentioned_nicks = re.findall(r"@(\S+)", text)
+        if not mentioned_nicks:
+            return
+        seen: set[str] = set()
+        channel = (
+            self.server.channels.get(channel_name) if channel_name else None
+        )
+        source = channel_name or "a direct message"
+        for raw_nick in mentioned_nicks:
+            nick = raw_nick.rstrip(".,;:!?")
+            if nick in seen or nick == self.nick:
+                continue
+            seen.add(nick)
+            target_client = self.server.clients.get(nick)
+            if not target_client:
+                continue
+            if channel and target_client not in channel.members:
+                continue
+            notice = Message(
+                prefix=self.server.config.name,
+                command="NOTICE",
+                params=[
+                    nick,
+                    f"{self.nick} mentioned you in {source}: {text}",
+                ],
+            )
+            await target_client.send(notice)
 
     async def _handle_notice(self, msg: Message) -> None:
         # Same as PRIVMSG but no error replies per RFC 2812
@@ -357,6 +486,105 @@ class Client:
             recipient = self.server.clients.get(target)
             if recipient:
                 await recipient.send(relay)
+
+    async def _handle_who(self, msg: Message) -> None:
+        if not msg.params:
+            await self.send_numeric(
+                replies.RPL_ENDOFWHO, "*", "End of WHO list"
+            )
+            return
+
+        target = msg.params[0]
+        if target.startswith("#"):
+            channel = self.server.channels.get(target)
+            if channel:
+                for member in list(channel.members):
+                    flags = "H"
+                    if channel.is_operator(member):
+                        flags += "@"
+                    elif channel.is_voiced(member):
+                        flags += "+"
+                    await self.send_numeric(
+                        replies.RPL_WHOREPLY,
+                        target,
+                        member.user or "*",
+                        member.host,
+                        self.server.config.name,
+                        member.nick,
+                        flags,
+                        f"0 {member.realname or ''}",
+                    )
+            await self.send_numeric(
+                replies.RPL_ENDOFWHO, target, "End of WHO list"
+            )
+        else:
+            client = self.server.clients.get(target)
+            if client:
+                chan_name = "*"
+                flags = "H"
+                for ch in client.channels:
+                    chan_name = ch.name
+                    if ch.is_operator(client):
+                        flags += "@"
+                    elif ch.is_voiced(client):
+                        flags += "+"
+                    break
+                await self.send_numeric(
+                    replies.RPL_WHOREPLY,
+                    chan_name,
+                    client.user or "*",
+                    client.host,
+                    self.server.config.name,
+                    client.nick,
+                    flags,
+                    f"0 {client.realname or ''}",
+                )
+            await self.send_numeric(
+                replies.RPL_ENDOFWHO, target, "End of WHO list"
+            )
+
+    async def _handle_whois(self, msg: Message) -> None:
+        if not msg.params:
+            await self.send_numeric(
+                replies.ERR_NONICKNAMEGIVEN, "No nickname given"
+            )
+            return
+
+        target_nick = msg.params[0]
+        target = self.server.clients.get(target_nick)
+        if not target:
+            await self.send_numeric(
+                replies.ERR_NOSUCHNICK, target_nick, "No such nick/channel"
+            )
+            await self.send_numeric(
+                replies.RPL_ENDOFWHOIS, target_nick, "End of WHOIS list"
+            )
+            return
+
+        await self.send_numeric(
+            replies.RPL_WHOISUSER,
+            target.nick,
+            target.user or "*",
+            target.host,
+            "*",
+            target.realname or "",
+        )
+        await self.send_numeric(
+            replies.RPL_WHOISSERVER,
+            target.nick,
+            self.server.config.name,
+            "agentirc",
+        )
+        if target.channels:
+            chan_list = " ".join(
+                f"{ch.get_prefix(target)}{ch.name}" for ch in target.channels
+            )
+            await self.send_numeric(
+                replies.RPL_WHOISCHANNELS, target.nick, chan_list
+            )
+        await self.send_numeric(
+            replies.RPL_ENDOFWHOIS, target.nick, "End of WHOIS list"
+        )
 
     async def _handle_quit(self, msg: Message) -> None:
         reason = msg.params[0] if msg.params else "Quit"
