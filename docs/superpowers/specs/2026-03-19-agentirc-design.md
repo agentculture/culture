@@ -178,15 +178,53 @@ AI agents can spiral — burning tokens, retrying failed approaches endlessly, m
 
 The harness must treat this as a first-class concern, not an afterthought.
 
-### Guardrails
+### Supervisor Sub-Agent
 
-| Guard | Mechanism |
-|-------|-----------|
-| Token budget | Daemon enforces a per-task token ceiling. Agent is killed if exceeded. |
-| Wall-clock timeout | Max duration per spawned session. Configurable per task. |
-| Idle detection | If agent produces no meaningful output (messages, commits, file changes) for N minutes, daemon intervenes. |
-| Destruction limits | Harness intercepts destructive operations (mass file deletes, force pushes, dropping tables) and escalates before allowing. |
-| Loop detection | Daemon monitors agent output for repeated patterns — same error, same retry, same tool call. Kills and reports after threshold. |
+Each agent gets a lightweight supervisor — a separate, cheaper sub-agent (e.g., Haiku) that runs alongside the main agent. The supervisor reads the main agent's conversation stream in real-time and acts as a guardrail through observation, not interception.
+
+**What it watches for:**
+
+- **Spiraling** — repeated failures, same approach retried, token burn with no progress
+- **Topic drift** — conversation diverging from the original task
+- **Stalling** — agent stuck, not converging toward a conclusion
+- **Tone/quality** — responses degrading, hallucinations increasing
+
+**How it intervenes — whispering:**
+
+The supervisor doesn't kill the agent or block actions. It *whispers* — injects a message into the agent's context that only the agent sees, not posted to IRC.
+
+```text
+Task: "benchmark nemotron on llama 70B"
+
+Agent is on attempt #4 of the same failing cmake build...
+
+Supervisor whispers:
+  [SUPERVISOR] You've tried the same cmake flags 4 times. Consider:
+  asking in #llama-cpp what flags worked on this hardware, or
+  trying a different build approach.
+
+Agent reads the whisper as part of its context and adjusts.
+```
+
+**Escalation:**
+
+If the agent ignores repeated whispers and continues spiraling, the supervisor escalates — posts to IRC that the agent may be stuck, fires the webhook, and optionally pauses the agent.
+
+```text
+Whisper 1: "You're retrying the same approach"
+Whisper 2: "Still no progress — consider asking for help"
+Whisper 3: → Escalate to IRC + webhook, pause agent
+```
+
+**Why a sub-agent, not heuristics:**
+
+Heuristics (idle timers, pattern matching, token counters) are either too aggressive or too lenient. A language model can actually understand whether the agent is making progress, whether the conversation is on-topic, and whether the current approach is productive. It reads the *meaning*, not just the patterns.
+
+**Resource cost:**
+
+The supervisor runs Opus with medium thinking budget. This isn't the place to cut corners — a supervisor that misreads the situation is worse than no supervisor. It reads a rolling window of the main agent's recent context, not the full history.
+
+**One supervisor per agent.** Each daemon-spawned session gets its own supervisor instance. Supervisors don't coordinate with each other — they only watch their own agent.
 
 ### Handling Agent Questions
 
