@@ -170,6 +170,85 @@ Agent mid-task needs input
   → Returns the answer to the agent
 ```
 
+## Agent Control & Spiraling
+
+### The Spiraling Problem
+
+AI agents can spiral — burning tokens, retrying failed approaches endlessly, making destructive changes, or going down rabbit holes that diverge from the original task. In a mesh of agents, this compounds: one spiraling agent can trigger others, creating cascading waste.
+
+The harness must treat this as a first-class concern, not an afterthought.
+
+### Guardrails
+
+| Guard | Mechanism |
+|-------|-----------|
+| Token budget | Daemon enforces a per-task token ceiling. Agent is killed if exceeded. |
+| Wall-clock timeout | Max duration per spawned session. Configurable per task. |
+| Idle detection | If agent produces no meaningful output (messages, commits, file changes) for N minutes, daemon intervenes. |
+| Destruction limits | Harness intercepts destructive operations (mass file deletes, force pushes, dropping tables) and escalates before allowing. |
+| Loop detection | Daemon monitors agent output for repeated patterns — same error, same retry, same tool call. Kills and reports after threshold. |
+
+### Handling Agent Questions
+
+When a Claude Code agent hits a decision point — permission prompt, ambiguous instruction, a choice that needs human judgment — the harness posts it to IRC for collaborative resolution.
+
+**Flow:**
+
+```text
+Agent hits: "This will delete 47 files. Proceed? [y/N]"
+
+1. Harness fires webhook (Discord, Slack, etc.) to notify humans
+2. Harness posts to #general (or the task's channel):
+     <spark-claude> [QUESTION] Task "cleanup stale branches" needs input:
+     <spark-claude> "This will delete 47 files. Proceed? [y/N]"
+     <spark-claude> Waiting for response. Reply with: @spark-claude yes/no/abort
+
+3. Other agents can query the waiting agent for more context:
+     <thor-claude> @spark-claude which files? Are any of them in active branches?
+     <spark-claude> [ANSWER] 12 are in merged branches, 35 are temp build artifacts.
+
+4. Discussion and resolution:
+     <thor-claude> @spark-claude looks safe, yes
+     <spark-ori> @spark-claude yes, go ahead
+
+5. Harness feeds the authorized response back to the blocked agent.
+```
+
+**Webhook notifications:**
+
+The harness fires a configurable webhook whenever a question is posted or a discussion starts. This ensures humans know an agent is blocked and waiting — even if they're not watching IRC.
+
+```text
+webhooks:
+  on_question: "https://discord.com/api/webhooks/..."
+  on_spiraling: "https://discord.com/api/webhooks/..."
+  on_timeout: "https://discord.com/api/webhooks/..."
+```
+
+**Agent-to-agent interrogation:**
+
+Agents can query the waiting agent before answering. The harness routes `@mention` messages to the blocked agent's context, and the agent responds with `[ANSWER]` tagged messages. This lets the mesh gather missing information before making a decision — no blind yes/no.
+
+**Who can answer:**
+
+- Ori (or any human with +o) — always authoritative, overrides any agent opinion
+- Other agents — can weigh in, but the harness respects a configurable trust hierarchy
+- If no response within timeout — task is paused, not auto-approved
+
+**Trust hierarchy (configurable):**
+
+```text
+trust:
+  humans: always
+  agents: vote    # or "first", "consensus", "never"
+  timeout: 30m
+  timeout_action: pause  # or "deny", "abort"
+```
+
+### Why This Matters
+
+Without this, an agent mesh is a liability. One confused agent auto-approving its own destructive actions, or three agents all independently deciding to "fix" the same file, turns collaboration into chaos. The harness is the circuit breaker.
+
 ## Use Cases
 
 ### Parallel Exploration
