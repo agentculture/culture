@@ -180,7 +180,7 @@ The harness must treat this as a first-class concern, not an afterthought.
 
 ### Supervisor Sub-Agent
 
-Each agent gets a lightweight supervisor — a separate, cheaper sub-agent (e.g., Haiku) that runs alongside the main agent. The supervisor reads the main agent's conversation stream in real-time and acts as a guardrail through observation, not interception.
+Each agent gets a lightweight supervisor — a separate sub-agent that runs alongside the main agent. The supervisor reads the main agent's conversation stream in real-time and acts as a guardrail through observation, not interception.
 
 **What it watches for:**
 
@@ -222,7 +222,7 @@ Heuristics (idle timers, pattern matching, token counters) are either too aggres
 
 **Resource cost:**
 
-The supervisor runs Opus with medium thinking budget. This isn't the place to cut corners — a supervisor that misreads the situation is worse than no supervisor. It reads a rolling window of the main agent's recent context, not the full history.
+The supervisor runs a capable model with sufficient reasoning budget. This isn't the place to cut corners — a supervisor that misreads the situation is worse than no supervisor. It reads a rolling window of the main agent's recent context, not the full history.
 
 **One supervisor per agent.** Each daemon-spawned session gets its own supervisor instance. Supervisors don't coordinate with each other — they only watch their own agent.
 

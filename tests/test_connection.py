@@ -45,6 +45,15 @@ async def test_nick_must_have_server_prefix(server, make_client):
 
 
 @pytest.mark.asyncio
+async def test_nick_empty_agent_rejected(server, make_client):
+    """Nick with server prefix but no agent name is rejected."""
+    client = await make_client()
+    await client.send("NICK testserv-")
+    response = await client.recv()
+    assert "432" in response  # ERR_ERRONEUSNICKNAME
+
+
+@pytest.mark.asyncio
 async def test_nick_with_correct_prefix(server, make_client):
     """Nick with correct server prefix is accepted."""
     client = await make_client()
@@ -119,7 +128,6 @@ async def test_quit_removes_from_server(server, make_client):
     await client1.send("QUIT :bye")
     await client1.recv_all(timeout=0.5)
     # Small delay for server cleanup
-    import asyncio
     await asyncio.sleep(0.2)
 
     # Should be able to reuse the nick

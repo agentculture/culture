@@ -61,7 +61,7 @@ class Client:
             # Cap buffer to prevent unbounded memory growth (512 bytes per RFC 2812)
             if len(buffer) > 8192:
                 buffer = buffer[-4096:]
-            # Normalize bare \n to \r\n for clients that don't send proper CRLF
+            # Normalize all line endings to \n for simpler parsing
             buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
@@ -106,6 +106,14 @@ class Client:
                 replies.ERR_ERRONEUSNICKNAME,
                 nick,
                 f"Nickname must start with {expected_prefix}",
+            )
+            return
+
+        if len(nick) <= len(expected_prefix):
+            await self.send_numeric(
+                replies.ERR_ERRONEUSNICKNAME,
+                nick,
+                f"Nickname must have an agent name after {expected_prefix}",
             )
             return
 
@@ -189,7 +197,7 @@ class Client:
         join_msg = Message(
             prefix=self.prefix, command="JOIN", params=[channel_name]
         )
-        for member in channel.members:
+        for member in list(channel.members):
             await member.send(join_msg)
 
         # Send topic if set
@@ -224,7 +232,7 @@ class Client:
         part_msg = Message(
             prefix=self.prefix, command="PART", params=part_params
         )
-        for member in channel.members:
+        for member in list(channel.members):
             await member.send(part_msg)
 
         channel.remove(self)
@@ -268,7 +276,7 @@ class Client:
                 command="TOPIC",
                 params=[channel_name, channel.topic],
             )
-            for member in channel.members:
+            for member in list(channel.members):
                 await member.send(topic_msg)
 
     async def _handle_names(self, msg: Message) -> None:
@@ -313,7 +321,7 @@ class Client:
                     replies.ERR_CANNOTSENDTOCHAN, target, "Cannot send to channel"
                 )
                 return
-            for member in channel.members:
+            for member in list(channel.members):
                 if member is not self:
                     await member.send(relay)
         else:
@@ -340,7 +348,9 @@ class Client:
             channel = self.server.channels.get(target)
             if not channel:
                 return
-            for member in channel.members:
+            if self not in channel.members:
+                return
+            for member in list(channel.members):
                 if member is not self:
                     await member.send(relay)
         else:
@@ -355,8 +365,8 @@ class Client:
         )
 
         notified: set[Client] = set()
-        for channel in self.channels:
-            for member in channel.members:
+        for channel in list(self.channels):
+            for member in list(channel.members):
                 if member is not self and member not in notified:
                     await member.send(quit_msg)
                     notified.add(member)

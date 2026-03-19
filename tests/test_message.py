@@ -38,6 +38,10 @@ class TestMessageParse:
         assert msg.command == "PING"
         assert msg.params == ["token123"]
 
+    def test_prefix_only_no_command(self):
+        msg = Message.parse(":badprefix\r\n")
+        assert msg.command == ""
+
     def test_empty_trailing(self):
         msg = Message.parse("PRIVMSG #general :\r\n")
         assert msg.params == ["#general", ""]

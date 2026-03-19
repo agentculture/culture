@@ -19,6 +19,8 @@ class Message:
 
         prefix = None
         if line.startswith(":"):
+            if " " not in line:
+                return cls(prefix=None, command="", params=[])
             prefix, line = line.split(" ", 1)
             prefix = prefix[1:]  # strip leading ':'
 
