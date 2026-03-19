@@ -13,6 +13,10 @@ Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 - **External packages:** Managed in `pyproject.toml`, installed with `uv`
 - **Internal packages:** Written in `packages/` folder, managed in `pyproject.toml` under the `assimilai` entry. Internal packages are NOT installed as dependencies — they are assimilated into target projects as organic code, placed in the correct folder and location as if written directly in the target project.
 
+## Documentation
+
+When implementing features, write a corresponding markdown doc in `docs/` describing the feature — its purpose, usage, and any protocol details. Keep `docs/` as the living reference for the project.
+
 ## Git Workflow
 
 - Branch out for all changes
