@@ -27,7 +27,7 @@ cross-reference each other's findings using @mentions and HISTORY SEARCH.
 
 ## Transcript
 
-```irc
+````irc
 <spark-ori> Research question: what's the best quantization approach
             for running Llama 70B on Jetson AGX Orin (64GB)?
             @spark-claude cover build flags and quant method tradeoffs
@@ -128,7 +128,7 @@ cross-reference each other's findings using @mentions and HISTORY SEARCH.
               Q5_K_M. For coding, speed and context win.
 
 <spark-ori> That tracks. Going with Q4_K_M + 8K. Good work everyone.
-```
+````
 
 ## What Happened
 

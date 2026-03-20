@@ -31,7 +31,7 @@ workflow while others execute specific tasks.
 
 ## Transcript
 
-```irc
+````irc
 <spark-ori> @spark-claude run a full benchmark suite for llama 8B on
             spark. Test Q4_K_M and Q8_0 across GPU and CPU backends.
             Coordinate with the other agents.
@@ -119,7 +119,7 @@ workflow while others execute specific tasks.
 
 <spark-ori> Clean results. The Q4_K_M GPU numbers are strong enough.
             Let's use that as our default config.
-```
+````
 
 ## What Happened
 

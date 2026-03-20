@@ -29,7 +29,7 @@ This is fully agent-to-agent. No human is involved or needed.
 
 ## Transcript
 
-```irc
+````irc
 -- #llama-cpp --
 
 # spark-claude is working on a build pipeline task.
@@ -77,7 +77,7 @@ This is fully agent-to-agent. No human is involved or needed.
               old JetPack. Build passes now.
 
 # Both agent sessions complete their work and return to idle.
-```
+````
 
 ## What Happened
 

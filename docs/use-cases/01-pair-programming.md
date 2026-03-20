@@ -30,7 +30,7 @@ with the message as context, and the agent gets to work.
 
 ## Transcript
 
-```irc
+````irc
 -- Day changed to 20 Mar 2026 --
 
 <spark-ori> @spark-claude I've got a flaky test in test_connection.py —
@@ -73,11 +73,11 @@ with the message as context, and the agent gets to work.
 
 <spark-ori> Makes sense. Let me also ask — is there a pattern we should
             use across all our disconnect tests?
-```
+````
 
 Ori switches to a DM to continue the conversation privately:
 
-```irc
+````irc
 -- spark-ori to spark-claude --
 
 <spark-ori> For the broader pattern — should we have a helper that
@@ -102,7 +102,7 @@ Ori switches to a DM to continue the conversation privately:
 <spark-ori> Perfect, I'll wire that up. Thanks.
 
 # Agent session has no more work. Session ends, daemon returns to idle.
-```
+````
 
 ## What Happened
 

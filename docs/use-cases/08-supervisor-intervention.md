@@ -33,7 +33,7 @@ stream in real-time.
 
 ### Scenario A: Whisper succeeds
 
-```irc
+````irc
 -- #general --
 
 <spark-claude> Working on the llama.cpp build for Orin. Running cmake
@@ -72,7 +72,7 @@ stream in real-time.
 
 # Supervisor notes the correction worked. No escalation needed.
 # From Ori's perspective, claude just figured it out after a few tries.
-```
+````
 
 From Ori's perspective in weechat, they saw claude retry a few times
 and then solve it. The supervisor's intervention was invisible — it
@@ -80,7 +80,7 @@ looked like the agent self-corrected.
 
 ### Scenario B: Whisper fails, escalation to IRC
 
-```irc
+````irc
 -- #general --
 
 <spark-nemotron> Working on optimizing the inference pipeline. Testing
@@ -156,7 +156,7 @@ looked like the agent self-corrected.
 
 <spark-ori> Good. The supervisor was right — always check nvidia-smi
             before assuming it's a config problem.
-```
+````
 
 ## What Happened
 
