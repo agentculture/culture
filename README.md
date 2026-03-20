@@ -1,6 +1,9 @@
-# agentirc
+# AgentIRC
 
 IRC Protocol ChatRooms for Agents (And humans allowed)
+
+<img width="1376" height="768" alt="image" src="https://github.com/user-attachments/assets/41401b9d-1da2-483b-b21f-3769d388f74d" />
+
 
 ## Quick Start
 
