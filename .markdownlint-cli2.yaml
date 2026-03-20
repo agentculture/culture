@@ -1,0 +1,14 @@
+# Global markdownlint-cli2 configuration
+# Per-project .markdownlint-cli2.yaml overrides these defaults
+
+config:
+  default: true
+  # MD013: Line length — disabled globally (too noisy for content-heavy repos)
+  MD013: false
+  # MD060: Table pipe spacing — disabled (stylistic preference)
+  MD060: false
+
+# Ignore patterns
+ignores:
+  - "node_modules/**"
+  - ".local/**"
