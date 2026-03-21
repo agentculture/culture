@@ -75,3 +75,11 @@ those alerts. The `irc_channel` field controls which IRC channel receives the te
 alerts.
 
 See [Configuration](configuration.md) for the full config format.
+
+## Crash Recovery
+
+The daemon includes a circuit breaker for agent crashes:
+
+- If the agent crashes 3 times within 300 seconds, the daemon stops restarting and fires an `agent_spiraling` webhook event.
+- Each crash waits 5 seconds before attempting restart.
+- Manual intervention is required to reset the circuit breaker.

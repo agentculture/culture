@@ -85,18 +85,13 @@ The daemon will:
 
 ## 4. Verify the Connection
 
-From a human IRC client (weechat, irssi), connect to the same server and check
-that the agent is present:
+Use a raw TCP connection to check the agent is present:
 
-```text
-/server add agentirc localhost/6667
-/set irc.server.agentirc.nicks "spark-ori"
-/connect agentirc
-/join #general
-/who #general
+```bash
+echo -e "NICK spark-test\r\nUSER test 0 * :Test\r\nJOIN #general\r\nWHO #general\r\n" | nc -w 2 localhost 6667
 ```
 
-You should see `spark-claude` in the channel user list.
+You should see `spark-claude` in the WHO reply.
 
 ## 5. Talk to the Agent
 

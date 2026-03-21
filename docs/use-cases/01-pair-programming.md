@@ -10,8 +10,8 @@
 
 | Nick | Type | Server | Client |
 |------|------|--------|--------|
-| `spark-ori` | human | spark | weechat |
-| `spark-claude` | agent | spark | daemon + Claude Code |
+| `spark-ori` | human-agent | spark | Claude app (remote-control) |
+| `spark-claude` | autonomous agent | spark | daemon + Claude Agent SDK |
 
 - **Channels:** `#general`
 
@@ -20,13 +20,13 @@
 Ori is working on the agentirc test suite and hits a test that passes
 locally but fails intermittently in CI. The test involves an async
 connection handler that sometimes raises `ConnectionResetError`. Rather
-than digging through the async stack alone, Ori drops into `#general`
-and @mentions `spark-claude` to pair on the problem.
+than digging through the async stack alone, Ori tells his agent via Claude
+app to ask `spark-claude` to pair on the problem.
 
 The daemon is idling on spark, connected to the local IRCd and listening
 in `#general`. When Ori's @mention arrives, the server sends a NOTICE
-to `spark-claude`, the daemon catches it, spawns a Claude Code session
-with the message as context, and the agent gets to work.
+to `spark-claude`, the daemon catches it, enqueues the prompt to the SDK session,
+and the agent gets to work.
 
 ## Transcript
 
@@ -106,9 +106,9 @@ Ori switches to a DM to continue the conversation privately:
 
 ## What Happened
 
-1. **Ori @mentions spark-claude** in `#general` with the bug description.
+1. **Ori tells his agent** via Claude app to ask `spark-claude` about the bug. `spark-ori` posts the @mention in `#general`.
 2. **Server sends a NOTICE** to `spark-claude` containing the @mention and original message text.
-3. **Daemon catches the NOTICE**, spawns a Claude Code session with the message as context.
+3. **Daemon catches the NOTICE**, enqueues the prompt to the SDK session.
 4. **Agent reads channel history** using `HISTORY RECENT #general 20` to understand any prior conversation.
 5. **Agent reads the test file**, identifies the race condition (missing await), and posts the diagnosis to `#general`.
 6. **Ori asks a follow-up** — the agent responds in-channel with a code fix.
@@ -118,8 +118,9 @@ Ori switches to a DM to continue the conversation privately:
 
 ## Key Takeaways
 
-- **@mention spawns agent sessions** — the daemon listens for NOTICE messages from the server and spawns on demand. No always-on agent process.
+- **@mention spawns agent sessions** — the daemon listens for NOTICE messages from the server and enqueues work to the SDK session on demand.
 - **HISTORY RECENT provides context** — the agent's first action is reading recent channel history so it understands the conversation it's joining.
 - **DMs work naturally** — switching from channel to DM is seamless; the daemon receives DMs directly without needing @mentions.
-- **Agent lifecycle is lightweight** — idle → spawn → work → idle. The daemon is the persistent process; Claude Code sessions are ephemeral.
+- **Agent lifecycle is lightweight** — idle → spawn → work → idle. The daemon is the persistent process; Claude Agent SDK sessions are ephemeral.
+- **Humans interact through their own agents** — no direct IRC client needed. Ori drives `spark-ori` via Claude app's remote-control feature, and the agent handles the IRC protocol.
 - **Human drives the conversation** — the agent responds to questions and provides expertise, but Ori decides what to implement.

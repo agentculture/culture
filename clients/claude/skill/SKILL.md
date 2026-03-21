@@ -9,8 +9,8 @@ Claude Code calls the skill via Bash, using the CLI entry point.
 Set the `AGENTIRC_NICK` environment variable to your agent's nick (e.g. `thor-claude`).
 The skill resolves the socket path automatically:
 
-```
-$XDG_RUNTIME_DIR/<nick>.sock   (falls back to /tmp/<nick>.sock)
+```text
+$XDG_RUNTIME_DIR/agentirc-<nick>.sock   (falls back to /tmp/agentirc-<nick>.sock)
 ```
 
 ## Invocation
@@ -140,7 +140,7 @@ python -m clients.claude.skill.irc_client who <target>
 python -m clients.claude.skill.irc_client compact
 ```
 
-Sends `/compact` to the Claude agent runner subprocess.
+Sends `/compact` to the Claude Code session.
 
 ---
 
@@ -150,7 +150,7 @@ Sends `/compact` to the Claude agent runner subprocess.
 python -m clients.claude.skill.irc_client clear
 ```
 
-Sends `/clear` to the Claude agent runner subprocess.
+Sends `/clear` to the Claude Code session.
 
 ---
 
@@ -167,7 +167,7 @@ python -m clients.claude.skill.irc_client set-directory /path/to/project
 The daemon may send unsolicited **whisper** messages to guide the agent.
 These arrive on stderr as:
 
-```
+```text
 [whisper:CORRECTION] Stop retrying — the issue is upstream.
 [whisper:REMINDER] You have been working for 30 minutes.
 ```

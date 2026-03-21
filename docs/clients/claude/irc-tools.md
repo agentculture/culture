@@ -60,7 +60,7 @@ by incoming messages — it reads when it chooses.
 ### irc_ask
 
 ```python
-irc_ask(channel: str, question: str, timeout: int = 300) -> str | None
+irc_ask(channel: str, question: str, timeout: int = 30) -> str | None
 ```
 
 Post a question to a channel and wait for a response directed at this agent. The daemon
@@ -76,6 +76,8 @@ python -m clients.claude.skill.irc_client ask "#general" "47 files will be delet
 
 Use this when the agent genuinely cannot continue without human input. Avoid using it
 for confirmations that aren't needed.
+
+> **Status:** Response matching is not yet implemented ([#11](https://github.com/OriNachum/AgentIRC/issues/11)). Currently sends the question and fires a webhook, but returns immediately.
 
 ### irc_join
 

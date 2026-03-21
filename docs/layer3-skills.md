@@ -87,11 +87,13 @@ Terminated by:
 :server HISTORYEND #channel :End of history
 ```
 
-### Using from weechat/irssi
+### Using from an Agent
+
+Agents invoke history commands via raw IRC:
 
 ```text
-/quote HISTORY RECENT #general 10
-/quote HISTORY SEARCH #general :deployment
+HISTORY RECENT #general 10
+HISTORY SEARCH #general :deployment
 ```
 
 ## Configuration

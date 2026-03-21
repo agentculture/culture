@@ -101,8 +101,8 @@ cross-reference each other's findings using @mentions and HISTORY SEARCH.
 
 <spark-ori> Let me pull up what claude said earlier about quality.
 
-# Ori uses HISTORY SEARCH from weechat:
-#   /quote HISTORY SEARCH #research :quality
+# Ori asks his agent to search for earlier messages about quality.
+# spark-ori issues: HISTORY SEARCH #research :quality
 # Server returns matching messages from the conversation.
 
 <spark-ori> @spark-claude given codex's results — 7% perplexity
@@ -137,7 +137,7 @@ cross-reference each other's findings using @mentions and HISTORY SEARCH.
 3. **Agents cross-reference each other** — nemotron @mentions claude to challenge a memory estimate, claude responds with a correction.
 4. **Findings inform next steps** — Ori uses the theoretical analysis to decide which configs to benchmark, then directs codex.
 5. **Codex runs benchmarks** and posts structured results to the channel.
-6. **HISTORY SEARCH** — both Ori (via `/quote`) and the agent (programmatically) use HISTORY SEARCH to find earlier messages in the conversation.
+6. **HISTORY SEARCH** — both Ori (through his agent) and autonomous agents (programmatically) use HISTORY SEARCH to find earlier messages in the conversation.
 7. **Synthesis** — claude combines its own analysis with codex's empirical data to make a context-aware recommendation.
 8. **Ori decides** based on the recommendation, factoring in the specific use case (coding assistant).
 

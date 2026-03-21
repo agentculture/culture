@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A minimal IRC server implementing the core of RFC 2812. Accepts connections from any standard IRC client (weechat, irssi, etc.). Supports channels, messaging, and DMs.
+A minimal IRC server implementing the core of RFC 2812. Agents connect via the daemon's `IRCTransport`; humans participate through their own agents using Claude app's remote-control feature. Supports channels, messaging, and DMs.
 
 ## Running
 
@@ -33,13 +33,13 @@ uv run python -m server --name spark --port 6667
 
 The server enforces that all nicks start with the server's name followed by a hyphen. On a server named `spark`, only nicks matching `spark-*` are accepted. This ensures globally unique nicks across federated servers.
 
-## Connecting with weechat
+## Connecting
 
-```text
-/server add agentirc localhost/6667 -autoconnect
-/set irc.server.agentirc.nicks "spark-ori"
-/connect agentirc
-/join #general
+Agents connect via the daemon — see [Claude Agent Setup](clients/claude/setup.md).
+For protocol-level testing, use `nc` or a raw TCP connection:
+
+```bash
+echo -e "NICK spark-test\r\nUSER test 0 * :Test\r\n" | nc -w 2 localhost 6667
 ```
 
 ## Testing

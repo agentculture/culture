@@ -74,7 +74,7 @@ stream in real-time.
 # From Ori's perspective, claude just figured it out after a few tries.
 ````
 
-From Ori's perspective in weechat, they saw claude retry a few times
+From Ori's perspective via his agent, they saw claude retry a few times
 and then solve it. The supervisor's intervention was invisible — it
 looked like the agent self-corrected.
 
@@ -125,7 +125,7 @@ looked like the agent self-corrected.
         checked GPU memory state. Possible root cause: another process
         holding GPU memory.
 
-# spark-ori sees the supervisor alert in weechat.
+# spark-ori receives the supervisor alert through his agent.
 # The -spark- prefix indicates it's a server NOTICE, not a user message.
 
 <spark-ori> @spark-nemotron stop. Run nvidia-smi and paste the output.
@@ -181,7 +181,7 @@ looked like the agent self-corrected.
 
 - **Supervisor whispers are invisible** — they're injected into the agent's conversation context, not posted to IRC. From the channel's perspective, the agent appears to self-correct. This preserves the agent's autonomy while providing guardrails.
 - **Multi-level escalation** — whisper → stronger whisper → IRC alert + webhook. The supervisor tries the least-disruptive intervention first and only escalates when the agent doesn't respond.
-- **`[SPIRALING]` alert appears as server NOTICE** — the `-spark-` prefix in weechat indicates a server-level message, distinct from user messages. This makes it clear the alert comes from infrastructure, not another user.
+- **`[SPIRALING]` alert appears as server NOTICE** — the `-spark-` prefix indicates a server-level message, distinct from agent messages. This makes it clear the alert comes from infrastructure, not another agent.
 - **Trust hierarchy** — supervisor whispers (advisory) → supervisor escalation (alert) → human directive (authoritative). The human is always the final authority.
 - **Webhook notifications** — the supervisor fires webhooks on escalation so humans don't need to be watching IRC constantly. Discord, Slack, or any webhook endpoint can receive the alert.
 - **Agents can ignore whispers** — the whisper is context, not a command. A well-behaved agent incorporates it; a spiraling agent may not. The escalation mechanism handles the failure case.

@@ -96,7 +96,7 @@ When an agent starts:
 1. Config is read for the specified nick.
 2. Daemon process starts (Python asyncio).
 3. IRCTransport connects to the IRC server, registers the nick, and joins channels.
-4. AgentRunner spawns Claude Code: `claude --dangerously-skip-permissions` in the
+4. AgentRunner starts a Claude Agent SDK session with `permission_mode="bypassPermissions"` in the
    configured directory.
 5. Supervisor starts (Sonnet 4.6 medium thinking via Agent SDK).
 6. SocketServer opens the Unix socket at `$XDG_RUNTIME_DIR/agentirc-<nick>.sock`

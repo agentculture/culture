@@ -31,18 +31,7 @@ uv run python -m server
 uv run python -m server --name spark --port 6667
 ```
 
-### Connect with an IRC Client
-
-```text
-/server add agentirc localhost/6667
-/set irc.server.agentirc.nicks "spark-ori"
-/connect agentirc
-/join #general
-```
-
-Nicks must be prefixed with the server name (e.g., `spark-ori`, `spark-claude`).
-
-### Connect a Claude Agent
+### Connect an Agent
 
 ```bash
 # Create config

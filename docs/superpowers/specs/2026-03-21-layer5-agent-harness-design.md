@@ -12,7 +12,7 @@ The daemon builds on top of Layers 1–4 (core IRC, attention, skills, federatio
 
 Each agent runs as an independent daemon process. There is no parent-child relationship between agents. Communication between agents happens exclusively through IRC. Agents are started manually via the CLI.
 
-The daemon is a Python asyncio process that uses the Agent SDK only for the supervisor. The main agent is a Claude Code CLI subprocess — the daemon manages its lifecycle and communicates with it via stdin and a Unix socket.
+The daemon is a Python asyncio process that uses the Agent SDK for both the main agent and the supervisor. The main agent is a Claude Agent SDK session — the daemon manages its lifecycle and communicates with it via the SDK and a Unix socket.
 
 ```text
 ┌──────────────────────────────────────────────────┐
@@ -29,8 +29,8 @@ The daemon is a Python asyncio process that uses the Agent SDK only for the supe
 └─────────────────────────┼──────────────────────────┘
                           │
 ┌─────────────────────────┴──────────────────────────┐
-│           Claude Code Process                       │
-│           --dangerously-skip-permissions             │
+│           Claude Agent SDK Session                   │
+│           permission_mode="bypassPermissions"         │
 │           cwd: /some/project                        │
 │                                                     │
 │  Built-in:          From ~/.claude/skills/irc/:     │
@@ -53,7 +53,7 @@ The daemon is a Python asyncio process that uses the Agent SDK only for the supe
 | Component | Role |
 |-----------|------|
 | IRCTransport | Maintains IRC connection. Handles NICK/USER registration, PING/PONG, JOIN/PART. Buffers incoming messages per channel. |
-| AgentRunner | Manages the Claude Code process lifecycle. Spawns Claude Code in the target directory with `--dangerously-skip-permissions`. Handles stdin for compact/clear commands. |
+| AgentRunner | Manages the Claude Agent SDK session lifecycle. Starts a session in the target directory with Claude Agent SDK `query()` with `permission_mode="bypassPermissions"`. Handles stdin for compact/clear commands. |
 | Supervisor | Sonnet 4.6 medium thinking session via Agent SDK. Reads agent activity through hooks piped over the Unix socket. Whispers corrections, thinking hints, or escalates. |
 | MessageBus | In-process asyncio queues connecting daemon components. IRC messages in, agent actions out, supervisor observations flowing. |
 | WebhookClient | Fires HTTP POSTs to configured URLs. Also posts to IRC `#alerts` as fallback. |
@@ -63,7 +63,7 @@ The daemon is a Python asyncio process that uses the Agent SDK only for the supe
 
 1. Process starts with config (nick, server, port, channels, directory, webhooks).
 2. IRCTransport connects, registers nick, joins channels.
-3. AgentRunner spawns Claude Code in the configured directory.
+3. AgentRunner starts a Claude Agent SDK session in the configured directory.
 4. Claude Code loads `~/.claude/CLAUDE.md` + `cwd/CLAUDE.md` + `~/.claude/skills/irc/`.
 5. Supervisor starts (Sonnet 4.6 medium thinking session).
 6. Daemon idles, buffering channel messages.
@@ -86,7 +86,7 @@ The agent's system prompt instructs it to use extended thinking when it recogniz
 
 ### Claude Code as the Agent
 
-The agent IS Claude Code running in `--dangerously-skip-permissions` mode. This means:
+The agent IS Claude Code running via Claude Agent SDK `query()` with `permission_mode="bypassPermissions"`. This means:
 
 - File I/O (Read, Write, Edit, Glob, Grep) — built-in.
 - Shell access (Bash) — built-in.
@@ -393,7 +393,7 @@ agentirc start --all
 1. Read config for the agent.
 2. Start daemon process (Python asyncio).
 3. IRCTransport connects, registers nick, joins channels.
-4. AgentRunner spawns Claude Code: `claude --dangerously-skip-permissions` in configured directory.
+4. AgentRunner starts a Claude Agent SDK session with `permission_mode="bypassPermissions"` in configured directory.
 5. Supervisor starts (Sonnet 4.6 medium thinking session via Agent SDK).
 6. SocketServer opens Unix socket for skill IPC.
 7. Claude Code loads skills including `~/.claude/skills/irc/`.

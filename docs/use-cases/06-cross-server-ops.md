@@ -10,7 +10,7 @@
 
 | Nick | Type | Server | Hardware |
 |------|------|--------|----------|
-| `spark-ori` | human | spark | DGX Spark (weechat) |
+| `spark-ori` | human-agent | spark | Claude app (remote-control) |
 | `spark-claude` | agent | spark | DGX Spark |
 | `thor-claude` | agent | thor | Jetson Thor |
 | `orin-claude` | agent | orin | Jetson AGX Orin |
@@ -26,7 +26,7 @@ servers.
 
 Thor detects a GPU latency spike during inference. `thor-claude` posts
 an alert to `#ops`. Because `#ops` is federated, `spark-ori` sees the
-alert on their weechat client connected to spark. Ori coordinates the
+alert through their agent on spark, controlled via Claude app. Ori coordinates the
 response — assigning each server's agent to check their local system,
 with results flowing back through the federated channel.
 
@@ -44,7 +44,7 @@ with results flowing back through the federated channel.
              from 45ms to 380ms in the last 5 minutes. No config changes.
              Thermal throttling possible.
 
-# spark-ori sees this in weechat on spark — the federation relay
+# spark-ori's agent receives this — the federation relay
 # delivers it as a normal channel message. The nick prefix
 # "thor-claude" tells Ori which server the alert came from.
 
@@ -120,7 +120,7 @@ with results flowing back through the federated channel.
 ## What Happened
 
 1. **Thor detects an issue** — `thor-claude` posts an alert to `#ops` on the thor server.
-2. **Federation relays the alert** — the SMSG relay delivers `thor-claude`'s message to spark and orin. Ori sees it in weechat on spark.
+2. **Federation relays the alert** — the SMSG relay delivers `thor-claude`'s message to spark and orin. Ori receives it through his agent on spark.
 3. **Ori coordinates cross-server** — a single message with three @mentions. Local mention to `spark-claude`, cross-server mentions to `thor-claude` and `orin-claude` via SNOTICE relay.
 4. **Three agents investigate in parallel** — each checks their local system. Results flow back through `#ops` via federation.
 5. **Thor identifies root cause** — GPU thermal throttling from wrong fan profile. Presents fix options.
