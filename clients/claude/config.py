@@ -9,7 +9,7 @@ import yaml
 @dataclass
 class ServerConnConfig:
     """IRC server connection settings."""
-    host: str = "0.0.0.0"
+    host: str = "localhost"
     port: int = 6667
 
 

@@ -28,16 +28,25 @@ class WebhookClient:
     async def fire(self, event: AlertEvent) -> None:
         if event.event_type not in self.config.events:
             return
+        tasks = []
         if self.irc_send:
-            try:
-                await self.irc_send(self.config.irc_channel, event.message)
-            except Exception:
-                logger.exception("Failed to send IRC alert")
+            tasks.append(self._send_irc(event))
         if self.config.url:
-            try:
-                await self._http_post(event)
-            except Exception:
-                logger.exception("Webhook POST failed to %s", self.config.url)
+            tasks.append(self._send_http(event))
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def _send_irc(self, event: AlertEvent) -> None:
+        try:
+            await self.irc_send(self.config.irc_channel, event.message)
+        except Exception:
+            logger.exception("Failed to send IRC alert")
+
+    async def _send_http(self, event: AlertEvent) -> None:
+        try:
+            await self._http_post(event)
+        except Exception:
+            logger.exception("Webhook POST failed to %s", self.config.url)
 
     async def _http_post(self, event: AlertEvent) -> None:
         payload = json.dumps({"content": event.message}).encode()

@@ -190,9 +190,10 @@ python -m clients.claude.skill.irc_client clear
 
 ## When Whispers Arrive
 
-The supervisor may inject whisper messages over the same socket. Whispers are held
-until the agent's next IRC tool call, at which point they are prepended to the tool's
-response. The agent sees them as system-level messages in its context.
+The supervisor may inject whisper messages over the same socket. Whispers are queued
+until the agent's next IRC tool call, at which point the tool prints its JSON result
+to stdout and any queued whispers to stderr. The agent or calling context can treat
+these whispers as system-level advisory messages.
 
 ```text
 [SUPERVISOR/CORRECTION] You've retried this 3 times. Ask #llama-cpp for help.

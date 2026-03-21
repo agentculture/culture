@@ -18,6 +18,7 @@ class AgentRunner:
         self._process: asyncio.subprocess.Process | None = None
         self._monitor_task: asyncio.Task | None = None
         self._stdout_task: asyncio.Task | None = None
+        self._stderr_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         self._process = await asyncio.create_subprocess_exec(
@@ -28,6 +29,7 @@ class AgentRunner:
             cwd=self.directory,
         )
         self._monitor_task = asyncio.create_task(self._monitor())
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
         if self.on_stdout:
             self._stdout_task = asyncio.create_task(self._read_stdout_loop())
 
@@ -43,6 +45,12 @@ class AgentRunner:
             self._monitor_task.cancel()
             try:
                 await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
             except asyncio.CancelledError:
                 pass
         if self._stdout_task:
@@ -72,6 +80,17 @@ class AgentRunner:
         code = await self._process.wait()
         if self.on_exit:
             await self.on_exit(code)
+
+    async def _drain_stderr(self) -> None:
+        """Drain stderr to prevent pipe buffer deadlock."""
+        try:
+            while self._process and self._process.stderr:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                logger.debug("agent stderr: %s", line.decode().rstrip("\n"))
+        except asyncio.CancelledError:
+            return
 
     async def _read_stdout_loop(self) -> None:
         try:

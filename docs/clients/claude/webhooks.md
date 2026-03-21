@@ -43,14 +43,11 @@ Alerts are short, scannable, and actionable:
 
 ## HTTP Payload
 
-The POST body is JSON:
+The POST body is Discord-compatible JSON with the alert text in the `content` field:
 
 ```json
 {
-  "event": "agent_spiraling",
-  "nick": "spark-claude",
-  "message": "Retried cmake 4 times. Awaiting guidance.",
-  "timestamp": "2026-03-21T14:23:01Z"
+  "content": "[SPIRALING] spark-claude stuck on task. Retried cmake 4 times. Awaiting guidance."
 }
 ```
 

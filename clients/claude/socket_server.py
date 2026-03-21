@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any, Callable, Awaitable
 
-from clients.claude.ipc import encode_message, decode_message, make_whisper
+from clients.claude.ipc import encode_message, decode_message, make_whisper, make_response
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +85,15 @@ class SocketServer:
                     response = await self.handler(msg)
                     writer.write(encode_message(response))
                     await writer.drain()
-                except Exception:
+                except Exception as exc:
                     logger.exception("Handler error for message: %s", msg)
+                    try:
+                        request_id = msg.get("id") if isinstance(msg, dict) else None
+                        err_resp = make_response(request_id or "", ok=False, error=str(exc))
+                        writer.write(encode_message(err_resp))
+                        await writer.drain()
+                    except (ConnectionError, BrokenPipeError, OSError):
+                        break
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         finally:

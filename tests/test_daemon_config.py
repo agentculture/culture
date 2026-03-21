@@ -80,7 +80,7 @@ agents:
         f.flush()
         try:
             config = load_config(f.name)
-            assert config.server.host == "0.0.0.0"
+            assert config.server.host == "localhost"
             assert config.server.port == 6667
             assert config.supervisor.model == "claude-sonnet-4-6"
             assert config.supervisor.thinking == "medium"

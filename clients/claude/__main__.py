@@ -77,17 +77,16 @@ async def _run_single(config, agent) -> None:
 
 
 def _run_multi(config, agents) -> None:
-    pids = []
     for agent in agents:
         pid = os.fork()
         if pid == 0:
+            # Child: detach from parent session
+            os.setsid()
             asyncio.run(_run_single(config, agent))
             sys.exit(0)
         else:
-            pids.append((pid, agent.nick))
             logger.info("Started %s (pid %d)", agent.nick, pid)
-    for pid, nick in pids:
-        os.waitpid(pid, 0)
+    # Parent exits — children continue independently
 
 
 if __name__ == "__main__":

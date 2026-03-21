@@ -27,7 +27,7 @@ async def test_full_send_receive_flow(server, make_client):
     human = await make_client(nick="testserv-ori", user="ori")
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
-    sock_path = os.path.join(sock_dir, "testserv-bot.sock")
+    sock_path = os.path.join(sock_dir, "agentirc-testserv-bot.sock")
     skill = SkillClient(sock_path)
     await skill.connect()
     try:
@@ -57,7 +57,7 @@ async def test_join_part_via_skill(server):
     daemon = AgentDaemon(config, agent, socket_dir=sock_dir, skip_claude=True)
     await daemon.start()
     await asyncio.sleep(0.5)
-    sock_path = os.path.join(sock_dir, "testserv-bot.sock")
+    sock_path = os.path.join(sock_dir, "agentirc-testserv-bot.sock")
     skill = SkillClient(sock_path)
     await skill.connect()
     try:
@@ -92,7 +92,7 @@ async def test_webhook_fires_on_question(server, make_client):
     watcher = await make_client(nick="testserv-watch", user="watch")
     await watcher.send("JOIN #alerts")
     await watcher.recv_all(timeout=0.3)
-    sock_path = os.path.join(sock_dir, "testserv-bot.sock")
+    sock_path = os.path.join(sock_dir, "agentirc-testserv-bot.sock")
     skill = SkillClient(sock_path)
     await skill.connect()
     try:

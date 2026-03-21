@@ -38,7 +38,7 @@ class AgentDaemon:
 
         self._socket_path = os.path.join(
             socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
-            f"{agent.nick}.sock",
+            f"agentirc-{agent.nick}.sock",
         )
 
         self._buffer: MessageBuffer | None = None
@@ -46,6 +46,7 @@ class AgentDaemon:
         self._webhook: WebhookClient | None = None
         self._socket_server: SocketServer | None = None
         self._agent_runner: AgentRunner | None = None
+        self._supervisor: Supervisor | None = None
 
         # Crash-recovery state
         self._crash_times: list[float] = []
@@ -84,7 +85,20 @@ class AgentDaemon:
         )
         await self._socket_server.start()
 
-        # 5. Optionally start the Claude agent runner
+        # 5. Supervisor (placeholder evaluate_fn — real Agent SDK evaluator deferred)
+        async def _placeholder_eval(window, task):
+            return SupervisorVerdict(action="OK", message="")
+
+        self._supervisor = Supervisor(
+            window_size=self.config.supervisor.window_size,
+            eval_interval=self.config.supervisor.eval_interval,
+            escalation_threshold=self.config.supervisor.escalation_threshold,
+            evaluate_fn=_placeholder_eval,
+            on_whisper=self._on_supervisor_whisper,
+            on_escalation=self._on_supervisor_escalation,
+        )
+
+        # 6. Optionally start the Claude agent runner
         if not self.skip_claude:
             await self._start_agent_runner()
 
@@ -115,6 +129,7 @@ class AgentDaemon:
     async def _start_agent_runner(self) -> None:
         command = [
             "claude",
+            "--dangerously-skip-permissions",
             "--model", self.agent.model,
             "--directory", self.agent.directory,
         ]
@@ -187,6 +202,24 @@ class AgentDaemon:
             await self._start_agent_runner()
 
     # ------------------------------------------------------------------
+    # Supervisor callbacks
+    # ------------------------------------------------------------------
+
+    async def _on_supervisor_whisper(self, message: str, whisper_type: str) -> None:
+        """Deliver a supervisor whisper to the skill client via socket."""
+        if self._socket_server:
+            await self._socket_server.send_whisper(message, whisper_type)
+
+    async def _on_supervisor_escalation(self, message: str) -> None:
+        """Escalate via webhook + IRC when supervisor exhausts whispers."""
+        if self._webhook:
+            await self._webhook.fire(AlertEvent(
+                event_type="agent_spiraling",
+                nick=self.agent.nick,
+                message=f"[ESCALATION] {self.agent.nick}: {message}",
+            ))
+
+    # ------------------------------------------------------------------
     # IPC handler
     # ------------------------------------------------------------------
 
@@ -216,6 +249,9 @@ class AgentDaemon:
 
             elif msg_type == "irc_ask":
                 return await self._ipc_irc_ask(req_id, msg)
+
+            elif msg_type == "set_directory":
+                return await self._ipc_set_directory(req_id, msg)
 
             elif msg_type == "compact":
                 return await self._ipc_compact(req_id)
@@ -305,6 +341,20 @@ class AgentDaemon:
             ))
         # Response matching is TODO
         return make_response(req_id, ok=True)
+
+    async def _ipc_set_directory(self, req_id: str, msg: dict) -> dict:
+        path = msg.get("path", "")
+        if not path:
+            return make_response(req_id, ok=False, error="Missing 'path'")
+        claude_md = os.path.join(path, "CLAUDE.md")
+        claude_md_content = None
+        if os.path.isfile(claude_md):
+            with open(claude_md) as f:
+                claude_md_content = f.read()
+        return make_response(req_id, ok=True, data={
+            "directory": path,
+            "claude_md": claude_md_content,
+        })
 
     async def _ipc_compact(self, req_id: str) -> dict:
         if self._agent_runner is None or not self._agent_runner.is_running():

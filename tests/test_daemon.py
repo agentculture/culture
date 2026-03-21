@@ -43,7 +43,7 @@ async def test_daemon_ipc_irc_send(server, make_client):
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
     from clients.claude.ipc import encode_message, decode_message, make_request
-    sock_path = os.path.join(sock_dir, "testserv-bot.sock")
+    sock_path = os.path.join(sock_dir, "agentirc-testserv-bot.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)
     req = make_request("irc_send", channel="#general", message="hello from skill")
     writer.write(encode_message(req))
@@ -74,7 +74,7 @@ async def test_daemon_ipc_irc_read(server, make_client):
     await human.send("PRIVMSG #general :test message")
     await asyncio.sleep(0.3)
     from clients.claude.ipc import encode_message, decode_message, make_request
-    sock_path = os.path.join(sock_dir, "testserv-bot.sock")
+    sock_path = os.path.join(sock_dir, "agentirc-testserv-bot.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)
     req = make_request("irc_read", channel="#general", limit=50)
     writer.write(encode_message(req))

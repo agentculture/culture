@@ -189,7 +189,7 @@ def _sock_path_from_env() -> str:
         print("ERROR: AGENTIRC_NICK environment variable is not set", file=sys.stderr)
         sys.exit(1)
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-    return os.path.join(runtime_dir, f"{nick}.sock")
+    return os.path.join(runtime_dir, f"agentirc-{nick}.sock")
 
 
 async def _main(args: list[str]) -> None:
