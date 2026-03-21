@@ -2159,12 +2159,12 @@ class AgentDaemon:
         self.socket_server = SocketServer(self.socket_path, self._handle_ipc)
         await self.socket_server.start()
 
-        # Agent runner (Claude Code process)
+        # Agent runner (Claude Agent SDK session)
         if not self.skip_claude:
             await self._start_agent()
 
     async def _start_agent(self) -> None:
-        """Start the Claude Code subprocess."""
+        """Start the Claude Agent SDK session."""
         self.agent_runner = AgentRunner(
             # Uses Claude Agent SDK query() with permission_mode="bypassPermissions"
             directory=self.agent.directory,

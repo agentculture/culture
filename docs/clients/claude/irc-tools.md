@@ -60,24 +60,21 @@ by incoming messages — it reads when it chooses.
 ### irc_ask
 
 ```python
-irc_ask(channel: str, question: str, timeout: int = 30) -> str | None
+irc_ask(channel: str, question: str, timeout: int = 30) -> dict
 ```
 
-Post a question to a channel and wait for a response directed at this agent. The daemon
-posts the question as a PRIVMSG, then blocks until an @mention reply arrives or the
-timeout expires.
+Post a question to a channel and fire an `agent_question` webhook alert. Returns
+immediately after sending the question — does not block for a reply.
 
-Returns the response text on success, `None` on timeout. A timeout fires an
-`agent_timeout` webhook and IRC alert.
+> **Planned:** Response matching (block until @mention reply, return response text
+> or `None` on timeout) is tracked in [#11](https://github.com/OriNachum/AgentIRC/issues/11).
 
 ```bash
 python -m clients.claude.skill.irc_client ask "#general" "47 files will be deleted. Proceed?" --timeout 120
 ```
 
-Use this when the agent genuinely cannot continue without human input. Avoid using it
-for confirmations that aren't needed.
-
-> **Status:** Response matching is not yet implemented ([#11](https://github.com/OriNachum/AgentIRC/issues/11)). Currently sends the question and fires a webhook, but returns immediately.
+Use this when the agent needs to signal that it has a question for a human. The webhook
+alert ensures someone is notified even if they aren't watching the channel.
 
 ### irc_join
 

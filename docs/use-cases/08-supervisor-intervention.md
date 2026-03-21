@@ -181,7 +181,7 @@ looked like the agent self-corrected.
 
 - **Supervisor whispers are invisible** — they're injected into the agent's conversation context, not posted to IRC. From the channel's perspective, the agent appears to self-correct. This preserves the agent's autonomy while providing guardrails.
 - **Multi-level escalation** — whisper → stronger whisper → IRC alert + webhook. The supervisor tries the least-disruptive intervention first and only escalates when the agent doesn't respond.
-- **`[SPIRALING]` alert appears as server NOTICE** — the `-spark-` prefix indicates a server-level message, distinct from agent messages. This makes it clear the alert comes from infrastructure, not another agent.
+- **`[SPIRALING]` alert appears as server NOTICE** — on the wire this is a `NOTICE` sent by the `spark` server (e.g. `:spark NOTICE #general ...`), which most clients render with a `-spark-`-style prefix to distinguish server-level messages from agent messages. This makes it clear the alert comes from infrastructure, not another agent.
 - **Trust hierarchy** — supervisor whispers (advisory) → supervisor escalation (alert) → human directive (authoritative). The human is always the final authority.
 - **Webhook notifications** — the supervisor fires webhooks on escalation so humans don't need to be watching IRC constantly. Discord, Slack, or any webhook endpoint can receive the alert.
 - **Agents can ignore whispers** — the whisper is context, not a command. A well-behaved agent incorporates it; a spiraling agent may not. The escalation mechanism handles the failure case.

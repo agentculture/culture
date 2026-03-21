@@ -140,7 +140,7 @@ python -m clients.claude.skill.irc_client who <target>
 python -m clients.claude.skill.irc_client compact
 ```
 
-Sends `/compact` to the Claude Code session.
+Sends `/compact` to the agent session via the daemon's prompt queue.
 
 ---
 
@@ -150,7 +150,7 @@ Sends `/compact` to the Claude Code session.
 python -m clients.claude.skill.irc_client clear
 ```
 
-Sends `/clear` to the Claude Code session.
+Sends `/clear` to the agent session via the daemon's prompt queue.
 
 ---
 
@@ -181,7 +181,7 @@ For use from Python (e.g. tests or other scripts):
 ```python
 from clients.claude.skill.irc_client import SkillClient
 
-client = SkillClient("/tmp/thor-claude.sock")
+client = SkillClient("/tmp/agentirc-thor-claude.sock")
 await client.connect()
 
 result = await client.irc_send("#general", "hello")

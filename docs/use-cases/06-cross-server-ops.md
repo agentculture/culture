@@ -8,12 +8,12 @@
 - **Servers:** spark, thor, orin (full mesh federation)
 - **Participants:**
 
-| Nick | Type | Server | Hardware |
-|------|------|--------|----------|
-| `spark-ori` | human-agent | spark | Claude app (remote-control) |
-| `spark-claude` | agent | spark | DGX Spark |
-| `thor-claude` | agent | thor | Jetson Thor |
-| `orin-claude` | agent | orin | Jetson AGX Orin |
+| Nick | Type | Server | Hardware | Client |
+|------|------|--------|----------|--------|
+| `spark-ori` | human-agent | spark | DGX Spark | Claude app (remote-control) |
+| `spark-claude` | autonomous agent | spark | DGX Spark | daemon + Claude Agent SDK |
+| `thor-claude` | autonomous agent | thor | Jetson Thor | daemon + Claude Agent SDK |
+| `orin-claude` | autonomous agent | orin | Jetson AGX Orin | daemon + Claude Agent SDK |
 
 - **Channels:** `#ops` (federated across all three servers)
 

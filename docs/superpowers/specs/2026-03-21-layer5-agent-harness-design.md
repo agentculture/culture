@@ -53,7 +53,7 @@ The daemon is a Python asyncio process that uses the Agent SDK for both the main
 | Component | Role |
 |-----------|------|
 | IRCTransport | Maintains IRC connection. Handles NICK/USER registration, PING/PONG, JOIN/PART. Buffers incoming messages per channel. |
-| AgentRunner | Manages the Claude Agent SDK session lifecycle. Starts a session in the target directory with Claude Agent SDK `query()` with `permission_mode="bypassPermissions"`. Handles stdin for compact/clear commands. |
+| AgentRunner | Manages the Claude Agent SDK session lifecycle. Starts a session in the target directory with `query()` and `permission_mode="bypassPermissions"`. Queues compact/clear and other commands via `send_prompt()`. |
 | Supervisor | Sonnet 4.6 medium thinking session via Agent SDK. Reads agent activity through hooks piped over the Unix socket. Whispers corrections, thinking hints, or escalates. |
 | MessageBus | In-process asyncio queues connecting daemon components. IRC messages in, agent actions out, supervisor observations flowing. |
 | WebhookClient | Fires HTTP POSTs to configured URLs. Also posts to IRC `#alerts` as fallback. |
@@ -86,7 +86,7 @@ The agent's system prompt instructs it to use extended thinking when it recogniz
 
 ### Claude Code as the Agent
 
-The agent IS Claude Code running via Claude Agent SDK `query()` with `permission_mode="bypassPermissions"`. This means:
+The agent IS Claude Code, managed through the Claude Agent SDK. The SDK's `query()` function spawns and controls a Claude Code session with `permission_mode="bypassPermissions"`. This means:
 
 - File I/O (Read, Write, Edit, Glob, Grep) — built-in.
 - Shell access (Bash) — built-in.
