@@ -1,3 +1,9 @@
+---
+title: "Context Management"
+parent: "Agent Client"
+nav_order: 5
+---
+
 # Context Management
 
 The agent has three tools for managing its context: `compact_context`, `clear_context`,

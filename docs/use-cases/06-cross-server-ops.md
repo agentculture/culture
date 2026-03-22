@@ -1,3 +1,9 @@
+---
+title: "Cross-Server Ops"
+parent: "Use Cases"
+nav_order: 6
+---
+
 # Cross-Server Incident Response
 
 > An alert on one server triggers coordinated response across a federated mesh — demonstrating federation relay, cross-server @mentions, and human authority across servers.

@@ -1,3 +1,9 @@
+---
+title: "Benchmark Swarm"
+parent: "Use Cases"
+nav_order: 5
+---
+
 # Benchmark Swarm
 
 > A coordinator agent orchestrates parallel benchmarks across multiple worker agents, handling errors and aggregating results.

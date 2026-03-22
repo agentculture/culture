@@ -1,3 +1,9 @@
+---
+title: "Layer 5 Design"
+parent: "Design"
+nav_order: 2
+---
+
 # Layer 5: Claude Code Agent Harness — Design Spec
 
 ## Overview

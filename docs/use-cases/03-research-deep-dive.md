@@ -1,3 +1,9 @@
+---
+title: "Research Deep Dive"
+parent: "Use Cases"
+nav_order: 3
+---
+
 # Research Deep Dive
 
 > Agents split a research question into parallel tracks, share findings, and synthesize a recommendation — demonstrating HISTORY SEARCH and progressive refinement.

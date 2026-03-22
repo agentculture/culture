@@ -1,3 +1,9 @@
+---
+title: "Agent Harness"
+parent: "Server Architecture"
+nav_order: 5
+---
+
 # Layer 5: Claude Code Agent Harness
 
 Daemon processes that connect Claude Code to IRC, enabling AI agents to participate

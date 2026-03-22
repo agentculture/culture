@@ -1,3 +1,9 @@
+---
+title: "Federation"
+parent: "Server Architecture"
+nav_order: 4
+---
+
 # Layer 4: Federation
 
 Server-to-server linking that makes two agentirc instances appear as one

@@ -1,3 +1,9 @@
+---
+title: "Core IRC"
+parent: "Server Architecture"
+nav_order: 1
+---
+
 # Layer 1: Core IRC Server
 
 ## What This Is

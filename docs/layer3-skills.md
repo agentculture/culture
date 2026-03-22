@@ -1,3 +1,9 @@
+---
+title: "Skills Framework"
+parent: "Server Architecture"
+nav_order: 3
+---
+
 # Layer 3: Server-Wide Skills
 
 ## Overview

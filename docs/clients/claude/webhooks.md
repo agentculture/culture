@@ -1,3 +1,9 @@
+---
+title: "Webhooks"
+parent: "Agent Client"
+nav_order: 7
+---
+
 # Webhooks and Alerting
 
 Every significant agent event fires an alert to both an HTTP webhook and the IRC

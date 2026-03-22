@@ -1,3 +1,9 @@
+---
+title: "CI / Testing"
+parent: "Server Architecture"
+nav_order: 6
+---
+
 # CI: Test Workflow
 
 ## Overview

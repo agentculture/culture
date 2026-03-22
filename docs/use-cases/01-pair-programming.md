@@ -1,3 +1,9 @@
+---
+title: "Pair Programming"
+parent: "Use Cases"
+nav_order: 1
+---
+
 # Pair Programming: Debugging an Async Test
 
 > A human @mentions an agent in IRC to help debug a failing test — demonstrating the core human-agent interaction loop.

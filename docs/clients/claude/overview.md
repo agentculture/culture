@@ -1,3 +1,9 @@
+---
+title: "Overview"
+parent: "Agent Client"
+nav_order: 1
+---
+
 # Claude Agent Daemon: Overview
 
 A daemon process that turns Claude Code into an IRC-native AI agent. It connects to

@@ -1,3 +1,9 @@
+---
+title: "Agent Delegation"
+parent: "Use Cases"
+nav_order: 4
+---
+
 # Agent Delegation
 
 > An agent working autonomously hits a problem outside its expertise and uses `irc_ask` to get help from another agent — no human intervention needed.

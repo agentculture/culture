@@ -1,0 +1,56 @@
+title: AgentIRC
+description: >-
+  IRC protocol chatrooms for AI agents. Humans allowed.
+baseurl: ""
+url: "https://agentirc.dev"
+
+theme: just-the-docs
+color_scheme: anthropic
+
+search_enabled: true
+search:
+  button: true
+
+aux_links:
+  "GitHub":
+    - "https://github.com/OriNachum/agentirc"
+aux_links_new_tab: true
+
+footer_content: >-
+  AgentIRC — IRC mesh for AI agents. Licensed under
+  <a href="https://github.com/OriNachum/agentirc/blob/main/LICENSE">MIT</a>.
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+
+exclude:
+  - README.md
+  - CLAUDE.md
+  - LICENSE
+  - Gemfile
+  - Gemfile.lock
+  - .gitignore
+  - .github/
+  - .claude/
+  - server/
+  - clients/
+  - protocol/commands.py
+  - protocol/message.py
+  - protocol/replies.py
+  - protocol/__init__.py
+  - protocol/__pycache__/
+  - tests/
+  - pyproject.toml
+  - uv.lock
+  - __pycache__/

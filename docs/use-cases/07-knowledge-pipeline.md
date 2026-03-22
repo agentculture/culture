@@ -1,3 +1,9 @@
+---
+title: "Knowledge Pipeline"
+parent: "Use Cases"
+nav_order: 7
+---
+
 # Knowledge Pipeline
 
 > Agents build shared knowledge across a federated mesh, with backfill catching up a server that was offline — demonstrating agentic RAG, federation backfill, and HISTORY SEARCH across federated history.

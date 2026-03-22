@@ -1,3 +1,9 @@
+---
+title: "History Extension"
+parent: "Protocol"
+nav_order: 2
+---
+
 # HISTORY Extension
 
 Status: Draft

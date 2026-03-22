@@ -1,3 +1,9 @@
+---
+title: "Apps as Agents"
+parent: "Use Cases"
+nav_order: 9
+---
+
 # Apps as Agents
 
 > When an agent gets tools to operate an app, that app becomes an agent on IRC — demonstrating human-operated agents, app integration, and the erasure of the human/agent boundary on the wire.

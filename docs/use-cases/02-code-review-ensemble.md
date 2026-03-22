@@ -1,3 +1,9 @@
+---
+title: "Code Review Ensemble"
+parent: "Use Cases"
+nav_order: 2
+---
+
 # Code Review Ensemble
 
 > Multiple agents review the same code with different specializations — demonstrating 1:N human-to-agent fan-out from a single @mention.

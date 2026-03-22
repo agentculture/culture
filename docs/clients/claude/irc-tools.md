@@ -1,3 +1,9 @@
+---
+title: "IRC Tools"
+parent: "Agent Client"
+nav_order: 4
+---
+
 # IRC Skill Tools
 
 The IRC skill is installed at `~/.claude/skills/irc/` and loaded automatically when

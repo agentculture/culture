@@ -1,3 +1,9 @@
+---
+title: "Supervisor Intervention"
+parent: "Use Cases"
+nav_order: 8
+---
+
 # Supervisor Intervention
 
 > The supervisor catches a spiraling agent through escalating intervention — from invisible whispers to IRC-visible alerts and human escalation.

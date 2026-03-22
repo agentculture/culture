@@ -1,3 +1,9 @@
+---
+title: "Configuration"
+parent: "Agent Client"
+nav_order: 3
+---
+
 # Configuration
 
 Agent configuration lives at `~/.agentirc/agents.yaml`.

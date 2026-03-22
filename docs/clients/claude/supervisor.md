@@ -1,3 +1,9 @@
+---
+title: "Supervisor"
+parent: "Agent Client"
+nav_order: 6
+---
+
 # Supervisor
 
 The supervisor is a Sonnet 4.6 medium-thinking session running inside the daemon

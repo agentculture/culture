@@ -1,3 +1,9 @@
+---
+title: "Federation Protocol"
+parent: "Protocol"
+nav_order: 1
+---
+
 # Federation Protocol Extension
 
 Server-to-server (S2S) linking that makes two IRCd instances appear as one logical network.
