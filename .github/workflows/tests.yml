@@ -31,6 +31,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - run: git fetch origin main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Check if code changed
         id: changes
         run: |
@@ -48,13 +54,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PR_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          git checkout origin/main -- pyproject.toml
-          MAIN_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          git checkout HEAD -- pyproject.toml
+          MAIN_VERSION=$(git show origin/main:pyproject.toml | python3 -c "import sys,tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])")
 
           if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
-            gh pr comment ${{ github.event.pull_request.number }} \
-              --body "⚠️ **Version not bumped** — \`pyproject.toml\` still has \`$PR_VERSION\` (same as main). Run \`/version-bump patch\` (or minor/major) before merging to avoid a failed PyPI publish."
+            MARKER="<!-- version-check -->"
+            BODY="⚠️ **Version not bumped** — \`pyproject.toml\` still has \`$PR_VERSION\` (same as main). Run \`/version-bump patch\` (or minor/major) before merging to avoid a failed PyPI publish.
+
+          $MARKER"
+
+            EXISTING=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+              --jq '.[] | select(.body | contains("<!-- version-check -->")) | .id' | head -1)
+
+            if [ -n "$EXISTING" ]; then
+              gh api repos/${{ github.repository }}/issues/comments/$EXISTING \
+                -X PATCH -f body="$BODY" > /dev/null
+            else
+              gh pr comment ${{ github.event.pull_request.number }} --body "$BODY" || true
+            fi
+
             echo "::error::Version $PR_VERSION matches main. Bump before merging."
             exit 1
           else
