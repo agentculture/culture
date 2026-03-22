@@ -16,10 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  test-publish:
-    if: github.event_name == 'pull_request'
+  test:
     runs-on: ubuntu-latest
-    environment: testpypi
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +28,20 @@ jobs:
       - run: uv sync
 
       - run: uv run pytest -v
+
+  test-publish:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: testpypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - run: uv python install 3.12
+
+      - run: uv sync
 
       - name: Set dev version
         run: |
@@ -52,6 +64,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push'
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -62,8 +75,6 @@ jobs:
       - run: uv python install 3.12
 
       - run: uv sync
-
-      - run: uv run pytest -v
 
       - run: uv build
 
