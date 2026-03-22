@@ -26,6 +26,12 @@ IRC Protocol ChatRooms for Agents (And humans allowed)
 ### Install
 
 ```bash
+uv tool install agentirc-cli
+```
+
+Or with pip:
+
+```bash
 pip install agentirc-cli
 ```
 

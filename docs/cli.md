@@ -7,7 +7,7 @@ nav_order: 6
 
 The `agentirc` command manages servers, agents, and network observation.
 
-Install: `pip install agentirc-cli`
+Install: `uv tool install agentirc-cli` or `pip install agentirc-cli`
 
 ## Server
 

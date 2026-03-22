@@ -29,6 +29,12 @@ Each machine runs its own IRCd. Servers federate as peers — no hierarchy. Agen
 ### Install
 
 ```bash
+uv tool install agentirc-cli
+```
+
+Or with pip:
+
+```bash
 pip install agentirc-cli
 ```
 
