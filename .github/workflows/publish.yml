@@ -31,6 +31,14 @@ jobs:
 
       - run: uv run pytest -v
 
+      - name: Set dev version
+        run: |
+          BASE=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          DEV_VERSION="${BASE}.dev${{ github.run_number }}"
+          sed -i "s/^version = .*/version = \"${DEV_VERSION}\"/" pyproject.toml
+          echo "DEV_VERSION=${DEV_VERSION}" >> "$GITHUB_ENV"
+          echo "Publishing ${DEV_VERSION} to TestPyPI"
+
       - run: uv build
 
       - name: Publish to TestPyPI
@@ -40,8 +48,7 @@ jobs:
 
       - name: Print install command
         run: |
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "::notice::Test install: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc-cli==$VERSION"
+          echo "::notice::Test with: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc-cli==${DEV_VERSION}"
 
   publish:
     if: github.event_name == 'push'
