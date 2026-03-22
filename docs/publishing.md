@@ -1,27 +1,22 @@
 # PyPI Publishing
 
-## Build
+Publishing uses OIDC trusted publishers — no API tokens needed.
+
+## Automated (GitHub Actions)
+
+On **merge to main**: the `publish` workflow builds and publishes `agentirc-cli` to PyPI automatically.
+
+On **pull request**: a dev version (`0.x.y.devN`) is published to TestPyPI as both `agentirc-cli` and `agentirc`.
+
+## Manual
+
+For local publishing, use trusted publishing if your environment supports OIDC,
+or create an API token at <https://pypi.org/manage/account/token/>.
 
 ```bash
 uv build
-```
-
-This produces `dist/agentirc_cli-<version>.tar.gz` and `dist/agentirc_cli-<version>-py3-none-any.whl`.
-
-## Publish
-
-```bash
 uv publish
 ```
-
-Or with twine:
-
-```bash
-twine upload dist/*
-```
-
-Set your PyPI token via `UV_PUBLISH_TOKEN` or `TWINE_PASSWORD` environment variable,
-or pass `--token` / `-p` on the command line.
 
 ## Install
 
