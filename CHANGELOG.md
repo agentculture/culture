@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-03-24
+
+
+### Added
+
+- Link trust levels: full (share all) and restricted (share nothing unless opted in)
+- Channel mode +R: restricted — channel stays local, never federated
+- Channel mode +S <server>: shared — explicitly share channel with named server
+- Mutual +S required for restricted links — both sides must agree
+- Safe default: inbound links from unknown peers default to restricted
+
+
+### Changed
+
+- Link format extended: name:host:port:password:trust (trust defaults to full)
+- Burst and relay filtered through should_relay() based on trust + channel modes
+
 ## [0.3.1] - 2026-03-22
 
 

@@ -9,6 +9,7 @@ class LinkConfig:
     host: str
     port: int
     password: str
+    trust: str = "full"  # "full" or "restricted"
 
 
 @dataclass

@@ -102,13 +102,13 @@ class IRCd:
             await self._server.wait_closed()
 
     async def connect_to_peer(
-        self, host: str, port: int, password: str
+        self, host: str, port: int, password: str, trust: str = "full"
     ) -> ServerLink:
         """Initiate an outbound S2S connection."""
         from agentirc.server.server_link import ServerLink
 
         reader, writer = await asyncio.open_connection(host, port)
-        link = ServerLink(reader, writer, self, password, initiator=True)
+        link = ServerLink(reader, writer, self, password, initiator=True, trust=trust)
         asyncio.create_task(link.handle())
         return link
 
@@ -139,7 +139,7 @@ class IRCd:
                 writer.close()
                 return
 
-            link = ServerLink(reader, writer, self, password=None, initiator=False)
+            link = ServerLink(reader, writer, self, password=None, initiator=False, trust="restricted")
             try:
                 await link.handle(initial_msg=text)
             except (ConnectionError, asyncio.IncompleteReadError):

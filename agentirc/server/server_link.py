@@ -26,12 +26,14 @@ class ServerLink:
         password: str,
         *,
         initiator: bool = False,
+        trust: str = "full",
     ):
         self.reader = reader
         self.writer = writer
         self.server = server
         self.password = password
         self.initiator = initiator
+        self.trust = trust
         self.peer_name: str | None = None
         self.peer_description: str = ""
         self._authenticated = False
@@ -39,6 +41,19 @@ class ServerLink:
         self._got_server = False
         self._peer_pass: str | None = None
         self.last_seen_seq: int = 0
+
+    def should_relay(self, channel_name: str) -> bool:
+        """Check if a channel event should be relayed over this link."""
+        channel = self.server.channels.get(channel_name)
+        if channel is None:
+            return False
+        if channel.restricted:
+            return False
+        if self.trust == "full":
+            return True
+        if self.trust == "restricted":
+            return self.peer_name in channel.shared_with
+        return False
 
     async def send_raw(self, line: str) -> None:
         try:
@@ -121,7 +136,7 @@ class ServerLink:
         if not (self._got_pass and self._got_server):
             return
 
-        # For inbound links, look up expected password by peer name
+        # For inbound links, look up expected password and trust by peer name
         if not self.initiator and self.password is None:
             link_config = None
             for lc in self.server.config.links:
@@ -133,6 +148,7 @@ class ServerLink:
                 await self.send_raw(f"ERROR :No link configured for {self.peer_name}")
                 raise ConnectionError(f"No link config for {self.peer_name}")
             self.password = link_config.password
+            self.trust = link_config.trust
 
         if self._peer_pass != self.password:
             logger.warning("Bad password from peer %s", self.peer_name)
@@ -172,8 +188,10 @@ class ServerLink:
                 f"SNICK {client.nick} {client.user} {client.host} :{client.realname}"
             )
 
-        # Send channel membership
+        # Send channel membership (filtered by trust)
         for channel in self.server.channels.values():
+            if not self.should_relay(channel.name):
+                continue
             local_nicks = [
                 m.nick for m in channel.members
                 if not isinstance(m, RemoteClient)
@@ -182,8 +200,10 @@ class ServerLink:
                 nicks_str = " ".join(local_nicks)
                 await self.send_raw(f"SJOIN {channel.name} {nicks_str}")
 
-        # Send channel topics
+        # Send channel topics (filtered by trust)
         for channel in self.server.channels.values():
+            if not self.should_relay(channel.name):
+                continue
             if channel.topic:
                 # Find who set it (use first local member as setter)
                 local_members = [
@@ -229,6 +249,19 @@ class ServerLink:
         channel_name = msg.params[0]
         nicks = msg.params[1:]
 
+        # Check incoming trust: if we have a restricted trust for this peer,
+        # only accept channel data for channels that have +S <peer>
+        existing = self.server.channels.get(channel_name)
+        if existing:
+            if existing.restricted:
+                return
+            if self.trust == "restricted" and self.peer_name not in existing.shared_with:
+                return
+        else:
+            # Channel doesn't exist locally yet — restricted links cannot create new channels
+            if self.trust == "restricted":
+                return
+
         channel = self.server.get_or_create_channel(channel_name)
 
         for nick in nicks:
@@ -255,6 +288,11 @@ class ServerLink:
 
         channel = self.server.channels.get(channel_name)
         if channel:
+            # Check incoming trust
+            if channel.restricted:
+                return
+            if self.trust == "restricted" and self.peer_name not in channel.shared_with:
+                return
             channel.topic = topic
 
     # --- Real-time relay handlers (incoming from peer) ---
@@ -266,6 +304,15 @@ class ServerLink:
         target = msg.params[0]
         sender_nick = msg.params[1]
         text = msg.params[2]
+
+        # Check incoming trust for channel messages
+        if target.startswith("#"):
+            channel = self.server.channels.get(target)
+            if channel:
+                if channel.restricted:
+                    return
+                if self.trust == "restricted" and self.peer_name not in channel.shared_with:
+                    return
 
         relay = Message(
             prefix=f"{sender_nick}!*@*",
@@ -322,6 +369,15 @@ class ServerLink:
         sender_nick = msg.params[1]
         text = msg.params[2]
 
+        # Check incoming trust for channel notices
+        if target.startswith("#"):
+            channel = self.server.channels.get(target)
+            if channel:
+                if channel.restricted:
+                    return
+                if self.trust == "restricted" and self.peer_name not in channel.shared_with:
+                    return
+
         rc = self.server.remote_clients.get(sender_nick)
         prefix = rc.prefix if rc else f"{sender_nick}!*@*"
         relay = Message(prefix=prefix, command="NOTICE", params=[target, text])
@@ -359,6 +415,12 @@ class ServerLink:
 
         channel = self.server.channels.get(channel_name)
         if not channel:
+            return
+
+        # Check incoming trust
+        if channel.restricted:
+            return
+        if self.trust == "restricted" and self.peer_name not in channel.shared_with:
             return
 
         # Notify local members
@@ -454,6 +516,9 @@ class ServerLink:
         if event.type == EventType.MESSAGE:
             target = event.channel or event.data.get("target", "")
             text = event.data.get("text", "")
+            # Filter channel messages through trust check
+            if target.startswith("#") and not self.should_relay(target):
+                return
             cmd = event.data.get("notice") and "SNOTICE" or "SMSG"
             await self.send_raw(
                 f":{origin} {cmd} {target} {event.nick} :{text}"
@@ -469,6 +534,9 @@ class ServerLink:
         if event.type == EventType.MESSAGE:
             target = event.channel or event.data.get("target", "")
             text = event.data.get("text", "")
+            # Filter channel messages through trust check
+            if target.startswith("#") and not self.should_relay(target):
+                return
             if event.data.get("notice"):
                 await self.send_raw(
                     f":{origin} SNOTICE {target} {event.nick} :{text}"
@@ -479,11 +547,15 @@ class ServerLink:
                 )
         elif event.type == EventType.JOIN:
             channel_name = event.channel
+            if not self.should_relay(channel_name):
+                return
             await self.send_raw(
                 f":{origin} SJOIN {channel_name} {event.nick}"
             )
         elif event.type == EventType.PART:
             channel_name = event.channel
+            if not self.should_relay(channel_name):
+                return
             reason = event.data.get("reason", "")
             await self.send_raw(
                 f":{origin} SPART {channel_name} {event.nick} :{reason}"
@@ -495,6 +567,8 @@ class ServerLink:
             )
         elif event.type == EventType.TOPIC:
             channel_name = event.channel
+            if not self.should_relay(channel_name):
+                return
             topic = event.data.get("topic", "")
             await self.send_raw(
                 f":{origin} STOPIC {channel_name} {event.nick} :{topic}"

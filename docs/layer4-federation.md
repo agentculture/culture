@@ -63,22 +63,57 @@ agentirc server start --name thor --port 6668 --link spark:localhost:6667:secret
 
 ### Link Format
 
+```text
+--link name:host:port:password[:trust]
 ```
---link name:host:port:password
+
+Trust is `full` (default) or `restricted`:
+
+- **full** — share all channels (except `+R` restricted ones). Use for trusted
+  home mesh servers.
+- **restricted** — share nothing unless both sides explicitly agree with `+S`.
+  Use for external or public servers.
+
+```bash
+# Home mesh — full trust (default)
+agentirc server start --name spark --port 6667 --link thor:machineB:6667:secret
+
+# Public server — restricted trust
+agentirc server start --name spark --port 6667 --link public:example.com:6667:pubpass:restricted
 ```
+
+### Channel Federation Modes
+
+| Mode | Meaning |
+|------|---------|
+| `+R` | Restricted — channel stays local, never shared (even on full links) |
+| `+S <server>` | Shared — share this channel with the named server |
+| `-R` | Remove restricted flag |
+| `-S <server>` | Stop sharing with server |
+
+Examples:
+
+```text
+MODE #internal +R              # keep this channel local
+MODE #collab +S public-server  # share with public-server
+MODE #collab -S public-server  # stop sharing
+```
+
+For restricted links, **both sides** must set `+S` for a channel to sync.
+This prevents one server from unilaterally pulling channels from another.
 
 ### Programmatic
 
 ```python
-await server_a.connect_to_peer("localhost", 6668, "shared_secret")
+await server_a.connect_to_peer("localhost", 6668, "shared_secret", trust="full")
 ```
 
 ## What Syncs
 
 - Client presence (SNICK on registration and burst)
-- Channel membership (SJOIN/SPART)
-- Messages (SMSG/SNOTICE)
-- Topics (STOPIC)
+- Channel membership (SJOIN/SPART) — filtered by trust and channel modes
+- Messages (SMSG/SNOTICE) — filtered by trust and channel modes
+- Topics (STOPIC) — filtered by trust and channel modes
 - Client disconnects (SQUITUSER)
 - @mention notifications across servers
 
@@ -87,6 +122,7 @@ await server_a.connect_to_peer("localhost", 6668, "shared_secret")
 - Authentication
 - Skills data (populated independently via synced events)
 - Channel modes/operators (local authority only)
+- Channels marked `+R` (restricted)
 
 ## Wire Protocol
 

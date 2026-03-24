@@ -858,3 +858,315 @@ async def test_remote_client_mentioned(linked_servers, make_client_a, make_clien
     mention_notices = [l for l in resp_a if "NOTICE" in l and "mentioned" in l]
     privmsgs = [l for l in resp_a if "PRIVMSG" in l and "alpha-alice" in l]
     assert mention_notices or privmsgs, f"Expected mention notification, got: {resp_a}"
+
+
+# =============================================================================
+# Phase 7: Link trust levels & channel federation modes
+# =============================================================================
+
+
+async def _make_linked_pair(*, trust: str = "full"):
+    """Helper: create two servers linked with the given trust level.
+
+    Returns (server_a, server_b) after the link handshake completes.
+    Both link configs carry the specified trust value.
+    """
+    password = "testlink123"
+
+    config_a = ServerConfig(
+        name="alpha",
+        host="127.0.0.1",
+        port=0,
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password, trust=trust)],
+    )
+    config_b = ServerConfig(
+        name="beta",
+        host="127.0.0.1",
+        port=0,
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password, trust=trust)],
+    )
+
+    server_a = IRCd(config_a)
+    server_b = IRCd(config_b)
+    await server_a.start()
+    await server_b.start()
+
+    server_a.config.port = server_a._server.sockets[0].getsockname()[1]
+    server_b.config.port = server_b._server.sockets[0].getsockname()[1]
+
+    # Update link configs with actual ports
+    config_a.links[0].port = server_b.config.port
+    config_b.links[0].port = server_a.config.port
+
+    # Server A connects to Server B (pass trust level)
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password, trust=trust)
+    for _ in range(50):
+        if "beta" in server_a.links and "alpha" in server_b.links:
+            break
+        await asyncio.sleep(0.05)
+
+    return server_a, server_b
+
+
+async def _connect_client(server, nick, user):
+    """Helper: connect a test client to a server, return IRCTestClient."""
+    reader, writer = await asyncio.open_connection("127.0.0.1", server.config.port)
+    client = IRCTestClient(reader, writer)
+    await client.send(f"NICK {nick}")
+    await client.send(f"USER {user} 0 * :{user}")
+    await client.recv_all(timeout=0.5)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_full_link_restricted_channel_not_relayed():
+    """Full trust link: +R channel is never federated."""
+    server_a, server_b = await _make_linked_pair(trust="full")
+
+    try:
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #secret")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Set +R on #secret (restrict from federation)
+        await client_a.send("MODE #secret +R")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Verify +R is set locally
+        channel_a = server_a.channels.get("#secret")
+        assert channel_a is not None, "Channel should exist on server A"
+        assert channel_a.restricted, "Channel should be restricted (+R)"
+
+        # Send a message to #secret
+        await client_a.send("PRIVMSG #secret :top secret info")
+        await asyncio.sleep(0.5)
+
+        # Server B should NOT have #secret as a channel with any local relevance
+        # (it may have been created during burst before +R was set, but messages
+        # should not relay)
+        client_b = await _connect_client(server_b, "beta-bob", "bob")
+        await client_b.send("JOIN #secret")
+        await client_b.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Bob should NOT have received the "top secret info" message
+        resp = await client_b.recv_all(timeout=0.5)
+        secret_msgs = [l for l in resp if "PRIVMSG" in l and "top secret info" in l]
+        assert not secret_msgs, f"Restricted channel message should NOT relay: {resp}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        try:
+            await client_b.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()
+
+
+@pytest.mark.asyncio
+async def test_restricted_link_no_share_not_relayed():
+    """Restricted trust link: channels without +S are NOT relayed."""
+    server_a, server_b = await _make_linked_pair(trust="restricted")
+
+    try:
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #general")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Send a message -- no +S is set, so nothing should cross
+        await client_a.send("PRIVMSG #general :hello from alpha")
+        await asyncio.sleep(0.5)
+
+        # Server B should NOT have #general (no +S set on a restricted link)
+        assert "#general" not in server_b.channels, \
+            f"Channel #general should NOT exist on server B: {list(server_b.channels.keys())}"
+
+        # Also verify with a client on server B
+        client_b = await _connect_client(server_b, "beta-bob", "bob")
+        await client_b.send("JOIN #general")
+        await client_b.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Bob's #general is local to server B, should NOT have received the message
+        resp = await client_b.recv_all(timeout=0.5)
+        relayed = [l for l in resp if "PRIVMSG" in l and "hello from alpha" in l]
+        assert not relayed, f"Message should NOT relay on restricted link without +S: {resp}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        try:
+            await client_b.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()
+
+
+@pytest.mark.asyncio
+async def test_restricted_link_mutual_share_relayed():
+    """Restricted trust link: mutual +S enables federation for that channel."""
+    server_a, server_b = await _make_linked_pair(trust="restricted")
+
+    try:
+        # Both sides create #collab and set +S for the other server
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #collab")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.1)
+
+        client_b = await _connect_client(server_b, "beta-bob", "bob")
+        await client_b.send("JOIN #collab")
+        await client_b.recv_all(timeout=0.5)
+        await asyncio.sleep(0.1)
+
+        # Alice sets +S beta on server A's #collab
+        await client_a.send("MODE #collab +S beta")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.1)
+
+        # Bob sets +S alpha on server B's #collab
+        await client_b.send("MODE #collab +S alpha")
+        await client_b.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Verify +S is set on both sides
+        channel_a = server_a.channels.get("#collab")
+        assert channel_a is not None
+        assert "beta" in channel_a.shared_with, \
+            f"Server A #collab should share with beta: {channel_a.shared_with}"
+
+        channel_b = server_b.channels.get("#collab")
+        assert channel_b is not None
+        assert "alpha" in channel_b.shared_with, \
+            f"Server B #collab should share with alpha: {channel_b.shared_with}"
+
+        # Now Alice sends a message -- it should relay to Bob
+        await client_a.send("PRIVMSG #collab :shared message")
+        await asyncio.sleep(0.5)
+        resp = await client_b.recv_all(timeout=0.5)
+
+        relayed = [l for l in resp if "PRIVMSG" in l and "shared message" in l]
+        assert relayed, f"Mutual +S should enable relay on restricted link, got: {resp}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        try:
+            await client_b.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()
+
+
+@pytest.mark.asyncio
+async def test_restricted_link_one_sided_share_not_relayed():
+    """Restricted trust link: one-sided +S is NOT enough for relay."""
+    server_a, server_b = await _make_linked_pair(trust="restricted")
+
+    try:
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #collab")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.1)
+
+        client_b = await _connect_client(server_b, "beta-bob", "bob")
+        await client_b.send("JOIN #collab")
+        await client_b.recv_all(timeout=0.5)
+        await asyncio.sleep(0.1)
+
+        # Only server A sets +S beta -- server B does NOT set +S alpha
+        await client_a.send("MODE #collab +S beta")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.3)
+
+        # Verify only one side has +S
+        channel_a = server_a.channels.get("#collab")
+        assert "beta" in channel_a.shared_with
+
+        channel_b = server_b.channels.get("#collab")
+        assert "alpha" not in channel_b.shared_with, \
+            "Server B should NOT have +S alpha set"
+
+        # Alice sends a message -- should NOT relay (one-sided +S)
+        await client_a.send("PRIVMSG #collab :one sided message")
+        await asyncio.sleep(0.5)
+        resp = await client_b.recv_all(timeout=0.5)
+
+        relayed = [l for l in resp if "PRIVMSG" in l and "one sided message" in l]
+        assert not relayed, \
+            f"One-sided +S should NOT enable relay on restricted link: {resp}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        try:
+            await client_b.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()
+
+
+@pytest.mark.asyncio
+async def test_new_channel_on_full_link_relayed():
+    """Full trust link: new channel created after linking is visible to peer."""
+    server_a, server_b = await _make_linked_pair(trust="full")
+
+    try:
+        # Create a new channel on server A after the link is already up
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #new-room")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.5)
+
+        # Server B should see #new-room (via SJOIN relay)
+        assert "#new-room" in server_b.channels, \
+            f"New channel should federate on full link: {list(server_b.channels.keys())}"
+
+        # Remote member should be visible
+        channel_b = server_b.channels["#new-room"]
+        member_nicks = {m.nick for m in channel_b.members}
+        assert "alpha-alice" in member_nicks, \
+            f"alpha-alice should be in #new-room on server B: {member_nicks}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()
+
+
+@pytest.mark.asyncio
+async def test_new_channel_on_restricted_link_not_relayed():
+    """Restricted trust link: new channel without +S is NOT visible to peer."""
+    server_a, server_b = await _make_linked_pair(trust="restricted")
+
+    try:
+        # Create a new channel on server A -- no +S set
+        client_a = await _connect_client(server_a, "alpha-alice", "alice")
+        await client_a.send("JOIN #new-room")
+        await client_a.recv_all(timeout=0.5)
+        await asyncio.sleep(0.5)
+
+        # Server B should NOT see #new-room (restricted link, no +S)
+        assert "#new-room" not in server_b.channels, \
+            f"New channel should NOT federate on restricted link: {list(server_b.channels.keys())}"
+    finally:
+        try:
+            await client_a.close()
+        except Exception:
+            pass
+        await server_a.stop()
+        await server_b.stop()

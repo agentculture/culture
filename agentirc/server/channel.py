@@ -17,6 +17,8 @@ class Channel:
         self.members: set[Client] = set()
         self.operators: set[Client] = set()
         self.voiced: set[Client] = set()
+        self.restricted = False       # +R mode — never federate
+        self.shared_with: set[str] = set()  # +S servers — share with these servers
 
     def _local_members(self) -> set[Client]:
         """Return only local (non-remote) members."""

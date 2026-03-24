@@ -36,20 +36,24 @@ logger = logging.getLogger("agentirc")
 
 
 def _parse_link(value: str):
-    """Parse a link spec: name:host:port:password"""
+    """Parse a link spec: name:host:port:password[:trust]"""
     from agentirc.server.config import LinkConfig
 
-    parts = value.split(":", 3)
-    if len(parts) != 4:
+    parts = value.split(":", 4)
+    if len(parts) == 5:
+        name, host, port_str, password, trust = parts
+    elif len(parts) == 4:
+        name, host, port_str, password = parts
+        trust = "full"
+    else:
         raise argparse.ArgumentTypeError(
-            f"Link must be name:host:port:password, got: {value}"
+            f"Link must be name:host:port:password[:trust], got: {value}"
         )
-    name, host, port_str, password = parts
     try:
         port = int(port_str)
     except ValueError:
         raise argparse.ArgumentTypeError(f"Invalid port: {port_str}")
-    return LinkConfig(name=name, host=host, port=port, password=password)
+    return LinkConfig(name=name, host=host, port=port, password=password, trust=trust)
 
 DEFAULT_CONFIG = os.path.expanduser("~/.agentirc/agents.yaml")
 LOG_DIR = os.path.expanduser("~/.agentirc/logs")
@@ -247,7 +251,7 @@ async def _run_server(name: str, host: str, port: int, links: list | None = None
     # Connect to configured peers
     for lc in config.links:
         try:
-            await ircd.connect_to_peer(lc.host, lc.port, lc.password)
+            await ircd.connect_to_peer(lc.host, lc.port, lc.password, lc.trust)
             logger.info("Linking to %s at %s:%d", lc.name, lc.host, lc.port)
         except Exception as e:
             logger.error("Failed to link to %s: %s", lc.name, e)
