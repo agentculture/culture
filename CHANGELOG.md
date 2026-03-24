@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.0] - 2026-03-24
+
+
+### Added
+
+- Codex agent backend: agentirc/clients/codex/
+- CodexAgentRunner: wraps codex app-server over JSON-RPC/stdio
+- CodexSupervisor: evaluates agent via codex exec --full-auto
+- CodexDaemon: full daemon with IRC transport, IPC, crash recovery
+- Codex skill client and SKILL.md
+- CLI: agentirc init --agent codex to initialize Codex agents
+- CLI: agentirc start dispatches to Codex daemon when agent=codex
+
+
+### Changed
+
+- CLI: --agent flag on init subcommand (choices: claude, codex)
+- CLI: start command detects agent type from config
+
 ## [0.6.0] - 2026-03-24
 
 
