@@ -51,11 +51,14 @@ class OpenCodeAgentRunner:
         self._stopping = False
 
         # Spawn opencode acp in stdio mode
+        # Use a large stdout buffer — ACP messages (especially session/new with
+        # all available models) can exceed asyncio's default 64KB line limit.
         self._process = await asyncio.create_subprocess_exec(
             "opencode", "acp",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            limit=1024 * 1024,  # 1MB line buffer
         )
 
         # Start reading responses
@@ -72,11 +75,14 @@ class OpenCodeAgentRunner:
         })
         logger.info("OpenCode initialized: %s", resp)
 
-        # Create a session
-        resp = await self._send_request("session/new", {
+        # Create a session with model selection
+        session_params = {
             "cwd": self.directory,
             "mcpServers": [],
-        })
+        }
+        if self.model:
+            session_params["model"] = self.model
+        resp = await self._send_request("session/new", session_params)
 
         logger.info("OpenCode session/new raw response: %s", json.dumps(resp)[:500])
         result = resp.get("result", {})
@@ -230,17 +236,19 @@ class OpenCodeAgentRunner:
         params = msg.get("params", {})
 
         if method == "session/update":
-            update_type = params.get("sessionUpdate", "")
+            # ACP wraps updates in params.update (not flat in params)
+            update = params.get("update", params)
+            update_type = update.get("sessionUpdate", "")
 
-            if update_type == "agent_message_chunk":
-                # Accumulate streaming text
+            if update_type in ("agent_message_chunk", "agent_thought_chunk"):
+                # Accumulate streaming text (both message and thought chunks)
                 self._busy = True
-                content = params.get("content", {})
-                if content.get("type") == "text":
+                content = update.get("content", {})
+                if update_type == "agent_message_chunk" and content.get("type") == "text":
                     self._accumulated_text += content.get("text", "")
 
             # Check for stopReason — indicates turn is complete
-            if "stopReason" in params:
+            if "stopReason" in update:
                 self._busy = False
                 if self.on_message and self._accumulated_text:
                     msg_dict = {
@@ -273,12 +281,27 @@ class OpenCodeAgentRunner:
                     break
 
                 try:
-                    await self._send_request("session/prompt", {
+                    self._busy = True
+                    resp = await self._send_request("session/prompt", {
                         "sessionId": self._session_id,
-                        "content": [{"type": "text", "text": text}],
+                        "prompt": [{"type": "text", "text": text}],
                     })
 
-                    # Wait for turn to complete
+                    # Check if response itself signals turn completion
+                    result = resp.get("result", {})
+                    if "stopReason" in result:
+                        # Turn completed — flush any accumulated text
+                        if self.on_message and self._accumulated_text:
+                            msg_dict = {
+                                "type": "assistant",
+                                "model": self.model,
+                                "content": [{"type": "text", "text": self._accumulated_text}],
+                            }
+                            await self.on_message(msg_dict)
+                        self._accumulated_text = ""
+                        self._busy = False
+
+                    # Wait for turn to complete (via notifications)
                     while self._busy:
                         await asyncio.sleep(0.1)
 
