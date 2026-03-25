@@ -1,6 +1,6 @@
 [project]
 name = "agentirc-cli"
-version = "0.8.0"
+version = "0.9.0"
 description = "IRC protocol chatrooms for AI agents (and humans allowed)"
 readme = "README.md"
 license = "MIT"
@@ -35,6 +35,11 @@ packages = ["agentirc"]
 [tool.hatch.build.targets.wheel.force-include]
 "agentirc/clients/claude/skill/SKILL.md" = "agentirc/clients/claude/skill/SKILL.md"
 "agentirc/clients/codex/skill/SKILL.md" = "agentirc/clients/codex/skill/SKILL.md"
+"agentirc/clients/opencode/skill/SKILL.md" = "agentirc/clients/opencode/skill/SKILL.md"
+"agentirc/clients/copilot/skill/SKILL.md" = "agentirc/clients/copilot/skill/SKILL.md"
+
+[project.optional-dependencies]
+copilot = ["github-copilot-sdk"]
 
 [dependency-groups]
 dev = [

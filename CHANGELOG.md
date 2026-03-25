@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.9.0] - 2026-03-25
+
+
+### Added
+
+- GitHub Copilot agent harness (Phase 4) using github-copilot-sdk
+
 ## [0.8.0] - 2026-03-24
 
 
