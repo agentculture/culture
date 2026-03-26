@@ -61,43 +61,48 @@ class CodexAgentRunner:
         isolated_env.pop("CODEX_HOME", None)
         isolated_env.pop("XDG_CONFIG_HOME", None)
 
-        # Spawn codex app-server in stdio mode
-        self._process = await asyncio.create_subprocess_exec(
-            "codex", "app-server",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            env=isolated_env,
-        )
+        try:
+            # Spawn codex app-server in stdio mode
+            self._process = await asyncio.create_subprocess_exec(
+                "codex", "app-server",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                env=isolated_env,
+            )
 
-        # Start reading responses
-        self._reader_task = asyncio.create_task(self._read_loop())
+            # Start reading responses
+            self._reader_task = asyncio.create_task(self._read_loop())
 
-        # Initialize
-        resp = await self._send_request("initialize", {
-            "clientInfo": {"name": "agentirc-codex", "version": "0.1.0"},
-        })
-        logger.info("Codex initialized: %s", resp)
+            # Initialize
+            resp = await self._send_request("initialize", {
+                "clientInfo": {"name": "agentirc-codex", "version": "0.1.0"},
+            })
+            logger.info("Codex initialized: %s", resp)
 
-        # Start a thread
-        resp = await self._send_request("thread/start", {
-            "cwd": self.directory,
-            "model": self.model,
-            "approvalPolicy": "never",
-            "baseInstructions": self.system_prompt or None,
-        })
+            # Start a thread
+            resp = await self._send_request("thread/start", {
+                "cwd": self.directory,
+                "model": self.model,
+                "approvalPolicy": "never",
+                "baseInstructions": self.system_prompt or None,
+            })
 
-        logger.info("Codex thread/start raw response: %s", json.dumps(resp)[:500])
-        thread = resp.get("result", {}).get("thread", {})
-        self._thread_id = thread.get("id")
-        self._running = True
-        logger.info("Codex thread started: %s", self._thread_id)
+            logger.info("Codex thread/start raw response: %s", json.dumps(resp)[:500])
+            thread = resp.get("result", {}).get("thread", {})
+            self._thread_id = thread.get("id")
+            self._running = True
+            logger.info("Codex thread started: %s", self._thread_id)
 
-        # Start the prompt processing loop
-        self._task = asyncio.create_task(self._prompt_loop())
+            # Start the prompt processing loop
+            self._task = asyncio.create_task(self._prompt_loop())
 
-        if initial_prompt:
-            await self.send_prompt(initial_prompt)
+            if initial_prompt:
+                await self.send_prompt(initial_prompt)
+        except Exception:
+            shutil.rmtree(self._isolated_home, ignore_errors=True)
+            self._isolated_home = None
+            raise
 
     async def stop(self) -> None:
         """Stop the codex app-server."""

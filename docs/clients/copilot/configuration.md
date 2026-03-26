@@ -104,13 +104,15 @@ by creating a temporary directory and overriding the `HOME` environment variable
 ```python
 isolated_home = tempfile.mkdtemp(prefix="agentirc-copilot-")
 isolated_env = {**os.environ, "HOME": isolated_home}
+isolated_env.pop("XDG_CONFIG_HOME", None)
 subprocess_config = SubprocessConfig(cwd=directory, env=isolated_env)
 client = CopilotClient(config=subprocess_config)
 ```
 
 This ensures the `copilot` CLI process spawned by the SDK uses a clean home directory
-with no pre-existing configuration files. The temporary directory is cleaned up when
-the agent runner stops.
+with no pre-existing configuration files. `XDG_CONFIG_HOME` is also stripped so
+host config at custom XDG paths is not loaded. The temporary directory is cleaned up
+when the agent runner stops.
 
 The supervisor uses the same isolation pattern with a separate temporary home directory
 (`agentirc-copilot-sv-` prefix).

@@ -60,68 +60,73 @@ class OpenCodeAgentRunner:
         isolated_env["HOME"] = self._isolated_home
         isolated_env.pop("XDG_CONFIG_HOME", None)
 
-        # Spawn opencode acp in stdio mode
-        # Use a large stdout buffer — ACP messages (especially session/new with
-        # all available models) can exceed asyncio's default 64KB line limit.
-        self._process = await asyncio.create_subprocess_exec(
-            "opencode", "acp",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            limit=1024 * 1024,  # 1MB line buffer
-            env=isolated_env,
-        )
+        try:
+            # Spawn opencode acp in stdio mode
+            # Use a large stdout buffer — ACP messages (especially session/new with
+            # all available models) can exceed asyncio's default 64KB line limit.
+            self._process = await asyncio.create_subprocess_exec(
+                "opencode", "acp",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                limit=1024 * 1024,  # 1MB line buffer
+                env=isolated_env,
+            )
 
-        # Start reading responses
-        self._reader_task = asyncio.create_task(self._read_loop())
+            # Start reading responses
+            self._reader_task = asyncio.create_task(self._read_loop())
 
-        # Initialize with ACP protocol
-        resp = await self._send_request("initialize", {
-            "protocolVersion": 1,
-            "clientCapabilities": {
-                "fs": {"readTextFile": True, "writeTextFile": True},
-                "terminal": True,
-            },
-            "clientInfo": {"name": "agentirc-opencode", "version": "0.1.0"},
-        })
-        logger.info("OpenCode initialized: %s", resp)
-
-        # Create a session with model selection
-        session_params = {
-            "cwd": self.directory,
-            "mcpServers": [],
-        }
-        if self.model:
-            session_params["model"] = self.model
-        resp = await self._send_request("session/new", session_params)
-
-        logger.info("OpenCode session/new raw response: %s", json.dumps(resp)[:500])
-        result = resp.get("result", {})
-        self._session_id = result.get("sessionId")
-        self._running = True
-        logger.info("OpenCode session started: %s", self._session_id)
-
-        # Send system prompt as the first turn so all subsequent turns
-        # are conditioned on it (ACP has no dedicated system instructions field)
-        if self.system_prompt:
-            self._busy = True
-            resp = await self._send_request("session/prompt", {
-                "sessionId": self._session_id,
-                "prompt": [{"type": "text", "text": self.system_prompt}],
+            # Initialize with ACP protocol
+            resp = await self._send_request("initialize", {
+                "protocolVersion": 1,
+                "clientCapabilities": {
+                    "fs": {"readTextFile": True, "writeTextFile": True},
+                    "terminal": True,
+                },
+                "clientInfo": {"name": "agentirc-opencode", "version": "0.1.0"},
             })
-            # Wait for turn to finish before accepting user prompts
-            if resp.get("result", {}).get("stopReason"):
-                self._busy = False
-                self._accumulated_text = ""
-            else:
-                while self._busy:
-                    await asyncio.sleep(0.1)
+            logger.info("OpenCode initialized: %s", resp)
 
-        # Start the prompt processing loop
-        self._task = asyncio.create_task(self._prompt_loop())
+            # Create a session with model selection
+            session_params = {
+                "cwd": self.directory,
+                "mcpServers": [],
+            }
+            if self.model:
+                session_params["model"] = self.model
+            resp = await self._send_request("session/new", session_params)
 
-        if initial_prompt:
-            await self.send_prompt(initial_prompt)
+            logger.info("OpenCode session/new raw response: %s", json.dumps(resp)[:500])
+            result = resp.get("result", {})
+            self._session_id = result.get("sessionId")
+            self._running = True
+            logger.info("OpenCode session started: %s", self._session_id)
+
+            # Send system prompt as the first turn so all subsequent turns
+            # are conditioned on it (ACP has no dedicated system instructions field)
+            if self.system_prompt:
+                self._busy = True
+                resp = await self._send_request("session/prompt", {
+                    "sessionId": self._session_id,
+                    "prompt": [{"type": "text", "text": self.system_prompt}],
+                })
+                # Wait for turn to finish before accepting user prompts
+                if resp.get("result", {}).get("stopReason"):
+                    self._busy = False
+                    self._accumulated_text = ""
+                else:
+                    while self._busy:
+                        await asyncio.sleep(0.1)
+
+            # Start the prompt processing loop
+            self._task = asyncio.create_task(self._prompt_loop())
+
+            if initial_prompt:
+                await self.send_prompt(initial_prompt)
+        except Exception:
+            shutil.rmtree(self._isolated_home, ignore_errors=True)
+            self._isolated_home = None
+            raise
 
     async def stop(self) -> None:
         """Stop the opencode acp process."""

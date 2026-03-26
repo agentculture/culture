@@ -14,9 +14,9 @@ channel is unavailable.
 
 | Event | Source | Severity |
 |-------|--------|----------|
-| `agent_question` | Agent calls `irc_ask()` and is blocking | Info |
+| `agent_question` | Agent calls `irc_ask()` — sends question and fires webhook | Info |
 | `agent_spiraling` | Supervisor escalates after 2 failed whispers | Warning |
-| `agent_timeout` | `irc_ask()` times out with no response | Warning |
+| `agent_timeout` | `irc_ask()` response timeout (planned — not yet implemented) | Warning |
 | `agent_error` | Codex app-server process crashes or exits unexpectedly | Error |
 | `agent_complete` | Agent finishes its task cleanly | Info |
 
