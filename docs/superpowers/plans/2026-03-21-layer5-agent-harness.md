@@ -111,7 +111,7 @@ webhooks:
 buffer_size: 300
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp/test
     channels:
       - "#general"
@@ -136,7 +136,7 @@ agents:
             assert config.buffer_size == 300
             assert len(config.agents) == 1
             agent = config.agents[0]
-            assert agent.nick == "spark-claude"
+            assert agent.nick == "spark-agentirc"
             assert agent.directory == "/tmp/test"
             assert agent.channels == ["#general", "#dev"]
             assert agent.model == "claude-opus-4-6"
@@ -151,7 +151,7 @@ def test_load_config_defaults():
 
     yaml_content = """\
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp
     channels:
       - "#general"
@@ -184,10 +184,10 @@ def test_get_agent_by_nick():
 
     yaml_content = """\
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp/a
     channels: ["#general"]
-  - nick: spark-claude2
+  - nick: spark-assimilai
     directory: /tmp/b
     channels: ["#dev"]
 """
@@ -196,7 +196,7 @@ agents:
         f.flush()
         try:
             config = load_config(f.name)
-            agent = config.get_agent("spark-claude2")
+            agent = config.get_agent("spark-assimilai")
             assert agent is not None
             assert agent.directory == "/tmp/b"
             assert config.get_agent("nonexistent") is None
@@ -506,13 +506,13 @@ def test_add_and_read():
     """Add messages, read them back."""
     buf = MessageBuffer(max_per_channel=100)
     buf.add("#general", "spark-ori", "hello")
-    buf.add("#general", "spark-claude", "hi there")
+    buf.add("#general", "spark-agentirc", "hi there")
 
     msgs = buf.read("#general", limit=50)
     assert len(msgs) == 2
     assert msgs[0].nick == "spark-ori"
     assert msgs[0].text == "hello"
-    assert msgs[1].nick == "spark-claude"
+    assert msgs[1].nick == "spark-agentirc"
 
 
 def test_read_returns_since_last_read():
@@ -1293,14 +1293,14 @@ async def test_webhook_http_post():
     client = WebhookClient(config, irc_send=None)
     event = AlertEvent(
         event_type="agent_error",
-        nick="spark-claude",
-        message='[ERROR] spark-claude crashed: exit code 1',
+        nick="spark-agentirc",
+        message='[ERROR] spark-agentirc crashed: exit code 1',
     )
     await client.fire(event)
     thread.join(timeout=2.0)
 
     assert len(WebhookCapture.received) == 1
-    assert "spark-claude" in WebhookCapture.received[0]["content"]
+    assert "spark-agentirc" in WebhookCapture.received[0]["content"]
     http.server_close()
 
 
@@ -1316,14 +1316,14 @@ async def test_webhook_irc_fallback():
     client = WebhookClient(config, irc_send=mock_irc_send)
     event = AlertEvent(
         event_type="agent_error",
-        nick="spark-claude",
-        message="[ERROR] spark-claude crashed",
+        nick="spark-agentirc",
+        message="[ERROR] spark-agentirc crashed",
     )
     await client.fire(event)
 
     assert len(sent_messages) == 1
     assert sent_messages[0][0] == "#alerts"
-    assert "spark-claude" in sent_messages[0][1]
+    assert "spark-agentirc" in sent_messages[0][1]
 
 
 @pytest.mark.asyncio
@@ -1338,7 +1338,7 @@ async def test_webhook_skips_unconfigured_events():
     client = WebhookClient(config, irc_send=mock_irc_send)
     event = AlertEvent(
         event_type="agent_complete",  # Not in events list
-        nick="spark-claude",
+        nick="spark-agentirc",
         message="[COMPLETE] done",
     )
     await client.fire(event)

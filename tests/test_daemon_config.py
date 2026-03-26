@@ -31,7 +31,7 @@ webhooks:
 buffer_size: 300
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp/test
     channels:
       - "#general"
@@ -56,7 +56,7 @@ agents:
             assert config.buffer_size == 300
             assert len(config.agents) == 1
             agent = config.agents[0]
-            assert agent.nick == "spark-claude"
+            assert agent.nick == "spark-agentirc"
             assert agent.directory == "/tmp/test"
             assert agent.channels == ["#general", "#dev"]
             assert agent.model == "claude-opus-4-6"
@@ -71,7 +71,7 @@ def test_load_config_defaults():
 
     yaml_content = """\
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp
     channels:
       - "#general"
@@ -104,10 +104,10 @@ def test_get_agent_by_nick():
 
     yaml_content = """\
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /tmp/a
     channels: ["#general"]
-  - nick: spark-claude2
+  - nick: spark-assimilai
     directory: /tmp/b
     channels: ["#dev"]
 """
@@ -116,7 +116,7 @@ agents:
         f.flush()
         try:
             config = load_config(f.name)
-            agent = config.get_agent("spark-claude2")
+            agent = config.get_agent("spark-assimilai")
             assert agent is not None
             assert agent.directory == "/tmp/b"
             assert config.get_agent("nonexistent") is None
@@ -204,7 +204,7 @@ def test_save_and_load_roundtrip():
             buffer_size=200,
             agents=[
                 AgentConfig(
-                    nick="spark-claude",
+                    nick="spark-agentirc",
                     directory="/tmp/work",
                     channels=["#general", "#dev"],
                     model="claude-opus-4-6",
@@ -225,7 +225,7 @@ def test_save_and_load_roundtrip():
         assert loaded.webhooks.irc_channel == "#ops"
         assert loaded.buffer_size == 200
         assert len(loaded.agents) == 1
-        assert loaded.agents[0].nick == "spark-claude"
+        assert loaded.agents[0].nick == "spark-agentirc"
         assert loaded.agents[0].directory == "/tmp/work"
         assert loaded.agents[0].channels == ["#general", "#dev"]
     finally:
@@ -259,19 +259,19 @@ def test_add_agent_to_empty_config():
     try:
         path = os.path.join(tmpdir, "agents.yaml")
         agent = AgentConfig(
-            nick="spark-claude",
+            nick="spark-agentirc",
             directory="/tmp/work",
             channels=["#general"],
         )
 
         config = add_agent_to_config(path, agent)
         assert len(config.agents) == 1
-        assert config.agents[0].nick == "spark-claude"
+        assert config.agents[0].nick == "spark-agentirc"
 
         # Verify file was written
         loaded = load_config(path)
         assert len(loaded.agents) == 1
-        assert loaded.agents[0].nick == "spark-claude"
+        assert loaded.agents[0].nick == "spark-agentirc"
     finally:
         shutil.rmtree(tmpdir)
 
@@ -290,7 +290,7 @@ def test_add_agent_to_existing_config():
         # Create initial config with one agent
         initial = DaemonConfig(
             agents=[
-                AgentConfig(nick="spark-claude", directory="/tmp/a", channels=["#general"]),
+                AgentConfig(nick="spark-agentirc", directory="/tmp/a", channels=["#general"]),
             ],
         )
         save_config(path, initial)
@@ -308,7 +308,7 @@ def test_add_agent_to_existing_config():
         loaded = load_config(path)
         assert len(loaded.agents) == 2
         nicks = {a.nick for a in loaded.agents}
-        assert nicks == {"spark-claude", "spark-ori"}
+        assert nicks == {"spark-agentirc", "spark-ori"}
     finally:
         shutil.rmtree(tmpdir)
 
@@ -326,14 +326,14 @@ def test_add_agent_nick_collision():
         # Create config with existing agent
         initial = DaemonConfig(
             agents=[
-                AgentConfig(nick="spark-claude", directory="/tmp/a", channels=["#general"]),
+                AgentConfig(nick="spark-agentirc", directory="/tmp/a", channels=["#general"]),
             ],
         )
         save_config(path, initial)
 
         # Try to add agent with same nick
         duplicate = AgentConfig(
-            nick="spark-claude",
+            nick="spark-agentirc",
             directory="/tmp/b",
             channels=["#dev"],
         )

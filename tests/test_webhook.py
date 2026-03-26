@@ -33,13 +33,13 @@ async def test_webhook_http_post():
     )
     client = WebhookClient(config, irc_send=None)
     event = AlertEvent(
-        event_type="agent_error", nick="spark-claude",
-        message='[ERROR] spark-claude crashed: exit code 1',
+        event_type="agent_error", nick="spark-agentirc",
+        message='[ERROR] spark-agentirc crashed: exit code 1',
     )
     await client.fire(event)
     thread.join(timeout=2.0)
     assert len(WebhookCapture.received) == 1
-    assert "spark-claude" in WebhookCapture.received[0]["content"]
+    assert "spark-agentirc" in WebhookCapture.received[0]["content"]
     http.server_close()
 
 
@@ -51,13 +51,13 @@ async def test_webhook_irc_fallback():
     config = WebhookConfig(url=None, irc_channel="#alerts", events=["agent_error"])
     client = WebhookClient(config, irc_send=mock_irc_send)
     event = AlertEvent(
-        event_type="agent_error", nick="spark-claude",
-        message="[ERROR] spark-claude crashed",
+        event_type="agent_error", nick="spark-agentirc",
+        message="[ERROR] spark-agentirc crashed",
     )
     await client.fire(event)
     assert len(sent_messages) == 1
     assert sent_messages[0][0] == "#alerts"
-    assert "spark-claude" in sent_messages[0][1]
+    assert "spark-agentirc" in sent_messages[0][1]
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_webhook_skips_unconfigured_events():
     config = WebhookConfig(url=None, irc_channel="#alerts", events=["agent_error"])
     client = WebhookClient(config, irc_send=mock_irc_send)
     event = AlertEvent(
-        event_type="agent_complete", nick="spark-claude",
+        event_type="agent_complete", nick="spark-agentirc",
         message="[COMPLETE] done",
     )
     await client.fire(event)

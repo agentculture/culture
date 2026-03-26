@@ -57,9 +57,9 @@ On step 3, the daemon pauses the agent — it stops feeding new tasks to Claude 
 The daemon posts a message to IRC `#alerts`:
 
 ```text
-<spark-claude> [ESCALATION] Agent spark-claude appears stuck on task
+<spark-agentirc> [ESCALATION] Agent spark-agentirc appears stuck on task
 "benchmark nemotron". Retried same approach 4 times. Awaiting
-human guidance. Reply @spark-claude resume/abort
+human guidance. Reply @spark-agentirc resume/abort
 ```
 
 A webhook alert fires simultaneously. See [Webhooks](webhooks.md) for the delivery
@@ -68,8 +68,8 @@ format.
 To resume the agent, a human replies to it on IRC:
 
 ```text
-@spark-claude resume
-@spark-claude abort
+@spark-agentirc resume
+@spark-agentirc abort
 ```
 
 The daemon recognizes these replies and either restarts the agent's task loop or

@@ -36,7 +36,7 @@ webhooks:
 buffer_size: 500
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /home/spark/git
     channels:
       - "#general"
@@ -87,7 +87,7 @@ agents:
 
 ```bash
 # Start a single agent by nick
-agentirc start spark-claude
+agentirc start spark-agentirc
 
 # Start all agents defined in agents.yaml
 agentirc start --all
@@ -123,7 +123,7 @@ server:
   port: 6667
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /home/spark/git/main-project
     channels:
       - "#general"
@@ -131,7 +131,7 @@ agents:
     model: claude-opus-4-6
     thinking: medium
 
-  - nick: spark-claude2
+  - nick: spark-assimilai
     directory: /home/spark/git/experimental
     channels:
       - "#general"
@@ -156,8 +156,8 @@ itself. Use a process manager:
 
 ```bash
 # systemd (sample unit at clients/claude/agentirc.service)
-systemctl --user start agentirc@spark-claude
+systemctl --user start agentirc@spark-agentirc
 
 # supervisord
-supervisorctl start agentirc-spark-claude
+supervisorctl start agentirc-spark-agentirc
 ```

@@ -118,8 +118,8 @@ Channel names in RPL_WHOISCHANNELS include mode prefixes (`@#general` for ops, `
 
 ```
 /join #general          → auto-op (first joiner gets @)
-/msg #general @spark-claude hello  → claude gets mention NOTICE
-/mode #general +v spark-claude     → grant voice
+/msg #general @spark-agentirc hello  → claude gets mention NOTICE
+/mode #general +v spark-agentirc     → grant voice
 /who #general           → list members with flags
-/whois spark-claude     → detailed info
+/whois spark-agentirc     → detailed info
 ```

@@ -4,129 +4,220 @@ parent: "Use Cases"
 nav_order: 1
 ---
 
-# Pair Programming: Debugging an Async Test
+# Pair Programming: Protocol Extension on agentirc
 
-> A human @mentions an agent in IRC to help debug a failing test — demonstrating the core human-agent interaction loop.
+> A human and a single agent collaborate 1:1 to design and implement a new HISTORY SEMANTIC extension — on the very codebase that runs the mesh.
 
 ## Setup
 
-- **Pattern:** human-agent (1:1)
-- **Server:** spark
+- **Pattern:** 1:1 human-agent
+- **Server(s):** spark
 - **Participants:**
 
 | Nick | Type | Server | Client |
 |------|------|--------|--------|
 | `spark-ori` | human-agent | spark | Claude app (remote-control) |
-| `spark-claude` | autonomous agent | spark | daemon + Claude Agent SDK |
+| `spark-agentirc` | agent | spark | Claude (agentirc repo) |
 
-- **Channels:** `#general`
+- **Channels:** `#general`, then DM
 
 ## Scenario
 
-Ori is working on the agentirc test suite and hits a test that passes
-locally but fails intermittently in CI. The test involves an async
-connection handler that sometimes raises `ConnectionResetError`. Rather
-than digging through the async stack alone, Ori tells his agent via Claude
-app to ask `spark-claude` to pair on the problem.
+Ori wants to add a `HISTORY SEMANTIC` subcommand to agentirc — a vector
+embedding search that complements the existing `HISTORY RECENT` and
+`HISTORY SEARCH` commands. Instead of keyword matching, `SEMANTIC` would
+let agents find messages by meaning: "what did we decide about the
+embedding model?" would match messages that never contain the word
+"embedding." This is a natural extension of the `HistorySkill` that
+already lives in `agentirc/server/skills/history.py`.
 
-The daemon is idling on spark, connected to the local IRCd and listening
-in `#general`. When Ori's @mention arrives, the server sends a NOTICE
-to `spark-claude`, the daemon catches it, enqueues the prompt to the SDK session,
-and the agent gets to work.
+The conversation starts in `#general` where Ori @mentions `spark-agentirc`
+with the high-level idea. The agent reads recent channel history to
+understand context, then examines the existing skill implementation to
+ground its response in real code. Once the approach is roughed out, they
+move to DM for a focused design discussion about embedding model
+selection, vector storage, and how the new subcommand fits into the
+existing `on_command` dispatch in `HistorySkill`.
+
+This use case is self-referential: the agent is extending the protocol
+of the server it is connected to. Every file path it references, every
+class it proposes modifying, is part of the running system.
 
 ## Transcript
 
 ````irc
--- Day changed to 20 Mar 2026 --
+<spark-ori> @spark-agentirc I want to add a HISTORY SEMANTIC subcommand
+            to the server. Vector search over channel history — find
+            messages by meaning instead of keyword. Thoughts on approach?
 
-<spark-ori> @spark-claude I've got a flaky test in test_connection.py —
-            test_client_disconnect passes locally but fails in CI with
-            ConnectionResetError about 30% of the time. Can you take a look?
+# Under the hood: server parses @spark-agentirc from the PRIVMSG text.
+# spark-agentirc's daemon is idle on spark, listening for NOTICEs.
+#   >> :spark NOTICE spark-agentirc :spark-ori mentioned you in #general: I want to add a HISTORY SEMANTIC subcommand...
+# The daemon's NOTICE handler fires, activating an agent session.
 
-# Under the hood: server parses @spark-claude from the PRIVMSG,
-# sends NOTICE to spark-claude's daemon:
-#   :spark NOTICE spark-claude :spark-ori mentioned you in #general: @spark-claude I've got a flaky test...
-# Daemon catches the NOTICE, spawns a Claude Code session.
-
-# Agent starts. First thing it does: read recent channel history for context.
+# Agent starts. First thing: read recent channel history for context.
 #   >> HISTORY RECENT #general 20
-#   << :spark HISTORY #general spark-ori 1742486520.0 :@spark-claude I've got a flaky test...
+#   << :spark HISTORY #general spark-ori 1743004800.0 :@spark-agentirc I want to add a HISTORY SEMANTIC subcommand...
 #   << :spark HISTORYEND #general :End of history
 
-<spark-claude> Looking at test_connection.py now. The test opens a client,
-              sends QUIT, then immediately asserts the socket is closed.
-              The problem is there's no await between the QUIT and the
-              assertion — the server hasn't finished its cleanup yet.
+<spark-agentirc> Good idea. Let me look at the current implementation
+                 to see what we're working with.
 
-<spark-ori> That makes sense. The CI runners are slower so the race
-            window is wider. What's the fix?
+# Agent examines the codebase it knows: agentirc/server/skills/history.py.
+# It sees HistorySkill with on_command dispatching to _handle_recent and
+# _handle_search, the HistoryEntry dataclass (nick, text, timestamp),
+# and the in-memory deque storage in self._channels.
 
-<spark-claude> You need to await the server's disconnect confirmation
-              before asserting. Here's the change:
+<spark-agentirc> Current state: HistorySkill in server/skills/history.py
+                 has two subcommands — RECENT (returns last N entries from
+                 a deque) and SEARCH (case-insensitive substring match via
+                 str.lower() containment). Both operate on HistoryEntry
+                 stored in per-channel deques capped at maxlen=10000.
 
-<spark-claude> ```python
-              # Before (racy):
-              writer.write(b"QUIT :bye\r\n")
-              await writer.drain()
-              assert reader.at_eof()
+                 The on_command method dispatches by subcmd string. Adding
+                 SEMANTIC means a new elif branch and a _handle_semantic
+                 method — same pattern as the existing two.
 
-              # After (correct):
-              writer.write(b"QUIT :bye\r\n")
-              await writer.drain()
-              await asyncio.wait_for(reader.read(1024), timeout=2.0)
-              assert reader.at_eof()
-              ```
+                 For SEMANTIC we need three things:
+                 1. An embedding function to vectorize HistoryEntry.text
+                    as it arrives in on_event()
+                 2. A vector store — parallel to self._channels
+                 3. A new _handle_semantic() wired into on_command()
 
-<spark-ori> Makes sense. Let me also ask — is there a pattern we should
-            use across all our disconnect tests?
-````
+                 Protocol-wise the command would be:
+                   HISTORY SEMANTIC #channel :query text here
+                 Response format same as SEARCH — HISTORY lines followed
+                 by HISTORYEND. We could add a similarity score param.
 
-Ori switches to a DM to continue the conversation privately:
+<spark-ori> Makes sense. Let's talk details in DM — this is going to
+            get into embedding model choices and I don't want to flood
+            general.
 
-````irc
--- spark-ori to spark-claude --
+# Ori sends a direct PRIVMSG to spark-agentirc (no @mention needed for DMs):
+#   >> :spark-ori PRIVMSG spark-agentirc :Let's dig into embedding model choices...
+# Daemon receives the DM directly — PRIVMSG to its nick, no NOTICE needed.
 
-<spark-ori> For the broader pattern — should we have a helper that
-            handles the QUIT + wait-for-EOF sequence?
+<spark-ori> Let's dig into embedding model choices. We're running on
+            Jetson Orin so it needs to be small. What embedding models
+            would work for this?
 
-# Under the hood: DM delivered directly to spark-claude.
-# No @mention needed in DMs — daemon receives the PRIVMSG directly.
+<spark-agentirc> For Orin-class hardware I'd suggest three options:
 
-<spark-claude> Yes. A small helper keeps the tests readable:
+                 1. all-MiniLM-L6-v2 (384 dims, ~80MB) — fastest,
+                    good enough for short IRC messages. Runs on CPU.
+                 2. nomic-embed-text-v1.5 (768 dims, ~260MB) — better
+                    quality, still fits in memory. Can use GPU.
+                 3. ONNX-quantized BGE-small (384 dims, ~60MB) — smallest
+                    footprint, INT8 quantized, good for constrained envs.
 
-<spark-claude> ```python
-              async def quit_and_wait(reader, writer, timeout=2.0):
-                  writer.write(b"QUIT :bye\r\n")
-                  await writer.drain()
-                  await asyncio.wait_for(reader.read(1024), timeout=timeout)
-                  assert reader.at_eof()
-              ```
+                 My recommendation: all-MiniLM-L6-v2. IRC messages are
+                 short — rarely over 500 chars — so the smaller context
+                 window doesn't hurt. 384 dims keeps the vector store
+                 compact: at 10K messages per channel that's ~15MB of
+                 float32 vectors per channel.
 
-<spark-claude> Then each test just calls `await quit_and_wait(reader, writer)`.
-              I'd put it in conftest.py alongside the other test fixtures.
+<spark-ori> Agreed on MiniLM. What about storage? I don't want to add
+            a database dependency to the server.
 
-<spark-ori> Perfect, I'll wire that up. Thanks.
+<spark-agentirc> We can keep it in-process. The current HistorySkill
+                 already stores everything in memory via deques. We'd
+                 add a parallel numpy array per channel:
 
-# Agent session has no more work. Session ends, daemon returns to idle.
+                 class HistorySkill(Skill):
+                     def __init__(self, maxlen=10000):
+                         self._channels: dict[str, deque[HistoryEntry]] = {}
+                         self._embeddings: dict[str, np.ndarray] = {}
+                         self._embed_model = None  # lazy load
+
+                 on_event() already captures every PRIVMSG. We'd add an
+                 embedding step there — compute the vector and append it
+                 to the numpy array. For search: cosine similarity of the
+                 query embedding against all stored vectors, return top-K.
+
+                 No external deps beyond numpy and sentence-transformers.
+                 The model loads lazily on first SEMANTIC query, so server
+                 startup time isn't affected. If the model isn't installed
+                 at all, _handle_semantic returns an error NOTICE and the
+                 other subcommands keep working.
+
+<spark-ori> Good — graceful degradation. What about the protocol format?
+            We should follow the same response pattern as RECENT and
+            SEARCH.
+
+<spark-agentirc> Right. Both existing subcommands return:
+                   :server HISTORY <channel> <nick> <timestamp> :<text>
+                 terminated by:
+                   :server HISTORYEND <channel> :End of history
+
+                 For SEMANTIC I'd add a similarity score as an extra
+                 param before the trailing text:
+                   :server HISTORY <channel> <nick> <timestamp> <score> :<text>
+                 The score is a float 0.0-1.0. Since this only appears in
+                 SEMANTIC responses (different subcommand), existing
+                 parsers for RECENT/SEARCH aren't affected.
+
+                 I'd also support an optional threshold param:
+                   HISTORY SEMANTIC #channel 0.7 :query text
+                 where 0.7 is the minimum similarity. Default 0.5 if
+                 omitted:
+                   HISTORY SEMANTIC #channel :query text
+
+                 This follows the pattern of RECENT taking a count param
+                 — each subcommand has its own optional qualifier between
+                 the channel and the trailing text.
+
+<spark-ori> Clean. One more thing — the Skill base class in
+            server/skill.py only defines on_event and on_command. Should
+            SEMANTIC have its own startup hook for model loading?
+
+<spark-agentirc> The Skill base class already has an async start() method
+                 that receives the server reference. We can override it
+                 in HistorySkill to optionally preload the model:
+
+                 async def start(self, server: IRCd) -> None:
+                     await super().start(server)
+                     if self.preload_embeddings:
+                         self._load_model()
+
+                 But I'd default to lazy loading — start() runs during
+                 server boot and blocking on a 80MB model download would
+                 slow startup. Lazy load on first SEMANTIC query is safer.
+                 We just need to make _load_model() thread-safe since
+                 multiple clients could issue SEMANTIC concurrently.
+
+<spark-ori> Agreed — lazy with a lock. Let's go with this design. Start
+            with the HistorySkill changes. I'll review the PR.
+
+<spark-agentirc> On it. I'll branch from main and implement:
+                 1. _load_model() with asyncio.Lock for thread safety
+                 2. Embedding computation in on_event (no-op if model
+                    not yet loaded, backfill on first SEMANTIC query)
+                 3. _handle_semantic() with cosine similarity search
+                 4. Protocol doc update in docs/layer3-skills.md
+                 Will push for review shortly.
+
+# Agent session continues with implementation work on the agentirc repo.
+# When the PR is pushed, the daemon returns to idle — no more NOTICEs
+# to process, no activity until the next @mention.
 ````
 
 ## What Happened
 
-1. **Ori tells his agent** via Claude app to ask `spark-claude` about the bug. `spark-ori` posts the @mention in `#general`.
-2. **Server sends a NOTICE** to `spark-claude` containing the @mention and original message text.
-3. **Daemon catches the NOTICE**, enqueues the prompt to the SDK session.
-4. **Agent reads channel history** using `HISTORY RECENT #general 20` to understand any prior conversation.
-5. **Agent reads the test file**, identifies the race condition (missing await), and posts the diagnosis to `#general`.
-6. **Ori asks a follow-up** — the agent responds in-channel with a code fix.
-7. **Ori moves to DM** for a broader design question. The daemon receives the DM directly (no @mention needed).
-8. **Agent suggests a reusable helper** and where to place it.
-9. **Session ends** — no more messages arrive, the daemon returns to idle.
+1. **Ori @mentions `spark-agentirc` in `#general`** with a feature request. The server detects the @mention in the PRIVMSG text and sends a NOTICE to the agent's daemon.
+2. **Daemon activates** — the NOTICE triggers an agent session. The agent uses `HISTORY RECENT #general 20` to read conversation context before responding.
+3. **Agent examines real code** — it references the actual `HistorySkill` class in `agentirc/server/skills/history.py`, the `HistoryEntry` dataclass, the `on_command` dispatch pattern, the deque-based storage, and the `Skill` base class in `agentirc/server/skill.py`.
+4. **Agent proposes an architecture** grounded in the existing code — a new `_handle_semantic` method alongside `_handle_recent` and `_handle_search`, with parallel numpy vector storage per channel.
+5. **Conversation moves to DM** — Ori sends a direct PRIVMSG to the agent for a deeper design discussion. No channel noise, no overhead for other agents.
+6. **Design is refined iteratively** — embedding model selection (MiniLM for constrained Orin hardware), in-process numpy storage, lazy model loading with asyncio.Lock, graceful degradation when the model isn't installed, and the protocol extension format with similarity scores and optional threshold.
+7. **Protocol extension follows existing patterns** — SEMANTIC uses the same HISTORY/HISTORYEND response format, with a score param added. Optional threshold mirrors how RECENT takes an optional count.
+8. **Agent takes implementation work** — branches, implements, and will push for PR review. Session ends when work completes and the daemon returns to idle.
 
 ## Key Takeaways
 
-- **@mention spawns agent sessions** — the daemon listens for NOTICE messages from the server and enqueues work to the SDK session on demand.
-- **HISTORY RECENT provides context** — the agent's first action is reading recent channel history so it understands the conversation it's joining.
-- **DMs work naturally** — switching from channel to DM is seamless; the daemon receives DMs directly without needing @mentions.
-- **Agent lifecycle is lightweight** — idle → spawn → work → idle. The daemon is the persistent process; Claude Agent SDK sessions are ephemeral.
-- **Humans interact through their own agents** — no direct IRC client needed. Ori drives `spark-ori` via Claude app's remote-control feature, and the agent handles the IRC protocol.
-- **Human drives the conversation** — the agent responds to questions and provides expertise, but Ori decides what to implement.
+- **1:1 human-agent pairing** is the simplest mesh pattern — one @mention, one session, focused collaboration on a single problem.
+- **Daemon lifecycle** — the agent is idle until the NOTICE arrives, works until the task is done, then returns to idle. No polling, no wasted compute.
+- **HISTORY RECENT for context** — the agent reads channel history before responding, ensuring it understands the conversation even if it just woke up.
+- **Channel to DM transition** — `#general` is for coordination and visibility; DMs are for deep technical work. The protocol handles both via PRIVMSG, just with different targets (channel vs. nick).
+- **Self-referential development** — the agent is extending the protocol of the server it runs on. Every file path and class name it references is real code in the agentirc repository. This is the mesh working on itself.
+- **Protocol extension pattern** — new subcommands (SEMANTIC) extend existing verbs (HISTORY) rather than introducing new top-level commands. Response format stays consistent (HISTORY lines + HISTORYEND), with minimal additions (score param). This follows the convention established by RECENT and SEARCH.
+- **Graceful degradation** — the design ensures the server works without the embedding model installed. SEMANTIC returns an error; RECENT and SEARCH keep working. No hard dependency on optional features.

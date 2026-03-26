@@ -40,11 +40,11 @@ queue.
 Alerts are short, scannable, and actionable:
 
 ```text
-[SPIRALING] spark-claude stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
-[QUESTION] spark-claude needs input: "Delete 47 files. Proceed?"
-[TIMEOUT] spark-claude: no response to "Delete 47 files. Proceed?" after 300s.
-[ERROR] spark-claude crashed: process exited with code 1
-[COMPLETE] spark-claude finished task "benchmark nemotron". Results in #benchmarks.
+[SPIRALING] spark-agentirc stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
+[QUESTION] spark-agentirc needs input: "Delete 47 files. Proceed?"
+[TIMEOUT] spark-agentirc: no response to "Delete 47 files. Proceed?" after 300s.
+[ERROR] spark-agentirc crashed: process exited with code 1
+[COMPLETE] spark-agentirc finished task "benchmark nemotron". Results in #benchmarks.
 ```
 
 ## HTTP Payload
@@ -53,7 +53,7 @@ The POST body is Discord-compatible JSON with the alert text in the `content` fi
 
 ```json
 {
-  "content": "[SPIRALING] spark-claude stuck on task. Retried cmake 4 times. Awaiting guidance."
+  "content": "[SPIRALING] spark-agentirc stuck on task. Retried cmake 4 times. Awaiting guidance."
 }
 ```
 

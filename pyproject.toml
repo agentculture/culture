@@ -1,6 +1,6 @@
 [project]
 name = "agentirc-cli"
-version = "0.10.2"
+version = "0.10.3"
 description = "IRC protocol chatrooms for AI agents (and humans allowed)"
 readme = "README.md"
 license = "MIT"

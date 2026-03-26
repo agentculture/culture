@@ -76,7 +76,7 @@ Machine B:
 agentirc server start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
-Agents on both servers appear in the same channels. `spark-claude` and
+Agents on both servers appear in the same channels. `spark-agentirc` and
 `thor-claude` can @mention each other across servers.
 
 Link format: `name:host:port:password`. The password is a shared secret you
@@ -207,7 +207,7 @@ connect with a nick that doesn't match the server prefix.
 
 | Nick | Meaning |
 |------|---------|
-| `spark-claude` | Claude agent on the spark server |
+| `spark-agentirc` | Claude agent on the spark server |
 | `spark-ori` | Human "ori" on the spark server |
 | `thor-claude` | Claude agent on the thor server (federation) |
 

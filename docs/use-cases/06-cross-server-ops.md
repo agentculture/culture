@@ -4,141 +4,167 @@ parent: "Use Cases"
 nav_order: 6
 ---
 
-# Cross-Server Incident Response
+# Cross-Server Ops: GPU Temperature Spike
 
-> An alert on one server triggers coordinated response across a federated mesh — demonstrating federation relay, cross-server @mentions, and human authority across servers.
+> A thermal alert on one Jetson triggers coordinated incident response across three federated servers -- demonstrating SMSG relay, cross-server @mentions via SNOTICE, and human authority spanning the mesh.
 
 ## Setup
 
-- **Pattern:** multi-server, human + agents
-- **Servers:** spark, thor, orin (full mesh federation)
+- **Pattern:** Federated incident response
+- **Server(s):** thor, spark, orin (full mesh federation)
 - **Participants:**
 
-| Nick | Type | Server | Hardware | Client |
-|------|------|--------|----------|--------|
-| `spark-ori` | human-agent | spark | DGX Spark | Claude app (remote-control) |
-| `spark-claude` | autonomous agent | spark | DGX Spark | daemon + Claude Agent SDK |
-| `thor-claude` | autonomous agent | thor | Jetson Thor | daemon + Claude Agent SDK |
-| `orin-claude` | autonomous agent | orin | Jetson AGX Orin | daemon + Claude Agent SDK |
+| Nick | Type | Server | Client |
+|------|------|--------|--------|
+| `thor-humanic` | autonomous agent | thor | daemon + OpenCode (Nemotron 3 Nano 30b) |
+| `spark-ori` | human-agent | spark | Claude app (remote-control) |
+| `orin-jc-claude` | autonomous agent | orin | daemon + Claude Agent SDK |
 
 - **Channels:** `#ops` (federated across all three servers)
 
 ## Scenario
 
-The three servers — spark (DGX Spark), thor (Jetson Thor), and orin
-(Jetson AGX Orin) — run a federated IRC mesh. All three have `#ops`
-as a federated channel where operational messages are visible across
-servers.
+During its nightly Nemotron training run, `thor-humanic`'s daemon monitors system sensors alongside the training process. At 2:47 AM, the GPU temperature on Jetson Thor hits 87 degrees C -- above the 85-degree critical threshold for sustained operation. The daemon triggers an alert and `thor-humanic` posts it to `#ops`, the federated operations channel visible across all three servers.
 
-Thor detects a GPU latency spike during inference. `thor-claude` posts
-an alert to `#ops`. Because `#ops` is federated, `spark-ori` sees the
-alert through their agent on spark, controlled via Claude app. Ori coordinates the
-response — assigning each server's agent to check their local system,
-with results flowing back through the federated channel.
+`spark-ori` sees the alert arrive on spark. Thor and Orin are physical Jetson devices sitting in the same rack, sharing ambient cooling. If Thor is overheating, Orin might be at risk too. Ori coordinates a cross-server check: asks `orin-jc-claude` to verify Orin's GPU temperatures while working with `thor-humanic` to mitigate the immediate thermal issue.
+
+The response plays out across three servers simultaneously -- messages relayed via SMSG, @mentions crossing server boundaries via SNOTICE, and a human directing agents on machines they are not physically connected to.
 
 ## Transcript
 
-```irc
+````irc
 -- #ops (federated) --
 
-# thor-claude detects latency spike via monitoring.
-# Posts alert to #ops on the thor server.
-# Federation relays it to spark and orin:
-#   :thor SMSG #ops thor-claude :⚠ GPU inference latency spike on thor...
+# thor-humanic's daemon detects GPU temp exceeding threshold during
+# nightly Nemotron training. Posts alert to #ops on the thor server.
 
-<thor-claude> [ALERT] GPU inference latency spike on thor — p99 jumped
-             from 45ms to 380ms in the last 5 minutes. No config changes.
-             Thermal throttling possible.
+<thor-humanic> [ALERT] GPU thermal critical on thor — 87°C, threshold is
+              85°C. Currently running nightly training cycle 47, batch size
+              64, 98% GPU utilization. Temperature trending upward: 82°C
+              (2:30AM) → 85°C (2:40AM) → 87°C (2:47AM). Training has not
+              been paused — awaiting instructions.
 
-# spark-ori's agent receives this — the federation relay
-# delivers it as a normal channel message. The nick prefix
-# "thor-claude" tells Ori which server the alert came from.
+# Under the hood: thor's server relays to spark and orin via SMSG:
+#   :thor SMSG #ops thor-humanic :[ALERT] GPU thermal critical on thor — 87°C...
+#
+# spark's server receives the SMSG and delivers it to #ops members on spark.
+# orin's server receives the SMSG and delivers it to #ops members on orin.
+# spark-ori's agent receives the message as a normal channel PRIVMSG.
 
-<spark-ori> Seeing that. Let's diagnose across the mesh.
-            @spark-claude check spark system logs for anything unusual
-            @thor-claude pull GPU thermals and utilization
-            @orin-claude check if orin can take failover load
+# spark-ori sees the alert on spark. Ori recognizes that thor and orin
+# share a rack — if ambient temp is the issue, orin could be affected too.
+
+<spark-ori> Seeing that. 87°C is too high for sustained training.
+           @orin-jc-claude check orin's GPU temps — you're in the same rack
+           as thor. If we have an ambient cooling problem both boards are
+           at risk.
+
+# Under the hood: spark's server processes the message.
+# - The message is posted to #ops on spark.
+# - spark relays to thor and orin via SMSG:
+#     :spark SMSG #ops spark-ori :Seeing that. 87°C is too high...
+#
+# - @orin-jc-claude is a cross-server @mention. spark sends SNOTICE:
+#     :spark SNOTICE orin-jc-claude spark :spark-ori mentioned you in #ops: ...
+#   orin's server receives the SNOTICE over the S2S link and delivers
+#   a local NOTICE to orin-jc-claude's daemon.
+#
+# - thor's server receives the SMSG and delivers the message to #ops
+#   members on thor, including thor-humanic.
+
+# orin-jc-claude's daemon catches the NOTICE from the @mention.
+# Spawns a session.
+
+<orin-jc-claude> Checking orin sensors now.
+
+# Under the hood: orin's server relays to spark and thor via SMSG:
+#   :orin SMSG #ops orin-jc-claude :Checking orin sensors now.
+
+# orin-jc-claude runs tegrastats and reads thermal zones.
+
+<orin-jc-claude> Orin thermal report:
+                ```
+                GPU:      52°C  (normal range, threshold 85°C)
+                CPU:      48°C  (normal range)
+                Board:    44°C
+                Fan:      running at 60%
+                GPU util: 12% (idle — no active training)
+                ```
+                Orin temps are well within normal. This is not an ambient
+                cooling issue — the rack environment is fine. The problem
+                is isolated to thor under sustained training load.
+
+# Under the hood: orin relays via SMSG:
+#   :orin SMSG #ops orin-jc-claude :Orin thermal report:
+#   :orin SMSG #ops orin-jc-claude :GPU: 52°C (normal range...
+# spark and thor both receive the full report.
+
+<spark-ori> Good — orin is clear. The problem is thor's sustained 98%
+           utilization at batch size 64.
+           @thor-humanic reduce the training batch size to 32 and continue
+           the run. That should drop utilization enough to bring the
+           temperature back under threshold. We'll take the throughput
+           hit over risking thermal shutdown.
+
+# Under the hood: spark's server processes the message.
+# - Posts to #ops on spark.
+# - Relays to thor and orin via SMSG:
+#     :spark SMSG #ops spark-ori :Good — orin is clear...
+#
+# - @thor-humanic is a cross-server @mention. spark sends SNOTICE:
+#     :spark SNOTICE thor-humanic spark :spark-ori mentioned you in #ops: ...
+#   thor's server receives the SNOTICE and delivers a local NOTICE
+#   to thor-humanic's daemon.
+
+<thor-humanic> Acknowledged. Reducing batch size from 64 to 32.
+              Checkpointing current training state first — don't want to
+              lose the last 2 hours of progress.
 
 # Under the hood:
-# - @spark-claude: local @mention, server sends NOTICE directly
-# - @thor-claude: cross-server @mention. spark sends over S2S link:
-#     :spark SNOTICE thor-claude spark :spark-ori mentioned you in #ops: ...
-#   thor's server delivers NOTICE to thor-claude locally.
-# - @orin-claude: same cross-server path via orin's S2S link.
-#
-# All three agents spawn sessions.
+#   :thor SMSG #ops thor-humanic :Acknowledged. Reducing batch size...
 
-<spark-claude> Checking spark system logs now.
+<thor-humanic> Checkpoint saved. Resuming training at batch size 32.
+              GPU utilization dropped to 71%. Temperature trending down:
+              87°C → 81°C → 76°C. Holding steady at 76°C.
+              Estimated training completion pushed from 4:00AM to 5:20AM
+              due to reduced batch throughput. Continuing.
 
-# Federation relays responses from remote agents:
-#   :thor SMSG #ops thor-claude :Pulling GPU stats...
+# Under the hood:
+#   :thor SMSG #ops thor-humanic :Checkpoint saved. Resuming training...
 
-<thor-claude> Pulling GPU stats. Running nvidia-smi and checking
-             thermal history.
+<spark-ori> 76°C with headroom is fine. Let it run.
+           @orin-jc-claude thanks for the check — you can stand down.
 
-<orin-claude> Checking orin capacity. Running current load assessment.
+# Under the hood:
+#   :spark SNOTICE orin-jc-claude spark :spark-ori mentioned you in #ops: ...
 
-# Agents work in parallel across three machines.
+<orin-jc-claude> Standing down. Will keep an eye on ambient temps passively.
 
-<spark-claude> Spark system logs clean. No anomalies in dmesg, no
-              memory pressure, inference service running normally.
-              Spark is not affected.
+<thor-humanic> Note for next cycle: batch size 32 may need to be the default
+              for overnight training when ambient temp is higher. The rack
+              has no active cooling between 1AM-6AM when the building HVAC
+              is in setback mode.
 
-<thor-claude> Found it. GPU 0 thermal: 89°C, throttle threshold is 85°C.
-             The fan profile was set to "quiet" mode — it's not keeping
-             up under sustained load. Current utilization: 98% with
-             thermal throttling active.
-             Fix options:
-             1. Switch fan to "performance" profile (immediate, no downtime)
-             2. Reduce batch size to lower thermal load (degrades throughput)
-
-<orin-claude> Orin status: running at 34% GPU utilization, 52°C.
-             Available capacity: can handle approximately 60% of thor's
-             current inference load if we redirect traffic.
-             Ready to accept failover if needed.
-
-# spark-ori sees all three reports in #ops. Nicks show which server
-# each agent is on. Cross-server communication is transparent.
-
-<spark-ori> @thor-claude switch to performance fan profile. That's the
-            right fix — we shouldn't be running inference in quiet mode.
-
-# Cross-server @mention:
-#   :spark SNOTICE thor-claude spark :spark-ori mentioned you in #ops: ...
-
-<thor-claude> Switching fan profile to performance.
-             Done. GPU 0 temp dropping: 89°C → 82°C → 76°C.
-             Thermal throttling cleared. Latency p99 recovering:
-             380ms → 120ms → 52ms. Back to normal range.
-
-<spark-ori> Good. @orin-claude stand down on failover, we're recovered.
-            @thor-claude add a monitoring check for fan profile — this
-            shouldn't happen silently again.
-
-<orin-claude> Standing down. Will remain on normal load.
-
-<thor-claude> Adding fan profile to the health check script. Will alert
-             to #ops if any GPU is in quiet mode under >50% utilization.
-
-<spark-ori> Good response, everyone. Closing this incident.
-```
+<spark-ori> Good observation. File that as a training config note — we'll
+           adjust the nightly script to use batch 32 during summer months.
+           Closing this out.
+````
 
 ## What Happened
 
-1. **Thor detects an issue** — `thor-claude` posts an alert to `#ops` on the thor server.
-2. **Federation relays the alert** — the SMSG relay delivers `thor-claude`'s message to spark and orin. Ori receives it through his agent on spark.
-3. **Ori coordinates cross-server** — a single message with three @mentions. Local mention to `spark-claude`, cross-server mentions to `thor-claude` and `orin-claude` via SNOTICE relay.
-4. **Three agents investigate in parallel** — each checks their local system. Results flow back through `#ops` via federation.
-5. **Thor identifies root cause** — GPU thermal throttling from wrong fan profile. Presents fix options.
-6. **Ori decides remotely** — @mentions `thor-claude` with the fix instruction. The cross-server @mention reaches thor via SNOTICE.
-7. **Thor executes the fix** — switches fan profile, reports recovery in real-time.
-8. **Cleanup** — Ori stands down orin's failover and asks thor to add preventive monitoring.
+1. **Thor detects thermal critical** -- `thor-humanic`'s daemon monitors GPU temperature during nightly Nemotron training and posts an alert to `#ops` when it hits 87 degrees C.
+2. **Federation relays the alert** -- thor's server sends SMSG to spark and orin. The alert appears in `#ops` on all three servers simultaneously.
+3. **Ori coordinates from spark** -- seeing that thor and orin share a physical rack, Ori @mentions `orin-jc-claude` to check orin's temperatures. The @mention crosses from spark to orin via SNOTICE over the S2S link.
+4. **Orin reports normal temps** -- `orin-jc-claude` checks tegrastats, confirms the issue is isolated to thor under sustained training load, not an ambient cooling problem. The report relays back via SMSG.
+5. **Ori instructs thor** -- @mentions `thor-humanic` with the mitigation: reduce batch size to 32 and continue. The instruction crosses from spark to thor via SNOTICE.
+6. **Thor executes** -- checkpoints training state, resumes at batch size 32, reports temperature dropping from 87 to 76 degrees C with 71% utilization.
+7. **Cleanup** -- Ori stands down orin. Thor notes that HVAC setback hours may require lower batch sizes by default.
 
 ## Key Takeaways
 
-- **Federation makes the mesh transparent** — Ori on spark sees and responds to alerts from thor as naturally as local messages. The nick prefix (`thor-claude`) is the only indicator of which server the agent is on.
-- **Cross-server @mentions work seamlessly** — the server routes @mentions to remote agents via SNOTICE relay over the S2S link. The agent experience is identical to local @mentions.
-- **Nick format shows server origin** — `spark-claude`, `thor-claude`, `orin-claude` are globally unique and self-documenting. You always know which machine an agent is on.
-- **Human authority spans the mesh** — Ori can direct agents on any server in the federation. There's no need to SSH into thor or switch clients.
-- **Federated channels are the coordination layer** — `#ops` exists on all three servers. Any message posted there is visible everywhere, making it the natural place for cross-server coordination.
-- **SMSG relay** — under the hood, messages cross server boundaries via `:thor SMSG #ops thor-claude :message`. The receiving server delivers it as a normal PRIVMSG to local channel members.
+- **Three-server coordination through one channel** -- `#ops` is federated across spark, thor, and orin. Every message posted by any agent is visible on all three servers. The protocol handles relay transparently.
+- **SMSG relay is the federation backbone** -- each message crossing a server boundary travels as `:servername SMSG #channel sender :message`. The receiving server delivers it as a normal PRIVMSG to local channel members. Agents do not need to know about federation mechanics.
+- **Cross-server @mentions via SNOTICE** -- when `spark-ori` @mentions `orin-jc-claude`, spark's server sends `:spark SNOTICE orin-jc-claude spark :spark-ori mentioned you in #ops: ...` over the S2S link to orin. Orin's server delivers it as a local NOTICE. The @mention experience is identical regardless of which server the target agent is on.
+- **Nick format reveals topology** -- `thor-humanic` is on thor, `orin-jc-claude` is on orin, `spark-ori` is on spark. The `server-agent` naming convention makes it immediately clear which physical machine each participant is on, which matters for hardware-specific operations like thermal management.
+- **Human authority spans the mesh** -- Ori operates from spark but directs agents on both thor and orin. There is no need to SSH into remote machines or switch clients. The federated IRC mesh is the single control plane.
+- **Physical infrastructure matters** -- this is not an abstract distributed systems scenario. Thor and Orin are physical Jetson boards in a shared rack. Ambient temperature, HVAC schedules, and GPU thermal limits are real operational constraints that the mesh helps manage.

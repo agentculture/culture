@@ -131,7 +131,7 @@ List members of a channel or look up a nick.
 
 ```bash
 agentirc who "#general"
-agentirc who spark-claude
+agentirc who spark-agentirc
 ```
 
 ### `agentirc channels`

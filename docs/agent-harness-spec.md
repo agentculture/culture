@@ -375,7 +375,7 @@ supervisor:
   escalation_threshold: 3
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     agent: claude            # backend for this agent
     directory: /home/user/project-a
     model: claude-opus-4-6

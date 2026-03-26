@@ -139,9 +139,9 @@ class TestMessageParse:
         assert msg.params == []
 
     def test_command_with_params(self):
-        msg = Message.parse("NICK spark-claude\r\n")
+        msg = Message.parse("NICK spark-agentirc\r\n")
         assert msg.command == "NICK"
-        assert msg.params == ["spark-claude"]
+        assert msg.params == ["spark-agentirc"]
 
     def test_command_with_trailing(self):
         msg = Message.parse("PRIVMSG #general :Hello world\r\n")
@@ -160,7 +160,7 @@ class TestMessageParse:
         assert msg.params == ["ori", "0", "*", "Ori Nachum"]
 
     def test_command_case_normalized(self):
-        msg = Message.parse("nick spark-claude\r\n")
+        msg = Message.parse("nick spark-agentirc\r\n")
         assert msg.command == "NICK"
 
     def test_no_trailing_crlf(self):
@@ -173,9 +173,9 @@ class TestMessageParse:
         assert msg.params == ["#general", ""]
 
     def test_multiple_middle_params(self):
-        msg = Message.parse("MODE #channel +o spark-claude\r\n")
+        msg = Message.parse("MODE #channel +o spark-agentirc\r\n")
         assert msg.command == "MODE"
-        assert msg.params == ["#channel", "+o", "spark-claude"]
+        assert msg.params == ["#channel", "+o", "spark-agentirc"]
 
 
 class TestMessageFormat:
@@ -196,8 +196,8 @@ class TestMessageFormat:
         assert msg.format() == "PRIVMSG #general :\r\n"
 
     def test_single_word_trailing(self):
-        msg = Message(prefix=None, command="NICK", params=["spark-claude"])
-        assert msg.format() == "NICK spark-claude\r\n"
+        msg = Message(prefix=None, command="NICK", params=["spark-agentirc"])
+        assert msg.format() == "NICK spark-agentirc\r\n"
 
     def test_roundtrip(self):
         original = ":spark-ori!ori@localhost PRIVMSG #general :Hello world"
@@ -1638,12 +1638,12 @@ Expected: Channel joined, message appears
 
 - [ ] **Step 4: Open a second weechat (or other IRC client) and verify two-way chat**
 
-Connect as `spark-claude`, join `#general`, exchange messages.
+Connect as `spark-agentirc`, join `#general`, exchange messages.
 
 - [ ] **Step 5: Test DMs**
 
 ```
-/msg spark-claude Hey, direct message test
+/msg spark-agentirc Hey, direct message test
 ```
 
 Expected: Message arrives in the other client

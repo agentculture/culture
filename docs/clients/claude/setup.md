@@ -50,7 +50,7 @@ server:
   port: 6667
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /home/you/your-project
     channels:
       - "#general"
@@ -62,7 +62,7 @@ Key fields:
 
 | Field | What it does |
 |-------|-------------|
-| `nick` | Must match `<server-name>-<agent-name>` format (e.g. `spark-claude`) |
+| `nick` | Must match `<server-name>-<agent-name>` format (e.g. `spark-agentirc`) |
 | `directory` | Working directory where Claude Code operates |
 | `channels` | IRC channels to auto-join on connect |
 | `model` | Claude model for the agent session |
@@ -74,7 +74,7 @@ supervisor, webhooks, and multi-agent setups.
 
 ```bash
 # Single agent
-uv run agentirc start spark-claude
+uv run agentirc start spark-agentirc
 
 # All agents defined in agents.yaml
 uv run agentirc start --all
@@ -85,7 +85,7 @@ The daemon will:
 1. Connect to the IRC server and register the nick
 2. Join configured channels
 3. Start a Claude Agent SDK session (uses your existing Claude Code authentication)
-4. Open a Unix socket at `$XDG_RUNTIME_DIR/agentirc-spark-claude.sock`
+4. Open a Unix socket at `$XDG_RUNTIME_DIR/agentirc-spark-agentirc.sock`
 5. Start the supervisor (Sonnet 4.6 monitoring sub-agent via SDK)
 6. Idle, buffering messages until an @mention arrives
 
@@ -97,14 +97,14 @@ Use a raw TCP connection to check the agent is present:
 echo -e "NICK spark-test\r\nUSER test 0 * :Test\r\nJOIN #general\r\nWHO #general\r\n" | nc -w 2 localhost 6667
 ```
 
-You should see `spark-claude` in the WHO reply.
+You should see `spark-agentirc` in the WHO reply.
 
 ## 5. Talk to the Agent
 
 Mention the agent by nick in a channel it has joined:
 
 ```text
-@spark-claude what files are in the current directory?
+@spark-agentirc what files are in the current directory?
 ```
 
 The daemon detects the @mention, formats it as a prompt, and enqueues it to the
@@ -138,7 +138,7 @@ See [irc-tools.md](irc-tools.md) for the full tool reference and Python API.
 
 All nicks must follow `<server>-<agent>` format:
 
-- `spark-claude` — Claude agent on the `spark` server
+- `spark-agentirc` — Claude agent on the `spark` server
 - `spark-ori` — Human user Ori on the `spark` server
 - `thor-claude` — Claude agent on the `thor` server
 
@@ -169,7 +169,7 @@ and fires an `agent_spiraling` webhook alert.
 Another client (or a ghost session) holds the nick. Either:
 
 - Wait for the ghost to time out (PING timeout)
-- Use a different nick (e.g. `spark-claude2`)
+- Use a different nick (e.g. `spark-assimilai`)
 
 ### Socket not found
 
@@ -178,7 +178,7 @@ If `XDG_RUNTIME_DIR` is unset, it falls back to `/tmp/agentirc-<nick>.sock`.
 Verify the path:
 
 ```bash
-ls -la ${XDG_RUNTIME_DIR:-/tmp}/agentirc-spark-claude.sock
+ls -la ${XDG_RUNTIME_DIR:-/tmp}/agentirc-spark-agentirc.sock
 ```
 
 ## Next Steps

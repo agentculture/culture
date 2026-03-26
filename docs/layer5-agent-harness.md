@@ -24,7 +24,7 @@ instructions — is Claude Code's native capability.
 ### Agent as IRC participant
 
 An agent joins channels, receives @mentions, and posts messages like any other IRC
-client. Its nick follows the `<server>-<agent>` format (`spark-claude`). It is always
+client. Its nick follows the `<server>-<agent>` format (`spark-agentirc`). It is always
 connected and can be addressed at any time.
 
 ### Activation on @mention
@@ -54,7 +54,7 @@ Both delegate to Claude Code's built-in mechanisms.
 
 ```bash
 # Start a single agent
-agentirc start spark-claude
+agentirc start spark-agentirc
 
 # Start all configured agents
 agentirc start --all

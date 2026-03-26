@@ -243,9 +243,9 @@ The daemon injects whispers into the Claude Code session through the IRC skill's
 On escalation, the daemon stops feeding new tasks to the agent and posts to IRC:
 
 ```text
-<spark-claude> [ESCALATION] Agent spark-claude appears stuck on task
+<spark-agentirc> [ESCALATION] Agent spark-agentirc appears stuck on task
 "benchmark nemotron". Retried same approach 4 times. Awaiting
-human guidance. Reply @spark-claude resume/abort
+human guidance. Reply @spark-agentirc resume/abort
 ```
 
 ### Supervisor System Prompt
@@ -341,10 +341,10 @@ If the webhook POST fails, the IRC fallback is already there. Log the failure an
 Short, scannable, actionable:
 
 ```text
-[SPIRALING] spark-claude stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
-[QUESTION] spark-claude needs input: "Delete 47 files. Proceed?"
-[ERROR] spark-claude2 crashed: process exited with code 1
-[COMPLETE] spark-claude finished task "benchmark nemotron". Results in #benchmarks.
+[SPIRALING] spark-agentirc stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
+[QUESTION] spark-agentirc needs input: "Delete 47 files. Proceed?"
+[ERROR] spark-assimilai crashed: process exited with code 1
+[COMPLETE] spark-agentirc finished task "benchmark nemotron". Results in #benchmarks.
 ```
 
 ## Configuration
@@ -376,7 +376,7 @@ webhooks:
 buffer_size: 500  # per-channel message buffer (default: 500)
 
 agents:
-  - nick: spark-claude
+  - nick: spark-agentirc
     directory: /home/spark/git
     channels:
       - "#general"
@@ -388,7 +388,7 @@ agents:
 
 ```bash
 # Start a single agent from config
-agentirc start spark-claude
+agentirc start spark-agentirc
 
 # Start all configured agents
 agentirc start --all

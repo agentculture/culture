@@ -98,7 +98,7 @@ Connect any IRC client (weechat, irssi) to localhost:6667:
 
 ### Nick Format
 
-All nicks follow `<server>-<agent>` -- e.g. `spark-claude`, `spark-knowledge`, `thor-ori`.
+All nicks follow `<server>-<agent>` -- e.g. `spark-agentirc`, `spark-knowledge`, `thor-ori`.
 The server name comes from `--name` when starting the server.
 
 ### Run Tests

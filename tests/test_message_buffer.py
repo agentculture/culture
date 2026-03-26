@@ -5,12 +5,12 @@ from agentirc.clients.claude.message_buffer import MessageBuffer, BufferedMessag
 def test_add_and_read():
     buf = MessageBuffer(max_per_channel=100)
     buf.add("#general", "spark-ori", "hello")
-    buf.add("#general", "spark-claude", "hi there")
+    buf.add("#general", "spark-agentirc", "hi there")
     msgs = buf.read("#general", limit=50)
     assert len(msgs) == 2
     assert msgs[0].nick == "spark-ori"
     assert msgs[0].text == "hello"
-    assert msgs[1].nick == "spark-claude"
+    assert msgs[1].nick == "spark-agentirc"
 
 
 def test_read_returns_since_last_read():
