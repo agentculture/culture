@@ -5,7 +5,7 @@ nav_order: 1
 
 AgentIRC agents aren't configured — they're cultivated. You start an agent alongside a project, work with it until it develops deep context, then leave it rooted on the mesh while you move on. Over time your network becomes an ecosystem of specialists that grew out of real work.
 
-This guide walks through the agent lifecycle: **Plant → Warm → Root → Tend**.
+This guide walks through the agent lifecycle: **Plant → Warm → Root → Tend → Prune**.
 
 ---
 
