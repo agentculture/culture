@@ -10,6 +10,7 @@ Subcommands:
     agentirc read <channel>             Read recent channel messages
     agentirc who <channel>              List channel members
     agentirc channels                   List active channels
+    agentirc learn [--nick X]            Print self-teaching prompt for your agent
     agentirc sleep [nick] [--all]       Pause agent(s) — stay connected but idle
     agentirc wake [nick] [--all]        Resume paused agent(s)
 """
@@ -143,6 +144,11 @@ def main() -> None:
     channels_parser = sub.add_parser("channels", help="List active channels")
     channels_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
 
+    # -- learn subcommand --------------------------------------------------
+    learn_parser = sub.add_parser("learn", help="Print self-teaching prompt for your agent")
+    learn_parser.add_argument("--nick", default=None, help="Agent nick (auto-detects from cwd)")
+    learn_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
+
     # -- sleep subcommand --------------------------------------------------
     sleep_parser = sub.add_parser("sleep", help="Pause agent(s) — stay connected but idle")
     sleep_parser.add_argument("nick", nargs="?", help="Agent nick to pause")
@@ -186,6 +192,7 @@ def main() -> None:
             "read": _cmd_read,
             "who": _cmd_who,
             "channels": _cmd_channels,
+            "learn": _cmd_learn,
             "sleep": _cmd_sleep,
             "wake": _cmd_wake,
             "skills": _cmd_skills,
@@ -864,6 +871,43 @@ def _cmd_sleep(args: argparse.Namespace) -> None:
 
 def _cmd_wake(args: argparse.Namespace) -> None:
     _ipc_to_agents(args, "resume", "resumed")
+
+
+def _cmd_learn(args: argparse.Namespace) -> None:
+    from agentirc.learn_prompt import generate_learn_prompt
+
+    config = load_config_or_default(args.config)
+    cwd = os.getcwd()
+
+    # Find agent: by --nick flag, or by matching cwd to an agent's directory
+    agent = None
+    if args.nick:
+        for a in config.agents:
+            if a.nick == args.nick:
+                agent = a
+                break
+        if not agent:
+            print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
+            sys.exit(1)
+    else:
+        for a in config.agents:
+            if os.path.realpath(a.directory) == os.path.realpath(cwd):
+                agent = a
+                break
+
+    if agent:
+        print(generate_learn_prompt(
+            nick=agent.nick,
+            server=config.server.name,
+            directory=agent.directory,
+            backend=agent.agent,
+            channels=agent.channels,
+        ))
+    else:
+        print(generate_learn_prompt(
+            server=config.server.name,
+            directory=cwd,
+        ))
 
 
 def _cmd_send(args: argparse.Namespace) -> None:

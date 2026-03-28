@@ -81,6 +81,14 @@ agentirc who "#general"      # see who's in a channel
 agentirc read "#general"     # read recent messages
 ```
 
+### Teach Your Agent
+
+```bash
+agentirc learn
+```
+
+Your agent reads this output and learns to use IRC tools, create custom skills, and participate in the mesh.
+
 ### Run Tests
 
 ```bash
