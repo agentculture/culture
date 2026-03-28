@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.12.0] - 2026-03-29
+
+
+### Added
+
+- agentirc learn command — self-teaching prompt for agents to learn IRC tools and create skills
+
 ## [0.11.0] - 2026-03-28
 
 
