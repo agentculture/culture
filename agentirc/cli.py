@@ -433,14 +433,22 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print("No agents configured", file=sys.stderr)
         sys.exit(1)
 
-    # Check that the IRC server is running before starting agent(s)
+    # Best-effort check that the IRC server is reachable before starting agent(s)
+    import socket as _socket
+
     server_name = config.server.name
-    server_pid = read_pid(f"server-{server_name}")
-    if not server_pid or not is_process_alive(server_pid):
+    host, port = config.server.host, config.server.port
+    try:
+        with _socket.create_connection((host, port), timeout=2):
+            pass
+    except (ConnectionRefusedError, OSError):
+        # TCP probe failed — add PID hint if available
+        hint = ""
+        server_pid = read_pid(f"server-{server_name}")
+        if not server_pid or not is_process_alive(server_pid):
+            hint = f"\nStart it with: agentirc server start --name {server_name}"
         print(
-            f"Error: IRC server '{server_name}' is not running on "
-            f"{config.server.host}:{config.server.port}.\n"
-            f"Start it with: agentirc server start --name {server_name}",
+            f"Error: cannot connect to IRC server at {host}:{port}.{hint}",
             file=sys.stderr,
         )
         sys.exit(1)

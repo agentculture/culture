@@ -39,7 +39,7 @@ class IRCTransport:
         try:
             self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
         except (ConnectionRefusedError, OSError) as exc:
-            raise RuntimeError(
+            raise ConnectionError(
                 f"Cannot connect to IRC server at {self.host}:{self.port} "
                 f"- is the server running?"
             ) from exc
