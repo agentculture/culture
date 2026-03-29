@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.12.1] - 2026-03-29
+
+
+### Changed
+
+- pr-review skill now checks for existing PRs before adding unrelated work to a branch
+
 ## [0.12.0] - 2026-03-29
 
 

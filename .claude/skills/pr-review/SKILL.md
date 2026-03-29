@@ -28,6 +28,33 @@ Branch naming conventions:
 | Feature | `feat/<short-desc>` | `feat/webhook-alerts` |
 | Docs | `docs/<short-desc>` | `docs/protocol-extensions` |
 
+## Step 1b — Check for existing PRs on the branch
+
+Before adding new work to an existing branch, check if there's already an
+open PR:
+
+```bash
+gh pr view --json number,title,state --jq '{number,title,state}'
+```
+
+If the command fails with "no pull requests found", there is no open PR —
+proceed normally. Only act on the result if it returns valid JSON with
+`state: "OPEN"`.
+
+If an open PR exists and your new changes are **unrelated** to that PR's
+scope, **stop and ask the user**:
+
+> "There's an open PR (#N: 'title') on this branch. The new changes
+> are unrelated to that PR. Would you like to merge the existing PR
+> first before starting the new work?"
+
+Wait for the user's answer before proceeding. If the user says yes,
+let them merge (never merge yourself). If they say continue, add the
+changes to the existing PR.
+
+If the new changes ARE related to the existing PR, proceed normally —
+commit and push to the same branch.
+
 ## Step 2 — Make changes, commit, push
 
 1. Edit code
