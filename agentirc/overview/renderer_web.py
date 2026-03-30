@@ -16,7 +16,7 @@ from .renderer_text import render_text
 
 def _create_markdown() -> mistune.Markdown:
     """Create a mistune renderer that escapes raw HTML in input."""
-    return mistune.create_markdown(escape=True)
+    return mistune.create_markdown(escape=True, plugins=['table'])
 
 
 def _load_css() -> str:
