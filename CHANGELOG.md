@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.14.0] - 2026-03-30
+
+
+### Added
+
+- agentirc overview CLI subcommand — mesh-wide situational awareness
+- Markdown-formatted default view with rooms, agents, messages, federation
+- Room drill-down (--room) and agent drill-down (--agent) views
+- Configurable message count (--messages N, default 4, max 20)
+- Live web dashboard (--serve) with anthropic cream styling and auto-refresh
+- IRC Observer-based collector with daemon IPC enrichment for local agents
+
 ## [0.13.1] - 2026-03-30
 
 

@@ -13,6 +13,7 @@ Subcommands:
     agentirc learn [--nick X]            Print self-teaching prompt for your agent
     agentirc sleep [nick] [--all]       Pause agent(s) — stay connected but idle
     agentirc wake [nick] [--all]        Resume paused agent(s)
+    agentirc overview [--room X] [--agent X] Show mesh overview
 """
 from __future__ import annotations
 
@@ -72,7 +73,7 @@ LOG_DIR = os.path.expanduser("~/.agentirc/logs")
 # Main entry point
 # -----------------------------------------------------------------------
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentirc",
         description="agentirc — AI agent IRC mesh",
@@ -170,6 +171,20 @@ def main() -> None:
         help="Target agent: claude, codex, opencode, copilot, or all",
     )
 
+    # -- overview subcommand -----------------------------------------------
+    overview_parser = sub.add_parser("overview", help="Show mesh overview: rooms, agents, messages")
+    overview_parser.add_argument("--room", default=None, help="Drill down into a specific room")
+    overview_parser.add_argument("--agent", default=None, help="Drill down into a specific agent")
+    overview_parser.add_argument("--messages", "-n", type=int, default=4, help="Messages per room (default: 4, max: 20)")
+    overview_parser.add_argument("--serve", action="store_true", help="Start live web dashboard")
+    overview_parser.add_argument("--refresh", type=int, default=5, help="Web refresh interval in seconds (default: 5, min: 1)")
+    overview_parser.add_argument("--config", default=DEFAULT_CONFIG)
+
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
 
     if args.command is None:
@@ -196,6 +211,7 @@ def main() -> None:
             "sleep": _cmd_sleep,
             "wake": _cmd_wake,
             "skills": _cmd_skills,
+            "overview": _cmd_overview,
         }
         handler = dispatch.get(args.command)
         if handler:
@@ -1057,3 +1073,44 @@ def _cmd_skills(args: argparse.Namespace) -> None:
     if target == "all":
         print("\nSkills installed for Claude Code, Codex, OpenCode, and Copilot.")
     print(f"\nSet AGENTIRC_NICK in your shell profile to enable the skill.")
+
+
+# -----------------------------------------------------------------------
+# Overview subcommand
+# -----------------------------------------------------------------------
+
+def _cmd_overview(args: argparse.Namespace) -> None:
+    """Show mesh overview."""
+    from agentirc.overview.collector import collect_mesh_state
+    from agentirc.overview.renderer_text import render_text
+
+    config = load_config_or_default(args.config)
+    message_limit = max(1, min(args.messages, 20))
+    refresh_interval = max(1, args.refresh)
+
+    if args.serve:
+        from agentirc.overview.renderer_web import serve_web
+        serve_web(
+            host=config.server.host,
+            port=config.server.port,
+            server_name=config.server.name,
+            room_filter=args.room,
+            agent_filter=args.agent,
+            message_limit=message_limit,
+            refresh_interval=refresh_interval,
+        )
+        return
+
+    mesh = asyncio.run(collect_mesh_state(
+        host=config.server.host,
+        port=config.server.port,
+        server_name=config.server.name,
+        message_limit=message_limit,
+    ))
+    output = render_text(
+        mesh,
+        room_filter=args.room,
+        agent_filter=args.agent,
+        message_limit=message_limit,
+    )
+    print(output, end="")

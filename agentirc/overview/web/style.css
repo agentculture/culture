@@ -1,0 +1,88 @@
+/* Anthropic cream dashboard theme */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Georgia, 'Times New Roman', serif;
+    background: #faf7f2;
+    color: #2d2d2d;
+    line-height: 1.8;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+h1 {
+    font-size: 1.6rem;
+    border-bottom: 2px solid #c7a369;
+    padding-bottom: 0.8rem;
+    margin-bottom: 1.5rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    color: #c7a369;
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+h3 {
+    font-size: 0.95rem;
+    color: #555;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+p { margin-bottom: 0.5rem; color: #888; font-size: 0.9rem; }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0.8rem 0;
+}
+
+thead tr { border-bottom: 1px solid #c7a369; }
+th { text-align: left; padding: 6px 12px; color: #555; }
+td { padding: 6px 12px; border-bottom: 1px solid #e8e0d4; }
+
+ul {
+    list-style: none;
+    background: #f5f0e8;
+    border-radius: 6px;
+    padding: 1rem;
+    font-size: 0.85rem;
+}
+
+li { margin-bottom: 0.5rem; }
+li:last-child { margin-bottom: 0; }
+
+code {
+    background: #f0ebe3;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+.status-active {
+    background: #e8f5e9; color: #2e7d32;
+    padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
+}
+.status-idle {
+    background: #fff8e1; color: #f57f17;
+    padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
+}
+.status-paused {
+    background: #eeeeee; color: #616161;
+    padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
+}
+.status-remote {
+    background: #e3f2fd; color: #1565c0;
+    padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
+}
+
+.refresh-indicator {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-top: -1rem;
+    margin-bottom: 1rem;
+}
