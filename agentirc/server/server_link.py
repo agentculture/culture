@@ -215,6 +215,22 @@ class ServerLink:
                     f"STOPIC {channel.name} {setter} :{channel.topic}"
                 )
 
+        # Send room metadata for managed rooms
+        for channel in self.server.channels.values():
+            if not self.should_relay(channel.name):
+                continue
+            if channel.is_managed:
+                import json
+                meta = json.dumps({
+                    "room_id": channel.room_id, "name": channel.name,
+                    "creator": channel.creator, "owner": channel.owner,
+                    "purpose": channel.purpose, "instructions": channel.instructions,
+                    "tags": channel.tags, "persistent": channel.persistent,
+                    "agent_limit": channel.agent_limit, "extra_meta": channel.extra_meta,
+                    "created_at": channel.created_at,
+                })
+                await self.send_raw(f"SROOMMETA {channel.name} :{meta}")
+
     async def _handle_snick(self, msg: Message) -> None:
         if len(msg.params) < 4:
             return
@@ -467,6 +483,100 @@ class ServerLink:
         """Handle peer announcing it's delinking."""
         raise ConnectionError("Peer sent SQUIT")
 
+    async def _handle_sroommeta(self, msg: Message) -> None:
+        """Receive room metadata from peer and apply to local channel."""
+        import json
+        if len(msg.params) < 2:
+            return
+        channel_name = msg.params[0]
+        meta_json = msg.params[1]
+
+        # Trust check: for SROOMMETA we accept metadata for channels that the
+        # sender already filtered via should_relay(). Don't block new channel
+        # creation for metadata-only (no membership changes).
+        existing = self.server.channels.get(channel_name)
+        if existing and existing.restricted:
+            return
+        # For restricted trust, only accept if channel exists and is shared
+        if self.trust == "restricted" and existing and self.peer_name not in existing.shared_with:
+            return
+
+        try:
+            meta = json.loads(meta_json)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        channel = self.server.get_or_create_channel(channel_name)
+        channel.room_id = meta.get("room_id") or channel.room_id
+        channel.creator = meta.get("creator") or channel.creator
+        channel.owner = meta.get("owner") or channel.owner
+        channel.purpose = meta.get("purpose") or channel.purpose
+        channel.instructions = meta.get("instructions") or channel.instructions
+        if isinstance(meta.get("tags"), list):
+            channel.tags = meta["tags"]
+        channel.persistent = bool(meta.get("persistent", channel.persistent))
+        if meta.get("agent_limit") is not None:
+            channel.agent_limit = meta["agent_limit"]
+        if isinstance(meta.get("extra_meta"), dict):
+            channel.extra_meta.update(meta["extra_meta"])
+        if meta.get("created_at") is not None:
+            channel.created_at = meta["created_at"]
+
+    async def _handle_stags(self, msg: Message) -> None:
+        """Receive agent tags from peer and apply to remote client."""
+        if len(msg.params) < 2:
+            return
+        nick = msg.params[0]
+        tags_str = msg.params[1]
+
+        rc = self.server.remote_clients.get(nick)
+        if rc is None:
+            return
+
+        rc.tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else []
+
+    async def _handle_sroomarchive(self, msg: Message) -> None:
+        """Receive archive event from peer — rename channel and mark archived."""
+        if len(msg.params) < 2:
+            return
+        channel_name = msg.params[0]
+        archive_name = msg.params[1]
+
+        channel = self.server.channels.get(channel_name)
+        if channel is None:
+            return
+
+        # Trust check
+        if channel.restricted:
+            return
+        if self.trust == "restricted" and self.peer_name not in channel.shared_with:
+            return
+
+        # Notify and part local members
+        notice = Message(
+            prefix=self.server.config.name, command="NOTICE",
+            params=["*", f"Room {channel_name} has been archived"],
+        )
+        for member in list(channel.members):
+            if not isinstance(member, RemoteClient):
+                await member.send(notice)
+                part_msg = Message(
+                    prefix=member.prefix, command="PART",
+                    params=[channel_name, "Room archived"],
+                )
+                await member.send(part_msg)
+            if hasattr(member, "channels"):
+                member.channels.discard(channel)
+
+        channel.members.clear()
+        channel.operators.clear()
+        channel.voiced.clear()
+
+        del self.server.channels[channel_name]
+        channel.name = archive_name
+        channel.archived = True
+        self.server.channels[archive_name] = channel
+
     # --- Backfill ---
 
     async def _send_backfill_request(self) -> None:
@@ -573,6 +683,22 @@ class ServerLink:
             await self.send_raw(
                 f":{origin} STOPIC {channel_name} {event.nick} :{topic}"
             )
+        elif event.type == EventType.ROOMMETA:
+            channel_name = event.channel
+            if not self.should_relay(channel_name):
+                return
+            meta = event.data.get("meta", "")
+            await self.send_raw(f":{origin} SROOMMETA {channel_name} :{meta}")
+        elif event.type == EventType.TAGS:
+            tags_str = ",".join(event.data.get("tags", []))
+            await self.send_raw(f":{origin} STAGS {event.nick} :{tags_str}")
+        elif event.type == EventType.ROOMARCHIVE:
+            channel_name = event.channel
+            archive_name = event.data.get("archive_name", "")
+            # The channel has already been renamed — check relay using the archive name
+            if not self.should_relay(archive_name):
+                return
+            await self.send_raw(f":{origin} SROOMARCHIVE {channel_name} {archive_name}")
 
     # --- Mention notifications for remote messages ---
 

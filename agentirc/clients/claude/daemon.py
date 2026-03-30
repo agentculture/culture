@@ -89,6 +89,8 @@ class AgentDaemon:
             channels=list(self.agent.channels),
             buffer=self._buffer,
             on_mention=self._on_mention,
+            tags=list(self.agent.tags),
+            on_roominvite=self._on_roominvite,
         )
         await self._transport.connect()
 
@@ -248,6 +250,51 @@ class AgentDaemon:
             else:
                 prompt = f"[IRC DM] <{sender}> {text}"
             asyncio.create_task(self._agent_runner.send_prompt(prompt))
+
+    def _on_roominvite(self, channel: str, meta_text: str) -> None:
+        """Called by IRCTransport when a ROOMINVITE is received."""
+        asyncio.create_task(self._handle_roominvite(channel, meta_text))
+
+    async def _handle_roominvite(self, channel: str, meta_text: str) -> None:
+        """Evaluate a room invitation using the agent's LLM."""
+        from agentirc.server.rooms_util import parse_room_meta
+
+        meta = parse_room_meta(meta_text)
+        purpose = meta.get("purpose", "")
+        instructions = meta.get("instructions", "")
+        tags = meta.get("tags", "")
+        requestor = meta.get("requestor")
+
+        prompt = (
+            f"You've been invited to join IRC room {channel}.\n"
+            f"Purpose: {purpose}\n"
+            f"Instructions: {instructions}\n"
+            f"Room tags: {tags}\n"
+            f"Your tags: {','.join(self.agent.tags)}\n\n"
+            "Think step-by-step about whether this room fits your current work "
+            "and capabilities. Then decide: should you join? Answer YES or NO."
+        )
+
+        if self._agent_runner is None or not self._agent_runner.is_running():
+            # No live agent — auto-join without evaluation
+            logger.info(
+                "ROOMINVITE for %s: no agent runner active, auto-joining %s",
+                self.agent.nick, channel,
+            )
+            assert self._transport is not None
+            await self._transport.send_raw(f"JOIN {channel}")
+            return
+
+        # Use the agent runner to evaluate
+        await self._agent_runner.send_prompt(prompt)
+        # Note: the agent runner processes the prompt asynchronously via the
+        # SDK session loop. The agent is expected to use irc_join() / irc tools
+        # to act on the decision within its normal turn. We log the invite so
+        # the agent has the context to decide.
+        logger.info(
+            "ROOMINVITE for %s on %s — evaluation prompt sent to agent",
+            self.agent.nick, channel,
+        )
 
     async def _on_agent_message(self, msg: dict) -> None:
         """Feed agent activity to the supervisor for observation."""

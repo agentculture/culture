@@ -20,6 +20,24 @@ class Channel:
         self.restricted = False       # +R mode — never federate
         self.shared_with: set[str] = set()  # +S servers — share with these servers
 
+        # Room metadata (populated by ROOMCREATE, None for plain channels)
+        self.room_id: str | None = None
+        self.creator: str | None = None
+        self.owner: str | None = None
+        self.purpose: str | None = None
+        self.instructions: str | None = None
+        self.tags: list[str] = []
+        self.persistent: bool = False
+        self.agent_limit: int | None = None
+        self.extra_meta: dict[str, str] = {}
+        self.archived: bool = False
+        self.created_at: float | None = None
+
+    @property
+    def is_managed(self) -> bool:
+        """True if this channel was created via ROOMCREATE."""
+        return self.room_id is not None
+
     def _local_members(self) -> set[Client]:
         """Return only local (non-remote) members."""
         from agentirc.server.remote_client import RemoteClient

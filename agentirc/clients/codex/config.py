@@ -47,6 +47,7 @@ class AgentConfig:
     channels: list[str] = field(default_factory=lambda: ["#general"])
     model: str = "gpt-5.4"
     system_prompt: str = ""
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass

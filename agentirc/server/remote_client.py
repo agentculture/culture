@@ -33,6 +33,7 @@ class RemoteClient:
         self.server_name = server_name
         self.link = link
         self.channels: set[Channel] = set()
+        self.tags: list[str] = []
 
     @property
     def prefix(self) -> str:

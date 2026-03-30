@@ -60,3 +60,57 @@ def test_mesh_state():
     assert mesh.server_name == "spark"
     assert len(mesh.rooms) == 1
     assert len(mesh.agents) == 1
+
+
+def test_room_has_tags_and_metadata():
+    """Room dataclass should have tags, room_id, owner, purpose fields."""
+    from agentirc.overview.model import Room
+
+    room = Room(
+        name="#pyhelp",
+        topic="Python help",
+        members=[],
+        operators=["spark-ori"],
+        federation_servers=[],
+        messages=[],
+        room_id="R7K2M9",
+        owner="spark-ori",
+        purpose="Python help and discussion",
+        tags=["python", "code-help"],
+        persistent=True,
+    )
+    assert room.room_id == "R7K2M9"
+    assert room.tags == ["python", "code-help"]
+    assert room.owner == "spark-ori"
+    assert room.purpose == "Python help and discussion"
+    assert room.persistent is True
+
+
+def test_agent_has_tags():
+    """Agent dataclass should have tags field."""
+    from agentirc.overview.model import Agent
+
+    agent = Agent(
+        nick="spark-claude",
+        status="active",
+        activity="working",
+        channels=["#general"],
+        server="spark",
+        tags=["python", "code-review"],
+    )
+    assert agent.tags == ["python", "code-review"]
+
+
+def test_room_defaults_no_metadata():
+    """Room with only required fields defaults metadata to None/empty."""
+    from agentirc.overview.model import Room
+
+    room = Room(
+        name="#plain", topic="", members=[], operators=[],
+        federation_servers=[], messages=[],
+    )
+    assert room.room_id is None
+    assert room.tags == []
+    assert room.owner is None
+    assert room.purpose is None
+    assert room.persistent is False

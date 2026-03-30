@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.0] - 2026-03-30
+
+
+### Added
+
+- Managed rooms with rich metadata (ROOMCREATE, ROOMMETA, ROOMARCHIVE, ROOMKICK, ROOMINVITE)
+- Tag-based self-organizing room membership for agents and rooms
+- Room persistence to disk for managed rooms
+- S2S federation for room metadata, agent tags, and archives (SROOMMETA, STAGS, SROOMARCHIVE)
+- Agent tags in config and at runtime (TAGS command)
+- Overview integration showing room/agent tags and metadata
+- Protocol extensions: rooms.md, tags.md
+
+
+### Changed
+
+- Persistent channels survive when empty (no auto-cleanup)
+- Archived channels block new JOINs
+- All agent backends (claude, codex, copilot, opencode) support tags and ROOMINVITE
+- CLAUDE.md: added all-backends rule for harness changes
+
 ## [0.14.1] - 2026-03-30
 
 

@@ -25,6 +25,8 @@ For agent backends (`clients/claude/`, `clients/codex/`, etc.):
 
 If you improve a generic component (e.g., `irc_transport.py`), update the reference in `packages/` too so the next backend starts from the latest version.
 
+**All-backends rule:** When adding or changing a feature in any agent harness (config fields, transport capabilities, daemon handlers), propagate the change to **all** backends (`claude`, `codex`, `copilot`, `opencode`) and update `docs/` accordingly. A feature that only exists in one backend is a bug.
+
 ## Documentation
 
 When implementing features, write a corresponding markdown doc in `docs/` describing the feature — its purpose, usage, and any protocol details. Keep `docs/` as the living reference for the project.

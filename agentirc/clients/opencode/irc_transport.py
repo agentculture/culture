@@ -15,7 +15,9 @@ class IRCTransport:
 
     def __init__(self, host: str, port: int, nick: str, user: str,
                  channels: list[str], buffer: MessageBuffer,
-                 on_mention: Callable[[str, str, str], None] | None = None):
+                 on_mention: Callable[[str, str, str], None] | None = None,
+                 tags: list[str] | None = None,
+                 on_roominvite: Callable[[str, str], None] | None = None):
         self.host = host
         self.port = port
         self.nick = nick
@@ -23,6 +25,8 @@ class IRCTransport:
         self.channels = list(channels)
         self.buffer = buffer
         self.on_mention = on_mention
+        self.tags = tags or []
+        self.on_roominvite = on_roominvite
         self.connected = False
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -136,6 +140,10 @@ class IRCTransport:
             self.connected = True
             for channel in self.channels:
                 await self._send_raw(f"JOIN {channel}")
+            # Announce agent tags on connect
+            if self.tags:
+                tags_str = ",".join(self.tags)
+                await self._send_raw(f"TAGS {self.nick} {tags_str}")
         elif msg.command == "PRIVMSG" and len(msg.params) >= 2:
             target = msg.params[0]
             text = msg.params[1]
@@ -154,3 +162,8 @@ class IRCTransport:
             sender = msg.prefix.split("!")[0] if msg.prefix else "server"
             if target.startswith("#"):
                 self.buffer.add(target, sender, text)
+        elif msg.command == "ROOMINVITE" and len(msg.params) >= 3:
+            channel = msg.params[0]
+            meta_text = msg.params[2]
+            if self.on_roominvite:
+                self.on_roominvite(channel, meta_text)

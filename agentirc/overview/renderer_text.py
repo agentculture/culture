@@ -50,6 +50,16 @@ def _render_room(room: Room, message_limit: int) -> str:
     """Render a single room section."""
     parts = [f"## {room.name}"]
     parts.append(f"Topic: {room.topic}" if room.topic else "Topic: (none)")
+    if room.room_id:
+        parts.append(f"Purpose: {room.purpose or ''}")
+        parts.append(f"Tags: {', '.join(room.tags) if room.tags else 'none'}")
+        meta_parts = []
+        if room.owner:
+            meta_parts.append(f"Owner: {room.owner}")
+        if room.persistent:
+            meta_parts.append("Persistent")
+        if meta_parts:
+            parts.append(" | ".join(meta_parts))
     parts.append("")
     parts.append(_agent_table(room.members))
     parts.append("")
@@ -150,6 +160,8 @@ def _render_agent_detail(mesh: MeshState, nick: str, message_limit: int) -> str:
         rows.append(("Turns", str(agent.turns)))
     if agent.uptime:
         rows.append(("Uptime", agent.uptime))
+    if agent.tags:
+        rows.append(("Tags", ", ".join(agent.tags)))
 
     parts.append("| Field | Value |")
     parts.append("|-------|-------|")

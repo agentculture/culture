@@ -63,6 +63,7 @@ async def collect_mesh_state(
                 room_agents.append(agent)
 
             op_nicks = [n for n, is_op in members if is_op]
+            room_meta = await _query_roommeta(reader, writer, nick, ch_name)
             rooms.append(Room(
                 name=ch_name,
                 topic=ch_topic,
@@ -70,6 +71,11 @@ async def collect_mesh_state(
                 operators=op_nicks,
                 federation_servers=sorted(fed_servers),
                 messages=messages,
+                room_id=room_meta.get("room_id"),
+                owner=room_meta.get("owner"),
+                purpose=room_meta.get("purpose"),
+                tags=room_meta.get("tags", []),
+                persistent=room_meta.get("persistent", False),
             ))
 
         fed_links = sorted({a.server for a in all_agents.values() if a.server != server_name})
@@ -77,6 +83,11 @@ async def collect_mesh_state(
         # Enrich local agents via daemon IPC
         if ipc_enabled:
             await _enrich_via_ipc(all_agents, server_name)
+
+        # Enrich local agents with TAGS
+        for agent_nick, agent in all_agents.items():
+            if agent.server == server_name:
+                agent.tags = await _query_tags(reader, writer, nick, agent_nick)
 
         return MeshState(
             server_name=server_name,
@@ -243,6 +254,53 @@ async def _query_history(
                 channel=channel,
             ))
     return result
+
+
+async def _query_roommeta(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    nick: str,
+    channel: str,
+) -> dict:
+    """Query ROOMMETA and return a dict with room metadata fields."""
+    writer.write(f"ROOMMETA {channel}\r\n".encode())
+    await writer.drain()
+    messages = await _recv_until(reader, writer, {"ROOMETAEND", "ERR_NOSUCHCHANNEL", "ERR_UNKNOWNCOMMAND"})
+    result: dict = {}
+    for msg in messages:
+        if msg.command == "ROOMMETA" and len(msg.params) >= 3:
+            # Server sends: ROOMMETA <channel> <key> <value>
+            key = msg.params[1].strip().lower()
+            value = msg.params[2]
+            if key == "room_id":
+                result["room_id"] = value
+            elif key == "owner":
+                result["owner"] = value
+            elif key == "purpose":
+                result["purpose"] = value
+            elif key == "tags":
+                result["tags"] = [t.strip() for t in value.split(",") if t.strip()]
+            elif key == "persistent":
+                result["persistent"] = value.lower() in ("1", "true", "yes")
+    return result
+
+
+async def _query_tags(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    nick: str,
+    target_nick: str,
+) -> list[str]:
+    """Query TAGS for an agent and return a list of tag strings."""
+    writer.write(f"TAGS {target_nick}\r\n".encode())
+    await writer.drain()
+    messages = await _recv_until(reader, writer, {"TAGSEND", "ERR_NOSUCHNICK", "ERR_UNKNOWNCOMMAND"})
+    for msg in messages:
+        if msg.command == "TAGS" and len(msg.params) >= 2:
+            # Expected format: TAGS <nick> <tag1,tag2,...>
+            tags_str = msg.params[-1]
+            return [t.strip() for t in tags_str.split(",") if t.strip()]
+    return []
 
 
 async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:

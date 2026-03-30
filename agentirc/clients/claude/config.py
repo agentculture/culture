@@ -49,6 +49,7 @@ class AgentConfig:
     model: str = "claude-opus-4-6"
     thinking: str = "medium"
     system_prompt: str = ""
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass

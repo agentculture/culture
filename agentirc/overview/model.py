@@ -27,6 +27,7 @@ class Agent:
     directory: str | None = None
     turns: int | None = None
     uptime: str | None = None
+    tags: list[str] = field(default_factory=list)
 
     @property
     def is_local(self) -> bool:
@@ -42,6 +43,11 @@ class Room:
     operators: list[str]
     federation_servers: list[str]
     messages: list[Message]
+    room_id: str | None = None
+    owner: str | None = None
+    purpose: str | None = None
+    tags: list[str] = field(default_factory=list)
+    persistent: bool = False
 
 
 @dataclass

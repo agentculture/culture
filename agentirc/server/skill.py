@@ -17,6 +17,9 @@ class EventType(Enum):
     PART = "part"
     QUIT = "quit"
     TOPIC = "topic"
+    ROOMMETA = "roommeta"
+    TAGS = "tags"
+    ROOMARCHIVE = "roomarchive"
 
 
 @dataclass
