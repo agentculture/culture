@@ -5,11 +5,18 @@ import asyncio
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
+import html as html_mod
+
 import mistune
 
 from .collector import collect_mesh_state
 from .model import MeshState
 from .renderer_text import render_text
+
+
+def _create_markdown() -> mistune.Markdown:
+    """Create a mistune renderer that escapes raw HTML in input."""
+    return mistune.create_markdown(escape=True)
 
 
 def _load_css() -> str:
@@ -43,7 +50,8 @@ def render_html(
         agent_filter=agent_filter,
         message_limit=message_limit,
     )
-    body_html = mistune.html(md_text)
+    md = _create_markdown()
+    body_html = md(md_text)
     body_html = _inject_status_badges(body_html)
     css = _load_css()
 

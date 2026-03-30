@@ -177,7 +177,7 @@ def _build_parser() -> argparse.ArgumentParser:
     overview_parser.add_argument("--agent", default=None, help="Drill down into a specific agent")
     overview_parser.add_argument("--messages", "-n", type=int, default=4, help="Messages per room (default: 4, max: 20)")
     overview_parser.add_argument("--serve", action="store_true", help="Start live web dashboard")
-    overview_parser.add_argument("--refresh", type=int, default=5, help="Web refresh interval in seconds (default: 5)")
+    overview_parser.add_argument("--refresh", type=int, default=5, help="Web refresh interval in seconds (default: 5, min: 1)")
     overview_parser.add_argument("--config", default=DEFAULT_CONFIG)
 
     return parser
@@ -1085,7 +1085,8 @@ def _cmd_overview(args: argparse.Namespace) -> None:
     from agentirc.overview.renderer_text import render_text
 
     config = load_config_or_default(args.config)
-    message_limit = min(args.messages, 20)
+    message_limit = max(1, min(args.messages, 20))
+    refresh_interval = max(1, args.refresh)
 
     if args.serve:
         from agentirc.overview.renderer_web import serve_web
@@ -1096,7 +1097,7 @@ def _cmd_overview(args: argparse.Namespace) -> None:
             room_filter=args.room,
             agent_filter=args.agent,
             message_limit=message_limit,
-            refresh_interval=args.refresh,
+            refresh_interval=refresh_interval,
         )
         return
 

@@ -37,7 +37,7 @@ async def collect_mesh_state(
         all_agents: dict[str, Agent] = {}
 
         for ch_name, ch_topic in channels:
-            members, operators = await _query_names(reader, writer, nick, ch_name)
+            members, _ = await _query_names(reader, writer, nick, ch_name)
             who_data = await _query_who(reader, writer, nick, ch_name)
             messages = await _query_history(reader, writer, nick, ch_name, message_limit)
 
@@ -196,7 +196,6 @@ async def _query_names(
             names_str = msg.params[3] if len(msg.params) > 3 else msg.params[-1]
             for name in names_str.split():
                 is_op = name.startswith("@")
-                is_voice = name.startswith("+")
                 clean = name.lstrip("@+")
                 members.append((clean, is_op))
                 if is_op:

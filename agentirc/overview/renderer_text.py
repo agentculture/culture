@@ -18,6 +18,11 @@ def _relative_time(timestamp: float) -> str:
     return f"{delta // 86400}d ago"
 
 
+def _escape_cell(text: str) -> str:
+    """Escape pipe and newline characters for markdown table cells."""
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
 def _agent_table(members: list[Agent]) -> str:
     """Render a markdown table of agents."""
     lines = [
@@ -25,8 +30,8 @@ def _agent_table(members: list[Agent]) -> str:
         "|-------|--------|----------|",
     ]
     for a in members:
-        activity = a.activity if a.is_local else ""
-        lines.append(f"| {a.nick} | {a.status} | {activity} |")
+        activity = _escape_cell(a.activity) if a.is_local else ""
+        lines.append(f"| {_escape_cell(a.nick)} | {a.status} | {activity} |")
     return "\n".join(lines)
 
 
