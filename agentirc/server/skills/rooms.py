@@ -203,8 +203,10 @@ class RoomsSkill(Skill):
             elif key == "instructions":
                 channel.instructions = value
             elif key == "tags":
+                old_tags = set(channel.tags)
                 channel.tags = [t.strip() for t in value.split(",") if t.strip()]
-                await self._on_room_tags_changed(channel)
+                new_tags = set(channel.tags)
+                await self._on_room_tags_changed(channel, old_tags, new_tags)
             elif key == "owner":
                 channel.owner = value
             elif key == "persistent":
@@ -228,9 +230,40 @@ class RoomsSkill(Skill):
                 params=[channel_name, key, value, "Updated"],
             ))
 
-    async def _on_room_tags_changed(self, channel) -> None:
-        """Placeholder for Task 6: tag-based event engine hook."""
-        pass
+    async def _on_room_tags_changed(self, channel, old_tags: set, new_tags: set) -> None:
+        """Fire tag-based notifications when a room's tags change.
+
+        - Tags ADDED: find agents with matching tags not in room → ROOMINVITE
+        - Tags REMOVED: find in-room local agents with those tags → ROOMTAGNOTICE
+        """
+        from agentirc.server.remote_client import RemoteClient
+
+        added = new_tags - old_tags
+        removed = old_tags - new_tags
+
+        if added:
+            for client in list(self.server.clients.values()):
+                if isinstance(client, RemoteClient):
+                    continue
+                client_tags = set(client.tags)
+                if client_tags & added and client not in channel.members:
+                    await self._send_system_invite(client, channel)
+
+        if removed:
+            for member in list(channel.members):
+                if isinstance(member, RemoteClient):
+                    continue
+                member_tags = set(member.tags)
+                if member_tags & removed:
+                    await member.send(Message(
+                        prefix=self.server.config.name,
+                        command="ROOMTAGNOTICE",
+                        params=[
+                            member.nick,
+                            channel.name,
+                            f"Tags removed from room: {','.join(removed & member_tags)}",
+                        ],
+                    ))
 
     async def _handle_tags(self, client: Client, msg: Message) -> None:
         if not msg.params:
@@ -281,8 +314,10 @@ class RoomsSkill(Skill):
                 )
                 return
 
+            old_tags = set(target.tags)
             target.tags = [t.strip() for t in tags_value.split(",") if t.strip()]
-            await self._on_agent_tags_changed(target)
+            new_tags = set(target.tags)
+            await self._on_agent_tags_changed(target, old_tags, new_tags)
 
             await client.send(Message(
                 prefix=self.server.config.name,
@@ -290,9 +325,48 @@ class RoomsSkill(Skill):
                 params=[nick, tags_value, "Tags updated"],
             ))
 
-    async def _on_agent_tags_changed(self, client: Client) -> None:
-        """Placeholder for Task 6: tag-based event engine hook."""
-        pass
+    async def _on_agent_tags_changed(self, client: Client, old_tags: set, new_tags: set) -> None:
+        """Fire tag-based notifications when an agent's tags change.
+
+        - Tags ADDED: find managed rooms with matching tags where agent is not a member → ROOMINVITE
+        - Tags REMOVED: find managed rooms agent is in that have those tags → ROOMTAGNOTICE
+        """
+        added = new_tags - old_tags
+        removed = old_tags - new_tags
+
+        for channel in list(self.server.channels.values()):
+            if not channel.is_managed:
+                continue
+            channel_tags = set(channel.tags)
+
+            if added and (channel_tags & added) and client not in channel.members:
+                await self._send_system_invite(client, channel)
+
+            if removed and (channel_tags & removed) and client in channel.members:
+                await client.send(Message(
+                    prefix=self.server.config.name,
+                    command="ROOMTAGNOTICE",
+                    params=[
+                        client.nick,
+                        channel.name,
+                        f"You no longer have matching tags for this room: {','.join(channel_tags & removed)}",
+                    ],
+                ))
+
+    async def _send_system_invite(self, client: Client, channel) -> None:
+        """Send a system-generated ROOMINVITE to a client for a room."""
+        parts = [channel.name]
+        if channel.purpose:
+            parts.append(f"purpose={channel.purpose}")
+        if channel.tags:
+            parts.append(f"tags={','.join(channel.tags)}")
+        if channel.instructions:
+            parts.append(f"instructions={channel.instructions}")
+        await client.send(Message(
+            prefix=self.server.config.name,
+            command="ROOMINVITE",
+            params=[client.nick, channel.name, ";".join(parts[1:]) or channel.name],
+        ))
 
     async def _handle_roominvite(self, client: Client, msg: Message) -> None:
         pass  # Task 7

@@ -1,4 +1,5 @@
 """Tests for rooms management."""
+import asyncio
 import pytest
 
 
@@ -354,3 +355,128 @@ async def test_tags_cannot_set_others(server, make_client):
     assert "permission" in joined.lower() or "NOTICE" in joined
 
     assert server.clients["testserv-bob"].tags == []
+
+
+@pytest.mark.asyncio
+async def test_room_tag_added_invites_matching_agents(server, make_client):
+    """When a room gains a tag, agents with that tag get a ROOMINVITE."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+
+    # Bob has "python" tag
+    await bob.send("TAGS testserv-bob python")
+    await bob.recv_all(timeout=0.5)
+
+    # Alice creates room without python tag
+    await alice.send("ROOMCREATE #pyhelp :purpose=Python help;tags=devops")
+    await alice.recv_all(timeout=1.0)
+    await bob.recv_all(timeout=0.3)  # drain any messages
+
+    # Alice adds python tag to the room
+    await alice.send("ROOMMETA #pyhelp tags devops,python")
+    await alice.recv_all(timeout=1.0)
+
+    # Bob should get a ROOMINVITE
+    await asyncio.sleep(0.1)
+    lines = await bob.recv_all(timeout=1.0)
+    joined = " ".join(lines)
+    assert "ROOMINVITE" in joined
+    assert "#pyhelp" in joined
+
+
+@pytest.mark.asyncio
+async def test_room_tag_removed_notifies_matching_agents(server, make_client):
+    """When a room loses a tag, in-room agents with that tag get a notice."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+
+    # Bob has "python" tag
+    await bob.send("TAGS testserv-bob python")
+    await bob.recv_all(timeout=0.5)
+
+    # Alice creates room with python tag
+    await alice.send("ROOMCREATE #pyhelp :purpose=Help;tags=python")
+    await alice.recv_all(timeout=1.0)
+
+    # Bob joins the room
+    await bob.recv_all(timeout=0.5)  # drain invite
+    await bob.send("JOIN #pyhelp")
+    await bob.recv_all(timeout=1.0)
+    await alice.recv_all(timeout=0.3)
+
+    # Alice removes python tag
+    await alice.send("ROOMMETA #pyhelp tags devops")
+    await alice.recv_all(timeout=1.0)
+
+    await asyncio.sleep(0.1)
+    lines = await bob.recv_all(timeout=1.0)
+    joined = " ".join(lines)
+    assert "ROOMTAGNOTICE" in joined
+    assert "removed" in joined.lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_tag_added_notifies_about_rooms(server, make_client):
+    """When an agent gains a tag, it gets notices about matching rooms."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+
+    # Alice creates room with python tag
+    await alice.send("ROOMCREATE #pyhelp :purpose=Python help;tags=python")
+    await alice.recv_all(timeout=1.0)
+
+    # Bob sets python tag — should get a ROOMINVITE about #pyhelp
+    await bob.send("TAGS testserv-bob python")
+    await asyncio.sleep(0.1)
+    lines = await bob.recv_all(timeout=1.0)
+    joined = " ".join(lines)
+    assert "ROOMINVITE" in joined
+    assert "#pyhelp" in joined
+
+
+@pytest.mark.asyncio
+async def test_agent_tag_removed_notifies_about_rooms(server, make_client):
+    """When an agent loses a tag, it gets a notice about rooms with that tag."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+
+    await bob.send("TAGS testserv-bob python,devops")
+    await bob.recv_all(timeout=0.5)
+
+    await alice.send("ROOMCREATE #pyhelp :purpose=Help;tags=python")
+    await alice.recv_all(timeout=1.0)
+
+    # Bob joins
+    await bob.recv_all(timeout=0.5)  # drain invite
+    await bob.send("JOIN #pyhelp")
+    await bob.recv_all(timeout=1.0)
+    await alice.recv_all(timeout=0.3)
+
+    # Bob removes python tag (keeps devops)
+    await bob.send("TAGS testserv-bob devops")
+    await asyncio.sleep(0.1)
+    lines = await bob.recv_all(timeout=1.0)
+    joined = " ".join(lines)
+    assert "ROOMTAGNOTICE" in joined
+    assert "#pyhelp" in joined
+
+
+@pytest.mark.asyncio
+async def test_no_invite_if_already_in_room(server, make_client):
+    """Tag engine doesn't invite agents already in the room."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+
+    await alice.send("TAGS testserv-alice python")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("ROOMCREATE #pyhelp :purpose=Help;tags=python")
+    await alice.recv_all(timeout=1.0)
+
+    # Alice is already in the room — adding matching tag to room shouldn't re-invite
+    await alice.send("ROOMMETA #pyhelp tags python,code-help")
+    lines = await alice.recv_all(timeout=1.0)
+    joined = " ".join(lines)
+    # Should get ROOMETASET but NOT ROOMINVITE
+    assert "ROOMETASET" in joined
+    invite_lines = [l for l in lines if "ROOMINVITE" in l]
+    assert len(invite_lines) == 0
