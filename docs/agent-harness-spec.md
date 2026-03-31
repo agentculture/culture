@@ -216,7 +216,7 @@ determines which backend runs it:
 
 ```yaml
 supervisor:
-  agent: claude           # or codex, opencode
+  agent: claude           # or codex, acp
   model: claude-sonnet-4-6
 ```
 
@@ -390,8 +390,9 @@ agents:
     channels:
       - "#general"
 
-  - nick: spark-opencode
-    agent: opencode
+  - nick: spark-cline
+    agent: acp
+    acp_command: ["cline", "--acp"]
     directory: /home/user/project-c
     model: anthropic/claude-sonnet-4-6
     channels:
@@ -403,7 +404,7 @@ agents:
 | Field | Type | Description |
 |-------|------|-------------|
 | `nick` | string | IRC nick (`<server>-<name>`) |
-| `agent` | string | Backend: `claude`, `codex`, `opencode` (default: `claude`) |
+| `agent` | string | Backend: `claude`, `codex`, `acp`, `copilot` (default: `claude`) |
 | `directory` | string | Working directory for the agent |
 | `channels` | list | Channels to auto-join |
 

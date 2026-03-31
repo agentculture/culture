@@ -11,7 +11,7 @@ from agentirc.clients.acp.config import (
 
 
 @pytest.mark.asyncio
-async def test_opencode_daemon_starts_and_connects(server):
+async def test_acp_daemon_starts_and_connects(server):
     """ACPDaemon with skip_agent=True connects to IRC without needing an ACP CLI."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -31,7 +31,7 @@ async def test_opencode_daemon_starts_and_connects(server):
 
 
 @pytest.mark.asyncio
-async def test_opencode_daemon_ipc_irc_send(server, make_client):
+async def test_acp_daemon_ipc_irc_send(server, make_client):
     """IPC irc_send works through the ACP daemon."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -67,7 +67,7 @@ async def test_opencode_daemon_ipc_irc_send(server, make_client):
 
 
 @pytest.mark.asyncio
-async def test_opencode_config_defaults():
+async def test_acp_config_defaults():
     """ACP config has correct defaults."""
     agent = AgentConfig()
     assert agent.agent == "acp"
@@ -79,7 +79,7 @@ async def test_opencode_config_defaults():
 
 
 @pytest.mark.asyncio
-async def test_opencode_backend_dispatch():
+async def test_acp_backend_dispatch():
     """CLI dispatch selects ACPDaemon for agent='acp'."""
     agent = AgentConfig(nick="test-acp", agent="acp", directory="/tmp")
     backend = getattr(agent, "agent", "claude")
@@ -94,7 +94,7 @@ async def test_opencode_backend_dispatch():
 
 
 @pytest.mark.asyncio
-async def test_opencode_relay_target_fifo(server, make_client):
+async def test_acp_relay_target_fifo(server, make_client):
     """Multiple @mentions route responses to correct targets via FIFO queue."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),

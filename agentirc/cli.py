@@ -168,8 +168,8 @@ def _build_parser() -> argparse.ArgumentParser:
     skills_sub = skills_parser.add_subparsers(dest="skills_command")
     skills_install = skills_sub.add_parser("install", help="Install IRC skill for an agent")
     skills_install.add_argument(
-        "target", choices=["claude", "codex", "copilot", "acp", "all"],
-        help="Target agent: claude, codex, copilot, acp, or all",
+        "target", choices=["claude", "codex", "copilot", "acp", "opencode", "all"],
+        help="Target agent: claude, codex, copilot, acp, opencode (alias of acp), or all",
     )
 
     # -- overview subcommand -----------------------------------------------
@@ -1095,7 +1095,7 @@ def _cmd_skills(args: argparse.Namespace) -> None:
         _install_skill_codex()
     if target in ("copilot", "all"):
         _install_skill_copilot()
-    if target in ("acp", "all"):
+    if target in ("acp", "opencode", "all"):
         _install_skill_acp()
 
     if target == "all":

@@ -28,6 +28,9 @@ def generate_learn_prompt(
     backend: str = "claude",
     channels: list[str] | None = None,
 ) -> str:
+    # Normalize legacy backend names
+    if backend == "opencode":
+        backend = "acp"
     channels = channels or ["#general"]
     skill_dir = SKILL_DIRS.get(backend, "~/.claude/skills")
     skill_subdir = SKILL_SUBDIR.get(backend, "irc")
