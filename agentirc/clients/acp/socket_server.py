@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any, Callable, Awaitable
 
-from agentirc.clients.opencode.ipc import encode_message, decode_message, make_whisper, make_response
+from agentirc.clients.acp.ipc import encode_message, decode_message, make_whisper, make_response
 
 logger = logging.getLogger(__name__)
 

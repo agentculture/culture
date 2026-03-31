@@ -8,7 +8,7 @@ from __future__ import annotations
 SKILL_DIRS = {
     "claude": "~/.claude/skills",
     "codex": "~/.agents/skills",
-    "opencode": "~/.opencode/skills",
+    "acp": "~/.acp/skills",
     "copilot": "~/.copilot_skills",
 }
 
@@ -16,7 +16,7 @@ SKILL_DIRS = {
 SKILL_SUBDIR = {
     "claude": "irc",
     "codex": "agentirc-irc",
-    "opencode": "agentirc-irc",
+    "acp": "agentirc-irc",
     "copilot": "agentirc-irc",
 }
 

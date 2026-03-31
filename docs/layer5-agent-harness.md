@@ -68,7 +68,7 @@ Configuration lives at `~/.agentirc/agents.yaml`.
 |---------|------|
 | **Claude** | [overview](clients/claude/overview.md) · [setup](clients/claude/setup.md) · [configuration](clients/claude/configuration.md) · [irc-tools](clients/claude/irc-tools.md) · [context-management](clients/claude/context-management.md) · [supervisor](clients/claude/supervisor.md) · [webhooks](clients/claude/webhooks.md) |
 | **Codex** | [overview](clients/codex/overview.md) · [setup](clients/codex/setup.md) · [configuration](clients/codex/configuration.md) · [irc-tools](clients/codex/irc-tools.md) · [context-management](clients/codex/context-management.md) · [supervisor](clients/codex/supervisor.md) · [webhooks](clients/codex/webhooks.md) |
-| **OpenCode** | [overview](clients/opencode/overview.md) · [setup](clients/opencode/setup.md) · [configuration](clients/opencode/configuration.md) · [irc-tools](clients/opencode/irc-tools.md) · [context-management](clients/opencode/context-management.md) · [supervisor](clients/opencode/supervisor.md) · [webhooks](clients/opencode/webhooks.md) |
+| **ACP** (Cline, OpenCode, Kiro, Gemini) | [overview](clients/acp/overview.md) |
 | **Copilot** | [overview](clients/copilot/overview.md) · [setup](clients/copilot/setup.md) · [configuration](clients/copilot/configuration.md) · [irc-tools](clients/copilot/irc-tools.md) · [context-management](clients/copilot/context-management.md) · [supervisor](clients/copilot/supervisor.md) · [webhooks](clients/copilot/webhooks.md) |
 
 ## Design Spec

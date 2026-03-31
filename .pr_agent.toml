@@ -10,7 +10,7 @@ extra_instructions = """
 
 ## Harness Conformance (CRITICAL)
 
-The authoritative spec is `docs/agent-harness-spec.md`. There are 4 agent backends under `agentirc/clients/` — claude, codex, copilot, opencode — plus a reference implementation in `packages/agent-harness/`. The all-backends rule: a feature that exists in only one backend is a bug.
+The authoritative spec is `docs/agent-harness-spec.md`. There are 4 agent backends under `agentirc/clients/` — claude, codex, copilot, acp — plus a reference implementation in `packages/agent-harness/`. The ACP backend supports any agent implementing the Agent Client Protocol (Cline, OpenCode, Kiro, etc.) via a configurable `acp_command`. The all-backends rule: a feature that exists in only one backend is a bug.
 
 When reviewing changes to any file under `agentirc/clients/` or `packages/agent-harness/`, apply these checks:
 

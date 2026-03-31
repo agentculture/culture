@@ -1,7 +1,10 @@
-"""OpenCode agent daemon — bridges an OpenCode agent to the IRC network.
+"""ACP agent daemon — bridges any ACP-compatible agent to the IRC network.
 
-Uses OpenCodeAgentRunner (opencode acp over ACP/JSON-RPC/stdio) and
-OpenCodeSupervisor (opencode --non-interactive for periodic evaluation).
+Supports Cline (cline --acp), OpenCode (opencode acp), and any other agent
+that implements the Agent Client Protocol over stdio.
+
+Uses ACPAgentRunner (JSON-RPC/stdio) and an SDK-based Supervisor
+(Claude Agent SDK for periodic evaluation).
 """
 
 from __future__ import annotations
@@ -14,14 +17,14 @@ import time
 from collections import deque
 from typing import Any
 
-from agentirc.clients.opencode.config import DaemonConfig, AgentConfig
-from agentirc.clients.opencode.ipc import make_response
-from agentirc.clients.opencode.irc_transport import IRCTransport
-from agentirc.clients.opencode.message_buffer import MessageBuffer
-from agentirc.clients.opencode.socket_server import SocketServer
-from agentirc.clients.opencode.webhook import WebhookClient, AlertEvent
-from agentirc.clients.opencode.agent_runner import OpenCodeAgentRunner
-from agentirc.clients.opencode.supervisor import OpenCodeSupervisor
+from agentirc.clients.acp.config import DaemonConfig, AgentConfig
+from agentirc.clients.acp.ipc import make_response
+from agentirc.clients.acp.irc_transport import IRCTransport
+from agentirc.clients.acp.message_buffer import MessageBuffer
+from agentirc.clients.acp.socket_server import SocketServer
+from agentirc.clients.acp.webhook import WebhookClient, AlertEvent
+from agentirc.clients.acp.agent_runner import ACPAgentRunner
+from agentirc.clients.acp.supervisor import Supervisor, make_sdk_evaluate_fn
 from agentirc.pidfile import write_pid, remove_pid
 
 logger = logging.getLogger(__name__)
@@ -31,20 +34,20 @@ CRASH_WINDOW_SECONDS = 300
 CRASH_RESTART_DELAY = 5
 
 
-class OpenCodeDaemon:
+class ACPDaemon:
     """Central orchestrator that ties together the IRC transport, socket server,
-    OpenCode agent runner, supervisor, and webhook client for a single agent nick."""
+    ACP agent runner, supervisor, and webhook client for a single agent nick."""
 
     def __init__(
         self,
         config: DaemonConfig,
         agent: AgentConfig,
         socket_dir: str | None = None,
-        skip_opencode: bool = False,
+        skip_agent: bool = False,
     ) -> None:
         self.config = config
         self.agent = agent
-        self.skip_opencode = skip_opencode
+        self.skip_agent = skip_agent
 
         self._socket_path = os.path.join(
             socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
@@ -55,8 +58,8 @@ class OpenCodeDaemon:
         self._transport: IRCTransport | None = None
         self._webhook: WebhookClient | None = None
         self._socket_server: SocketServer | None = None
-        self._agent_runner: OpenCodeAgentRunner | None = None
-        self._supervisor: OpenCodeSupervisor | None = None
+        self._agent_runner: ACPAgentRunner | None = None
+        self._supervisor: Supervisor | None = None
 
         # FIFO queue of relay targets — each @mention enqueues a target,
         # each agent response dequeues one, ensuring correct routing even
@@ -86,6 +89,8 @@ class OpenCodeDaemon:
 
     async def start(self) -> None:
         """Start all components in dependency order."""
+        cmd_label = " ".join(self.agent.acp_command)
+
         # 0. Write PID file for this agent
         self._pid_name = f"agent-{self.agent.nick}"
         write_pid(self._pid_name, os.getpid())
@@ -120,25 +125,28 @@ class OpenCodeDaemon:
         )
         await self._socket_server.start()
 
-        # 5. Supervisor using opencode --non-interactive
-        self._supervisor = OpenCodeSupervisor(
-            model=self.config.supervisor.model,
+        # 5. SDK-based supervisor (vendor-agnostic)
+        self._supervisor = Supervisor(
             window_size=self.config.supervisor.window_size,
             eval_interval=self.config.supervisor.eval_interval,
             escalation_threshold=self.config.supervisor.escalation_threshold,
+            evaluate_fn=make_sdk_evaluate_fn(
+                model=self.config.supervisor.model,
+                thinking=self.config.supervisor.thinking or None,
+                prompt_override=self.config.supervisor.prompt_override,
+            ),
             on_whisper=self._on_supervisor_whisper,
             on_escalation=self._on_supervisor_escalation,
-            prompt_override=self.config.supervisor.prompt_override,
         )
 
-        # 6. Optionally start the OpenCode agent runner
-        if not self.skip_opencode:
+        # 6. Optionally start the ACP agent runner
+        if not self.skip_agent:
             try:
                 await self._start_agent_runner()
             except Exception:
                 logger.exception(
-                    "Failed to start agent runner for %s, scheduling retry",
-                    self.agent.nick,
+                    "Failed to start agent runner for %s (%s), scheduling retry",
+                    self.agent.nick, cmd_label,
                 )
                 self._agent_runner = None
                 self._crash_times.append(time.time())
@@ -148,7 +156,8 @@ class OpenCodeDaemon:
         self._sleep_task = asyncio.create_task(self._sleep_scheduler())
 
         logger.info(
-            "OpenCodeDaemon started for %s (socket=%s)", self.agent.nick, self._socket_path
+            "ACPDaemon started for %s (cmd=%s, socket=%s)",
+            self.agent.nick, cmd_label, self._socket_path,
         )
 
     async def stop(self) -> None:
@@ -177,7 +186,7 @@ class OpenCodeDaemon:
         if self._pid_name:
             remove_pid(self._pid_name)
 
-        logger.info("OpenCodeDaemon stopped for %s", self.agent.nick)
+        logger.info("ACPDaemon stopped for %s", self.agent.nick)
 
     def _parse_sleep_schedule(self) -> tuple[int, int] | None:
         """Parse sleep_start/sleep_end into minutes. Returns None if invalid."""
@@ -245,9 +254,10 @@ class OpenCodeDaemon:
     # ------------------------------------------------------------------
 
     async def _start_agent_runner(self) -> None:
-        self._agent_runner = OpenCodeAgentRunner(
+        self._agent_runner = ACPAgentRunner(
             model=self.agent.model,
             directory=self.agent.directory,
+            acp_command=self.agent.acp_command,
             system_prompt=self._build_system_prompt(),
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
@@ -255,12 +265,15 @@ class OpenCodeDaemon:
         # Absorb the system prompt response without relaying to IRC
         self._mention_targets.append(None)
         await self._agent_runner.start()
-        logger.info("OpenCodeAgentRunner started for %s", self.agent.nick)
+        logger.info(
+            "ACPAgentRunner started for %s (cmd=%s)",
+            self.agent.nick, " ".join(self.agent.acp_command),
+        )
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
 
-        Formats a prompt and enqueues it so the OpenCode session picks it up.
+        Formats a prompt and enqueues it so the ACP session picks it up.
         """
         if self._paused:
             return

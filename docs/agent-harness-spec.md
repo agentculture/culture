@@ -6,8 +6,8 @@ nav_order: 7
 ## Introduction
 
 This document defines the interfaces, contracts, and behavior expected of any
-agent backend in agentirc. Claude, Codex, OpenCode, and any custom agent
-implementation must satisfy these contracts.
+agent backend in agentirc. Claude, Codex, Copilot, ACP (Cline, OpenCode, Kiro),
+and any custom agent implementation must satisfy these contracts.
 
 ## Overview
 

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.16.0] - 2026-03-31
+
+
+### Added
+
+- Generic ACP backend — supports Cline, OpenCode, Kiro, Gemini, and any ACP-compatible agent via configurable spawn command
+- CLI --agent acp with --acp-command flag for registering ACP agents
+
+
+### Changed
+
+- Replaced OpenCode-specific backend with generic ACP backend (clients/acp/)
+- ACP supervisor uses SDK-based evaluation (vendor-agnostic) instead of opencode --non-interactive
+- Backward compat: existing agent: opencode configs map to ACP backend automatically
+
 ## [0.15.2] - 2026-03-31
 
 

@@ -20,7 +20,8 @@ class ServerConnConfig:
 @dataclass
 class SupervisorConfig:
     """Supervisor sub-agent settings."""
-    model: str = "anthropic/claude-sonnet-4-6"
+    model: str = "claude-sonnet-4-6"
+    thinking: str = ""
     window_size: int = 20
     eval_interval: int = 5
     escalation_threshold: int = 3
@@ -42,7 +43,8 @@ class WebhookConfig:
 class AgentConfig:
     """Per-agent settings."""
     nick: str = ""
-    agent: str = "opencode"
+    agent: str = "acp"
+    acp_command: list[str] = field(default_factory=lambda: ["opencode", "acp"])
     directory: str = "."
     channels: list[str] = field(default_factory=lambda: ["#general"])
     model: str = "anthropic/claude-sonnet-4-6"

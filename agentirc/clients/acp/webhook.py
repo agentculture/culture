@@ -7,7 +7,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Awaitable
 
-from agentirc.clients.opencode.config import WebhookConfig
+from agentirc.clients.acp.config import WebhookConfig
 
 logger = logging.getLogger(__name__)
 

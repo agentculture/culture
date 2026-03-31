@@ -3,8 +3,8 @@ import os
 import tempfile
 import pytest
 
-from agentirc.clients.opencode.daemon import OpenCodeDaemon
-from agentirc.clients.opencode.config import (
+from agentirc.clients.acp.daemon import ACPDaemon
+from agentirc.clients.acp.config import (
     DaemonConfig, ServerConnConfig, AgentConfig,
     SupervisorConfig, WebhookConfig,
 )
@@ -12,7 +12,7 @@ from agentirc.clients.opencode.config import (
 
 @pytest.mark.asyncio
 async def test_opencode_daemon_starts_and_connects(server):
-    """OpenCodeDaemon with skip_opencode=True connects to IRC without needing opencode CLI."""
+    """ACPDaemon with skip_agent=True connects to IRC without needing an ACP CLI."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         supervisor=SupervisorConfig(),
@@ -20,7 +20,7 @@ async def test_opencode_daemon_starts_and_connects(server):
     )
     agent = AgentConfig(nick="testserv-opencode", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
-    daemon = OpenCodeDaemon(config, agent, socket_dir=sock_dir, skip_opencode=True)
+    daemon = ACPDaemon(config, agent, socket_dir=sock_dir, skip_agent=True)
     await daemon.start()
     try:
         await asyncio.sleep(0.5)
@@ -32,13 +32,13 @@ async def test_opencode_daemon_starts_and_connects(server):
 
 @pytest.mark.asyncio
 async def test_opencode_daemon_ipc_irc_send(server, make_client):
-    """IPC irc_send works through the OpenCode daemon."""
+    """IPC irc_send works through the ACP daemon."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
     )
     agent = AgentConfig(nick="testserv-opencode", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
-    daemon = OpenCodeDaemon(config, agent, socket_dir=sock_dir, skip_opencode=True)
+    daemon = ACPDaemon(config, agent, socket_dir=sock_dir, skip_agent=True)
     await daemon.start()
     await asyncio.sleep(0.5)
 
@@ -46,11 +46,11 @@ async def test_opencode_daemon_ipc_irc_send(server, make_client):
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
 
-    from agentirc.clients.opencode.ipc import encode_message, decode_message, make_request
+    from agentirc.clients.acp.ipc import encode_message, decode_message, make_request
     sock_path = os.path.join(sock_dir, "agentirc-testserv-opencode.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)
 
-    req = make_request("irc_send", channel="#general", message="hello from opencode skill")
+    req = make_request("irc_send", channel="#general", message="hello from acp skill")
     writer.write(encode_message(req))
     await writer.drain()
 
@@ -59,7 +59,7 @@ async def test_opencode_daemon_ipc_irc_send(server, make_client):
     assert resp["ok"] is True
 
     msg = await human.recv(timeout=2.0)
-    assert "hello from opencode skill" in msg
+    assert "hello from acp skill" in msg
 
     writer.close()
     await writer.wait_closed()
@@ -68,26 +68,28 @@ async def test_opencode_daemon_ipc_irc_send(server, make_client):
 
 @pytest.mark.asyncio
 async def test_opencode_config_defaults():
-    """OpenCode config has correct backend-specific defaults."""
+    """ACP config has correct defaults."""
     agent = AgentConfig()
-    assert agent.agent == "opencode"
+    assert agent.agent == "acp"
+    assert agent.acp_command == ["opencode", "acp"]
     assert agent.model == "anthropic/claude-sonnet-4-6"
 
     supervisor = SupervisorConfig()
-    assert supervisor.model == "anthropic/claude-sonnet-4-6"
+    assert supervisor.model == "claude-sonnet-4-6"
 
 
 @pytest.mark.asyncio
 async def test_opencode_backend_dispatch():
-    """CLI dispatch selects OpenCodeDaemon for agent='opencode'."""
-    agent = AgentConfig(nick="test-opencode", agent="opencode", directory="/tmp")
+    """CLI dispatch selects ACPDaemon for agent='acp'."""
+    agent = AgentConfig(nick="test-acp", agent="acp", directory="/tmp")
     backend = getattr(agent, "agent", "claude")
-    assert backend == "opencode"
+    assert backend == "acp"
 
-    # Verify OpenCodeDaemon can be imported and constructed
+    # Verify ACPDaemon can be imported and constructed
     config = DaemonConfig()
-    daemon = OpenCodeDaemon(config, agent, skip_opencode=True)
-    assert daemon.agent.agent == "opencode"
+    daemon = ACPDaemon(config, agent, skip_agent=True)
+    assert daemon.agent.agent == "acp"
+    assert daemon.agent.acp_command == ["opencode", "acp"]
     assert daemon.agent.model == "anthropic/claude-sonnet-4-6"
 
 
@@ -99,7 +101,7 @@ async def test_opencode_relay_target_fifo(server, make_client):
     )
     agent = AgentConfig(nick="testserv-opencode", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
-    daemon = OpenCodeDaemon(config, agent, socket_dir=sock_dir, skip_opencode=True)
+    daemon = ACPDaemon(config, agent, socket_dir=sock_dir, skip_agent=True)
     await daemon.start()
     await asyncio.sleep(0.5)
 

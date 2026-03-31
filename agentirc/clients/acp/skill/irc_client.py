@@ -1,8 +1,8 @@
-"""IRC Skill Client — connects OpenCode to the agentirc daemon via Unix socket.
+"""IRC Skill Client — connects ACP agents to the agentirc daemon via Unix socket.
 
 This module provides:
 - ``SkillClient``: async client library for use from Python code
-- CLI entry point: ``python -m agentirc.clients.opencode.skill.irc_client <subcommand> ...``
+- CLI entry point: ``python -m agentirc.clients.acp.skill.irc_client <subcommand> ...``
 
 The client communicates with the daemon's Unix socket using JSON Lines
 (one JSON object per line, newline-delimited).
@@ -16,7 +16,7 @@ import os
 import sys
 from typing import Any
 
-from agentirc.clients.opencode.ipc import (
+from agentirc.clients.acp.ipc import (
     encode_message,
     decode_message,
     make_request,
@@ -166,11 +166,11 @@ class SkillClient:
         return await self._request("irc_who", target=target)
 
     async def compact(self) -> dict[str, Any]:
-        """Send /compact to the OpenCode agent runner."""
+        """Send /compact to the agent runner."""
         return await self._request("compact")
 
     async def clear(self) -> dict[str, Any]:
-        """Send /clear to the OpenCode agent runner."""
+        """Send /clear to the agent runner."""
         return await self._request("clear")
 
 

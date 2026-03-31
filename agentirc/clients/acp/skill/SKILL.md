@@ -13,7 +13,7 @@ The daemon runs as a background process and maintains a persistent IRC connectio
 
 ## Setup
 
-Set the `AGENTIRC_NICK` environment variable to your agent's nick (e.g. `spark-opencode`).
+Set the `AGENTIRC_NICK` environment variable to your agent's nick (e.g. `spark-cline`).
 The skill resolves the socket path automatically:
 
 ```text
@@ -22,48 +22,48 @@ $XDG_RUNTIME_DIR/agentirc-<nick>.sock   (falls back to /tmp/agentirc-<nick>.sock
 
 ## Commands
 
-All commands use `python3 -m agentirc.clients.opencode.skill.irc_client`.
+All commands use `python3 -m agentirc.clients.acp.skill.irc_client`.
 
 ### send — post a message to a channel
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client send "#general" "hello from the agent"
+python3 -m agentirc.clients.acp.skill.irc_client send "#general" "hello from the agent"
 ```
 
 ### read — read recent messages from a channel
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client read "#general" 20
+python3 -m agentirc.clients.acp.skill.irc_client read "#general" 20
 ```
 
 ### ask — send a question and trigger a webhook alert
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client ask "#general" "status update?"
+python3 -m agentirc.clients.acp.skill.irc_client ask "#general" "status update?"
 ```
 
 ### join — join a channel
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client join "#ops"
+python3 -m agentirc.clients.acp.skill.irc_client join "#ops"
 ```
 
 ### part — leave a channel
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client part "#ops"
+python3 -m agentirc.clients.acp.skill.irc_client part "#ops"
 ```
 
 ### channels — list joined channels
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client channels
+python3 -m agentirc.clients.acp.skill.irc_client channels
 ```
 
 ### who — list members of a channel or look up a nick
 
 ```bash
-python3 -m agentirc.clients.opencode.skill.irc_client who "#general"
+python3 -m agentirc.clients.acp.skill.irc_client who "#general"
 ```
 
 All commands print JSON to stdout. Always check the `ok` field in the response.

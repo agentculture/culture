@@ -1,4 +1,8 @@
-"""OpenCode agent runner — manages opencode acp via ACP/JSON-RPC over stdio."""
+"""ACP agent runner — manages any ACP-compatible agent via JSON-RPC over stdio.
+
+Supports any agent that implements the Agent Client Protocol (ACP), such as
+Cline (cline --acp), OpenCode (opencode acp), and others.
+"""
 
 from __future__ import annotations
 
@@ -13,19 +17,26 @@ from typing import Any, Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 
-class OpenCodeAgentRunner:
-    """Manages an OpenCode ACP session for the agentirc daemon."""
+class ACPAgentRunner:
+    """Manages an ACP session for the agentirc daemon.
+
+    Works with any ACP-compatible agent by configuring the spawn command
+    via the ``acp_command`` parameter (e.g. ``["cline", "--acp"]`` or
+    ``["opencode", "acp"]``).
+    """
 
     def __init__(
         self,
         model: str,
         directory: str,
+        acp_command: list[str] | None = None,
         system_prompt: str = "",
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.model = model
         self.directory = directory
+        self.acp_command = acp_command or ["opencode", "acp"]
         self.system_prompt = system_prompt
         self.on_exit = on_exit
         self.on_message = on_message
@@ -52,21 +63,22 @@ class OpenCodeAgentRunner:
         return self._session_id
 
     async def start(self, initial_prompt: str = "") -> None:
-        """Start opencode acp as a subprocess and initialize a session."""
+        """Start the ACP agent as a subprocess and initialize a session."""
         self._stopping = False
 
-        # Isolate from host config (~/.config/opencode/, XDG, etc.)
-        self._isolated_home = tempfile.mkdtemp(prefix="agentirc-opencode-")
+        # Isolate from host config (XDG, etc.)
+        self._isolated_home = tempfile.mkdtemp(prefix="agentirc-acp-")
         isolated_env = dict(os.environ)
         isolated_env["HOME"] = self._isolated_home
         isolated_env.pop("XDG_CONFIG_HOME", None)
 
+        cmd_label = " ".join(self.acp_command)
         try:
-            # Spawn opencode acp in stdio mode
+            # Spawn ACP agent in stdio mode
             # Use a large stdout buffer — ACP messages (especially session/new with
             # all available models) can exceed asyncio's default 64KB line limit.
             self._process = await asyncio.create_subprocess_exec(
-                "opencode", "acp",
+                *self.acp_command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -85,9 +97,9 @@ class OpenCodeAgentRunner:
                     "fs": {"readTextFile": True, "writeTextFile": True},
                     "terminal": True,
                 },
-                "clientInfo": {"name": "agentirc-opencode", "version": "0.1.0"},
+                "clientInfo": {"name": "agentirc-acp", "version": "0.1.0"},
             })
-            logger.info("OpenCode initialized: %s", resp)
+            logger.info("ACP initialized (%s): %s", cmd_label, resp)
 
             # Create a session with model selection
             session_params = {
@@ -98,11 +110,11 @@ class OpenCodeAgentRunner:
                 session_params["model"] = self.model
             resp = await self._send_request("session/new", session_params)
 
-            logger.info("OpenCode session/new raw response: %s", json.dumps(resp)[:500])
+            logger.info("ACP session/new raw response: %s", json.dumps(resp)[:500])
             result = resp.get("result", {})
             self._session_id = result.get("sessionId")
             self._running = True
-            logger.info("OpenCode session started: %s", self._session_id)
+            logger.info("ACP session started (%s): %s", cmd_label, self._session_id)
 
             # Start the prompt processing loop
             self._task = asyncio.create_task(self._prompt_loop())
@@ -120,7 +132,7 @@ class OpenCodeAgentRunner:
             raise
 
     async def stop(self) -> None:
-        """Stop the opencode acp process."""
+        """Stop the ACP agent process."""
         self._stopping = True
         self._running = False
 
@@ -238,7 +250,7 @@ class OpenCodeAgentRunner:
         except (asyncio.CancelledError, ConnectionError):
             pass
         except Exception:
-            logger.exception("OpenCode read loop error")
+            logger.exception("ACP read loop error")
         finally:
             # Wait for process to fully exit and notify daemon for crash recovery
             returncode = -1
@@ -270,9 +282,10 @@ class OpenCodeAgentRunner:
                 await self.on_exit(returncode)
 
     async def _stderr_loop(self) -> None:
-        """Log stderr output from the opencode process."""
+        """Log stderr output from the ACP agent process."""
         if not self._process or not self._process.stderr:
             return
+        cmd_name = self.acp_command[0]
         try:
             while True:
                 line = await self._process.stderr.readline()
@@ -280,7 +293,7 @@ class OpenCodeAgentRunner:
                     break
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text:
-                    logger.warning("opencode stderr: %s", text)
+                    logger.warning("acp[%s] stderr: %s", cmd_name, text)
         except (asyncio.CancelledError, ConnectionError):
             pass
 
@@ -324,7 +337,7 @@ class OpenCodeAgentRunner:
                     await self._process.stdin.drain()
 
         elif method == "error":
-            logger.error("OpenCode error: %s", params)
+            logger.error("ACP error (%s): %s", self.acp_command[0], params)
 
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""
@@ -360,7 +373,7 @@ class OpenCodeAgentRunner:
                         await asyncio.sleep(0.1)
 
                 except Exception:
-                    logger.exception("OpenCode turn error")
+                    logger.exception("ACP turn error")
 
         except asyncio.CancelledError:
             pass

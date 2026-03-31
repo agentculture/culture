@@ -9,7 +9,7 @@ nav_order: 8
 ## Overview
 
 Qodo PR review is configured to enforce conformance across all 4 agent
-backends (claude, codex, copilot, opencode). When a PR touches files under
+backends (claude, codex, copilot, acp). When a PR touches files under
 `agentirc/clients/` or `packages/agent-harness/`, Qodo applies 7 checks
 that prevent backends from drifting apart.
 

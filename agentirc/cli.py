@@ -103,7 +103,8 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser = sub.add_parser("init", help="Register an agent for the current directory")
     init_parser.add_argument("--server", default=None, help="Server name prefix")
     init_parser.add_argument("--nick", default=None, help="Agent suffix (after server-)")
-    init_parser.add_argument("--agent", default="claude", choices=["claude", "codex", "opencode", "copilot"], help="Agent backend")
+    init_parser.add_argument("--agent", default="claude", choices=["claude", "codex", "copilot", "acp"], help="Agent backend")
+    init_parser.add_argument("--acp-command", default=None, help="ACP spawn command as JSON list (e.g. '[\"cline\",\"--acp\"]')")
     init_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
 
     # -- start subcommand --------------------------------------------------
@@ -167,8 +168,8 @@ def _build_parser() -> argparse.ArgumentParser:
     skills_sub = skills_parser.add_subparsers(dest="skills_command")
     skills_install = skills_sub.add_parser("install", help="Install IRC skill for an agent")
     skills_install.add_argument(
-        "target", choices=["claude", "codex", "opencode", "copilot", "all"],
-        help="Target agent: claude, codex, opencode, copilot, or all",
+        "target", choices=["claude", "codex", "copilot", "acp", "all"],
+        help="Target agent: claude, codex, copilot, acp, or all",
     )
 
     # -- overview subcommand -----------------------------------------------
@@ -413,19 +414,28 @@ def _cmd_init(args: argparse.Namespace) -> None:
             directory=os.getcwd(),
             channels=["#general"],
         )
-    elif args.agent == "opencode":
-        from agentirc.clients.opencode.config import AgentConfig as OpenCodeAgentConfig
-        agent = OpenCodeAgentConfig(
-            nick=full_nick,
-            agent="opencode",
-            directory=os.getcwd(),
-            channels=["#general"],
-        )
     elif args.agent == "copilot":
         from agentirc.clients.copilot.config import AgentConfig as CopilotAgentConfig
         agent = CopilotAgentConfig(
             nick=full_nick,
             agent="copilot",
+            directory=os.getcwd(),
+            channels=["#general"],
+        )
+    elif args.agent == "acp":
+        import json as _json
+        from agentirc.clients.acp.config import AgentConfig as ACPAgentConfig
+        acp_cmd = ["opencode", "acp"]
+        if args.acp_command:
+            try:
+                acp_cmd = _json.loads(args.acp_command)
+            except _json.JSONDecodeError:
+                # Treat as a simple command name (e.g. "cline --acp")
+                acp_cmd = args.acp_command.split()
+        agent = ACPAgentConfig(
+            nick=full_nick,
+            agent="acp",
+            acp_command=acp_cmd,
             directory=os.getcwd(),
             channels=["#general"],
         )
@@ -529,19 +539,34 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
             agents=config.agents,
         )
         daemon = CodexDaemon(codex_config, agent)
-    elif backend == "opencode":
-        from agentirc.clients.opencode.daemon import OpenCodeDaemon
-        from agentirc.clients.opencode.config import (
-            DaemonConfig as OpenCodeDaemonConfig,
+    elif backend in ("acp", "opencode"):
+        from agentirc.clients.acp.daemon import ACPDaemon
+        from agentirc.clients.acp.config import (
+            DaemonConfig as ACPDaemonConfig,
+            AgentConfig as ACPAgentConfig,
         )
-        # Re-load config through OpenCode module for correct supervisor defaults
-        opencode_config = OpenCodeDaemonConfig(
+        # Re-load config through ACP module for correct supervisor defaults
+        acp_config = ACPDaemonConfig(
             server=config.server,
             webhooks=config.webhooks,
             buffer_size=config.buffer_size,
             agents=config.agents,
         )
-        daemon = OpenCodeDaemon(opencode_config, agent)
+        # Backward compat: opencode -> acp with default command
+        if not isinstance(agent, ACPAgentConfig):
+            acp_agent = ACPAgentConfig(
+                nick=agent.nick,
+                agent="acp",
+                acp_command=getattr(agent, "acp_command", None) or ["opencode", "acp"],
+                directory=agent.directory,
+                channels=list(agent.channels),
+                model=agent.model,
+                system_prompt=agent.system_prompt,
+                tags=list(agent.tags),
+            )
+        else:
+            acp_agent = agent
+        daemon = ACPDaemon(acp_config, acp_agent)
     elif backend == "copilot":
         from agentirc.clients.copilot.daemon import CopilotDaemon
         from agentirc.clients.copilot.config import (
@@ -1018,24 +1043,6 @@ def _install_skill_codex() -> None:
     print(f"Installed Codex skill: {dest}")
 
 
-def _get_bundled_opencode_skill_path() -> str:
-    """Return the path to the bundled OpenCode SKILL.md in the installed package."""
-    import agentirc
-    return os.path.join(os.path.dirname(agentirc.__file__), "clients", "opencode", "skill", "SKILL.md")
-
-
-def _install_skill_opencode() -> None:
-    """Install IRC skill for OpenCode."""
-    src = _get_bundled_opencode_skill_path()
-    dest_dir = os.path.expanduser("~/.opencode/skills/agentirc-irc")
-    dest = os.path.join(dest_dir, "SKILL.md")
-
-    os.makedirs(dest_dir, exist_ok=True)
-    import shutil
-    shutil.copy2(src, dest)
-    print(f"Installed OpenCode skill: {dest}")
-
-
 def _get_bundled_copilot_skill_path() -> str:
     """Return the path to the bundled Copilot SKILL.md in the installed package."""
     import agentirc
@@ -1054,9 +1061,27 @@ def _install_skill_copilot() -> None:
     print(f"Installed Copilot skill: {dest}")
 
 
+def _get_bundled_acp_skill_path() -> str:
+    """Return the path to the bundled ACP SKILL.md in the installed package."""
+    import agentirc
+    return os.path.join(os.path.dirname(agentirc.__file__), "clients", "acp", "skill", "SKILL.md")
+
+
+def _install_skill_acp() -> None:
+    """Install IRC skill for ACP agents (Cline, OpenCode, etc.)."""
+    src = _get_bundled_acp_skill_path()
+    dest_dir = os.path.expanduser("~/.acp/skills/agentirc-irc")
+    dest = os.path.join(dest_dir, "SKILL.md")
+
+    os.makedirs(dest_dir, exist_ok=True)
+    import shutil
+    shutil.copy2(src, dest)
+    print(f"Installed ACP skill: {dest}")
+
+
 def _cmd_skills(args: argparse.Namespace) -> None:
     if not hasattr(args, "skills_command") or args.skills_command != "install":
-        print("Usage: agentirc skills install <claude|codex|opencode|copilot|all>", file=sys.stderr)
+        print("Usage: agentirc skills install <claude|codex|copilot|acp|all>", file=sys.stderr)
         sys.exit(1)
 
     target = args.target
@@ -1065,13 +1090,13 @@ def _cmd_skills(args: argparse.Namespace) -> None:
         _install_skill_claude()
     if target in ("codex", "all"):
         _install_skill_codex()
-    if target in ("opencode", "all"):
-        _install_skill_opencode()
     if target in ("copilot", "all"):
         _install_skill_copilot()
+    if target in ("acp", "all"):
+        _install_skill_acp()
 
     if target == "all":
-        print("\nSkills installed for Claude Code, Codex, OpenCode, and Copilot.")
+        print("\nSkills installed for Claude Code, Codex, Copilot, and ACP.")
     print(f"\nSet AGENTIRC_NICK in your shell profile to enable the skill.")
 
 
