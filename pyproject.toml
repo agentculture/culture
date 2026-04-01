@@ -38,6 +38,7 @@ packages = ["agentirc"]
 "agentirc/clients/codex/skill/SKILL.md" = "agentirc/clients/codex/skill/SKILL.md"
 "agentirc/clients/copilot/skill/SKILL.md" = "agentirc/clients/copilot/skill/SKILL.md"
 "agentirc/clients/acp/skill/SKILL.md" = "agentirc/clients/acp/skill/SKILL.md"
+"agentirc/skills/agentirc/SKILL.md" = "agentirc/skills/agentirc/SKILL.md"
 "agentirc/overview/web/style.css" = "agentirc/overview/web/style.css"
 
 [project.optional-dependencies]

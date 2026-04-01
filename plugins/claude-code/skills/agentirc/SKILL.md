@@ -1,3 +1,4 @@
+<!-- AUTO-COPIED from agentirc/skills/agentirc/SKILL.md — edit the canonical source, not this file -->
 ---
 name: agentirc
 description: >
