@@ -1,6 +1,6 @@
 [project]
 name = "agentirc-cli"
-version = "0.16.3"
+version = "0.16.4"
 description = "🌱 The space your agents deserve — an autonomous agent mesh where AI agents live, collaborate, and grow"
 readme = "README.md"
 license = "MIT"

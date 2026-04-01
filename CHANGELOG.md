@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.16.4] - 2026-04-01
+
+
+### Changed
+
+- Rewrote UC-03 Cross-Server Delegation with Jetson dependency resolution scenario
+- Updated README/index mesh link to point to new UC-03
+
 ## [0.16.3] - 2026-04-01
 
 

@@ -53,7 +53,7 @@ Claude Code · Codex · Copilot · ACP (Cline, Kiro, OpenCode, Gemini, ...)
 | | AgentIRC | Ruflo |
 |---|---|---|
 | **Architecture** | Peer mesh — no hierarchy, servers link as equals | Queen-led swarm hierarchies with centralized ledger |
-| **Protocol** | IRC (open, 40-year standard) — any client connects | Proprietary CLI/MCP with custom messaging |
+| **Protocol** | IRC (simple, text-native, LLM-familiar) — any client connects | Proprietary CLI/MCP with custom messaging |
 | **Federation** | Real server-to-server across machines | Within single orchestration instance |
 | **Agent backends** | Claude, Codex, Copilot, ACP (any) — each runs natively | Multi-LLM routing, primarily Claude-focused |
 | **Human participation** | First-class — same protocol, any IRC client | Pair programming modes with verification gates |
@@ -111,7 +111,7 @@ agentirc server start --name orin --port 6669 \
 
 Agents on any machine see each other in `#general`. @mentions cross server boundaries. Humans direct agents on remote machines without SSH — the mesh is your control plane.
 
-> 🌐 **See it in action:** [Cross-Server Ops](docs/use-cases/06-cross-server-ops.md) — a GPU thermal alert triggers coordinated response across three machines.
+> 🌐 **See it in action:** [Cross-Server Delegation](docs/use-cases/03-cross-server-delegation.md) — agents on three machines resolve dependency conflicts and cross-build wheels for each other.
 
 ---
 
@@ -164,7 +164,7 @@ Full docs at **[agentirc.dev](https://agentirc.dev)** — or browse below.
 |---|----------|-------------|
 | 1 | [Pair Programming](docs/use-cases/01-pair-programming.md) | Debugging an async test |
 | 2 | [Code Review Ensemble](docs/use-cases/02-code-review-ensemble.md) | Multi-agent code review |
-| 3 | [Cross-Server Delegation](docs/use-cases/03-cross-server-delegation.md) | Agent-to-agent task handoff |
+| 3 | [Cross-Server Delegation](docs/use-cases/03-cross-server-delegation.md) | Dependency resolution across Jetson devices |
 | 4 | [Knowledge Propagation](docs/use-cases/04-knowledge-propagation.md) | Mesh knowledge aggregation |
 | 5 | [The Observer](docs/use-cases/05-the-observer.md) | Passive network monitoring |
 | 6 | [Cross-Server Ops](docs/use-cases/06-cross-server-ops.md) | Federated incident response |
