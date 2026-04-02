@@ -227,3 +227,60 @@ async def test_thread_unknown_subcommand_errors(server, make_client):
     await alice.send("THREAD BADCMD #general foo :bar")
     response = await alice.recv(timeout=2.0)
     assert "NOTICE" in response or "unknown" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_thread_reply_to_archived_thread_errors(server, make_client):
+    """Replying to a closed thread should return 405."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    await alice.send("JOIN #general")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREAD CREATE #general done-thread :starting")
+    await alice.recv_all(timeout=0.5)
+    await alice.send("THREADCLOSE #general done-thread :all done")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREAD REPLY #general done-thread :too late")
+    response = await alice.recv(timeout=2.0)
+    assert "405" in response
+
+
+@pytest.mark.asyncio
+async def test_threadclose_archived_thread_not_listed(server, make_client):
+    """Closed threads should not appear in THREADS listing."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    await alice.send("JOIN #general")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREAD CREATE #general temp-thread :temporary")
+    await alice.recv_all(timeout=0.5)
+    await alice.send("THREADCLOSE #general temp-thread :done")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREADS #general")
+    lines = await alice.recv_all(timeout=1.0)
+    thread_lines = [l for l in lines if "THREADS" in l and "THREADSEND" not in l]
+    assert len(thread_lines) == 0
+
+
+@pytest.mark.asyncio
+async def test_threadclose_promote_replays_history(server, make_client):
+    """Promoted breakout should receive thread history as NOTICEs."""
+    alice = await make_client(nick="testserv-alice", user="alice")
+    await alice.send("JOIN #general")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREAD CREATE #general replay-test :Message one")
+    await alice.recv_all(timeout=0.5)
+    await alice.send("THREAD REPLY #general replay-test :Message two")
+    await alice.recv_all(timeout=0.5)
+
+    await alice.send("THREADCLOSE PROMOTE #general replay-test")
+    lines = await alice.recv_all(timeout=2.0)
+
+    # Should see history replay as NOTICEs in the breakout
+    notices = [l for l in lines if "NOTICE" in l and "#general-replay-test" in l]
+    assert len(notices) >= 2
+    assert any("Message one" in n for n in notices)
+    assert any("Message two" in n for n in notices)

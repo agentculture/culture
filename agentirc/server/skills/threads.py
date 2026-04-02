@@ -36,14 +36,19 @@ class Thread:
     summary: str | None = None
     max_messages: int = 500
 
+    @property
+    def participants(self) -> set[str]:
+        return {m.nick for m in self.messages}
+
 
 class ThreadsSkill(Skill):
     name = "threads"
     commands = {"THREAD", "THREADS", "THREADCLOSE"}
 
-    def __init__(self) -> None:
+    def __init__(self, max_messages: int = 500) -> None:
         # key: (channel_name, thread_name) -> Thread
         self._threads: dict[tuple[str, str], Thread] = {}
+        self.max_messages = max_messages
 
     async def on_command(self, client: Client, msg: Message) -> None:
         handler = {
@@ -122,6 +127,7 @@ class ThreadsSkill(Skill):
             channel=channel_name,
             creator=client.nick,
             created_at=now,
+            max_messages=self.max_messages,
         )
         thread.messages.append(ThreadMessage(
             nick=client.nick,
@@ -132,6 +138,7 @@ class ThreadsSkill(Skill):
         self._threads[key] = thread
 
         # Deliver prefixed PRIVMSG to channel members
+        prefixed = f"[thread:{thread_name}] {text}"
         await self._deliver_thread_msg(client, channel, thread_name, text)
 
         # Emit event
@@ -139,7 +146,7 @@ class ThreadsSkill(Skill):
             type=EventType.THREAD_CREATE,
             channel=channel_name,
             nick=client.nick,
-            data={"thread": thread_name, "text": text},
+            data={"text": prefixed, "thread": thread_name, "raw_text": text},
         ))
 
     async def _handle_reply(self, client: Client, msg: Message) -> None:
@@ -195,6 +202,7 @@ class ThreadsSkill(Skill):
             thread.messages = thread.messages[-thread.max_messages:]
 
         # Deliver prefixed PRIVMSG to channel members
+        prefixed = f"[thread:{thread_name}] {text}"
         await self._deliver_thread_msg(client, channel, thread_name, text)
 
         # Emit event
@@ -202,7 +210,7 @@ class ThreadsSkill(Skill):
             type=EventType.THREAD_MESSAGE,
             channel=channel_name,
             nick=client.nick,
-            data={"thread": thread_name, "text": text},
+            data={"text": prefixed, "thread": thread_name, "raw_text": text},
         ))
 
     async def _deliver_thread_msg(self, sender, channel, thread_name: str, text: str) -> None:
@@ -246,7 +254,7 @@ class ThreadsSkill(Skill):
                     params=[
                         channel_name,
                         thread.name,
-                        f"{thread.creator} {len(thread.messages)} {thread.created_at}",
+                        f"{thread.creator} {len(thread.messages)} {int(thread.created_at)}",
                     ],
                 ))
 
@@ -310,8 +318,7 @@ class ThreadsSkill(Skill):
             return
 
         # Authorization: thread participants or channel operators
-        participants = {m.nick for m in thread.messages}
-        if client.nick not in participants and not channel.is_operator(client):
+        if client.nick not in thread.participants and not channel.is_operator(client):
             await client.send_numeric(
                 replies.ERR_CHANOPRIVSNEEDED, channel_name, "Not authorized to close this thread"
             )
@@ -322,11 +329,22 @@ class ThreadsSkill(Skill):
         thread.summary = summary
 
         # Post summary NOTICE to parent channel
-        summary_text = summary or f"Thread '{thread_name}' closed ({len(thread.messages)} messages)"
+        n_participants = len(thread.participants)
+        n_messages = len(thread.messages)
+        if summary:
+            summary_text = (
+                f"[Thread {thread_name} closed] Summary: {summary} "
+                f"({n_participants} participants, {n_messages} messages)"
+            )
+        else:
+            summary_text = (
+                f"[Thread {thread_name} closed] "
+                f"({n_participants} participants, {n_messages} messages)"
+            )
         notice = Message(
             prefix=self.server.config.name,
             command="NOTICE",
-            params=[channel_name, f"[thread:{thread_name}] closed: {summary_text}"],
+            params=[channel_name, summary_text],
         )
         from agentirc.server.remote_client import RemoteClient
         for member in list(channel.members):
@@ -399,7 +417,7 @@ class ThreadsSkill(Skill):
 
         # Gather participants (unique nicks who posted in the thread)
         from agentirc.server.remote_client import RemoteClient
-        participant_nicks = {m.nick for m in thread.messages}
+        participant_nicks = thread.participants
         participants = []
         for nick in participant_nicks:
             c = self.server.clients.get(nick)
@@ -457,3 +475,15 @@ class ThreadsSkill(Skill):
                 "breakout": breakout_name,
             },
         ))
+
+    # ---- Public helpers ------------------------------------------------------
+
+    def get_thread(self, channel: str, name: str) -> Thread | None:
+        return self._threads.get((channel, name))
+
+    def get_thread_messages(self, channel: str, name: str,
+                            limit: int = 50) -> list[ThreadMessage]:
+        thread = self._threads.get((channel, name))
+        if thread is None:
+            return []
+        return thread.messages[-limit:]
