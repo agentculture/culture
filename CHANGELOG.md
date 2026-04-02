@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.18.0] - 2026-04-02
+
+
+### Added
+
+- S2S link auto-reconnect with exponential backoff (5s to 120s)
+- Declarative mesh.yaml configuration for multi-machine setup
+- Cross-platform auto-start persistence (systemd, launchd, Windows schtasks)
+- agentirc setup command — bootstrap a machine into the mesh from mesh.yaml
+- agentirc update command — upgrade package and gracefully restart all services
+- --foreground flag for server start and agent start (required by service managers)
+- Windows platform support guards (no fork, SIGTERM fallback)
+
+
+### Changed
+
+- S2S links now auto-retry on initial startup failure
+- SQUIT (intentional delink) suppresses reconnect attempts
+- Incoming peer connections cancel outbound retry tasks
+
 ## [0.17.0] - 2026-04-01
 
 
