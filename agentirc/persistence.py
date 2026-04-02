@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 LOG_DIR = os.path.expanduser("~/.agentirc/logs")
 
@@ -41,7 +43,7 @@ def _run_cmd(args: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 def _build_systemd_unit(name: str, command: list[str], description: str) -> str:
-    exec_start = " ".join(command)
+    exec_start = " ".join(shlex.quote(arg) for arg in command)
     return (
         f"[Unit]\n"
         f"Description={description}\n"
@@ -58,7 +60,7 @@ def _build_systemd_unit(name: str, command: list[str], description: str) -> str:
 
 
 def _build_launchd_plist(name: str, command: list[str], description: str) -> str:
-    args = "\n".join(f"        <string>{arg}</string>" for arg in command)
+    args = "\n".join(f"        <string>{xml_escape(arg)}</string>" for arg in command)
     log_path = os.path.join(LOG_DIR, f"{name}.log")
     return (
         f'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -86,7 +88,7 @@ def _build_launchd_plist(name: str, command: list[str], description: str) -> str
 
 
 def _build_windows_bat(command: list[str]) -> str:
-    cmd_line = " ".join(command)
+    cmd_line = subprocess.list2cmdline(command)
     return (
         f"@echo off\n"
         f":loop\n"

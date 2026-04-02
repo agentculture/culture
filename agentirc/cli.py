@@ -363,7 +363,7 @@ async def _run_server(name: str, host: str, port: int, links: list | None = None
             logger.info("Linking to %s at %s:%d", lc.name, lc.host, lc.port)
         except Exception as e:
             logger.error("Failed to link to %s: %s — will retry", lc.name, e)
-            ircd._maybe_retry_link(lc.name)
+            ircd.maybe_retry_link(lc.name)
 
     stop_event = asyncio.Event()
     loop = asyncio.get_event_loop()
@@ -575,18 +575,28 @@ def _cmd_start(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    if len(agents) == 1:
-        agent = agents[0]
-        print(f"Starting agent {agent.nick}...")
-        asyncio.run(_run_single_agent(config, agent))
-    else:
-        if getattr(args, "foreground", False):
+    foreground = getattr(args, "foreground", False)
+
+    if foreground:
+        if len(agents) != 1:
             print("--foreground requires a single agent nick, not --all", file=sys.stderr)
             sys.exit(1)
+        agent = agents[0]
+        print(f"Starting agent {agent.nick} in foreground...")
+        asyncio.run(_run_single_agent(config, agent))
+    else:
         if sys.platform == "win32":
-            print("Multi-agent daemon mode not supported on Windows. Start agents individually with --foreground.", file=sys.stderr)
-            sys.exit(1)
-        _run_multi_agents(config, agents)
+            if len(agents) == 1:
+                # Windows has no fork — run single agent in foreground
+                agent = agents[0]
+                print(f"Starting agent {agent.nick}...")
+                asyncio.run(_run_single_agent(config, agent))
+            else:
+                print("Multi-agent daemon mode not supported on Windows. Start agents individually.", file=sys.stderr)
+                sys.exit(1)
+        else:
+            # Daemonize all agents (fork each into background)
+            _run_multi_agents(config, agents)
 
 
 async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
@@ -1413,7 +1423,7 @@ def _cmd_update(args: argparse.Namespace) -> None:
         if sys.platform == "win32":
             sys.exit(subprocess.run(reexec_args).returncode)
         else:
-            os.execv(agentirc_bin, reexec_args)
+            os.execvp(agentirc_bin, reexec_args)
 
     # --skip-upgrade path: restart everything
     print(f"Restarting mesh node '{server_name}'...")

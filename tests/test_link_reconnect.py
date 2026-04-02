@@ -211,7 +211,7 @@ async def test_reconnect_after_initial_failure():
         try:
             await server_a.connect_to_peer(lc.host, lc.port, lc.password, lc.trust)
         except Exception:
-            server_a._maybe_retry_link(lc.name)
+            server_a.maybe_retry_link(lc.name)
 
     # Retry should be scheduled
     assert "beta" in server_a._link_retry_state

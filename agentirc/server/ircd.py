@@ -121,7 +121,7 @@ class IRCd:
         asyncio.create_task(link.handle())
         return link
 
-    def _maybe_retry_link(self, peer_name: str) -> None:
+    def maybe_retry_link(self, peer_name: str) -> None:
         """Schedule auto-reconnect for a dropped peer link."""
         if self._stopping:
             return
@@ -295,7 +295,7 @@ class IRCd:
 
         # Schedule auto-reconnect if this was an unexpected drop (not SQUIT)
         if peer_name and not squit:
-            self._maybe_retry_link(peer_name)
+            self.maybe_retry_link(peer_name)
 
     def _restore_persistent_rooms(self) -> None:
         """Reload persistent rooms from disk on startup."""
