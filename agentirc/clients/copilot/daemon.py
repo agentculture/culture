@@ -256,7 +256,7 @@ class CopilotDaemon:
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
 
-        Formats a prompt and enqueues it so the Copilot session picks it up.
+        When the mention is inside a thread, provides thread-scoped context.
         """
         if self._paused:
             return
@@ -265,7 +265,21 @@ class CopilotDaemon:
             # Enqueue relay target (FIFO matches prompt queue order)
             self._mention_targets.append(target if target.startswith("#") else sender)
             if target.startswith("#"):
-                prompt = f"[IRC @mention in {target}] <{sender}> {text}"
+                import re
+                thread_match = re.match(r"^\[thread:([a-zA-Z0-9\-]+)\] ", text)
+                if thread_match and self._buffer:
+                    thread_name = thread_match.group(1)
+                    thread_msgs = self._buffer.read_thread(target, thread_name)
+                    history = "\n".join(
+                        f"  <{m.nick}> {m.text}" for m in thread_msgs
+                    )
+                    prompt = (
+                        f"[IRC @mention in {target}, thread:{thread_name}]\n"
+                        f"Thread history:\n{history}\n"
+                        f"  <{sender}> {text}"
+                    )
+                else:
+                    prompt = f"[IRC @mention in {target}] <{sender}> {text}"
             else:
                 prompt = f"[IRC DM] <{sender}> {text}"
             asyncio.create_task(self._agent_runner.send_prompt(prompt))
@@ -485,6 +499,21 @@ class CopilotDaemon:
             elif msg_type == "resume":
                 return await self._ipc_resume(req_id)
 
+            elif msg_type == "irc_thread_create":
+                return await self._ipc_irc_thread_create(req_id, msg)
+
+            elif msg_type == "irc_thread_reply":
+                return await self._ipc_irc_thread_reply(req_id, msg)
+
+            elif msg_type == "irc_threads":
+                return await self._ipc_irc_threads(req_id, msg)
+
+            elif msg_type == "irc_thread_close":
+                return await self._ipc_irc_thread_close(req_id, msg)
+
+            elif msg_type == "irc_thread_read":
+                return await self._ipc_irc_thread_read(req_id, msg)
+
             elif msg_type == "shutdown":
                 asyncio.create_task(self._graceful_shutdown())
                 return make_response(req_id, ok=True)
@@ -616,6 +645,64 @@ class CopilotDaemon:
         assert self._transport is not None
         await self._transport.part_channel(channel)
         return make_response(req_id, ok=True)
+
+    async def _ipc_irc_thread_create(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        thread_name = msg.get("thread", "")
+        text = msg.get("message", "")
+        if not channel or not thread_name or not text:
+            return make_response(req_id, ok=False,
+                                 error="Missing 'channel', 'thread', or 'message'")
+        assert self._transport is not None
+        await self._transport.send_thread_create(channel, thread_name, text)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_thread_reply(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        thread_name = msg.get("thread", "")
+        text = msg.get("message", "")
+        if not channel or not thread_name or not text:
+            return make_response(req_id, ok=False,
+                                 error="Missing 'channel', 'thread', or 'message'")
+        assert self._transport is not None
+        await self._transport.send_thread_reply(channel, thread_name, text)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_threads(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        if not channel:
+            return make_response(req_id, ok=False, error="Missing 'channel'")
+        assert self._transport is not None
+        await self._transport.send_threads_list(channel)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_thread_close(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        thread_name = msg.get("thread", "")
+        summary = msg.get("summary", "")
+        if not channel or not thread_name:
+            return make_response(req_id, ok=False,
+                                 error="Missing 'channel' or 'thread'")
+        assert self._transport is not None
+        await self._transport.send_thread_close(channel, thread_name, summary)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_thread_read(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        thread_name = msg.get("thread", "")
+        limit = int(msg.get("limit", 50))
+        if not channel or not thread_name:
+            return make_response(req_id, ok=False,
+                                 error="Missing 'channel' or 'thread'")
+        assert self._buffer is not None
+        messages = self._buffer.read_thread(channel, thread_name, limit=limit)
+        return make_response(req_id, ok=True, data={
+            "messages": [
+                {"nick": m.nick, "text": m.text, "timestamp": m.timestamp,
+                 "thread": m.thread}
+                for m in messages
+            ]
+        })
 
     async def _ipc_irc_channels(self, req_id: str) -> dict:
         assert self._transport is not None

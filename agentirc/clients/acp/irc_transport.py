@@ -73,6 +73,18 @@ class IRCTransport:
     async def send_privmsg(self, target: str, text: str) -> None:
         await self._send_raw(f"PRIVMSG {target} :{text}")
 
+    async def send_thread_create(self, channel: str, thread_name: str, text: str) -> None:
+        await self._send_raw(f"THREAD CREATE {channel} {thread_name} :{text}")
+
+    async def send_thread_reply(self, channel: str, thread_name: str, text: str) -> None:
+        await self._send_raw(f"THREAD REPLY {channel} {thread_name} :{text}")
+
+    async def send_thread_close(self, channel: str, thread_name: str, summary: str) -> None:
+        await self._send_raw(f"THREADCLOSE {channel} {thread_name} :{summary}")
+
+    async def send_threads_list(self, channel: str) -> None:
+        await self._send_raw(f"THREADS {channel}")
+
     async def join_channel(self, channel: str) -> None:
         await self._send_raw(f"JOIN {channel}")
         if channel not in self.channels:
