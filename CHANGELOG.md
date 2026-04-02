@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.19.0] - 2026-04-03
+
+
+### Added
+
+- Conversation threads — inline sub-conversations with [thread:name] prefix
+- Breakout channel promotion from threads
+- Thread-scoped agent context on @mention
+- S2S federation for thread messages
+- JSON persistence for threads across restarts
+- Thread support in all 4 agent backends (claude, codex, copilot, acp)
+
+## [0.18.0] - 2026-04-03
+
+
+### Added
+
+- Conversation threads — inline sub-conversations with [thread:name] prefix
+- Breakout channel promotion from threads
+- Thread-scoped agent context on @mention
+- S2S federation for thread messages
+- JSON persistence for threads across restarts
+- Thread support in all 4 agent backends (claude, codex, copilot, acp)
+
 ## [0.17.0] - 2026-04-01
 
 
