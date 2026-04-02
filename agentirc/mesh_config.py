@@ -12,12 +12,15 @@ import yaml
 
 @dataclass
 class MeshLinkConfig:
-    """A peer server to link to."""
+    """A peer server to link to.
+
+    Passwords are NOT stored here — they live in the OS credential store.
+    Use agentirc.credentials.lookup_credential(name) to retrieve them.
+    """
 
     name: str
     host: str
     port: int = 6667
-    password: str = ""
     trust: str = "full"
 
 

@@ -97,6 +97,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Link to peer: name:host:port:password",
     )
     srv_start.add_argument(
+        "--mesh-config", default=None,
+        help="Read links from mesh.yaml + OS keyring (no passwords in CLI args)",
+    )
+    srv_start.add_argument(
         "--foreground", action="store_true",
         help="Run in foreground (for service managers)",
     )
@@ -293,6 +297,11 @@ def _server_start(args: argparse.Namespace) -> None:
         print(f"Server '{args.name}' is already running (PID {existing})")
         sys.exit(1)
 
+    # Resolve links: --mesh-config reads from mesh.yaml + OS keyring (no passwords in CLI)
+    links = list(args.link)  # from --link args (may include passwords for manual use)
+    if getattr(args, "mesh_config", None):
+        links = _resolve_links_from_mesh(args.mesh_config)
+
     if getattr(args, "foreground", False):
         # Foreground mode — run directly (for service managers)
         write_pid(pid_name, os.getpid())
@@ -300,7 +309,7 @@ def _server_start(args: argparse.Namespace) -> None:
         print(f"Server '{args.name}' starting in foreground (PID {os.getpid()})")
         print(f"  Listening on {args.host}:{args.port}")
         try:
-            asyncio.run(_run_server(args.name, args.host, args.port, args.link))
+            asyncio.run(_run_server(args.name, args.host, args.port, links))
         finally:
             remove_pid(pid_name)
         return
@@ -340,7 +349,7 @@ def _server_start(args: argparse.Namespace) -> None:
     write_pid(pid_name, os.getpid())
 
     try:
-        asyncio.run(_run_server(args.name, args.host, args.port, args.link))
+        asyncio.run(_run_server(args.name, args.host, args.port, links))
     finally:
         remove_pid(pid_name)
         os._exit(0)
@@ -1248,27 +1257,49 @@ def _cmd_overview(args: argparse.Namespace) -> None:
 
 
 # -----------------------------------------------------------------------
+# Credential helpers
+# -----------------------------------------------------------------------
+
+def _resolve_links_from_mesh(mesh_config_path: str) -> list:
+    """Load link configs from mesh.yaml, looking up passwords from OS keyring."""
+    from agentirc.mesh_config import load_mesh_config
+    from agentirc.credentials import lookup_credential
+    from agentirc.server.config import LinkConfig
+
+    mesh = load_mesh_config(mesh_config_path)
+    links = []
+    for lc in mesh.server.links:
+        password = lookup_credential(lc.name)
+        if not password:
+            logger.warning(
+                "No credential found for peer '%s' — link will not be established. "
+                "Run 'agentirc setup' to store link passwords.", lc.name
+            )
+            continue
+        links.append(LinkConfig(
+            name=lc.name, host=lc.host, port=lc.port,
+            password=password, trust=lc.trust,
+        ))
+    return links
+
+
+# -----------------------------------------------------------------------
 # Shared helpers for setup / update
 # -----------------------------------------------------------------------
 
-def _build_mesh_link_args(mesh) -> list[str]:
-    """Build --link CLI args from mesh config links."""
-    link_args = []
-    for link in mesh.server.links:
-        link_args.extend([
-            "--link", f"{link.name}:{link.host}:{link.port}:{link.password}:{link.trust}"
-        ])
-    return link_args
+def _build_server_start_cmd(mesh, agentirc_bin: str, mesh_config_path: str) -> list[str]:
+    """Build the server start command with --foreground and --mesh-config.
 
-
-def _build_server_start_cmd(mesh, agentirc_bin: str) -> list[str]:
-    """Build the server start command with --foreground and link args."""
+    Passwords are NOT included in the command — they come from the OS keyring
+    at startup via --mesh-config.
+    """
     return [
         agentirc_bin, "server", "start", "--foreground",
         "--name", mesh.server.name,
         "--host", mesh.server.host,
         "--port", str(mesh.server.port),
-    ] + _build_mesh_link_args(mesh)
+        "--mesh-config", mesh_config_path,
+    ]
 
 
 # -----------------------------------------------------------------------
@@ -1277,7 +1308,7 @@ def _build_server_start_cmd(mesh, agentirc_bin: str) -> list[str]:
 
 def _cmd_setup(args: argparse.Namespace) -> None:
     import getpass
-    from agentirc.mesh_config import load_mesh_config, save_mesh_config
+    from agentirc.mesh_config import load_mesh_config
     from agentirc.persistence import install_service, uninstall_service, list_services
 
     try:
@@ -1301,15 +1332,20 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         print("Done.")
         return
 
-    # Prompt for missing link passwords
-    changed = False
+    # Prompt for link passwords and store in OS keyring (never in files)
+    from agentirc.credentials import store_credential, lookup_credential
+
     for link in mesh.server.links:
-        if not link.password:
-            link.password = getpass.getpass(f"Link password for {link.name}: ")
-            changed = True
-    if changed:
-        save_mesh_config(mesh, args.config)
-        print(f"Passwords saved to {args.config}")
+        existing = lookup_credential(link.name)
+        if existing:
+            print(f"  Credential for '{link.name}' already in keyring")
+        else:
+            password = getpass.getpass(f"Link password for {link.name}: ")
+            if store_credential(link.name, password):
+                print(f"  Stored credential for '{link.name}' in OS keyring")
+            else:
+                print(f"  Warning: failed to store credential for '{link.name}'", file=sys.stderr)
+                print(f"  You may need to install secret-tool (Linux) or check Keychain access (macOS)", file=sys.stderr)
 
     # Generate agents.yaml for each workdir
     from agentirc.clients.claude.config import (
@@ -1348,7 +1384,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
 
     # Install auto-start services
     agentirc_bin = shutil.which("agentirc") or "agentirc"
-    server_cmd = _build_server_start_cmd(mesh, agentirc_bin)
+    server_cmd = _build_server_start_cmd(mesh, agentirc_bin, args.config)
     svc_name = f"agentirc-server-{server_name}"
     path = install_service(svc_name, server_cmd, f"agentirc server {server_name}")
     print(f"  Installed {svc_name} → {path}")
@@ -1480,7 +1516,7 @@ def _cmd_update(args: argparse.Namespace) -> None:
     from agentirc.persistence import install_service
 
     agentirc_bin = shutil.which("agentirc") or "agentirc"
-    server_cmd = _build_server_start_cmd(mesh, agentirc_bin)
+    server_cmd = _build_server_start_cmd(mesh, agentirc_bin, args.config)
     install_service(f"agentirc-server-{server_name}", server_cmd, f"agentirc server {server_name}")
 
     for agent in mesh.agents:
@@ -1503,7 +1539,8 @@ def _cmd_update(args: argparse.Namespace) -> None:
             "--name", server_name,
             "--host", mesh.server.host,
             "--port", str(mesh.server.port),
-        ] + _build_mesh_link_args(mesh), check=False)
+            "--mesh-config", args.config,
+        ], check=False)
 
     # Wait for server to be ready
     import socket as _socket

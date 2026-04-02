@@ -29,8 +29,7 @@ server:
     - name: thor
       host: 192.168.1.12
       port: 6667
-      password: meshsecret
-      trust: full
+      trust: full       # passwords are in OS keyring, not here
 
 agents:
   - nick: claude
@@ -62,8 +61,12 @@ agents:
 | `name` | string | required | Peer server name |
 | `host` | string | required | Peer hostname or IP |
 | `port` | int | `6667` | Peer port |
-| `password` | string | `""` | Shared link password. If blank, `setup` prompts interactively |
 | `trust` | string | `full` | `full` (share all channels) or `restricted` (share only `+S` channels) |
+
+Link passwords are stored in the **OS credential store** (GNOME Keyring on
+Linux, macOS Keychain, or Windows Credential Manager) — never in config files
+or command lines. `agentirc setup` prompts for passwords and stores them
+securely. The server retrieves them at startup via `--mesh-config`.
 
 ### agents fields
 

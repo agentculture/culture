@@ -21,7 +21,7 @@ def test_mesh_config_round_trip(tmp_path):
             host="0.0.0.0",
             port=6667,
             links=[
-                MeshLinkConfig(name="thor", host="192.168.1.12", port=6667, password="secret", trust="full"),
+                MeshLinkConfig(name="thor", host="192.168.1.12", port=6667, trust="full"),
             ],
         ),
         agents=[
@@ -38,7 +38,6 @@ def test_mesh_config_round_trip(tmp_path):
     assert loaded.server.port == 6667
     assert len(loaded.server.links) == 1
     assert loaded.server.links[0].name == "thor"
-    assert loaded.server.links[0].password == "secret"
     assert loaded.server.links[0].trust == "full"
     assert len(loaded.agents) == 2
     assert loaded.agents[0].nick == "claude"
@@ -64,19 +63,24 @@ def test_mesh_config_defaults(tmp_path):
     assert loaded.agents == []
 
 
-def test_mesh_config_empty_password(tmp_path):
-    """Empty password is preserved (signals 'prompt during setup')."""
+def test_mesh_config_no_password_field(tmp_path):
+    """MeshLinkConfig does not store passwords — they live in OS keyring."""
     config = MeshConfig(
         server=MeshServerConfig(
             name="spark",
-            links=[MeshLinkConfig(name="thor", host="1.2.3.4", port=6667, password="")],
+            links=[MeshLinkConfig(name="thor", host="1.2.3.4", port=6667)],
         ),
     )
     path = tmp_path / "mesh.yaml"
     save_mesh_config(config, path)
-    loaded = load_mesh_config(path)
 
-    assert loaded.server.links[0].password == ""
+    # Verify no password in the YAML file
+    content = path.read_text()
+    assert "password" not in content.lower() or "# password" in content.lower()
+
+    loaded = load_mesh_config(path)
+    assert loaded.server.links[0].name == "thor"
+    assert not hasattr(loaded.server.links[0], "password") or not getattr(loaded.server.links[0], "password", None)
 
 
 def test_mesh_config_file_not_found():
