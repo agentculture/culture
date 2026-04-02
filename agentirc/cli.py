@@ -377,7 +377,11 @@ async def _run_server(name: str, host: str, port: int, links: list | None = None
     stop_event = asyncio.Event()
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop_event.set)
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except (NotImplementedError, RuntimeError):
+            # Windows / unsupported event loop: fall back to stdlib signals
+            signal.signal(sig, lambda *_: stop_event.set())
 
     await stop_event.wait()
     logger.info("Server '%s' shutting down", name)
@@ -1322,9 +1326,14 @@ def _cmd_setup(args: argparse.Namespace) -> None:
 
     if args.uninstall:
         print("Uninstalling agentirc services...")
+        # Only remove services for this node (not other mesh nodes)
+        expected = {f"agentirc-server-{server_name}"}
+        for agent in mesh.agents:
+            expected.add(f"agentirc-agent-{server_name}-{agent.nick}")
         for svc in list_services():
-            print(f"  Removing {svc}")
-            uninstall_service(svc)
+            if svc in expected:
+                print(f"  Removing {svc}")
+                uninstall_service(svc)
         _server_stop_by_name(server_name)
         for agent in mesh.agents:
             full_nick = f"{server_name}-{agent.nick}"
@@ -1533,14 +1542,17 @@ def _cmd_update(args: argparse.Namespace) -> None:
     print(f"  Restarting {server_svc}...")
     if not restart_service(server_svc):
         # Fallback: start via CLI if no service file installed
-        print(f"  No service file found, starting via CLI...")
-        subprocess.run([
-            agentirc_bin, "server", "start",
-            "--name", server_name,
-            "--host", mesh.server.host,
-            "--port", str(mesh.server.port),
-            "--mesh-config", args.config,
-        ], check=False)
+        if sys.platform == "win32":
+            print(f"  No service file found. Run 'agentirc setup' to install services.", file=sys.stderr)
+        else:
+            print(f"  No service file found, starting via CLI...")
+            subprocess.run([
+                agentirc_bin, "server", "start",
+                "--name", server_name,
+                "--host", mesh.server.host,
+                "--port", str(mesh.server.port),
+                "--mesh-config", args.config,
+            ], check=False)
 
     # Wait for server to be ready
     import socket as _socket

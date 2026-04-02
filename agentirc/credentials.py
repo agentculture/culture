@@ -47,13 +47,14 @@ def store_credential(peer_name: str, password: str) -> bool:
         return rc == 0
 
     elif sys.platform == "win32":
-        # Windows Credential Manager
-        rc, _ = _run([
-            "cmdkey",
-            f"/generic:{SERVICE_NAME}-link-{peer_name}",
-            f"/user:{SERVICE_NAME}",
-            f"/pass:{password}",
-        ])
+        # Windows Credential Manager via PowerShell CredentialManager module
+        ps = (
+            "if (-not (Get-Module -ListAvailable -Name CredentialManager)) { exit 2 }\n"
+            f"New-StoredCredential -Target '{SERVICE_NAME}-link-{peer_name}' "
+            f"-UserName '{SERVICE_NAME}' -Password '{password}' "
+            "-Persist LocalMachine | Out-Null\n"
+        )
+        rc, _ = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps])
         return rc == 0
 
     else:
@@ -85,16 +86,14 @@ def lookup_credential(peer_name: str) -> str | None:
         return out if rc == 0 else None
 
     elif sys.platform == "win32":
-        # Windows: use PowerShell to read the credential
+        # Windows Credential Manager via PowerShell CredentialManager module
         ps_script = (
+            "if (-not (Get-Module -ListAvailable -Name CredentialManager)) { exit 2 }\n"
             f"$c = Get-StoredCredential -Target '{SERVICE_NAME}-link-{peer_name}'; "
-            f"if ($c) {{ $c.GetNetworkCredential().Password }} else {{ exit 1 }}"
+            "if ($c) { $c.GetNetworkCredential().Password } else { exit 1 }\n"
         )
-        rc, out = _run(["powershell", "-Command", ps_script])
-        if rc == 0 and out:
-            return out
-        # Fallback: try cmdkey /list (can't read password, just check existence)
-        return None
+        rc, out = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script])
+        return out if rc == 0 and out else None
 
     else:
         # Linux: secret-tool
@@ -117,10 +116,11 @@ def delete_credential(peer_name: str) -> bool:
         return rc == 0
 
     elif sys.platform == "win32":
-        rc, _ = _run([
-            "cmdkey",
-            f"/delete:{SERVICE_NAME}-link-{peer_name}",
-        ])
+        ps = (
+            "if (-not (Get-Module -ListAvailable -Name CredentialManager)) { exit 2 }\n"
+            f"Remove-StoredCredential -Target '{SERVICE_NAME}-link-{peer_name}' -Force\n"
+        )
+        rc, _ = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps])
         return rc == 0
 
     else:

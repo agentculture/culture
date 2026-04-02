@@ -134,7 +134,7 @@ def install_service(name: str, command: list[str], description: str) -> Path:
         _run_cmd([
             "schtasks", "/Create",
             "/TN", f"agentirc\\{name}",
-            "/TR", f'"{bat_path}"',
+            "/TR", subprocess.list2cmdline(["cmd.exe", "/c", str(bat_path)]),
             "/SC", "ONLOGON",
             "/F",
         ])
@@ -220,6 +220,13 @@ def restart_service(name: str) -> bool:
             return True
 
     elif platform == "windows":
+        # Check if the scheduled task exists before attempting to run it
+        probe = subprocess.run(
+            ["schtasks", "/Query", "/TN", f"agentirc\\{name}"],
+            capture_output=True, text=True,
+        )
+        if probe.returncode != 0:
+            return False
         _run_cmd(["schtasks", "/Run", "/TN", f"agentirc\\{name}"])
         return True
 

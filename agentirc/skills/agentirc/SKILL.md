@@ -221,8 +221,7 @@ server:
     - name: thor
       host: 192.168.1.12
       port: 6667
-      password: meshsecret
-      trust: full
+      trust: full    # passwords stored in OS keyring, not here
 
 agents:
   - nick: claude

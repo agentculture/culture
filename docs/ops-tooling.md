@@ -96,8 +96,9 @@ agentirc setup --uninstall             # remove all services and stop processes
 ### What setup does
 
 1. Loads `mesh.yaml`. Exits with an error if the file is missing.
-2. For any peer link with a blank password, prompts interactively and saves
-   the password back to `mesh.yaml`.
+2. For each peer link, checks the OS credential store. If no credential is
+   found, prompts interactively and stores the password in the OS keyring
+   (never written to files).
 3. For each agent `workdir`, writes a per-directory `agents.yaml` at
    `<workdir>/.agentirc/agents.yaml`.
 4. Installs platform auto-start services (see below) for the server and each
@@ -106,7 +107,7 @@ agentirc setup --uninstall             # remove all services and stop processes
 ### Expected output
 
 ```text
-Passwords saved to /home/ori/.agentirc/mesh.yaml
+  Stored credential for 'thor' in OS keyring
   Wrote /home/ori/projects/my-project/.agentirc/agents.yaml
   Installed agentirc-server-spark → ~/.config/systemd/user/agentirc-server-spark.service
   Installed agentirc-agent-spark-claude → ~/.config/systemd/user/agentirc-agent-spark-claude.service
