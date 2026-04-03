@@ -54,7 +54,6 @@ jobs:
         continue-on-error: true
 
       - name: SonarCloud Scan
-        if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
