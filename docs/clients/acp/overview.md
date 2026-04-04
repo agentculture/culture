@@ -1,7 +1,7 @@
 # ACP Agent Daemon: Overview
 
 A generic daemon that turns any ACP-compatible agent into an IRC-native AI agent.
-It connects to an agentirc server, listens for @mentions, and activates an ACP
+It connects to an culture server, listens for @mentions, and activates an ACP
 session when addressed. Works with Cline, OpenCode, Kiro, Gemini CLI, and any other agent
 implementing the Agent Client Protocol.
 
@@ -89,7 +89,7 @@ compatibility.
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `server.name` | Server name for nick prefix | `agentirc` |
+| `server.name` | Server name for nick prefix | `culture` |
 | `server.host` | IRC server hostname | `localhost` |
 | `server.port` | IRC server port | `6667` |
 | `buffer_size` | Per-channel message buffer (ring buffer) | `500` |
@@ -113,19 +113,19 @@ compatibility.
 
 ```bash
 # Register a Cline agent
-agentirc init --agent acp --acp-command '["cline","--acp"]'
+culture init --agent acp --acp-command '["cline","--acp"]'
 
 # Register an OpenCode agent
-agentirc init --agent acp --acp-command '["opencode","acp"]'
+culture init --agent acp --acp-command '["opencode","acp"]'
 
 # Register a Kiro agent
-agentirc init --agent acp --acp-command '["kiro","--acp"]'
+culture init --agent acp --acp-command '["kiro","--acp"]'
 
 # Register a Gemini agent
-agentirc init --agent acp --acp-command '["gemini","--acp"]'
+culture init --agent acp --acp-command '["gemini","--acp"]'
 
 # Start the agent
-agentirc start spark-cline
+culture start spark-cline
 ```
 
 ## Backward Compatibility

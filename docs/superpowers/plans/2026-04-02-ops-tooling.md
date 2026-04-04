@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add persistence, scaffolding, fleet updates, and self-healing to agentirc so machines survive reboots, new nodes join the mesh easily, code rolls out with one command, and S2S links auto-reconnect.
+**Goal:** Add persistence, scaffolding, fleet updates, and self-healing to culture so machines survive reboots, new nodes join the mesh easily, code rolls out with one command, and S2S links auto-reconnect.
 
 **Architecture:** Four features built bottom-up. Self-healing (S2S reconnect) is added to the existing `IRCd`/`ServerLink` classes. A new `mesh_config.py` module handles declarative mesh config (`mesh.yaml`). A new `persistence.py` module generates platform-specific auto-start entries (systemd/launchd/schtasks). CLI gets `--foreground`, `setup`, and `update` commands.
 
@@ -16,24 +16,25 @@
 
 | File | Responsibility |
 |------|---------------|
-| `agentirc/server/ircd.py` | **Modify** — add `_link_retry_state`, `_maybe_retry_link()`, `cancel_link_retry()`, update `_remove_link()` and `stop()` |
-| `agentirc/server/server_link.py` | **Modify** — add `_squit_received` flag, pass squit reason to `_remove_link`, cancel retry on handshake success |
-| `agentirc/mesh_config.py` | **Create** — `MeshConfig` dataclasses + YAML load/save |
-| `agentirc/persistence.py` | **Create** — cross-platform service install/uninstall/list |
-| `agentirc/cli.py` | **Modify** — add `--foreground` flag, `setup` command, `update` command, Windows platform guards |
+| `culture/server/ircd.py` | **Modify** — add `_link_retry_state`, `_maybe_retry_link()`, `cancel_link_retry()`, update `_remove_link()` and `stop()` |
+| `culture/server/server_link.py` | **Modify** — add `_squit_received` flag, pass squit reason to `_remove_link`, cancel retry on handshake success |
+| `culture/mesh_config.py` | **Create** — `MeshConfig` dataclasses + YAML load/save |
+| `culture/persistence.py` | **Create** — cross-platform service install/uninstall/list |
+| `culture/cli.py` | **Modify** — add `--foreground` flag, `setup` command, `update` command, Windows platform guards |
 | `tests/test_link_reconnect.py` | **Create** — S2S auto-reconnect tests |
 | `tests/test_mesh_config.py` | **Create** — mesh.yaml round-trip tests |
 | `tests/test_persistence.py` | **Create** — service file generation tests |
 | `docs/ops-tooling.md` | **Create** — user-facing ops documentation |
 | `docs/cli.md` | **Modify** — add setup, update, --foreground |
-| `agentirc/skills/agentirc/SKILL.md` | **Modify** — add ops tooling reference |
+| `culture/skills/culture/SKILL.md` | **Modify** — add ops tooling reference |
 
 ---
 
 ## Task 1: S2S Link Auto-Reconnect — Core IRCd Changes
 
 **Files:**
-- Modify: `agentirc/server/ircd.py` (lines 19-106)
+
+- Modify: `culture/server/ircd.py` (lines 19-106)
 - Test: `tests/test_link_reconnect.py`
 
 - [ ] **Step 1: Write failing test — link drop triggers retry**
@@ -47,8 +48,8 @@ Create `tests/test_link_reconnect.py`:
 import asyncio
 import pytest
 
-from agentirc.server.config import LinkConfig, ServerConfig
-from agentirc.server.ircd import IRCd
+from culture.server.config import LinkConfig, ServerConfig
+from culture.server.ircd import IRCd
 
 
 @pytest.mark.asyncio
@@ -107,13 +108,13 @@ async def test_link_drop_triggers_retry():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_link_drop_triggers_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_link_drop_triggers_retry -v`
 
 Expected: FAIL — `IRCd` has no `_link_retry_state` attribute.
 
 - [ ] **Step 3: Add retry state and scheduling to IRCd**
 
-In `agentirc/server/ircd.py`, add to `__init__` after line 33:
+In `culture/server/ircd.py`, add to `__init__` after line 33:
 
 ```python
         self._link_retry_state: dict[str, dict] = {}
@@ -221,15 +222,15 @@ Modify `stop()` (line 93) to cancel retry tasks. Add before the `# Close all S2S
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_link_drop_triggers_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_link_drop_triggers_retry -v`
 
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/server/ircd.py tests/test_link_reconnect.py
+cd /home/spark/git/culture
+git add culture/server/ircd.py tests/test_link_reconnect.py
 git commit -m "feat: add S2S link retry state and scheduling to IRCd"
 ```
 
@@ -238,7 +239,8 @@ git commit -m "feat: add S2S link retry state and scheduling to IRCd"
 ## Task 2: S2S Link Auto-Reconnect — ServerLink SQUIT Handling
 
 **Files:**
-- Modify: `agentirc/server/server_link.py` (lines 18-104, 135-170, 482-484)
+
+- Modify: `culture/server/server_link.py` (lines 18-104, 135-170, 482-484)
 - Test: `tests/test_link_reconnect.py`
 
 - [ ] **Step 1: Write failing test — SQUIT does not trigger retry**
@@ -300,13 +302,13 @@ async def test_squit_does_not_trigger_retry():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_squit_does_not_trigger_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_squit_does_not_trigger_retry -v`
 
 Expected: FAIL — `_remove_link` is called without `squit=True` because `ServerLink` doesn't pass the flag yet.
 
 - [ ] **Step 3: Add SQUIT flag to ServerLink**
 
-In `agentirc/server/server_link.py`:
+In `culture/server/server_link.py`:
 
 Add `self._squit_received = False` to `__init__` after line 43 (`self.last_seen_seq: int = 0`):
 
@@ -337,15 +339,15 @@ Modify the `finally` block in `handle()` (line 98-104) to pass the squit flag:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_squit_does_not_trigger_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_squit_does_not_trigger_retry -v`
 
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/server/server_link.py tests/test_link_reconnect.py
+cd /home/spark/git/culture
+git add culture/server/server_link.py tests/test_link_reconnect.py
 git commit -m "feat: distinguish SQUIT from crash in S2S link drop"
 ```
 
@@ -354,7 +356,8 @@ git commit -m "feat: distinguish SQUIT from crash in S2S link drop"
 ## Task 3: S2S Link Auto-Reconnect — Cancel Retry on Incoming Connection
 
 **Files:**
-- Modify: `agentirc/server/server_link.py` (line 170)
+
+- Modify: `culture/server/server_link.py` (line 170)
 - Test: `tests/test_link_reconnect.py`
 
 - [ ] **Step 1: Write failing test — incoming connection cancels outbound retry**
@@ -427,13 +430,13 @@ async def test_incoming_connection_cancels_retry():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_incoming_connection_cancels_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_incoming_connection_cancels_retry -v`
 
 Expected: FAIL — `cancel_link_retry` is not called during handshake.
 
 - [ ] **Step 3: Call cancel_link_retry on successful handshake**
 
-In `agentirc/server/server_link.py`, in `_try_complete_handshake`, add after line 170 (`self.server.links[self.peer_name] = self`):
+In `culture/server/server_link.py`, in `_try_complete_handshake`, add after line 170 (`self.server.links[self.peer_name] = self`):
 
 ```python
         self.server.cancel_link_retry(self.peer_name)
@@ -441,15 +444,15 @@ In `agentirc/server/server_link.py`, in `_try_complete_handshake`, add after lin
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_incoming_connection_cancels_retry -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_incoming_connection_cancels_retry -v`
 
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/server/server_link.py tests/test_link_reconnect.py
+cd /home/spark/git/culture
+git add culture/server/server_link.py tests/test_link_reconnect.py
 git commit -m "feat: cancel S2S link retry on incoming peer connection"
 ```
 
@@ -458,7 +461,8 @@ git commit -m "feat: cancel S2S link retry on incoming peer connection"
 ## Task 4: S2S Link Auto-Reconnect — Retry on Initial Startup Failure
 
 **Files:**
-- Modify: `agentirc/cli.py` (lines 307-313)
+
+- Modify: `culture/cli.py` (lines 307-313)
 - Test: `tests/test_link_reconnect.py`
 
 - [ ] **Step 1: Write failing test — reconnect after initial link failure**
@@ -498,13 +502,13 @@ async def test_reconnect_after_initial_failure():
 
 - [ ] **Step 2: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py::test_reconnect_after_initial_failure -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py::test_reconnect_after_initial_failure -v`
 
 Expected: PASS (this uses methods already implemented in Task 1).
 
 - [ ] **Step 3: Wire up initial startup retry in cli.py**
 
-In `agentirc/cli.py`, modify the `_run_server` function (lines 307-313). Replace:
+In `culture/cli.py`, modify the `_run_server` function (lines 307-313). Replace:
 
 ```python
     # Connect to configured peers
@@ -531,21 +535,21 @@ With:
 
 - [ ] **Step 4: Run full self-healing test suite**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_link_reconnect.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_link_reconnect.py -v`
 
 Expected: All 4 tests PASS.
 
 - [ ] **Step 5: Run existing federation tests to verify no regression**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_federation.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_federation.py -v`
 
 Expected: All existing tests PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/cli.py tests/test_link_reconnect.py
+cd /home/spark/git/culture
+git add culture/cli.py tests/test_link_reconnect.py
 git commit -m "feat: retry S2S links on initial startup failure"
 ```
 
@@ -554,7 +558,8 @@ git commit -m "feat: retry S2S links on initial startup failure"
 ## Task 5: Mesh Config Module
 
 **Files:**
-- Create: `agentirc/mesh_config.py`
+
+- Create: `culture/mesh_config.py`
 - Test: `tests/test_mesh_config.py`
 
 - [ ] **Step 1: Write failing test — mesh config round-trip**
@@ -569,7 +574,7 @@ import os
 import tempfile
 import pytest
 
-from agentirc.mesh_config import (
+from culture.mesh_config import (
     MeshConfig,
     MeshServerConfig,
     MeshLinkConfig,
@@ -653,13 +658,13 @@ def test_mesh_config_file_not_found():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_mesh_config.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_mesh_config.py -v`
 
-Expected: FAIL — `agentirc.mesh_config` module does not exist.
+Expected: FAIL — `culture.mesh_config` module does not exist.
 
 - [ ] **Step 3: Implement mesh_config.py**
 
-Create `agentirc/mesh_config.py`:
+Create `culture/mesh_config.py`:
 
 ```python
 """Declarative mesh configuration (mesh.yaml)."""
@@ -709,11 +714,11 @@ class MeshAgentConfig:
 class MeshConfig:
     """Top-level mesh configuration for one machine."""
 
-    server: MeshServerConfig = field(default_factory=lambda: MeshServerConfig(name="agentirc"))
+    server: MeshServerConfig = field(default_factory=lambda: MeshServerConfig(name="culture"))
     agents: list[MeshAgentConfig] = field(default_factory=list)
 
 
-DEFAULT_MESH_PATH = os.path.expanduser("~/.agentirc/mesh.yaml")
+DEFAULT_MESH_PATH = os.path.expanduser("~/.culture/mesh.yaml")
 
 
 def load_mesh_config(path: str | Path = DEFAULT_MESH_PATH) -> MeshConfig:
@@ -753,15 +758,15 @@ def save_mesh_config(config: MeshConfig, path: str | Path = DEFAULT_MESH_PATH) -
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_mesh_config.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_mesh_config.py -v`
 
 Expected: All 4 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/mesh_config.py tests/test_mesh_config.py
+cd /home/spark/git/culture
+git add culture/mesh_config.py tests/test_mesh_config.py
 git commit -m "feat: add mesh_config module for declarative mesh.yaml"
 ```
 
@@ -770,7 +775,8 @@ git commit -m "feat: add mesh_config module for declarative mesh.yaml"
 ## Task 6: Persistence Module — Platform Auto-Start
 
 **Files:**
-- Create: `agentirc/persistence.py`
+
+- Create: `culture/persistence.py`
 - Test: `tests/test_persistence.py`
 
 - [ ] **Step 1: Write failing test — service file generation**
@@ -787,7 +793,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agentirc.persistence import (
+from culture.persistence import (
     get_platform,
     _build_systemd_unit,
     _build_launchd_plist,
@@ -815,36 +821,36 @@ def test_get_platform_windows():
 
 def test_build_systemd_unit():
     unit = _build_systemd_unit(
-        name="agentirc-server-spark",
-        command=["agentirc", "server", "start", "--foreground", "--name", "spark"],
-        description="agentirc server spark",
+        name="culture-server-spark",
+        command=["culture", "server", "start", "--foreground", "--name", "spark"],
+        description="culture server spark",
     )
     assert "[Unit]" in unit
-    assert "Description=agentirc server spark" in unit
-    assert "ExecStart=agentirc server start --foreground --name spark" in unit
+    assert "Description=culture server spark" in unit
+    assert "ExecStart=culture server start --foreground --name spark" in unit
     assert "Restart=on-failure" in unit
     assert "WantedBy=default.target" in unit
 
 
 def test_build_launchd_plist():
     plist = _build_launchd_plist(
-        name="com.agentirc.server-spark",
-        command=["agentirc", "server", "start", "--foreground", "--name", "spark"],
-        description="agentirc server spark",
+        name="com.culture.server-spark",
+        command=["culture", "server", "start", "--foreground", "--name", "spark"],
+        description="culture server spark",
     )
     assert "<key>Label</key>" in plist
-    assert "com.agentirc.server-spark" in plist
-    assert "<string>agentirc</string>" in plist
+    assert "com.culture.server-spark" in plist
+    assert "<string>culture</string>" in plist
     assert "<key>KeepAlive</key>" in plist
     assert "<true/>" in plist
 
 
 def test_build_windows_bat():
     bat = _build_windows_bat(
-        command=["agentirc", "server", "start", "--foreground", "--name", "spark"],
+        command=["culture", "server", "start", "--foreground", "--name", "spark"],
     )
     assert ":loop" in bat
-    assert "agentirc server start --foreground --name spark" in bat
+    assert "culture server start --foreground --name spark" in bat
     assert "timeout /t 5" in bat
     assert "goto loop" in bat
 
@@ -852,16 +858,16 @@ def test_build_windows_bat():
 def test_install_service_linux(tmp_path):
     """Install writes a systemd unit file and returns its path."""
     unit_dir = tmp_path / "systemd" / "user"
-    with patch("agentirc.persistence.get_platform", return_value="linux"), \
-         patch("agentirc.persistence._systemd_user_dir", return_value=unit_dir), \
-         patch("agentirc.persistence._run_cmd"):
+    with patch("culture.persistence.get_platform", return_value="linux"), \
+         patch("culture.persistence._systemd_user_dir", return_value=unit_dir), \
+         patch("culture.persistence._run_cmd"):
         path = install_service(
-            "agentirc-server-spark",
-            ["agentirc", "server", "start", "--foreground", "--name", "spark"],
-            "agentirc server spark",
+            "culture-server-spark",
+            ["culture", "server", "start", "--foreground", "--name", "spark"],
+            "culture server spark",
         )
     assert path.exists()
-    assert path.name == "agentirc-server-spark.service"
+    assert path.name == "culture-server-spark.service"
     content = path.read_text()
     assert "ExecStart=" in content
 
@@ -870,28 +876,28 @@ def test_list_services_linux(tmp_path):
     """list_services returns installed service names."""
     unit_dir = tmp_path / "systemd" / "user"
     unit_dir.mkdir(parents=True)
-    (unit_dir / "agentirc-server-spark.service").write_text("[Unit]\n")
-    (unit_dir / "agentirc-agent-spark-claude.service").write_text("[Unit]\n")
+    (unit_dir / "culture-server-spark.service").write_text("[Unit]\n")
+    (unit_dir / "culture-agent-spark-claude.service").write_text("[Unit]\n")
     (unit_dir / "unrelated.service").write_text("[Unit]\n")
 
-    with patch("agentirc.persistence.get_platform", return_value="linux"), \
-         patch("agentirc.persistence._systemd_user_dir", return_value=unit_dir):
+    with patch("culture.persistence.get_platform", return_value="linux"), \
+         patch("culture.persistence._systemd_user_dir", return_value=unit_dir):
         services = list_services()
 
-    assert "agentirc-server-spark" in services
-    assert "agentirc-agent-spark-claude" in services
+    assert "culture-server-spark" in services
+    assert "culture-agent-spark-claude" in services
     assert "unrelated" not in services
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_persistence.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_persistence.py -v`
 
-Expected: FAIL — `agentirc.persistence` module does not exist.
+Expected: FAIL — `culture.persistence` module does not exist.
 
 - [ ] **Step 3: Implement persistence.py**
 
-Create `agentirc/persistence.py`:
+Create `culture/persistence.py`:
 
 ```python
 """Platform-specific auto-start service generation."""
@@ -904,7 +910,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-LOG_DIR = os.path.expanduser("~/.agentirc/logs")
+LOG_DIR = os.path.expanduser("~/.culture/logs")
 
 
 def get_platform() -> str:
@@ -925,7 +931,7 @@ def _launchd_dir() -> Path:
 
 
 def _windows_service_dir() -> Path:
-    return Path(os.path.expandvars(r"%USERPROFILE%\.agentirc\services"))
+    return Path(os.path.expandvars(r"%USERPROFILE%\.culture\services"))
 
 
 def _run_cmd(args: list[str]) -> None:
@@ -1013,7 +1019,7 @@ def install_service(name: str, command: list[str], description: str) -> Path:
     elif platform == "macos":
         agent_dir = _launchd_dir()
         agent_dir.mkdir(parents=True, exist_ok=True)
-        plist_name = f"com.agentirc.{name}"
+        plist_name = f"com.culture.{name}"
         path = agent_dir / f"{plist_name}.plist"
         path.write_text(_build_launchd_plist(plist_name, command, description))
         _run_cmd(["launchctl", "load", str(path)])
@@ -1026,7 +1032,7 @@ def install_service(name: str, command: list[str], description: str) -> Path:
         bat_path.write_text(_build_windows_bat(command))
         _run_cmd([
             "schtasks", "/Create",
-            "/TN", f"agentirc\\{name}",
+            "/TN", f"culture\\{name}",
             "/TR", str(bat_path),
             "/SC", "ONLOGON",
             "/F",
@@ -1049,21 +1055,21 @@ def uninstall_service(name: str) -> None:
         _run_cmd(["systemctl", "--user", "daemon-reload"])
 
     elif platform == "macos":
-        plist_name = f"com.agentirc.{name}"
+        plist_name = f"com.culture.{name}"
         path = _launchd_dir() / f"{plist_name}.plist"
         if path.exists():
             _run_cmd(["launchctl", "unload", str(path)])
             path.unlink()
 
     elif platform == "windows":
-        _run_cmd(["schtasks", "/Delete", "/TN", f"agentirc\\{name}", "/F"])
+        _run_cmd(["schtasks", "/Delete", "/TN", f"culture\\{name}", "/F"])
         bat_path = _windows_service_dir() / f"{name}.bat"
         if bat_path.exists():
             bat_path.unlink()
 
 
 def list_services() -> list[str]:
-    """Return names of installed agentirc auto-start services."""
+    """Return names of installed culture auto-start services."""
     platform = get_platform()
     names = []
 
@@ -1071,21 +1077,21 @@ def list_services() -> list[str]:
         unit_dir = _systemd_user_dir()
         if unit_dir.exists():
             for f in unit_dir.iterdir():
-                if f.name.startswith("agentirc-") and f.name.endswith(".service"):
+                if f.name.startswith("culture-") and f.name.endswith(".service"):
                     names.append(f.stem)
 
     elif platform == "macos":
         agent_dir = _launchd_dir()
         if agent_dir.exists():
             for f in agent_dir.iterdir():
-                if f.name.startswith("com.agentirc.") and f.name.endswith(".plist"):
-                    names.append(f.stem.removeprefix("com.agentirc."))
+                if f.name.startswith("com.culture.") and f.name.endswith(".plist"):
+                    names.append(f.stem.removeprefix("com.culture."))
 
     elif platform == "windows":
         svc_dir = _windows_service_dir()
         if svc_dir.exists():
             for f in svc_dir.iterdir():
-                if f.name.startswith("agentirc-") and f.name.endswith(".bat"):
+                if f.name.startswith("culture-") and f.name.endswith(".bat"):
                     names.append(f.stem)
 
     return names
@@ -1093,15 +1099,15 @@ def list_services() -> list[str]:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/test_persistence.py -v`
+Run: `cd /home/spark/git/culture && python -m pytest tests/test_persistence.py -v`
 
 Expected: All tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/persistence.py tests/test_persistence.py
+cd /home/spark/git/culture
+git add culture/persistence.py tests/test_persistence.py
 git commit -m "feat: add cross-platform persistence module"
 ```
 
@@ -1110,11 +1116,12 @@ git commit -m "feat: add cross-platform persistence module"
 ## Task 7: CLI --foreground Flag
 
 **Files:**
-- Modify: `agentirc/cli.py` (lines 87-94, 247-294, 467-525, 605-634, 325-356, 669-728)
+
+- Modify: `culture/cli.py` (lines 87-94, 247-294, 467-525, 605-634, 325-356, 669-728)
 
 - [ ] **Step 1: Add --foreground to server start parser**
 
-In `agentirc/cli.py`, after line 94 (the `--link` argument on `srv_start`), add:
+In `culture/cli.py`, after line 94 (the `--link` argument on `srv_start`), add:
 
 ```python
     srv_start.add_argument(
@@ -1202,7 +1209,7 @@ def _server_start(args: argparse.Namespace) -> None:
 
 - [ ] **Step 3: Add --foreground to start parser**
 
-In `agentirc/cli.py`, after line 114 (the `--config` argument on `start_parser`), add:
+In `culture/cli.py`, after line 114 (the `--config` argument on `start_parser`), add:
 
 ```python
     start_parser.add_argument(
@@ -1282,15 +1289,15 @@ Apply the same pattern in `_stop_agent` (around line 723-727):
 
 - [ ] **Step 6: Run existing tests**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/ -v --timeout=30`
+Run: `cd /home/spark/git/culture && python -m pytest tests/ -v --timeout=30`
 
 Expected: All existing tests PASS (--foreground is additive, doesn't break existing behavior).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/cli.py
+cd /home/spark/git/culture
+git add culture/cli.py
 git commit -m "feat: add --foreground flag and Windows platform guards"
 ```
 
@@ -1299,17 +1306,18 @@ git commit -m "feat: add --foreground flag and Windows platform guards"
 ## Task 8: CLI `setup` Command
 
 **Files:**
-- Modify: `agentirc/cli.py`
+
+- Modify: `culture/cli.py`
 
 - [ ] **Step 1: Add setup subparser to _build_parser**
 
-In `agentirc/cli.py`, add after the overview parser (before `return parser` on line 184):
+In `culture/cli.py`, add after the overview parser (before `return parser` on line 184):
 
 ```python
     # -- setup subcommand --------------------------------------------------
     setup_parser = sub.add_parser("setup", help="Set up mesh from mesh.yaml")
     setup_parser.add_argument(
-        "--config", default=os.path.expanduser("~/.agentirc/mesh.yaml"),
+        "--config", default=os.path.expanduser("~/.culture/mesh.yaml"),
         help="Path to mesh.yaml",
     )
     setup_parser.add_argument(
@@ -1337,8 +1345,8 @@ Add after the overview command handler section in `cli.py`:
 
 def _cmd_setup(args: argparse.Namespace) -> None:
     import getpass
-    from agentirc.mesh_config import load_mesh_config, save_mesh_config
-    from agentirc.persistence import install_service, uninstall_service, list_services
+    from culture.mesh_config import load_mesh_config, save_mesh_config
+    from culture.persistence import install_service, uninstall_service, list_services
 
     try:
         mesh = load_mesh_config(args.config)
@@ -1351,7 +1359,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
 
     if args.uninstall:
         # Stop and remove all services
-        print("Uninstalling agentirc services...")
+        print("Uninstalling culture services...")
         for svc in list_services():
             print(f"  Removing {svc}")
             uninstall_service(svc)
@@ -1374,7 +1382,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         print(f"Passwords saved to {args.config}")
 
     # Generate agents.yaml for each workdir
-    from agentirc.clients.claude.config import (
+    from culture.clients.claude.config import (
         AgentConfig as BaseAgentConfig,
         DaemonConfig,
         ServerConnConfig,
@@ -1389,7 +1397,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
 
     for workdir, agents in workdir_agents.items():
         os.makedirs(workdir, exist_ok=True)
-        config_path = os.path.join(workdir, ".agentirc", "agents.yaml")
+        config_path = os.path.join(workdir, ".culture", "agents.yaml")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
         agent_configs = []
@@ -1417,25 +1425,25 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         ])
 
     # Install auto-start services
-    agentirc_bin = shutil.which("agentirc") or "agentirc"
+    culture_bin = shutil.which("culture") or "culture"
 
     server_cmd = [
-        agentirc_bin, "server", "start", "--foreground",
+        culture_bin, "server", "start", "--foreground",
         "--name", server_name,
         "--host", mesh.server.host,
         "--port", str(mesh.server.port),
     ] + link_args
-    svc_name = f"agentirc-server-{server_name}"
-    path = install_service(svc_name, server_cmd, f"agentirc server {server_name}")
+    svc_name = f"culture-server-{server_name}"
+    path = install_service(svc_name, server_cmd, f"culture server {server_name}")
     print(f"  Installed {svc_name} → {path}")
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         workdir = os.path.expanduser(agent.workdir)
-        config_path = os.path.join(workdir, ".agentirc", "agents.yaml")
-        agent_cmd = [agentirc_bin, "start", full_nick, "--foreground", "--config", config_path]
-        agent_svc = f"agentirc-agent-{full_nick}"
-        path = install_service(agent_svc, agent_cmd, f"agentirc agent {full_nick}")
+        config_path = os.path.join(workdir, ".culture", "agents.yaml")
+        agent_cmd = [culture_bin, "start", full_nick, "--foreground", "--config", config_path]
+        agent_svc = f"culture-agent-{full_nick}"
+        path = install_service(agent_svc, agent_cmd, f"culture agent {full_nick}")
         print(f"  Installed {agent_svc} → {path}")
 
     print(f"\nSetup complete for mesh node '{server_name}'.")
@@ -1459,16 +1467,16 @@ Add `import shutil` to the imports at the top of `cli.py`.
 
 - [ ] **Step 4: Run to verify setup command is wired up**
 
-Run: `cd /home/spark/git/agentirc && python -m agentirc.cli setup --help`
+Run: `cd /home/spark/git/culture && python -m culture.cli setup --help`
 
 Expected: Shows help text for the setup command with `--config` and `--uninstall` options.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/cli.py
-git commit -m "feat: add 'agentirc setup' command for mesh bootstrapping"
+cd /home/spark/git/culture
+git add culture/cli.py
+git commit -m "feat: add 'culture setup' command for mesh bootstrapping"
 ```
 
 ---
@@ -1476,11 +1484,12 @@ git commit -m "feat: add 'agentirc setup' command for mesh bootstrapping"
 ## Task 9: CLI `update` Command
 
 **Files:**
-- Modify: `agentirc/cli.py`
+
+- Modify: `culture/cli.py`
 
 - [ ] **Step 1: Add update subparser to _build_parser**
 
-In `agentirc/cli.py`, add after the setup parser:
+In `culture/cli.py`, add after the setup parser:
 
 ```python
     # -- update subcommand -------------------------------------------------
@@ -1494,7 +1503,7 @@ In `agentirc/cli.py`, add after the setup parser:
         help="Just restart, don't upgrade the package",
     )
     update_parser.add_argument(
-        "--config", default=os.path.expanduser("~/.agentirc/mesh.yaml"),
+        "--config", default=os.path.expanduser("~/.culture/mesh.yaml"),
         help="Path to mesh.yaml",
     )
 ```
@@ -1517,8 +1526,8 @@ Add after the `_cmd_setup` section:
 # -----------------------------------------------------------------------
 
 def _cmd_update(args: argparse.Namespace) -> None:
-    from agentirc.mesh_config import load_mesh_config
-    import agentirc
+    from culture.mesh_config import load_mesh_config
+    import culture
 
     try:
         mesh = load_mesh_config(args.config)
@@ -1527,12 +1536,12 @@ def _cmd_update(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     server_name = mesh.server.name
-    old_version = getattr(agentirc, "__version__", "unknown")
+    old_version = getattr(culture, "__version__", "unknown")
 
     if not args.skip_upgrade:
         print(f"Current version: {old_version}")
         if args.dry_run:
-            print("[dry-run] Would run: uv tool upgrade agentirc-cli")
+            print("[dry-run] Would run: uv tool upgrade culture")
             print("[dry-run] Would re-exec with --skip-upgrade")
             return
 
@@ -1541,7 +1550,7 @@ def _cmd_update(args: argparse.Namespace) -> None:
         if uv:
             print("Upgrading via uv...")
             result = subprocess.run(
-                [uv, "tool", "upgrade", "agentirc-cli"],
+                [uv, "tool", "upgrade", "culture"],
                 capture_output=True, text=True,
             )
             print(result.stdout.strip() if result.stdout else "")
@@ -1553,7 +1562,7 @@ def _cmd_update(args: argparse.Namespace) -> None:
             if pip:
                 print("Upgrading via pip...")
                 result = subprocess.run(
-                    [pip, "install", "--upgrade", "agentirc-cli"],
+                    [pip, "install", "--upgrade", "culture"],
                     capture_output=True, text=True,
                 )
                 if result.returncode != 0:
@@ -1564,14 +1573,14 @@ def _cmd_update(args: argparse.Namespace) -> None:
                 sys.exit(1)
 
         # Re-exec with new binary so restart uses new code
-        agentirc_bin = shutil.which("agentirc") or "agentirc"
-        reexec_args = [agentirc_bin, "update", "--skip-upgrade", "--config", args.config]
+        culture_bin = shutil.which("culture") or "culture"
+        reexec_args = [culture_bin, "update", "--skip-upgrade", "--config", args.config]
         print("Re-executing with updated code...")
         if sys.platform == "win32":
             # Windows: subprocess instead of execv
             sys.exit(subprocess.run(reexec_args).returncode)
         else:
-            os.execv(agentirc_bin, reexec_args)
+            os.execv(culture_bin, reexec_args)
 
     # --skip-upgrade path: restart everything
     print(f"Restarting mesh node '{server_name}'...")
@@ -1597,9 +1606,9 @@ def _cmd_update(args: argparse.Namespace) -> None:
     _server_stop_by_name(server_name)
 
     # Regenerate auto-start entries
-    from agentirc.persistence import install_service
+    from culture.persistence import install_service
 
-    agentirc_bin = shutil.which("agentirc") or "agentirc"
+    culture_bin = shutil.which("culture") or "culture"
     link_args = []
     for link in mesh.server.links:
         link_args.extend([
@@ -1607,25 +1616,25 @@ def _cmd_update(args: argparse.Namespace) -> None:
         ])
 
     server_cmd = [
-        agentirc_bin, "server", "start", "--foreground",
+        culture_bin, "server", "start", "--foreground",
         "--name", server_name,
         "--host", mesh.server.host,
         "--port", str(mesh.server.port),
     ] + link_args
-    install_service(f"agentirc-server-{server_name}", server_cmd, f"agentirc server {server_name}")
+    install_service(f"culture-server-{server_name}", server_cmd, f"culture server {server_name}")
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         workdir = os.path.expanduser(agent.workdir)
-        config_path = os.path.join(workdir, ".agentirc", "agents.yaml")
-        agent_cmd = [agentirc_bin, "start", full_nick, "--foreground", "--config", config_path]
-        install_service(f"agentirc-agent-{full_nick}", agent_cmd, f"agentirc agent {full_nick}")
+        config_path = os.path.join(workdir, ".culture", "agents.yaml")
+        agent_cmd = [culture_bin, "start", full_nick, "--foreground", "--config", config_path]
+        install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture agent {full_nick}")
 
     # Start server
     print(f"  Starting server {server_name}...")
     # Use subprocess so it runs as a new process with the updated code
     server_start_args = [
-        agentirc_bin, "server", "start",
+        culture_bin, "server", "start",
         "--name", server_name,
         "--host", mesh.server.host,
         "--port", str(mesh.server.port),
@@ -1645,17 +1654,17 @@ def _cmd_update(args: argparse.Namespace) -> None:
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         workdir = os.path.expanduser(agent.workdir)
-        config_path = os.path.join(workdir, ".agentirc", "agents.yaml")
+        config_path = os.path.join(workdir, ".culture", "agents.yaml")
         print(f"  Starting {full_nick}...")
         subprocess.run(
-            [agentirc_bin, "start", full_nick, "--config", config_path],
+            [culture_bin, "start", full_nick, "--config", config_path],
             check=False,
         )
 
     new_version = "unknown"
     try:
         result = subprocess.run(
-            [agentirc_bin, "--version"],
+            [culture_bin, "--version"],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
@@ -1670,16 +1679,16 @@ Add `import subprocess` to the imports at the top of `cli.py` (if not already pr
 
 - [ ] **Step 4: Run to verify update command is wired up**
 
-Run: `cd /home/spark/git/agentirc && python -m agentirc.cli update --help`
+Run: `cd /home/spark/git/culture && python -m culture.cli update --help`
 
 Expected: Shows help text for the update command with `--dry-run`, `--skip-upgrade`, and `--config` options.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add agentirc/cli.py
-git commit -m "feat: add 'agentirc update' command for fleet updates"
+cd /home/spark/git/culture
+git add culture/cli.py
+git commit -m "feat: add 'culture update' command for fleet updates"
 ```
 
 ---
@@ -1687,17 +1696,18 @@ git commit -m "feat: add 'agentirc update' command for fleet updates"
 ## Task 10: Documentation and Skill Updates
 
 **Files:**
+
 - Create: `docs/ops-tooling.md`
 - Modify: `docs/cli.md`
-- Modify: `agentirc/skills/agentirc/SKILL.md`
+- Modify: `culture/skills/culture/SKILL.md`
 
 - [ ] **Step 1: Write ops-tooling.md**
 
 Create `docs/ops-tooling.md` covering:
 
 - `mesh.yaml` format and schema
-- `agentirc setup` command usage
-- `agentirc update` command usage
+- `culture setup` command usage
+- `culture update` command usage
 - Platform-specific auto-start details (systemd, launchd, Windows scheduled tasks)
 - `--foreground` flag
 - S2S auto-reconnect behavior (exponential backoff, SQUIT distinction)
@@ -1706,21 +1716,21 @@ Create `docs/ops-tooling.md` covering:
 
 Add entries for `setup`, `update`, and `--foreground` flag on `server start` and `start`.
 
-- [ ] **Step 3: Update agentirc admin skill**
+- [ ] **Step 3: Update culture admin skill**
 
-In `agentirc/skills/agentirc/SKILL.md`, add an "Ops Tooling" section covering `setup`, `update`, `--foreground`, and auto-reconnect.
+In `culture/skills/culture/SKILL.md`, add an "Ops Tooling" section covering `setup`, `update`, `--foreground`, and auto-reconnect.
 
 - [ ] **Step 4: Run markdownlint**
 
-Run: `markdownlint-cli2 "docs/ops-tooling.md" "docs/cli.md" "agentirc/skills/agentirc/SKILL.md"`
+Run: `markdownlint-cli2 "docs/ops-tooling.md" "docs/cli.md" "culture/skills/culture/SKILL.md"`
 
 Fix any lint issues.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/spark/git/agentirc
-git add docs/ops-tooling.md docs/cli.md agentirc/skills/agentirc/SKILL.md
+cd /home/spark/git/culture
+git add docs/ops-tooling.md docs/cli.md culture/skills/culture/SKILL.md
 git commit -m "docs: add ops tooling documentation and update CLI reference"
 ```
 
@@ -1730,7 +1740,7 @@ git commit -m "docs: add ops tooling documentation and update CLI reference"
 
 - [ ] **Step 1: Run the complete test suite**
 
-Run: `cd /home/spark/git/agentirc && python -m pytest tests/ -v --timeout=30`
+Run: `cd /home/spark/git/culture && python -m pytest tests/ -v --timeout=30`
 
 Expected: All tests PASS, including new ones (test_link_reconnect, test_mesh_config, test_persistence).
 
@@ -1739,11 +1749,11 @@ Expected: All tests PASS, including new ones (test_link_reconnect, test_mesh_con
 Run:
 
 ```bash
-cd /home/spark/git/agentirc
-python -m agentirc.cli setup --help
-python -m agentirc.cli update --help
-python -m agentirc.cli server start --help  # should show --foreground
-python -m agentirc.cli start --help          # should show --foreground
+cd /home/spark/git/culture
+python -m culture.cli setup --help
+python -m culture.cli update --help
+python -m culture.cli server start --help  # should show --foreground
+python -m culture.cli start --help          # should show --foreground
 ```
 
 Expected: All commands show expected help text with new flags.

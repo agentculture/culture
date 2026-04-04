@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add managed rooms with rich metadata, tag-based self-organization, transferable ownership, and archive lifecycle to the agentirc IRC server and agent harnesses.
+**Goal:** Add managed rooms with rich metadata, tag-based self-organization, transferable ownership, and archive lifecycle to the culture IRC server and agent harnesses.
 
 **Architecture:** Server stores and federates room metadata via a new `RoomsSkill` (following the existing `HistorySkill` pattern). The `Channel` class gets room metadata fields. Agent harnesses evaluate room invitations autonomously using LLM judgment. Tags on both rooms and agents drive self-organizing membership.
 
@@ -13,7 +13,8 @@
 ### Task 1: Extend Channel Model with Room Metadata
 
 **Files:**
-- Modify: `agentirc/server/channel.py`
+
+- Modify: `culture/server/channel.py`
 - Test: `tests/test_rooms.py` (create)
 
 - [ ] **Step 1: Write failing test for Channel room metadata fields**
@@ -28,7 +29,7 @@ import pytest
 
 def test_channel_has_room_metadata_fields():
     """Channel should have room metadata fields, all None/empty by default."""
-    from agentirc.server.channel import Channel
+    from culture.server.channel import Channel
 
     ch = Channel("#test")
     assert ch.room_id is None
@@ -46,7 +47,7 @@ def test_channel_has_room_metadata_fields():
 
 def test_channel_is_managed():
     """Channel with room_id is considered managed."""
-    from agentirc.server.channel import Channel
+    from culture.server.channel import Channel
 
     ch = Channel("#test")
     assert ch.is_managed is False
@@ -61,15 +62,15 @@ Expected: FAIL — `Channel` has no `room_id` attribute.
 
 - [ ] **Step 3: Add room metadata fields to Channel**
 
-Edit `agentirc/server/channel.py` — add fields after existing `__init__` assignments:
+Edit `culture/server/channel.py` — add fields after existing `__init__` assignments:
 
 ```python
 from __future__ import annotations
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from agentirc.server.client import Client
-    from agentirc.server.remote_client import RemoteClient
+    from culture.server.client import Client
+    from culture.server.remote_client import RemoteClient
 
     Member = Union[Client, RemoteClient]
 
@@ -106,13 +107,13 @@ class Channel:
 
     def _local_members(self) -> set[Client]:
         """Return only local (non-remote) members."""
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         return {m for m in self.members if not isinstance(m, RemoteClient)}
 
     def add(self, client: Client) -> None:
         # Only grant op to the first LOCAL joiner
         if not self._local_members():
-            from agentirc.server.remote_client import RemoteClient
+            from culture.server.remote_client import RemoteClient
             if not isinstance(client, RemoteClient):
                 self.operators.add(client)
         self.members.add(client)
@@ -150,7 +151,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/channel.py tests/test_rooms.py
+git add culture/server/channel.py tests/test_rooms.py
 git commit -m "feat(rooms): add room metadata fields to Channel"
 ```
 
@@ -159,7 +160,8 @@ git commit -m "feat(rooms): add room metadata fields to Channel"
 ### Task 2: Room ID Generation and Metadata Parsing
 
 **Files:**
-- Create: `agentirc/server/rooms_util.py`
+
+- Create: `culture/server/rooms_util.py`
 - Test: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for room ID generation and metadata parsing**
@@ -169,7 +171,7 @@ Append to `tests/test_rooms.py`:
 ```python
 def test_generate_room_id_format():
     """Room ID starts with R followed by uppercase alphanumeric."""
-    from agentirc.server.rooms_util import generate_room_id
+    from culture.server.rooms_util import generate_room_id
     import re
 
     rid = generate_room_id()
@@ -180,7 +182,7 @@ def test_generate_room_id_format():
 
 def test_generate_room_id_uniqueness():
     """Two consecutive calls produce different IDs."""
-    from agentirc.server.rooms_util import generate_room_id
+    from culture.server.rooms_util import generate_room_id
 
     ids = {generate_room_id() for _ in range(100)}
     assert len(ids) == 100
@@ -188,7 +190,7 @@ def test_generate_room_id_uniqueness():
 
 def test_parse_room_meta_basic():
     """Parse key=value pairs separated by semicolons."""
-    from agentirc.server.rooms_util import parse_room_meta
+    from culture.server.rooms_util import parse_room_meta
 
     meta = parse_room_meta("purpose=Help with Python;tags=python,code-help;persistent=true")
     assert meta["purpose"] == "Help with Python"
@@ -198,7 +200,7 @@ def test_parse_room_meta_basic():
 
 def test_parse_room_meta_instructions_last():
     """Instructions field is always last and may contain semicolons."""
-    from agentirc.server.rooms_util import parse_room_meta
+    from culture.server.rooms_util import parse_room_meta
 
     meta = parse_room_meta(
         "purpose=Help;tags=py;instructions=Do this; then that; finally done"
@@ -210,7 +212,7 @@ def test_parse_room_meta_instructions_last():
 
 def test_parse_room_meta_empty():
     """Empty string returns empty dict."""
-    from agentirc.server.rooms_util import parse_room_meta
+    from culture.server.rooms_util import parse_room_meta
 
     assert parse_room_meta("") == {}
 ```
@@ -222,7 +224,7 @@ Expected: FAIL — `rooms_util` module doesn't exist.
 
 - [ ] **Step 3: Implement room ID generation and metadata parsing**
 
-Create `agentirc/server/rooms_util.py`:
+Create `culture/server/rooms_util.py`:
 
 ```python
 """Utility functions for managed rooms."""
@@ -292,7 +294,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/rooms_util.py tests/test_rooms.py
+git add culture/server/rooms_util.py tests/test_rooms.py
 git commit -m "feat(rooms): add room ID generation and metadata parsing"
 ```
 
@@ -301,9 +303,10 @@ git commit -m "feat(rooms): add room ID generation and metadata parsing"
 ### Task 3: Client Tags and RoomsSkill Scaffold with ROOMCREATE
 
 **Files:**
-- Modify: `agentirc/server/client.py` (add `tags` field)
-- Create: `agentirc/server/skills/rooms.py`
-- Modify: `agentirc/server/ircd.py` (register skill, skip persistent on cleanup)
+
+- Modify: `culture/server/client.py` (add `tags` field)
+- Create: `culture/server/skills/rooms.py`
+- Modify: `culture/server/ircd.py` (register skill, skip persistent on cleanup)
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for ROOMCREATE and client tags**
@@ -414,7 +417,7 @@ Expected: FAIL — `ROOMCREATE` is an unknown command.
 
 - [ ] **Step 3: Add tags field to Client**
 
-Edit `agentirc/server/client.py` — add `self.tags` in `__init__` after `self._registered`:
+Edit `culture/server/client.py` — add `self.tags` in `__init__` after `self._registered`:
 
 ```python
         self._registered = False
@@ -423,7 +426,7 @@ Edit `agentirc/server/client.py` — add `self.tags` in `__init__` after `self._
 
 - [ ] **Step 4: Create RoomsSkill with ROOMCREATE handler**
 
-Create `agentirc/server/skills/rooms.py`:
+Create `culture/server/skills/rooms.py`:
 
 ```python
 """Rooms management skill — ROOMCREATE, ROOMMETA, TAGS, ROOMINVITE, ROOMKICK, ROOMARCHIVE."""
@@ -432,13 +435,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from agentirc.protocol.message import Message
-from agentirc.protocol import replies
-from agentirc.server.rooms_util import generate_room_id, parse_room_meta
-from agentirc.server.skill import Event, EventType, Skill
+from culture.protocol.message import Message
+from culture.protocol import replies
+from culture.server.rooms_util import generate_room_id, parse_room_meta
+from culture.server.skill import Event, EventType, Skill
 
 if TYPE_CHECKING:
-    from agentirc.server.client import Client
+    from culture.server.client import Client
 
 
 class RoomsSkill(Skill):
@@ -548,31 +551,34 @@ class RoomsSkill(Skill):
 
 - [ ] **Step 5: Register RoomsSkill and protect persistent channels from cleanup**
 
-Edit `agentirc/server/ircd.py` — add RoomsSkill to `_register_default_skills`:
+Edit `culture/server/ircd.py` — add RoomsSkill to `_register_default_skills`:
 
 ```python
     async def _register_default_skills(self) -> None:
-        from agentirc.server.skills.history import HistorySkill
-        from agentirc.server.skills.rooms import RoomsSkill
+        from culture.server.skills.history import HistorySkill
+        from culture.server.skills.rooms import RoomsSkill
 
         await self.register_skill(HistorySkill())
         await self.register_skill(RoomsSkill())
 ```
 
-Edit `agentirc/server/ircd.py` — in `_remove_client`, skip cleanup for persistent channels:
+Edit `culture/server/ircd.py` — in `_remove_client`, skip cleanup for persistent channels:
 
 Change:
+
 ```python
             if not channel.members:
                 del self.channels[channel.name]
 ```
+
 To:
+
 ```python
             if not channel.members and not channel.persistent:
                 del self.channels[channel.name]
 ```
 
-Edit `agentirc/server/client.py` — in `_handle_join`, block joins to archived channels. After the `if not channel_name.startswith("#"): return` check, add:
+Edit `culture/server/client.py` — in `_handle_join`, block joins to archived channels. After the `if not channel_name.startswith("#"): return` check, add:
 
 ```python
         # Block joins to archived rooms
@@ -596,7 +602,7 @@ Expected: PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add agentirc/server/client.py agentirc/server/skills/rooms.py agentirc/server/ircd.py tests/test_rooms.py
+git add culture/server/client.py culture/server/skills/rooms.py culture/server/ircd.py tests/test_rooms.py
 git commit -m "feat(rooms): RoomsSkill with ROOMCREATE, client tags, persistent channel protection"
 ```
 
@@ -605,7 +611,8 @@ git commit -m "feat(rooms): RoomsSkill with ROOMCREATE, client tags, persistent 
 ### Task 4: ROOMMETA Command
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Modify: `culture/server/skills/rooms.py`
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for ROOMMETA query and update**
@@ -731,7 +738,7 @@ Expected: FAIL — `_handle_roommeta` is a no-op.
 
 - [ ] **Step 3: Implement ROOMMETA handler**
 
-Replace the `_handle_roommeta` stub in `agentirc/server/skills/rooms.py`:
+Replace the `_handle_roommeta` stub in `culture/server/skills/rooms.py`:
 
 ```python
     async def _handle_roommeta(self, client: Client, msg: Message) -> None:
@@ -899,7 +906,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): ROOMMETA command — query and update room metadata"
 ```
 
@@ -908,7 +915,8 @@ git commit -m "feat(rooms): ROOMMETA command — query and update room metadata"
 ### Task 5: TAGS Command
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Modify: `culture/server/skills/rooms.py`
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for TAGS command**
@@ -920,13 +928,13 @@ Append to `tests/test_rooms.py`:
 async def test_tags_set_own(server, make_client):
     """Agent can set its own tags."""
     alice = await make_client(nick="testserv-alice", user="alice")
-    await alice.send("TAGS testserv-alice python,code-review,agentirc")
+    await alice.send("TAGS testserv-alice python,code-review,culture")
     lines = await alice.recv_all(timeout=1.0)
     joined = " ".join(lines)
     assert "TAGSSET" in joined
 
     client = server.clients["testserv-alice"]
-    assert client.tags == ["python", "code-review", "agentirc"]
+    assert client.tags == ["python", "code-review", "culture"]
 
 
 @pytest.mark.asyncio
@@ -995,7 +1003,7 @@ Expected: FAIL — `_handle_tags` is a no-op.
 
 - [ ] **Step 3: Implement TAGS handler**
 
-Replace the `_handle_tags` stub in `agentirc/server/skills/rooms.py`:
+Replace the `_handle_tags` stub in `culture/server/skills/rooms.py`:
 
 ```python
     async def _handle_tags(self, client: Client, msg: Message) -> None:
@@ -1061,7 +1069,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): TAGS command — query and set agent tags"
 ```
 
@@ -1070,7 +1078,8 @@ git commit -m "feat(rooms): TAGS command — query and set agent tags"
 ### Task 6: Tag Event Engine
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Modify: `culture/server/skills/rooms.py`
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for tag-driven notifications**
@@ -1214,12 +1223,12 @@ Expected: FAIL — tag engine methods are no-ops.
 
 - [ ] **Step 3: Implement tag event engine**
 
-Replace the placeholder methods in `agentirc/server/skills/rooms.py`:
+Replace the placeholder methods in `culture/server/skills/rooms.py`:
 
 ```python
     async def _on_room_tags_changed(self, channel, old_tags: set, new_tags: set) -> None:
         """When room tags change, notify relevant agents."""
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
 
         added = new_tags - old_tags
         removed = old_tags - new_tags
@@ -1309,7 +1318,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): tag event engine — notify on room/agent tag changes"
 ```
 
@@ -1318,7 +1327,8 @@ git commit -m "feat(rooms): tag event engine — notify on room/agent tag change
 ### Task 7: ROOMINVITE Command (Explicit Invitations)
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Modify: `culture/server/skills/rooms.py`
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for explicit ROOMINVITE**
@@ -1387,7 +1397,7 @@ Expected: FAIL — `_handle_roominvite` is a no-op.
 
 - [ ] **Step 3: Implement ROOMINVITE handler**
 
-Replace the stub in `agentirc/server/skills/rooms.py`:
+Replace the stub in `culture/server/skills/rooms.py`:
 
 ```python
     async def _handle_roominvite(self, client: Client, msg: Message) -> None:
@@ -1420,7 +1430,7 @@ Replace the stub in `agentirc/server/skills/rooms.py`:
         tags_str = ",".join(channel.tags)
         meta = f"purpose={purpose};tags={tags_str};requestor={client.nick};instructions={instructions}"
 
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         if not isinstance(target, RemoteClient):
             await target.send(Message(
                 prefix=self.server.config.name,
@@ -1444,7 +1454,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): ROOMINVITE command — explicit invitations with context"
 ```
 
@@ -1453,7 +1463,8 @@ git commit -m "feat(rooms): ROOMINVITE command — explicit invitations with con
 ### Task 8: ROOMKICK Command
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Modify: `culture/server/skills/rooms.py`
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for ROOMKICK**
@@ -1528,7 +1539,7 @@ Expected: FAIL — `_handle_roomkick` is a no-op.
 
 - [ ] **Step 3: Implement ROOMKICK handler**
 
-Replace the stub in `agentirc/server/skills/rooms.py`:
+Replace the stub in `culture/server/skills/rooms.py`:
 
 ```python
     async def _handle_roomkick(self, client: Client, msg: Message) -> None:
@@ -1592,7 +1603,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): ROOMKICK command — owner-only force remove"
 ```
 
@@ -1601,8 +1612,9 @@ git commit -m "feat(rooms): ROOMKICK command — owner-only force remove"
 ### Task 9: ROOMARCHIVE Command
 
 **Files:**
-- Modify: `agentirc/server/skills/rooms.py`
-- Modify: `agentirc/server/ircd.py` (add empty-room notification helper)
+
+- Modify: `culture/server/skills/rooms.py`
+- Modify: `culture/server/ircd.py` (add empty-room notification helper)
 - Modify: `tests/test_rooms.py` (append)
 
 - [ ] **Step 1: Write failing tests for ROOMARCHIVE**
@@ -1737,7 +1749,7 @@ Expected: FAIL — `_handle_roomarchive` is a no-op.
 
 - [ ] **Step 3: Implement ROOMARCHIVE handler**
 
-Replace the stub in `agentirc/server/skills/rooms.py`:
+Replace the stub in `culture/server/skills/rooms.py`:
 
 ```python
     async def _handle_roomarchive(self, client: Client, msg: Message) -> None:
@@ -1785,7 +1797,7 @@ Replace the stub in `agentirc/server/skills/rooms.py`:
             await member.send(notice)
 
         # Part all members
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         for member in list(channel.members):
             part_msg = Message(
                 prefix=member.prefix, command="PART",
@@ -1825,7 +1837,7 @@ Replace the stub in `agentirc/server/skills/rooms.py`:
 
 - [ ] **Step 4: Add empty-room notification via on_event**
 
-Add to the `RoomsSkill` class in `agentirc/server/skills/rooms.py`:
+Add to the `RoomsSkill` class in `culture/server/skills/rooms.py`:
 
 ```python
     async def on_event(self, event: Event) -> None:
@@ -1856,7 +1868,7 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add agentirc/server/skills/rooms.py tests/test_rooms.py
+git add culture/server/skills/rooms.py tests/test_rooms.py
 git commit -m "feat(rooms): ROOMARCHIVE command and empty-room owner notification"
 ```
 
@@ -1865,9 +1877,10 @@ git commit -m "feat(rooms): ROOMARCHIVE command and empty-room owner notificatio
 ### Task 10: Room Persistence to Disk
 
 **Files:**
-- Create: `agentirc/server/room_store.py`
-- Modify: `agentirc/server/ircd.py`
-- Modify: `agentirc/server/skills/rooms.py`
+
+- Create: `culture/server/room_store.py`
+- Modify: `culture/server/ircd.py`
+- Modify: `culture/server/skills/rooms.py`
 - Create: `tests/test_room_persistence.py`
 
 - [ ] **Step 1: Write failing tests for room persistence**
@@ -1885,8 +1898,8 @@ import pytest
 
 def test_room_store_save_and_load():
     """Rooms can be saved to disk and loaded back."""
-    from agentirc.server.room_store import RoomStore
-    from agentirc.server.channel import Channel
+    from culture.server.room_store import RoomStore
+    from culture.server.channel import Channel
 
     with tempfile.TemporaryDirectory() as tmpdir:
         store = RoomStore(tmpdir)
@@ -1926,8 +1939,8 @@ def test_room_store_save_and_load():
 
 def test_room_store_delete():
     """Archived rooms can be re-saved, old file cleaned up on rename."""
-    from agentirc.server.room_store import RoomStore
-    from agentirc.server.channel import Channel
+    from culture.server.room_store import RoomStore
+    from culture.server.channel import Channel
 
     with tempfile.TemporaryDirectory() as tmpdir:
         store = RoomStore(tmpdir)
@@ -1946,7 +1959,7 @@ def test_room_store_delete():
 
 def test_room_store_load_empty_dir():
     """Loading from empty dir returns empty list."""
-    from agentirc.server.room_store import RoomStore
+    from culture.server.room_store import RoomStore
 
     with tempfile.TemporaryDirectory() as tmpdir:
         store = RoomStore(tmpdir)
@@ -1960,7 +1973,7 @@ Expected: FAIL — `room_store` module doesn't exist.
 
 - [ ] **Step 3: Implement RoomStore**
 
-Create `agentirc/server/room_store.py`:
+Create `culture/server/room_store.py`:
 
 ```python
 """Disk persistence for managed rooms."""
@@ -2027,21 +2040,21 @@ Expected: PASS
 
 - [ ] **Step 5: Wire persistence into RoomsSkill and IRCd**
 
-Add `data_dir` to `ServerConfig` in `agentirc/server/config.py`:
+Add `data_dir` to `ServerConfig` in `culture/server/config.py`:
 
 ```python
 @dataclass
 class ServerConfig:
-    """Configuration for an agentirc server instance."""
+    """Configuration for an culture server instance."""
 
-    name: str = "agentirc"
+    name: str = "culture"
     host: str = "0.0.0.0"
     port: int = 6667
     data_dir: str = ""
     links: list[LinkConfig] = field(default_factory=list)
 ```
 
-Add room restoration to `IRCd.start()` in `agentirc/server/ircd.py` after registering skills:
+Add room restoration to `IRCd.start()` in `culture/server/ircd.py` after registering skills:
 
 ```python
     async def start(self) -> None:
@@ -2057,7 +2070,7 @@ Add room restoration to `IRCd.start()` in `agentirc/server/ircd.py` after regist
         """Reload persistent rooms from disk on startup."""
         if not self.config.data_dir:
             return
-        from agentirc.server.room_store import RoomStore
+        from culture.server.room_store import RoomStore
 
         store = RoomStore(self.config.data_dir)
         for data in store.load_all():
@@ -2084,7 +2097,7 @@ Add `_persist_room` helper to `RoomsSkill` and call it after ROOMCREATE, ROOMMET
         """Save room to disk if data_dir is configured."""
         if not self.server.config.data_dir:
             return
-        from agentirc.server.room_store import RoomStore
+        from culture.server.room_store import RoomStore
         store = RoomStore(self.server.config.data_dir)
         store.save(channel)
 ```
@@ -2099,7 +2112,7 @@ Expected: PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add agentirc/server/room_store.py agentirc/server/config.py agentirc/server/ircd.py agentirc/server/skills/rooms.py tests/test_room_persistence.py
+git add culture/server/room_store.py culture/server/config.py culture/server/ircd.py culture/server/skills/rooms.py tests/test_room_persistence.py
 git commit -m "feat(rooms): disk persistence for managed rooms"
 ```
 
@@ -2108,9 +2121,10 @@ git commit -m "feat(rooms): disk persistence for managed rooms"
 ### Task 11: S2S Federation Extensions
 
 **Files:**
-- Modify: `agentirc/server/server_link.py`
-- Modify: `agentirc/server/skills/rooms.py` (add EventTypes)
-- Modify: `agentirc/server/skill.py` (add new EventTypes)
+
+- Modify: `culture/server/server_link.py`
+- Modify: `culture/server/skills/rooms.py` (add EventTypes)
+- Modify: `culture/server/skill.py` (add new EventTypes)
 - Create: `tests/test_rooms_federation.py`
 
 - [ ] **Step 1: Write failing tests for federation sync**
@@ -2195,7 +2209,7 @@ Expected: FAIL — no SROOMMETA handling.
 
 - [ ] **Step 3: Add new EventTypes**
 
-Edit `agentirc/server/skill.py` — add new event types:
+Edit `culture/server/skill.py` — add new event types:
 
 ```python
 class EventType(Enum):
@@ -2211,7 +2225,7 @@ class EventType(Enum):
 
 - [ ] **Step 4: Add tags to RemoteClient**
 
-Edit `agentirc/server/remote_client.py` — add `tags` field:
+Edit `culture/server/remote_client.py` — add `tags` field:
 
 ```python
 class RemoteClient:
@@ -2231,7 +2245,7 @@ class RemoteClient:
 
 - [ ] **Step 5: Emit events from RoomsSkill and add federation handlers**
 
-In `agentirc/server/skills/rooms.py`, emit events after room changes. At the end of `_handle_roomcreate`, after persisting:
+In `culture/server/skills/rooms.py`, emit events after room changes. At the end of `_handle_roomcreate`, after persisting:
 
 ```python
         await self.server.emit_event(Event(
@@ -2298,7 +2312,7 @@ Add the serialization helper:
 
 - [ ] **Step 6: Add S2S handlers in server_link.py**
 
-Add to `agentirc/server/server_link.py` — new handlers in the dispatch method, and new relay cases in `relay_event`:
+Add to `culture/server/server_link.py` — new handlers in the dispatch method, and new relay cases in `relay_event`:
 
 In the `_dispatch` method (or wherever S2S commands are routed), add handlers for `SROOMMETA`, `STAGS`, `SROOMARCHIVE`:
 
@@ -2355,7 +2369,7 @@ In the `_dispatch` method (or wherever S2S commands are routed), add handlers fo
         if not channel:
             return
 
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         # Part all members
         for member in list(channel.members):
             channel.members.discard(member)
@@ -2436,7 +2450,7 @@ Expected: All existing tests still PASS.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add agentirc/server/skill.py agentirc/server/remote_client.py agentirc/server/skills/rooms.py agentirc/server/server_link.py tests/test_rooms_federation.py
+git add culture/server/skill.py culture/server/remote_client.py culture/server/skills/rooms.py culture/server/server_link.py tests/test_rooms_federation.py
 git commit -m "feat(rooms): S2S federation — SROOMMETA, STAGS, SROOMARCHIVE"
 ```
 
@@ -2445,8 +2459,9 @@ git commit -m "feat(rooms): S2S federation — SROOMMETA, STAGS, SROOMARCHIVE"
 ### Task 12: Agent Harness — Config Tags and Room Evaluation
 
 **Files:**
-- Modify: `agentirc/clients/claude/config.py` (add tags field)
-- Modify: `agentirc/clients/claude/daemon.py` (TAGS on connect, ROOMINVITE handler)
+
+- Modify: `culture/clients/claude/config.py` (add tags field)
+- Modify: `culture/clients/claude/daemon.py` (TAGS on connect, ROOMINVITE handler)
 - Modify: `tests/test_rooms.py` (append agent config test)
 
 - [ ] **Step 1: Write failing test for agent config tags**
@@ -2456,7 +2471,7 @@ Append to `tests/test_rooms.py`:
 ```python
 def test_agent_config_tags_field():
     """AgentConfig should have tags field."""
-    from agentirc.clients.claude.config import AgentConfig
+    from culture.clients.claude.config import AgentConfig
 
     config = AgentConfig(nick="spark-claude", channels=["#general"], tags=["python", "code-review"])
     assert config.tags == ["python", "code-review"]
@@ -2464,7 +2479,7 @@ def test_agent_config_tags_field():
 
 def test_agent_config_tags_default_empty():
     """AgentConfig tags defaults to empty list."""
-    from agentirc.clients.claude.config import AgentConfig
+    from culture.clients.claude.config import AgentConfig
 
     config = AgentConfig(nick="spark-claude")
     assert config.tags == []
@@ -2477,7 +2492,7 @@ Expected: FAIL — `tags` is not a valid field for `AgentConfig`.
 
 - [ ] **Step 3: Add tags to AgentConfig**
 
-Edit `agentirc/clients/claude/config.py` — add `tags` field to `AgentConfig`:
+Edit `culture/clients/claude/config.py` — add `tags` field to `AgentConfig`:
 
 ```python
 @dataclass
@@ -2495,7 +2510,7 @@ class AgentConfig:
 
 - [ ] **Step 4: Add tags field to load_config parser**
 
-Edit `agentirc/clients/claude/config.py` — in `load_config`, tags are already handled by the `AgentConfig(**agent_raw)` unpacking since it's a dataclass with default. No change needed — the YAML `tags: [python, devops]` will be passed through.
+Edit `culture/clients/claude/config.py` — in `load_config`, tags are already handled by the `AgentConfig(**agent_raw)` unpacking since it's a dataclass with default. No change needed — the YAML `tags: [python, devops]` will be passed through.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -2504,7 +2519,7 @@ Expected: PASS
 
 - [ ] **Step 6: Add TAGS-on-connect and ROOMINVITE handler to daemon**
 
-Edit `agentirc/clients/claude/daemon.py` — after the agent connects and joins channels, send TAGS:
+Edit `culture/clients/claude/daemon.py` — after the agent connects and joins channels, send TAGS:
 
 In the connection/setup section after `JOIN` commands, add:
 
@@ -2520,7 +2535,7 @@ Add a handler for incoming ROOMINVITE messages in the message processing loop. W
 ```python
     async def _handle_roominvite(self, channel: str, meta_text: str) -> None:
         """Evaluate a room invitation using the agent's LLM."""
-        from agentirc.server.rooms_util import parse_room_meta
+        from culture.server.rooms_util import parse_room_meta
 
         meta = parse_room_meta(meta_text)
         purpose = meta.get("purpose", "")
@@ -2565,7 +2580,7 @@ Expected: PASS
 - [ ] **Step 8: Commit**
 
 ```bash
-git add agentirc/clients/claude/config.py agentirc/clients/claude/daemon.py tests/test_rooms.py
+git add culture/clients/claude/config.py culture/clients/claude/daemon.py tests/test_rooms.py
 git commit -m "feat(rooms): agent harness — config tags, TAGS on connect, ROOMINVITE evaluation"
 ```
 
@@ -2574,9 +2589,10 @@ git commit -m "feat(rooms): agent harness — config tags, TAGS on connect, ROOM
 ### Task 13: Overview Integration
 
 **Files:**
-- Modify: `agentirc/overview/model.py`
-- Modify: `agentirc/overview/collector.py`
-- Modify: `agentirc/overview/renderer_text.py`
+
+- Modify: `culture/overview/model.py`
+- Modify: `culture/overview/collector.py`
+- Modify: `culture/overview/renderer_text.py`
 - Modify: `tests/test_overview_model.py`
 
 - [ ] **Step 1: Write failing tests for updated overview model**
@@ -2586,7 +2602,7 @@ Append to `tests/test_overview_model.py`:
 ```python
 def test_room_has_tags_and_metadata():
     """Room dataclass should have tags, room_id, owner, purpose fields."""
-    from agentirc.overview.model import Room, Agent
+    from culture.overview.model import Room, Agent
 
     room = Room(
         name="#pyhelp",
@@ -2610,7 +2626,7 @@ def test_room_has_tags_and_metadata():
 
 def test_agent_has_tags():
     """Agent dataclass should have tags field."""
-    from agentirc.overview.model import Agent
+    from culture.overview.model import Agent
 
     agent = Agent(
         nick="spark-claude",
@@ -2625,7 +2641,7 @@ def test_agent_has_tags():
 
 def test_room_defaults_no_metadata():
     """Room with only required fields defaults metadata to None/empty."""
-    from agentirc.overview.model import Room
+    from culture.overview.model import Room
 
     room = Room(
         name="#plain", topic="", members=[], operators=[],
@@ -2645,7 +2661,7 @@ Expected: FAIL — `Room` doesn't accept `room_id`, `tags`, etc.
 
 - [ ] **Step 3: Update overview model dataclasses**
 
-Edit `agentirc/overview/model.py`:
+Edit `culture/overview/model.py`:
 
 ```python
 """Data model for mesh overview state."""
@@ -2712,7 +2728,7 @@ class MeshState:
 
 - [ ] **Step 4: Update collector to query ROOMMETA and TAGS**
 
-Edit `agentirc/overview/collector.py` — after collecting LIST/NAMES/WHO/HISTORY, also query ROOMMETA for each channel and TAGS for each agent. Add helper methods:
+Edit `culture/overview/collector.py` — after collecting LIST/NAMES/WHO/HISTORY, also query ROOMMETA for each channel and TAGS for each agent. Add helper methods:
 
 ```python
 async def _query_roommeta(reader, writer, nick, channel_name):
@@ -2765,6 +2781,7 @@ Use these in the main collection flow to populate `Room.room_id`, `Room.tags`, `
 In the room rendering section, add tags and metadata display:
 
 After the topic line, add:
+
 ```python
 if room.room_id:
     lines.append(f"Purpose: {room.purpose or ''}")
@@ -2779,6 +2796,7 @@ if room.room_id:
 In the agent table, add a Tags column when any agent has tags.
 
 In the agent drill-down view, add:
+
 ```python
 if agent.tags:
     lines.append(f"Tags: {', '.join(agent.tags)}")
@@ -2795,7 +2813,7 @@ Expected: PASS (existing tests should still work with default values)
 - [ ] **Step 7: Commit**
 
 ```bash
-git add agentirc/overview/model.py agentirc/overview/collector.py agentirc/overview/renderer_text.py tests/test_overview_model.py
+git add culture/overview/model.py culture/overview/collector.py culture/overview/renderer_text.py tests/test_overview_model.py
 git commit -m "feat(rooms): overview integration — display room/agent tags and metadata"
 ```
 
@@ -2804,13 +2822,14 @@ git commit -m "feat(rooms): overview integration — display room/agent tags and
 ### Task 14: Protocol Documentation
 
 **Files:**
-- Create: `agentirc/protocol/extensions/rooms.md`
-- Create: `agentirc/protocol/extensions/tags.md`
+
+- Create: `culture/protocol/extensions/rooms.md`
+- Create: `culture/protocol/extensions/tags.md`
 - Create: `docs/rooms.md`
 
 - [ ] **Step 1: Write rooms protocol extension doc**
 
-Create `agentirc/protocol/extensions/rooms.md`:
+Create `culture/protocol/extensions/rooms.md`:
 
 ```markdown
 # Room Management Protocol Extension
@@ -2824,7 +2843,9 @@ Extension to IRC for managed rooms with metadata, lifecycle, and ownership.
 Create a managed room with metadata.
 
 ```
+
 ROOMCREATE <#channel> :<key=value;key=value;instructions=...>
+
 ```
 
 **Parameters:**
@@ -2841,9 +2862,11 @@ ROOMCREATE <#channel> :<key=value;key=value;instructions=...>
 Query or update room metadata.
 
 ```
+
 ROOMMETA <#channel>                    — query all
 ROOMMETA <#channel> <key>              — query single key
 ROOMMETA <#channel> <key> <value>      — update (owner/operator only)
+
 ```
 
 **Response:** `ROOMMETA <#channel> <key> :<value>` lines, then `ROOMETAEND`.
@@ -2853,7 +2876,9 @@ ROOMMETA <#channel> <key> <value>      — update (owner/operator only)
 Suggest an agent join a room, delivering full context.
 
 ```
+
 ROOMINVITE <#channel> <nick>
+
 ```
 
 Delivers room purpose, instructions, tags, and requestor to the target.
@@ -2863,7 +2888,9 @@ Delivers room purpose, instructions, tags, and requestor to the target.
 Room owner force-removes an agent.
 
 ```
+
 ROOMKICK <#channel> <nick>
+
 ```
 
 Owner-only. The only non-consensual removal.
@@ -2873,7 +2900,9 @@ Owner-only. The only non-consensual removal.
 Archive a room, preserving metadata.
 
 ```
+
 ROOMARCHIVE <#channel>
+
 ```
 
 Renames to `#channel-archived` (or `#channel-archived#N`). Owner/operator only.
@@ -2892,7 +2921,7 @@ Renames to `#channel-archived` (or `#channel-archived#N`). Owner/operator only.
 
 - [ ] **Step 2: Write tags protocol extension doc**
 
-Create `agentirc/protocol/extensions/tags.md`:
+Create `culture/protocol/extensions/tags.md`:
 
 ```markdown
 # Agent Tags Protocol Extension
@@ -2906,8 +2935,10 @@ Extension to IRC for agent capability/interest tags.
 Query or set agent tags.
 
 ```
+
 TAGS <nick>                    — query tags
 TAGS <nick> <tag1,tag2,...>    — set own tags
+
 ```
 
 **Response (query):** `TAGS <nick> :<tag1,tag2>`, then `TAGSEND`.
@@ -2946,13 +2977,17 @@ self-organization, transferable ownership, and archive lifecycle.
 Create a managed room:
 
 ```
+
 ROOMCREATE #python-help :purpose=Python help;tags=python,code-help;persistent=true;instructions=Help with Python questions
+
 ```
 
 Set your agent's tags:
 
 ```
-TAGS spark-claude python,code-review,agentirc
+
+TAGS spark-claude python,code-review,culture
+
 ```
 
 When room tags match agent tags, the server automatically suggests joins.
@@ -2993,7 +3028,9 @@ Agents always decide autonomously whether to join or leave.
 ## Archiving
 
 ```
+
 ROOMARCHIVE #python-help
+
 ```
 
 - Renames to `#python-help-archived` (or `#-archived#2`, `#3`, etc.)
@@ -3009,7 +3046,7 @@ In `agents.yaml`:
 agents:
   - nick: spark-claude
     channels: ["#general"]
-    tags: ["python", "code-review", "agentirc"]
+    tags: ["python", "code-review", "culture"]
 ```
 
 Tags are set on the IRC server at connect time and can be updated at runtime.
@@ -3017,17 +3054,19 @@ Tags are set on the IRC server at connect time and can be updated at runtime.
 ## Federation
 
 Room metadata and agent tags federate via S2S extensions:
+
 - `SROOMMETA` — room metadata sync
 - `STAGS` — agent tag sync
 - `SROOMARCHIVE` — archive propagation
 
 Follows the existing +S/+R trust model.
+
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add agentirc/protocol/extensions/rooms.md agentirc/protocol/extensions/tags.md docs/rooms.md
+git add culture/protocol/extensions/rooms.md culture/protocol/extensions/tags.md docs/rooms.md
 git commit -m "docs(rooms): protocol extensions and feature documentation"
 ```
 
@@ -3036,6 +3075,7 @@ git commit -m "docs(rooms): protocol extensions and feature documentation"
 ### Task 15: Final Integration Test
 
 **Files:**
+
 - Create: `tests/test_rooms_integration.py`
 
 - [ ] **Step 1: Write end-to-end integration test**

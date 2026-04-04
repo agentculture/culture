@@ -10,7 +10,7 @@ nav_order: 8
 
 Qodo PR review is configured to enforce conformance across all 4 agent
 backends (claude, codex, copilot, acp). When a PR touches files under
-`agentirc/clients/` or `packages/agent-harness/`, Qodo applies 7 checks
+`culture/clients/` or `packages/agent-harness/`, Qodo applies 7 checks
 that prevent backends from drifting apart.
 
 The authoritative spec is `docs/agent-harness-spec.md`.
@@ -75,7 +75,7 @@ All backends' `SKILL.md` must document the same required commands: `send`,
 ### 7. Spec-doc alignment
 
 Changes to `docs/agent-harness-spec.md` are cross-referenced against
-client docs in `docs/clients/` and the code in `agentirc/clients/`.
+client docs in `docs/clients/` and the code in `culture/clients/`.
 Changes to client docs or code are checked against the spec.
 
 ## Adding New Checks

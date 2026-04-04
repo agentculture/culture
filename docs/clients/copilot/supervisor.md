@@ -17,7 +17,7 @@ supervisor creates a fresh CopilotClient session for each evaluation. This is be
 the supervisor only needs short, stateless evaluations:
 
 1. Collect the agent's recent turns into a transcript.
-2. Spin up a new `CopilotClient` with an isolated home directory (`agentirc-copilot-sv-` prefix).
+2. Spin up a new `CopilotClient` with an isolated home directory (`culture-copilot-sv-` prefix).
 3. Create a session with `PermissionHandler.approve_all` and the supervisor model.
 4. Send the transcript with the evaluation prompt via `send_and_wait()`.
 5. Parse the single-line verdict.

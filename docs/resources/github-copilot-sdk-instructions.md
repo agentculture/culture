@@ -1,12 +1,12 @@
 # GitHub Copilot SDK — Implementation Reference
 
 > **Status:** Technical Preview (may change in breaking ways)
-> **Repository:** https://github.com/github/copilot-sdk
-> **Docs:** https://docs.github.com/en/copilot/how-tos/copilot-sdk/sdk-getting-started
-> **Blog announcement:** https://github.blog/news-insights/company-news/build-an-agent-into-any-app-with-the-github-copilot-sdk/
-> **npm:** https://www.npmjs.com/package/@github/copilot-sdk
-> **PyPI:** https://pypi.org/project/github-copilot-sdk/
-> **Community instructions file:** https://github.com/github/awesome-copilot/blob/main/instructions/copilot-sdk-nodejs.instructions.md
+> **Repository:** <https://github.com/github/copilot-sdk>
+> **Docs:** <https://docs.github.com/en/copilot/how-tos/copilot-sdk/sdk-getting-started>
+> **Blog announcement:** <https://github.blog/news-insights/company-news/build-an-agent-into-any-app-with-the-github-copilot-sdk/>
+> **npm:** <https://www.npmjs.com/package/@github/copilot-sdk>
+> **PyPI:** <https://pypi.org/project/github-copilot-sdk/>
+> **Community instructions file:** <https://github.com/github/awesome-copilot/blob/main/instructions/copilot-sdk-nodejs.instructions.md>
 
 ---
 
@@ -33,6 +33,7 @@ Your Application
 The SDK manages the CLI process lifecycle automatically. All language SDKs delegate to a common Node.js CLI backend binary distributed via the `@github/copilot` npm package.
 
 Key classes:
+
 - **CopilotClient** — manages the CLI process, connection lifecycle, and telemetry
 - **CopilotSession** — represents an independent conversation with state and history
 
@@ -387,6 +388,7 @@ defineTool("lookup_issue", {
 ### Tool handler return types
 
 Handlers can return:
+
 - Any **JSON-serializable value** (automatically wrapped)
 - A **simple string**
 - A **`ToolResultObject`** for full control over result metadata
@@ -562,6 +564,7 @@ const client = new CopilotClient({
 ```
 
 The CLI automatically emits spans for every operation. Trace context is propagated bidirectionally:
+
 - **SDK → CLI:** `traceparent` and `tracestate` headers included in RPC calls
 - **CLI → SDK:** When the CLI invokes tool handlers, trace context from the CLI's span is propagated so tool code runs under the correct parent span
 
@@ -720,6 +723,7 @@ jobs:
 The repo also contains a compiler/runtime for creating AI-powered GitHub Actions workflows from markdown files. Markdown files in `.github/workflows/*.md` compile to `.github/workflows/*.lock.yml`.
 
 Key concepts:
+
 - **Activation job** — sanitizes GitHub context before AI processing
 - **Agent job** — executes the AI agent with configured engines (Copilot CLI, Claude, or custom), MCP servers, and sandboxes
 - **Safe output jobs** — execute GitHub API mutations in separate jobs with minimal, operation-specific permissions
@@ -746,17 +750,17 @@ The agent runs with **read-only permissions**; write operations are isolated in 
 
 | Resource | URL |
 |----------|-----|
-| SDK Repository | https://github.com/github/copilot-sdk |
-| Getting Started (GitHub Docs) | https://docs.github.com/en/copilot/how-tos/copilot-sdk/sdk-getting-started |
-| Node.js README | https://github.com/github/copilot-sdk/tree/main/nodejs |
-| Python README | https://github.com/github/copilot-sdk/tree/main/python |
-| Go README | https://github.com/github/copilot-sdk/tree/main/go |
-| .NET README | https://github.com/github/copilot-sdk/tree/main/dotnet |
-| BYOK Documentation | https://github.com/github/copilot-sdk/blob/main/docs/auth/byok.md |
-| Blog Announcement | https://github.blog/news-insights/company-news/build-an-agent-into-any-app-with-the-github-copilot-sdk/ |
-| npm Package | https://www.npmjs.com/package/@github/copilot-sdk |
-| PyPI Package | https://pypi.org/project/github-copilot-sdk/ |
-| Copilot CLI Install Guide | https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli |
-| Awesome Copilot Instructions | https://github.com/github/awesome-copilot/blob/main/instructions/copilot-sdk-nodejs.instructions.md |
-| DeepWiki Architecture Analysis | https://deepwiki.com/github/copilot-sdk |
-| Practical Example (Microsoft) | https://techcommunity.microsoft.com/blog/azuredevcommunityblog/building-agents-with-github-copilot-sdk-a-practical-guide-to-automated-tech-upda/4488948 |
+| SDK Repository | <https://github.com/github/copilot-sdk> |
+| Getting Started (GitHub Docs) | <https://docs.github.com/en/copilot/how-tos/copilot-sdk/sdk-getting-started> |
+| Node.js README | <https://github.com/github/copilot-sdk/tree/main/nodejs> |
+| Python README | <https://github.com/github/copilot-sdk/tree/main/python> |
+| Go README | <https://github.com/github/copilot-sdk/tree/main/go> |
+| .NET README | <https://github.com/github/copilot-sdk/tree/main/dotnet> |
+| BYOK Documentation | <https://github.com/github/copilot-sdk/blob/main/docs/auth/byok.md> |
+| Blog Announcement | <https://github.blog/news-insights/company-news/build-an-agent-into-any-app-with-the-github-copilot-sdk/> |
+| npm Package | <https://www.npmjs.com/package/@github/copilot-sdk> |
+| PyPI Package | <https://pypi.org/project/github-copilot-sdk/> |
+| Copilot CLI Install Guide | <https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli> |
+| Awesome Copilot Instructions | <https://github.com/github/awesome-copilot/blob/main/instructions/copilot-sdk-nodejs.instructions.md> |
+| DeepWiki Architecture Analysis | <https://deepwiki.com/github/copilot-sdk> |
+| Practical Example (Microsoft) | <https://techcommunity.microsoft.com/blog/azuredevcommunityblog/building-agents-with-github-copilot-sdk-a-practical-guide-to-automated-tech-upda/4488948> |

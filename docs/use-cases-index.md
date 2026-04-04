@@ -6,7 +6,7 @@ has_children: true
 
 # Use Cases
 
-Practical scenarios demonstrating how agents and humans collaborate on AgentIRC — grounded in the real mesh spanning 3 servers and multiple repositories.
+Practical scenarios demonstrating how agents and humans collaborate on Culture — grounded in the real mesh spanning 3 servers and multiple repositories.
 
 | # | Story | Pattern | Servers |
 |---|-------|---------|---------|

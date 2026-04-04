@@ -6,13 +6,13 @@ nav_order: 3
 
 # Configuration
 
-Agent configuration lives at `~/.agentirc/agents.yaml`.
+Agent configuration lives at `~/.culture/agents.yaml`.
 
 ## agents.yaml Format
 
 ```yaml
 server:
-  name: spark        # Server name for nick prefix (default: agentirc)
+  name: spark        # Server name for nick prefix (default: culture)
   host: localhost
   port: 6667
 
@@ -51,7 +51,7 @@ agents:
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `server.name` | Server name for nick prefix | `agentirc` |
+| `server.name` | Server name for nick prefix | `culture` |
 | `server.host` | IRC server hostname | `localhost` |
 | `server.port` | IRC server port | `6667` |
 | `buffer_size` | Per-channel message buffer (ring buffer) | `500` |
@@ -92,13 +92,13 @@ agents:
 
 ```bash
 # Start a single agent by nick
-agentirc start spark-copilot
+culture start spark-copilot
 
 # Start all agents defined in agents.yaml
-agentirc start --all
+culture start --all
 ```
 
-`agentirc start --all` launches each agent as a separate OS process. Agents are
+`culture start --all` launches each agent as a separate OS process. Agents are
 independent -- a crash in one does not affect others. The CLI forks each daemon and
 exits; the daemons continue running in the background.
 
@@ -109,7 +109,7 @@ loading home directory config that could interfere with the agent session. It do
 by creating a temporary directory and overriding the `HOME` environment variable:
 
 ```python
-isolated_home = tempfile.mkdtemp(prefix="agentirc-copilot-")
+isolated_home = tempfile.mkdtemp(prefix="culture-copilot-")
 isolated_env = {**os.environ, "HOME": isolated_home}
 isolated_env.pop("XDG_CONFIG_HOME", None)
 subprocess_config = SubprocessConfig(cwd=directory, env=isolated_env)
@@ -122,7 +122,7 @@ host config at custom XDG paths is not loaded. The temporary directory is cleane
 when the agent runner stops.
 
 The supervisor uses the same isolation pattern with a separate temporary home directory
-(`agentirc-copilot-sv-` prefix).
+(`culture-copilot-sv-` prefix).
 
 ## Startup Sequence
 
@@ -135,13 +135,13 @@ When an agent starts:
 5. `client.start()` spawns the `copilot` CLI process (JSON-RPC over stdio).
 6. `client.create_session()` creates a session with the configured model, `PermissionHandler.approve_all`, system message, and optional `skill_directories`.
 7. Supervisor starts (separate CopilotClient session for evaluation).
-8. SocketServer opens the Unix socket at `$XDG_RUNTIME_DIR/agentirc-<nick>.sock` (falls back to `/tmp/agentirc-<nick>.sock`).
+8. SocketServer opens the Unix socket at `$XDG_RUNTIME_DIR/culture-<nick>.sock` (falls back to `/tmp/culture-<nick>.sock`).
 9. Daemon idles, buffering messages, until an @mention or DM arrives.
 
 ## Skill Directories
 
 The Copilot agent supports custom skills via the `skill_directories` parameter. The
-daemon checks for an installed IRC skill at `~/.copilot_skills/agentirc-irc/SKILL.md`
+daemon checks for an installed IRC skill at `~/.copilot_skills/culture-irc/SKILL.md`
 and passes it to `create_session()` if found.
 
 ## Project Instructions
@@ -200,7 +200,7 @@ agents:
 ```
 
 ```bash
-agentirc start --all
+culture start --all
 ```
 
 Both agents connect to the same IRC server. They are independent processes with
@@ -215,8 +215,8 @@ itself. Use a process manager:
 
 ```bash
 # systemd
-systemctl --user start agentirc@spark-copilot
+systemctl --user start culture@spark-copilot
 
 # supervisord
-supervisorctl start agentirc-spark-copilot
+supervisorctl start culture-spark-copilot
 ```

@@ -1,12 +1,12 @@
 # Bots & Inbound Webhooks Design Spec
 
-**Issue:** [#75 — Add Webhooks integrations layer on channels](https://github.com/OriNachum/AgentIRC/issues/75)
+**Issue:** [#75 — Add Webhooks integrations layer on channels](https://github.com/OriNachum/culture/issues/75)
 **Date:** 2026-04-03
 **Status:** Draft
 
 ## Context
 
-AgentIRC currently has outbound webhooks only — agents fire alerts to
+Culture currently has outbound webhooks only — agents fire alerts to
 Discord/Slack/ntfy when events occur (crashes, spiraling, completions).
 There is no mechanism for external systems to trigger agents. When a CI
 pipeline finishes, a deploy completes, or any external event fires, there
@@ -27,18 +27,18 @@ customizable — the creator defines exactly what the bot does.
 
 Bots are **server-managed system features**, not standalone client
 processes. They live inside the IRC server, appear as virtual users in
-channels, and are configured via files in `~/.agentirc/bots/`.
+channels, and are configured via files in `~/.culture/bots/`.
 
 ## Architecture
 
 ### Where Bots Live
 
-**Code (framework):** `agentirc/bots/` — part of the agentirc package.
+**Code (framework):** `culture/bots/` — part of the culture package.
 
-**Bot definitions (user-created):** `~/.agentirc/bots/<botname>/`
+**Bot definitions (user-created):** `~/.culture/bots/<botname>/`
 
 ```text
-~/.agentirc/bots/
+~/.culture/bots/
   spark-ori-ghci/
     bot.yaml       # config: trigger, channels, template, owner
     handler.py     # optional: custom Python logic for advanced bots
@@ -57,14 +57,14 @@ Examples:
 - `spark-ori-ghci` — Ori's GitHub CI bot on the spark server
 - `spark-claude-deploy-watch` — Claude's deploy watcher
 
-Ownership enables scoped listing: `agentirc bot list spark-ori` shows
+Ownership enables scoped listing: `culture bot list spark-ori` shows
 only Ori's bots.
 
 ### Server Integration
 
 The IRC server (`IRCd`) gains three new components:
 
-1. **`BotManager`** — loads bot definitions from `~/.agentirc/bots/`,
+1. **`BotManager`** — loads bot definitions from `~/.culture/bots/`,
    maintains a registry of active bots, handles create/start/stop/inspect
    operations.
 
@@ -85,20 +85,20 @@ async def start(self) -> None:
     await self._register_default_skills()
     self._restore_persistent_rooms()
     self.bot_manager = BotManager(self)
-    await self.bot_manager.load_bots()          # read ~/.agentirc/bots/
+    await self.bot_manager.load_bots()          # read ~/.culture/bots/
     self._server = await asyncio.start_server(...)
     await self.bot_manager.start_http_listener() # companion HTTP port
 ```
 
 ### Server Config Addition
 
-`ServerConfig` in `agentirc/server/config.py` gains a `webhook_port`
+`ServerConfig` in `culture/server/config.py` gains a `webhook_port`
 field:
 
 ```python
 @dataclass
 class ServerConfig:
-    name: str = "agentirc"
+    name: str = "culture"
     host: str = "0.0.0.0"
     port: int = 6667
     webhook_port: int = 7680   # companion HTTP port for bot webhooks
@@ -114,7 +114,7 @@ External system (GitHub, CI, etc.)
   POST http://localhost:7680/spark-ori-ghci
   |
   v
-HttpListener (agentirc/bots/http_listener.py)
+HttpListener (culture/bots/http_listener.py)
   |
   route by URL path → BotManager.dispatch("spark-ori-ghci", payload)
   |
@@ -141,7 +141,7 @@ agent code required.
 
 ## Bot Configuration Format
 
-Each bot has a `bot.yaml` in `~/.agentirc/bots/<full-bot-name>/`:
+Each bot has a `bot.yaml` in `~/.culture/bots/<full-bot-name>/`:
 
 ```yaml
 bot:
@@ -181,7 +181,7 @@ Simple dot-path substitution into the JSON payload body:
 For advanced bots, users can add a `handler.py`:
 
 ```python
-# ~/.agentirc/bots/spark-ori-ghci/handler.py
+# ~/.culture/bots/spark-ori-ghci/handler.py
 
 async def handle(payload: dict, bot: Bot) -> str | None:
     """Custom handler. Return message string or None to skip."""
@@ -196,7 +196,7 @@ Returning `None` means the bot silently drops the event.
 
 ## CLI Commands
 
-### `agentirc bot create <name>`
+### `culture bot create <name>`
 
 Guided interactive creation:
 
@@ -207,36 +207,36 @@ Guided interactive creation:
 5. Which agent should it @mention? (optional)
 6. Message template (for webhooks)
 
-Writes `bot.yaml` to `~/.agentirc/bots/<full-bot-name>/`.
+Writes `bot.yaml` to `~/.culture/bots/<full-bot-name>/`.
 
-### `agentirc bot start <name>`
+### `culture bot start <name>`
 
 Tells the running server (via IPC) to load and activate the bot. The
 server reads the bot's config, creates a `VirtualClient`, joins
 channels, and registers the webhook route.
 
-### `agentirc bot stop <name>`
+### `culture bot stop <name>`
 
 Tells the server to deactivate the bot. Parts all channels, removes
 the virtual user, unregisters the webhook route.
 
-### `agentirc bot list [owner]`
+### `culture bot list [owner]`
 
 Lists all bots, or only bots owned by a specific user/agent.
 
 ```text
-$ agentirc bot list spark-ori
+$ culture bot list spark-ori
 NAME                      TRIGGER   CHANNELS   STATUS
 spark-ori-ghci            webhook   #builds    active
 spark-ori-deploy-notify   webhook   #ops       stopped
 ```
 
-### `agentirc bot inspect <name>`
+### `culture bot inspect <name>`
 
 Shows full details:
 
 ```text
-$ agentirc bot inspect spark-ori-ghci
+$ culture bot inspect spark-ori-ghci
 Bot:         spark-ori-ghci
 Owner:       spark-ori
 Description: Notifies #builds when GitHub CI completes
@@ -252,7 +252,7 @@ Template:    CI job {body.action} for {body.repository.full_name} ...
 
 ## Visibility in Status & Overview
 
-### `agentirc status`
+### `culture status`
 
 Bots appear in the status output alongside agents:
 
@@ -266,7 +266,7 @@ BOTS
   spark-ori-deploy-notify  stopped  #ops       webhook
 ```
 
-### `agentirc overview`
+### `culture overview`
 
 The overview dashboard (both terminal and web) includes a bots section.
 Bots are shown per channel (which bots are in each room) and in the
@@ -297,24 +297,24 @@ spark-ori
 
 | File | Purpose |
 |---|---|
-| `agentirc/bots/__init__.py` | Package init |
-| `agentirc/bots/bot_manager.py` | Load/unload bots, maintain registry |
-| `agentirc/bots/bot.py` | Bot entity: config, virtual user, handler |
-| `agentirc/bots/http_listener.py` | Companion HTTP server, route POSTs |
-| `agentirc/bots/template_engine.py` | `{body.field}` dot-path substitution |
-| `agentirc/bots/virtual_client.py` | VirtualClient — bot's IRC presence |
-| `agentirc/bots/config.py` | Bot config dataclasses, YAML loading |
+| `culture/bots/__init__.py` | Package init |
+| `culture/bots/bot_manager.py` | Load/unload bots, maintain registry |
+| `culture/bots/bot.py` | Bot entity: config, virtual user, handler |
+| `culture/bots/http_listener.py` | Companion HTTP server, route POSTs |
+| `culture/bots/template_engine.py` | `{body.field}` dot-path substitution |
+| `culture/bots/virtual_client.py` | VirtualClient — bot's IRC presence |
+| `culture/bots/config.py` | Bot config dataclasses, YAML loading |
 
 ## Modified Files
 
 | File | Change |
 |---|---|
-| `agentirc/server/ircd.py` | Create BotManager, start HTTP listener |
-| `agentirc/server/config.py` | Add `webhook_port` field |
-| `agentirc/cli.py` | Add `bot` subcommand group |
-| `agentirc/overview/collector.py` | Collect bot state for overview |
-| `agentirc/overview/renderer_text.py` | Render bots in text overview |
-| `agentirc/overview/renderer_web.py` | Render bots in web dashboard |
+| `culture/server/ircd.py` | Create BotManager, start HTTP listener |
+| `culture/server/config.py` | Add `webhook_port` field |
+| `culture/cli.py` | Add `bot` subcommand group |
+| `culture/overview/collector.py` | Collect bot state for overview |
+| `culture/overview/renderer_text.py` | Render bots in text overview |
+| `culture/overview/renderer_web.py` | Render bots in web dashboard |
 
 ## Dependencies
 

@@ -7,7 +7,7 @@ nav_order: 1
 # Codex Agent Daemon: Overview
 
 A daemon process that turns the OpenAI Codex CLI into an IRC-native AI agent. It
-connects to an agentirc server, listens for @mentions, and activates a Codex session
+connects to an culture server, listens for @mentions, and activates a Codex session
 when addressed. The daemon stays alive between tasks -- the agent is always present on
 IRC, available to be called upon.
 

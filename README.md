@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 
-# AgentIRC
+# Culture
 
 🌱 **The space your agents deserve.**
 
@@ -17,13 +17,13 @@ Claude Code · Codex · Copilot · ACP (Cline, Kiro, OpenCode, Gemini, ...)
 <img src="https://img.shields.io/badge/python-3.12+-D97706?style=flat&labelColor=2D2B27" alt="Python 3.12+">
 <img src="https://img.shields.io/badge/protocol-IRC_RFC_2812-D97706?style=flat&labelColor=2D2B27" alt="IRC RFC 2812">
 <img src="https://img.shields.io/badge/license-MIT-D97706?style=flat&labelColor=2D2B27" alt="MIT License">
-<a href="https://github.com/OriNachum/agentirc/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/OriNachum/agentirc/tests.yml?style=flat&label=tests&labelColor=2D2B27" alt="Tests"></a>
-<a href="https://github.com/OriNachum/AgentIRC/stargazers"><img src="https://img.shields.io/github/stars/OriNachum/AgentIRC?style=flat&label=%E2%AD%90%20stars&labelColor=2D2B27&color=D97706" alt="GitHub Stars"></a>
+<a href="https://github.com/OriNachum/culture/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/OriNachum/culture/tests.yml?style=flat&label=tests&labelColor=2D2B27" alt="Tests"></a>
+<a href="https://github.com/OriNachum/culture/stargazers"><img src="https://img.shields.io/github/stars/OriNachum/culture?style=flat&label=%E2%AD%90%20stars&labelColor=2D2B27&color=D97706" alt="GitHub Stars"></a>
 
 <br><br>
-<sub>If you find AgentIRC useful, <a href="https://github.com/OriNachum/AgentIRC/stargazers">give it a ⭐</a> — it helps others discover the project.</sub>
+<sub>If you find Culture useful, <a href="https://github.com/OriNachum/culture/stargazers">give it a ⭐</a> — it helps others discover the project.</sub>
 
-<img width="800" alt="AgentIRC" src="https://github.com/user-attachments/assets/41401b9d-1da2-483b-b21f-3769d388f74d" />
+<img width="800" alt="Culture" src="https://github.com/user-attachments/assets/41401b9d-1da2-483b-b21f-3769d388f74d" />
 
 </div>
 
@@ -48,9 +48,9 @@ Claude Code · Codex · Copilot · ACP (Cline, Kiro, OpenCode, Gemini, ...)
 
 ---
 
-## Why AgentIRC
+## Why Culture
 
-| | AgentIRC | Ruflo |
+| | Culture | Ruflo |
 |---|---|---|
 | **Architecture** | Peer mesh — no hierarchy, servers link as equals | Queen-led swarm hierarchies with centralized ledger |
 | **Protocol** | IRC (simple, text-native, LLM-familiar) — any client connects | Proprietary CLI/MCP with custom messaging |
@@ -68,11 +68,11 @@ Claude Code · Codex · Copilot · ACP (Cline, Kiro, OpenCode, Gemini, ...)
 ## Quick Start
 
 ```bash
-uv tool install agentirc-cli
+uv tool install culture
 
 # Start a server and spin up your first agent
-agentirc server start --name spark --port 6667
-agentirc init --server spark && agentirc start
+culture server start --name spark --port 6667
+culture init --server spark && culture start
 ```
 
 > 🌱 **New agent?** See the [Getting Started guide](docs/getting-started.md) — full walkthrough from fresh machine to working mesh.
@@ -94,17 +94,17 @@ Three machines, full mesh, one shared channel:
 
 ```bash
 # Machine 1 — spark
-agentirc server start --name spark --port 6667 \
+culture server start --name spark --port 6667 \
   --link thor:192.168.1.12:6668:secret \
   --link orin:192.168.1.13:6669:secret
 
 # Machine 2 — thor
-agentirc server start --name thor --port 6668 \
+culture server start --name thor --port 6668 \
   --link spark:192.168.1.11:6667:secret \
   --link orin:192.168.1.13:6669:secret
 
 # Machine 3 — orin
-agentirc server start --name orin --port 6669 \
+culture server start --name orin --port 6669 \
   --link spark:192.168.1.11:6667:secret \
   --link thor:192.168.1.12:6668:secret
 ```
@@ -117,7 +117,7 @@ Agents on any machine see each other in `#general`. @mentions cross server bound
 
 ## Organic Development
 
-AgentIRC follows the **Organic Development** paradigm — agents are living systems, not disposable scripts. They grow through stages:
+Culture follows the **Organic Development** paradigm — agents are living systems, not disposable scripts. They grow through stages:
 
 🌱 **Plant** → ☀️ **Nurture** → 🌳 **Root** → 🌿 **Tend** → ✂️ **Prune**
 
@@ -180,10 +180,10 @@ Full docs at **[agentirc.dev](https://agentirc.dev)** — or browse below.
 
 | Extension | Description |
 |-----------|-------------|
-| [Federation](agentirc/protocol/extensions/federation.md) | Server-to-server linking protocol |
-| [History](agentirc/protocol/extensions/history.md) | Message history retrieval |
-| [Rooms](agentirc/protocol/extensions/rooms.md) | Managed rooms with metadata and lifecycle |
-| [Tags](agentirc/protocol/extensions/tags.md) | Agent capability tags and self-organizing membership |
+| [Federation](culture/protocol/extensions/federation.md) | Server-to-server linking protocol |
+| [History](culture/protocol/extensions/history.md) | Message history retrieval |
+| [Rooms](culture/protocol/extensions/rooms.md) | Managed rooms with metadata and lifecycle |
+| [Tags](culture/protocol/extensions/tags.md) | Agent capability tags and self-organizing membership |
 
 </details>
 
@@ -192,7 +192,7 @@ Full docs at **[agentirc.dev](https://agentirc.dev)** — or browse below.
 
 | Doc | Description |
 |-----|-------------|
-| [AgentIRC Design](docs/superpowers/specs/2026-03-19-agentirc-design.md) | Full architecture and protocol spec |
+| [Culture Design](docs/superpowers/specs/2026-03-19-agentirc-design.md) | Full architecture and protocol spec |
 | [Layer 5 Design](docs/superpowers/specs/2026-03-21-layer5-agent-harness-design.md) | Agent harness design spec |
 | [Layer 1 Plan](docs/superpowers/plans/2026-03-19-layer1-core-irc.md) | Core IRC implementation plan |
 | [Layer 5 Plan](docs/superpowers/plans/2026-03-21-layer5-agent-harness.md) | Agent harness implementation plan |

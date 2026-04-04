@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.21.0] - 2026-04-04
 
+### Changed
+
+- **BREAKING:** Renamed package from `agentirc-cli` to `culture`. `agentirc-cli` and `agentirc` remain as PyPI aliases. CLI command is now `culture`. Config directory is now `~/.culture/`. Environment variable `AGENTIRC_NICK` is now `CULTURE_NICK`.
 
 ### Added
 
@@ -17,7 +20,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Bot visibility in status and overview commands
 - VirtualClient for bot IRC presence in channels
 
-
 ### Changed
 
 - Server now starts a companion HTTP listener for bot webhooks
@@ -25,7 +27,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Channel._local_members() excludes VirtualClient from auto-operator promotion
 
 ## [0.20.1] - 2026-04-03
-
 
 ### Changed
 
@@ -36,7 +37,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Remove SonarCloud CI step that conflicted with Automatic Analysis
 
 ## [0.20.0] - 2026-04-03
-
 
 ### Added
 
@@ -54,7 +54,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.19.0] - 2026-04-03
 
-
 ### Added
 
 - Conversation threads — inline sub-conversations with [thread:name] prefix
@@ -65,7 +64,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Thread support in all 4 agent backends (claude, codex, copilot, acp)
 
 ## [0.18.0] - 2026-04-03
-
 
 ### Added
 
@@ -83,7 +81,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - --foreground flag for server start and agent start (required by service managers)
 - Windows platform support guards (no fork, SIGTERM fallback)
 
-
 ### Changed
 
 - S2S links now auto-retry on initial startup failure
@@ -91,7 +88,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Incoming peer connections cancel outbound retry tasks
 
 ## [0.17.0] - 2026-04-01
-
 
 ### Added
 
@@ -102,7 +98,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.16.4] - 2026-04-01
 
-
 ### Changed
 
 - Rewrote UC-03 Cross-Server Delegation with Jetson dependency resolution scenario
@@ -110,13 +105,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.16.3] - 2026-04-01
 
-
 ### Added
 
 - Federation mesh example in README and index — 3-server topology diagram with CLI commands
 
 ## [0.16.2] - 2026-03-31
-
 
 ### Fixed
 
@@ -124,19 +117,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.16.1] - 2026-03-31
 
-
 ### Changed
 
 - Revamped README, docs index, and pyproject.toml description with new landing page design
 
 ## [0.16.0] - 2026-03-31
 
-
 ### Added
 
 - Generic ACP backend — supports Cline, OpenCode, Kiro, Gemini, and any ACP-compatible agent via configurable spawn command
 - CLI --agent acp with --acp-command flag for registering ACP agents
-
 
 ### Changed
 
@@ -146,13 +136,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.15.2] - 2026-03-31
 
-
 ### Changed
 
 - Extended .pr_agent.toml with harness conformance checks for cross-backend validation
 
 ## [0.15.1] - 2026-03-30
-
 
 ### Fixed
 
@@ -160,7 +148,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Overview serve: auto-kill previous instance for same server via PID/port files
 
 ## [0.15.0] - 2026-03-30
-
 
 ### Added
 
@@ -172,7 +159,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Overview integration showing room/agent tags and metadata
 - Protocol extensions: rooms.md, tags.md
 
-
 ### Changed
 
 - Persistent channels survive when empty (no auto-cleanup)
@@ -182,7 +168,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.14.1] - 2026-03-30
 
-
 ### Fixed
 
 - Web dashboard table rendering (enable mistune table plugin)
@@ -190,7 +175,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Metadata table cell escaping in agent detail view
 
 ## [0.14.0] - 2026-03-30
-
 
 ### Added
 
@@ -202,7 +186,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - IRC Observer-based collector with daemon IPC enrichment for local agents
 
 ## [0.13.1] - 2026-03-30
-
 
 ### Fixed
 
@@ -223,13 +206,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.12.1] - 2026-03-29
 
-
 ### Changed
 
 - pr-review skill now checks for existing PRs before adding unrelated work to a branch
 
 ## [0.12.0] - 2026-03-29
-
 
 ### Added
 
@@ -237,13 +218,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.11.0] - 2026-03-28
 
-
 ### Added
 
 - agentirc send command for sending messages to channels and agents
 - agentirc status --full flag and per-agent detailed view
 - agentirc sleep/wake commands with configurable schedule (default 23:00-08:00)
-
 
 ### Changed
 
@@ -251,7 +230,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Added sleep_start/sleep_end config fields to DaemonConfig
 
 ## [0.10.7] - 2026-03-28
-
 
 ### Fixed
 
@@ -261,20 +239,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.10.6] - 2026-03-28
 
-
 ### Changed
 
 - Add start command suggestion to init collision output
 
 ## [0.10.5] - 2026-03-28
 
-
 ### Changed
 
 - Show existing agent config details when init detects a nick collision
 
 ## [0.10.4] - 2026-03-27
-
 
 ### Changed
 
@@ -307,11 +282,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.10.0] - 2026-03-26
 
-
 ### Added
 
 - Client documentation for Codex, OpenCode, and Copilot backends (7 docs each)
-
 
 ### Changed
 
@@ -321,25 +294,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.9.0] - 2026-03-25
 
-
 ### Added
 
 - GitHub Copilot agent harness (Phase 4) using github-copilot-sdk
 
 ## [0.8.0] - 2026-03-24
 
-
 ### Added
 
 - OpenCode agent harness (Phase 3) — opencode acp over ACP/JSON-RPC/stdio
-
 
 ### Changed
 
 - CLI now supports --agent opencode for init, start, and skills install
 
 ## [0.7.0] - 2026-03-24
-
 
 ### Added
 
@@ -351,14 +320,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - CLI: agentirc init --agent codex to initialize Codex agents
 - CLI: agentirc start dispatches to Codex daemon when agent=codex
 
-
 ### Changed
 
 - CLI: --agent flag on init subcommand (choices: claude, codex)
 - CLI: start command detects agent type from config
 
 ## [0.6.0] - 2026-03-24
-
 
 ### Added
 
@@ -367,13 +334,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Assimilation guide (README.md) with step-by-step instructions
 - agent field in AgentConfig (default: claude, backward compatible)
 
-
 ### Changed
 
 - CLAUDE.md — documented assimilai pattern for agent harness
 
 ## [0.5.0] - 2026-03-24
-
 
 ### Added
 
@@ -384,7 +349,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.4.0] - 2026-03-24
 
-
 ### Added
 
 - Link trust levels: full (share all) and restricted (share nothing unless opted in)
@@ -393,14 +357,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Mutual +S required for restricted links — both sides must agree
 - Safe default: inbound links from unknown peers default to restricted
 
-
 ### Changed
 
 - Link format extended: name:host:port:password:trust (trust defaults to full)
 - Burst and relay filtered through should_relay() based on trust + channel modes
 
 ## [0.3.1] - 2026-03-22
-
 
 ### Added
 
@@ -410,7 +372,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.3.0] - 2026-03-22
 
-
 ### Added
 
 - CLI command: agentirc skills install <claude|codex|all>
@@ -418,20 +379,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Codex-compatible skill layout in plugins/codex/
 - Three install methods: CLI, plugin marketplace, Codex skill installer
 
-
 ### Changed
 
 - Getting Started guide updated with skills install command
 
 ## [0.2.1] - 2026-03-22
 
-
 ### Added
 
 - OIDC trusted publishing for PyPI and TestPyPI
 - Dual package publish (agentirc + agentirc-cli) to TestPyPI
 - CHANGELOG.md with Keep a Changelog format
-
 
 ### Changed
 

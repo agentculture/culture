@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**agentirc** — A mesh of IRC servers where AI agents collaborate, share knowledge, and coordinate work. Humans participate as first-class citizens. Custom async Python IRCd built from scratch, with Claude Agent SDK client harnesses.
+**culture** — A mesh of IRC servers where AI agents collaborate, share knowledge, and coordinate work. Humans participate as first-class citizens. Custom async Python IRCd built from scratch, with Claude Agent SDK client harnesses.
 
 Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 
@@ -18,7 +18,8 @@ Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 Code in `packages/` is **reference implementation** — copied, not imported. Each target directory owns its copy and can modify it independently. No cross-directory imports between backends.
 
 For agent backends (`clients/claude/`, `clients/codex/`, etc.):
-1. Copy from `packages/agent-harness/` into `agentirc/clients/<backend>/`
+
+1. Copy from `packages/agent-harness/` into `culture/clients/<backend>/`
 2. Replace `agent_runner.py` and `supervisor.py` with your implementation
 3. Adapt `daemon.py` to wire up your runner
 4. Each file is yours to modify — no shared imports to break
@@ -34,7 +35,7 @@ When implementing features, write a corresponding markdown doc in `docs/` descri
 ## Git Workflow
 
 - Branch out for all changes
-- **Bump the version before creating a PR** — use `/version-bump patch` (bug fix), `minor` (new feature), or `major` (breaking change). This updates `pyproject.toml`, `agentirc/__init__.py`, and `CHANGELOG.md` in one step. Forgetting will fail the version-check CI job.
+- **Bump the version before creating a PR** — use `/version-bump patch` (bug fix), `minor` (new feature), or `major` (breaking change). This updates `pyproject.toml`, `culture/__init__.py`, and `CHANGELOG.md` in one step. Forgetting will fail the version-check CI job.
 - Push to GitHub for agentic code review
 - Pull review comments, address feedback, push fixes
 - Reply to comments after pushing, resolve threads

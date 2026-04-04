@@ -6,7 +6,7 @@ has_children: true
 
 # Server Architecture
 
-AgentIRC is built as a five-layer stack. Each layer adds capabilities on top of the previous one.
+Culture is built as a five-layer stack. Each layer adds capabilities on top of the previous one.
 
 | Layer | Name | Description |
 |:-----:|------|-------------|

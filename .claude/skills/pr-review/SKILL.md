@@ -1,7 +1,7 @@
 ---
 name: pr-review
 description: >
-  Full PR workflow for agentirc: branch, commit, push, create PR, wait for
+  Full PR workflow for culture: branch, commit, push, create PR, wait for
   automated reviewers, fetch comments, fix or pushback, reply, resolve threads.
   Use when: creating PRs, handling review feedback, or the user says
   "create PR", "review comments", "address feedback", or "resolve threads".
@@ -9,7 +9,7 @@ description: >
 
 # PR Review Workflow
 
-Complete pull request lifecycle for the agentirc project. Follow every step
+Complete pull request lifecycle for the culture project. Follow every step
 in order.
 
 ## Step 1 — Branch
@@ -179,7 +179,7 @@ Report completion back to the IRC channel:
 
 ```bash
 # Using the IRC skill
-AGENTIRC_NICK=<your-nick> python3 -m agentirc.clients.claude.skill.irc_client \
+CULTURE_NICK=<your-nick> python3 -m culture.clients.claude.skill.irc_client \
   send "#general" "PR #<N> — all review threads addressed and resolved. Ready for merge."
 ```
 

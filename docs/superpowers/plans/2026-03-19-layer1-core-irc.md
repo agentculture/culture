@@ -21,7 +21,7 @@ nav_order: 3
 ## File Structure
 
 ```text
-agentirc/
+culture/
 ├── pyproject.toml                # Project config, dependencies (uv)
 ├── protocol/
 │   ├── __init__.py
@@ -30,7 +30,7 @@ agentirc/
 │   └── commands.py               # Command verb constants
 ├── server/
 │   ├── __init__.py
-│   ├── __main__.py               # Entry point: agentirc server start
+│   ├── __main__.py               # Entry point: culture server start
 │   ├── config.py                 # Server configuration dataclass
 │   ├── ircd.py                   # Main IRCd class (asyncio TCP listener)
 │   ├── client.py                 # Connected client state & command handlers
@@ -73,7 +73,7 @@ agentirc/
 
 ```toml
 [project]
-name = "agentirc"
+name = "culture"
 version = "0.1.0"
 description = "IRC Protocol ChatRooms for AI Agents (And humans allowed)"
 requires-python = ">=3.12"
@@ -128,7 +128,7 @@ git commit -m "chore: project scaffolding with uv, pytest"
 
 ```python
 # tests/test_message.py
-from agentirc.protocol.message import Message
+from culture.protocol.message import Message
 
 
 class TestMessageParse:
@@ -139,9 +139,9 @@ class TestMessageParse:
         assert msg.params == []
 
     def test_command_with_params(self):
-        msg = Message.parse("NICK spark-agentirc\r\n")
+        msg = Message.parse("NICK spark-culture\r\n")
         assert msg.command == "NICK"
-        assert msg.params == ["spark-agentirc"]
+        assert msg.params == ["spark-culture"]
 
     def test_command_with_trailing(self):
         msg = Message.parse("PRIVMSG #general :Hello world\r\n")
@@ -160,7 +160,7 @@ class TestMessageParse:
         assert msg.params == ["ori", "0", "*", "Ori Nachum"]
 
     def test_command_case_normalized(self):
-        msg = Message.parse("nick spark-agentirc\r\n")
+        msg = Message.parse("nick spark-culture\r\n")
         assert msg.command == "NICK"
 
     def test_no_trailing_crlf(self):
@@ -173,9 +173,9 @@ class TestMessageParse:
         assert msg.params == ["#general", ""]
 
     def test_multiple_middle_params(self):
-        msg = Message.parse("MODE #channel +o spark-agentirc\r\n")
+        msg = Message.parse("MODE #channel +o spark-culture\r\n")
         assert msg.command == "MODE"
-        assert msg.params == ["#channel", "+o", "spark-agentirc"]
+        assert msg.params == ["#channel", "+o", "spark-culture"]
 
 
 class TestMessageFormat:
@@ -196,8 +196,8 @@ class TestMessageFormat:
         assert msg.format() == "PRIVMSG #general :\r\n"
 
     def test_single_word_trailing(self):
-        msg = Message(prefix=None, command="NICK", params=["spark-agentirc"])
-        assert msg.format() == "NICK spark-agentirc\r\n"
+        msg = Message(prefix=None, command="NICK", params=["spark-culture"])
+        assert msg.format() == "NICK spark-culture\r\n"
 
     def test_roundtrip(self):
         original = ":spark-ori!ori@localhost PRIVMSG #general :Hello world"
@@ -368,9 +368,9 @@ from dataclasses import dataclass
 
 @dataclass
 class ServerConfig:
-    """Configuration for an agentirc server instance."""
+    """Configuration for an culture server instance."""
 
-    name: str = "agentirc"
+    name: str = "culture"
     host: str = "0.0.0.0"
     port: int = 6667
 ```
@@ -383,7 +383,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agentirc.server.client import Client
+    from culture.server.client import Client
 
 
 class Channel:
@@ -427,8 +427,8 @@ Create `tests/conftest.py` first (fixtures must exist before tests reference the
 # tests/conftest.py
 import asyncio
 import pytest_asyncio
-from agentirc.server.config import ServerConfig
-from agentirc.server.ircd import IRCd
+from culture.server.config import ServerConfig
+from culture.server.ircd import IRCd
 
 
 class IRCTestClient:
@@ -546,15 +546,15 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from agentirc.server.config import ServerConfig
-from agentirc.server.channel import Channel
+from culture.server.config import ServerConfig
+from culture.server.channel import Channel
 
 if TYPE_CHECKING:
-    from agentirc.server.client import Client
+    from culture.server.client import Client
 
 
 class IRCd:
-    """The agentirc IRC server."""
+    """The culture IRC server."""
 
     def __init__(self, config: ServerConfig):
         self.config = config
@@ -577,7 +577,7 @@ class IRCd:
     async def _handle_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        from agentirc.server.client import Client
+        from culture.server.client import Client
 
         client = Client(reader, writer, self)
         try:
@@ -615,12 +615,12 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from agentirc.protocol.message import Message
-from agentirc.protocol import replies
+from culture.protocol.message import Message
+from culture.protocol import replies
 
 if TYPE_CHECKING:
-    from agentirc.server.ircd import IRCd
-    from agentirc.server.channel import Channel
+    from culture.server.ircd import IRCd
+    from culture.server.channel import Channel
 
 
 class Client:
@@ -864,7 +864,7 @@ Add these methods to `server/client.py` in the `Client` class:
         )
         await self.send_numeric(
             replies.RPL_YOURHOST,
-            f"Your host is {self.server.config.name}, running agentirc",
+            f"Your host is {self.server.config.name}, running culture",
         )
         await self.send_numeric(
             replies.RPL_CREATED,
@@ -873,7 +873,7 @@ Add these methods to `server/client.py` in the `Client` class:
         await self.send_numeric(
             replies.RPL_MYINFO,
             self.server.config.name,
-            "agentirc",
+            "culture",
             "o",
             "o",
         )
@@ -970,16 +970,16 @@ async def test_topic_set_and_get(server, make_client):
     await client.send("JOIN #general")
     await client.recv_all(timeout=0.5)
 
-    await client.send("TOPIC #general :Building agentirc")
+    await client.send("TOPIC #general :Building culture")
     lines = await client.recv_all(timeout=1.0)
     joined = " ".join(lines)
     assert "TOPIC" in joined
-    assert "Building agentirc" in joined
+    assert "Building culture" in joined
 
     await client.send("TOPIC #general")
     response = await client.recv()
     assert "332" in response  # RPL_TOPIC
-    assert "Building agentirc" in response
+    assert "Building culture" in response
 
 
 @pytest.mark.asyncio
@@ -1017,7 +1017,7 @@ async def test_join_channel_with_topic(server, make_client):
     client1 = await make_client(nick="testserv-ori", user="ori")
     await client1.send("JOIN #general")
     await client1.recv_all(timeout=0.5)
-    await client1.send("TOPIC #general :Welcome to agentirc")
+    await client1.send("TOPIC #general :Welcome to culture")
     await client1.recv_all(timeout=0.5)
 
     client2 = await make_client(nick="testserv-claude", user="claude")
@@ -1025,7 +1025,7 @@ async def test_join_channel_with_topic(server, make_client):
     lines = await client2.recv_all(timeout=1.0)
     joined = " ".join(lines)
     assert "332" in joined
-    assert "Welcome to agentirc" in joined
+    assert "Welcome to culture" in joined
 
 
 @pytest.mark.asyncio
@@ -1494,13 +1494,13 @@ git commit -m "feat: QUIT handler with channel notification"
 import argparse
 import asyncio
 
-from agentirc.server.config import ServerConfig
-from agentirc.server.ircd import IRCd
+from culture.server.config import ServerConfig
+from culture.server.ircd import IRCd
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="agentirc IRC server")
-    parser.add_argument("--name", default="agentirc", help="Server name (used in nick prefix)")
+    parser = argparse.ArgumentParser(description="culture IRC server")
+    parser.add_argument("--name", default="culture", help="Server name (used in nick prefix)")
     parser.add_argument("--host", default="0.0.0.0", help="Listen address")
     parser.add_argument("--port", type=int, default=6667, help="Listen port")
     args = parser.parse_args()
@@ -1508,7 +1508,7 @@ async def main() -> None:
     config = ServerConfig(name=args.name, host=args.host, port=args.port)
     ircd = IRCd(config)
     await ircd.start()
-    print(f"agentirc '{config.name}' listening on {config.host}:{config.port}")
+    print(f"culture '{config.name}' listening on {config.host}:{config.port}")
 
     try:
         await asyncio.Event().wait()
@@ -1524,14 +1524,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Verify it starts**
 
-Run: `timeout 2 uv run agentirc server start --name spark --port 16667 || true`
-Expected: Prints `agentirc 'spark' listening on 0.0.0.0:16667` then exits on timeout
+Run: `timeout 2 uv run culture server start --name spark --port 16667 || true`
+Expected: Prints `culture 'spark' listening on 0.0.0.0:16667` then exits on timeout
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add server/__main__.py
-git commit -m "feat: server entry point — agentirc server start"
+git commit -m "feat: server entry point — culture server start"
 ```
 
 ---
@@ -1554,11 +1554,11 @@ A minimal IRC server implementing the core of RFC 2812. Accepts connections from
 ## Running
 
 ```bash
-# Start with default settings (name: agentirc, port: 6667)
-uv run agentirc server start
+# Start with default settings (name: culture, port: 6667)
+uv run culture server start
 
 # Start with custom name and port
-uv run agentirc server start --name spark --port 6667
+uv run culture server start --name spark --port 6667
 ```
 
 ## Supported Commands
@@ -1583,9 +1583,9 @@ The server enforces that all nicks start with the server's name followed by a hy
 ## Connecting with weechat
 
 ```
-/server add agentirc localhost/6667 -autoconnect
-/set irc.server.agentirc.nicks "spark-ori"
-/connect agentirc
+/server add culture localhost/6667 -autoconnect
+/set irc.server.culture.nicks "spark-ori"
+/connect culture
 /join #general
 ```
 
@@ -1598,6 +1598,7 @@ uv run pytest -v
 # Run specific test file
 uv run pytest tests/test_channel.py -v
 ```
+
 ```
 
 - [ ] **Step 2: Commit**
@@ -1615,14 +1616,14 @@ This is not automated — it's the milestone from the spec.
 
 - [ ] **Step 1: Start the server**
 
-Run: `uv run agentirc server start --name spark --port 6667`
+Run: `uv run culture server start --name spark --port 6667`
 
 - [ ] **Step 2: Connect with weechat (in a separate terminal)**
 
 ```
-/server add agentirc localhost/6667
-/set irc.server.agentirc.nicks "spark-ori"
-/connect agentirc
+/server add culture localhost/6667
+/set irc.server.culture.nicks "spark-ori"
+/connect culture
 ```
 
 Expected: See welcome messages (001-004)
@@ -1638,12 +1639,12 @@ Expected: Channel joined, message appears
 
 - [ ] **Step 4: Open a second weechat (or other IRC client) and verify two-way chat**
 
-Connect as `spark-agentirc`, join `#general`, exchange messages.
+Connect as `spark-culture`, join `#general`, exchange messages.
 
 - [ ] **Step 5: Test DMs**
 
 ```
-/msg spark-agentirc Hey, direct message test
+/msg spark-culture Hey, direct message test
 ```
 
 Expected: Message arrives in the other client

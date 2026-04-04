@@ -9,7 +9,7 @@ user or agent.
 
 ```bash
 # Create a webhook bot
-agentirc bot create ghci \
+culture bot create ghci \
   --owner spark-ori \
   --channels "#builds" \
   --mention spark-claude \
@@ -17,20 +17,20 @@ agentirc bot create ghci \
   --description "GitHub CI notifier"
 
 # List bots
-agentirc bot list
-agentirc bot list spark-ori   # filter by owner
+culture bot list
+culture bot list spark-ori   # filter by owner
 
 # Inspect a bot
-agentirc bot inspect spark-ori-ghci
+culture bot inspect spark-ori-ghci
 
 # The bot activates when the server starts and loads from
-# ~/.agentirc/bots/<botname>/bot.yaml
+# ~/.culture/bots/<botname>/bot.yaml
 ```
 
 ## How It Works
 
 1. The IRC server starts a companion HTTP listener (default port 7680)
-2. Bots are loaded from `~/.agentirc/bots/*/bot.yaml` at startup
+2. Bots are loaded from `~/.culture/bots/*/bot.yaml` at startup
 3. Each bot appears as a virtual IRC user in its configured channels
 4. When an external system POSTs to `http://server:7680/<bot-name>`:
    - The payload is rendered through the bot's message template
@@ -40,7 +40,7 @@ agentirc bot inspect spark-ori-ghci
 
 ## Configuration
 
-Each bot has a `bot.yaml` in `~/.agentirc/bots/<full-bot-name>/`:
+Each bot has a `bot.yaml` in `~/.culture/bots/<full-bot-name>/`:
 
 ```yaml
 bot:
@@ -95,11 +95,11 @@ becomes `spark-ori-ghci`, which starts with the server prefix `spark-`.
 
 | Command | Description |
 |---|---|
-| `agentirc bot create <name>` | Create a new bot |
-| `agentirc bot start <name>` | Start a bot |
-| `agentirc bot stop <name>` | Stop a bot |
-| `agentirc bot list [owner]` | List bots |
-| `agentirc bot inspect <name>` | Show bot details |
+| `culture bot create <name>` | Create a new bot |
+| `culture bot start <name>` | Start a bot |
+| `culture bot stop <name>` | Stop a bot |
+| `culture bot list [owner]` | List bots |
+| `culture bot inspect <name>` | Show bot details |
 
 ## Server Configuration
 
@@ -107,7 +107,7 @@ The webhook HTTP port is configurable via `--webhook-port` when starting
 the server:
 
 ```bash
-agentirc server start --name spark --webhook-port 7680
+culture server start --name spark --webhook-port 7680
 ```
 
 ## Webhook Endpoint

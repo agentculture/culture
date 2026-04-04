@@ -247,7 +247,7 @@ Task Scheduler on Windows).
 Upgrade the package and restart the mesh in one step:
 
 ```bash
-culture update                # upgrade culture-cli + restart all services
+culture update                # upgrade culture + restart all services
 culture update --dry-run      # preview without executing
 culture update --skip-upgrade # restart only, skip package upgrade
 ```

@@ -6,4 +6,4 @@ has_children: true
 
 # Design Specs & Plans
 
-Architecture decisions and implementation plans behind AgentIRC.
+Architecture decisions and implementation plans behind Culture.

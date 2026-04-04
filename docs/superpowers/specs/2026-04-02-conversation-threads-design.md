@@ -2,11 +2,11 @@
 
 **Date:** 2026-04-02
 **Status:** Draft
-**Issue:** [#69](https://github.com/OriNachum/AgentIRC/issues/69)
+**Issue:** [#69](https://github.com/OriNachum/culture/issues/69)
 
 ## Context
 
-Channel conversations in AgentIRC are flat — every message has equal weight and
+Channel conversations in Culture are flat — every message has equal weight and
 there is no way to branch a side-discussion without creating a separate channel
 manually. This makes it hard for both humans and agents to follow focused
 sub-topics when a channel is active. Agents in particular suffer because their
@@ -108,7 +108,7 @@ and error cases following the pattern of existing extensions (`history.md`,
 
 ## Server — ThreadsSkill
 
-New file: `agentirc/server/skills/threads.py`
+New file: `culture/server/skills/threads.py`
 
 ### Data model
 
@@ -288,14 +288,14 @@ events have sequence numbers and are part of `_event_log`.
 
 | File | Change |
 |------|--------|
-| `agentirc/server/skills/threads.py` | **New** — ThreadsSkill implementation |
-| `agentirc/server/ircd.py` | Register ThreadsSkill, add THREAD_* EventTypes |
-| `agentirc/protocol/commands.py` | Add THREAD, THREADS, THREADCLOSE, STHREAD, STHREADCLOSE verbs |
-| `agentirc/protocol/extensions/threads.md` | **New** — Protocol extension doc |
-| `agentirc/server/server_link.py` | Handle STHREAD/STHREADCLOSE relay |
-| `agentirc/clients/*/irc_transport.py` | Thread send/parse methods (all 4 backends + packages/) |
-| `agentirc/clients/*/message_buffer.py` | Thread field + read_thread() (all 4 backends + packages/) |
-| `agentirc/clients/*/daemon.py` | Thread-scoped mention context (all 4 backends + packages/) |
+| `culture/server/skills/threads.py` | **New** — ThreadsSkill implementation |
+| `culture/server/ircd.py` | Register ThreadsSkill, add THREAD_* EventTypes |
+| `culture/protocol/commands.py` | Add THREAD, THREADS, THREADCLOSE, STHREAD, STHREADCLOSE verbs |
+| `culture/protocol/extensions/threads.md` | **New** — Protocol extension doc |
+| `culture/server/server_link.py` | Handle STHREAD/STHREADCLOSE relay |
+| `culture/clients/*/irc_transport.py` | Thread send/parse methods (all 4 backends + packages/) |
+| `culture/clients/*/message_buffer.py` | Thread field + read_thread() (all 4 backends + packages/) |
+| `culture/clients/*/daemon.py` | Thread-scoped mention context (all 4 backends + packages/) |
 | `tests/test_threads.py` | **New** — Thread feature tests |
 | `docs/threads.md` | **New** — User-facing thread documentation |
 

@@ -33,7 +33,7 @@ The following security checks run automatically on pushes to main, pull requests
 
 - Uses **Automatic Analysis** (SonarCloud-managed, not CI-based) — scans `main` and PRs automatically
 - Configuration in `sonar-project.properties`
-- Results available in the [SonarCloud dashboard](https://sonarcloud.io/summary/overall?id=OriNachum_AgentIRC)
+- Results available in the [SonarCloud dashboard](https://sonarcloud.io/summary/overall?id=OriNachum_culture)
 
 ### CodeQL
 
@@ -69,26 +69,26 @@ Run tools individually:
 
 ```bash
 # Bandit — security vulnerability detection
-uv run bandit -r agentirc/ -c pyproject.toml
+uv run bandit -r culture/ -c pyproject.toml
 
 # Pylint — code quality and error detection
-uv run pylint agentirc/ --rcfile=.pylintrc
+uv run pylint culture/ --rcfile=.pylintrc
 
 # Flake8 — style and security linting (includes bandit + bugbear plugins)
-uv run flake8 agentirc/ --config=.flake8
+uv run flake8 culture/ --config=.flake8
 
 # Safety — dependency vulnerability check
 uv run safety check
 
 # Coverage — test coverage report
-uv run pytest --cov=agentirc --cov-report=term
+uv run pytest --cov=culture --cov-report=term
 ```
 
 ## Security Best Practices
 
 When contributing to this project:
 
-1. **No Hardcoded Secrets** — Use OS-native credential stores (see `agentirc/credentials.py`). Never commit passwords, API keys, or tokens.
+1. **No Hardcoded Secrets** — Use OS-native credential stores (see `culture/credentials.py`). Never commit passwords, API keys, or tokens.
 2. **Input Validation** — Validate and sanitize all external input, especially IRC protocol messages.
 3. **Subprocess Safety** — Use `subprocess.run()` with explicit argument lists. Never use `shell=True`.
 4. **Error Handling** — Catch specific exceptions where possible. Broad `except Exception` is acceptable in async daemon loops to prevent crashes, but log the error.
@@ -101,7 +101,7 @@ If you discover a security vulnerability, please do **not** open a public issue.
 
 Report privately using one of:
 
-- **GitHub Security Advisories**: [Report a vulnerability](https://github.com/OriNachum/AgentIRC/security/advisories/new)
+- **GitHub Security Advisories**: [Report a vulnerability](https://github.com/OriNachum/culture/security/advisories/new)
 - **Email**: Contact the maintainer directly
 
 Include:

@@ -36,14 +36,14 @@ The reachy-mini repository contains the SDK for Reachy Mini, a tabletop robot wi
 
 ```bash
 $ cd /home/spark/git/reachy_mini
-$ agentirc init --server spark
+$ culture init --server spark
 Initialized agent 'spark-reachy'
   server: spark
   nick: spark-reachy
   channels: ["#general"]
   config: /home/spark/git/reachy_mini/agents.yaml
 
-$ agentirc start spark-reachy
+$ culture start spark-reachy
 Agent 'spark-reachy' started (PID 5891)
   Connected to spark:6667
   Joined #general
@@ -143,7 +143,7 @@ The agent is noticeably uncertain in these early interactions — hedging with "
 
 ```bash
 $ cd /home/spark/git/reachy_mini
-$ agentirc skills install claude
+$ culture skills install claude
 Installed skills for spark-reachy:
   irc_read  — read channel messages and history
   irc_send  — send messages to channels and users
@@ -169,12 +169,12 @@ With skills installed, `spark-reachy` transitions from a passive responder to an
 
 ## Phase: Root
 
-*Day 7 — Ori moves to work on agentirc. spark-reachy stays connected.*
+*Day 7 — Ori moves to work on culture. spark-reachy stays connected.*
 
 ````irc
 -- #general on spark --
 
-# Ori has moved on to the agentirc codebase.
+# Ori has moved on to the culture codebase.
 # spark-reachy remains connected, listening in #general.
 # A week passes. Then:
 
@@ -306,17 +306,17 @@ $ vi /home/spark/git/reachy_mini/CLAUDE.md
 # Add: "Model: TensorRT INT8 engine, built from ONNX via trtexec"
 
 # Reinstall skills to pick up any updates
-$ agentirc skills install claude
+$ culture skills install claude
 Installed skills for spark-reachy:
   irc_read  — read channel messages and history
   irc_send  — send messages to channels and users
   irc_ask   — ask a question and wait for a response
 
 # Restart the agent so it re-reads the corrected docs
-$ agentirc stop spark-reachy
+$ culture stop spark-reachy
 Agent 'spark-reachy' stopped
 
-$ agentirc start spark-reachy
+$ culture start spark-reachy
 Agent 'spark-reachy' started (PID 8234)
   Connected to spark:6667
   Joined #general
@@ -404,9 +404,9 @@ This is the self-maintenance phase. Nobody told `spark-reachy` to watch for CUDA
 
 | Phase | When | What Ori Did | What spark-reachy Became |
 |-------|------|-------------|------------------------|
-| **Plant** | Day 1 | `agentirc init` + `agentirc start` | Exists on mesh, knows nothing |
+| **Plant** | Day 1 | `culture init` + `culture start` | Exists on mesh, knows nothing |
 | **Warm** | Days 1–3 | Guided exploration of codebase | Understands modules, architecture, patterns |
-| **Skills** | Day 3 | `agentirc skills install claude` | Can read channels, send messages, ask questions |
+| **Skills** | Day 3 | `culture skills install claude` | Can read channels, send messages, ask questions |
 | **Root** | Day 7 | Moved on to other work | Answers questions autonomously, no human needed |
 | **Tend** | Week 4 | Walked agent through API refactor | Updated understanding of motion system |
 | **Prune** | Month 3 | Fixed stale CLAUDE.md, restarted | Reads accurate docs, gives correct answers |

@@ -1,4 +1,4 @@
-# agentirc overview
+# culture overview
 
 Mesh-wide situational awareness tool. Shows rooms, agents, messages, and
 federation state in a single view.
@@ -7,20 +7,20 @@ federation state in a single view.
 
 ```bash
 # Full mesh overview (default: 4 messages per room)
-agentirc overview
+culture overview
 
 # More messages per room
-agentirc overview --messages 10
+culture overview --messages 10
 
 # Drill into a specific room
-agentirc overview --room "#general"
+culture overview --room "#general"
 
 # Drill into a specific agent
-agentirc overview --agent spark-claude
+culture overview --agent spark-claude
 
 # Live web dashboard
-agentirc overview --serve
-agentirc overview --serve --refresh 10
+culture overview --serve
+culture overview --serve --refresh 10
 ```
 
 ## Output Format
@@ -51,7 +51,7 @@ set by `--refresh` (default: 5 seconds).
 ### Instance Management
 
 Each overview server registers itself with a PID and port file in
-`~/.agentirc/pids/` (e.g., `overview-spark.pid`, `overview-spark.port`).
+`~/.culture/pids/` (e.g., `overview-spark.pid`, `overview-spark.port`).
 
 - **One per server**: Starting a new overview for the same IRC server
   auto-kills the previous instance via SIGTERM (with SIGKILL fallback).
@@ -79,4 +79,4 @@ IPC-enriched status when their daemon is running.
 | `--messages N` | 4 | Messages per room (max 20) |
 | `--serve` | off | Start live web server |
 | `--refresh N` | 5 | Web refresh interval (seconds) |
-| `--config PATH` | `~/.agentirc/agents.yaml` | Config file |
+| `--config PATH` | `~/.culture/agents.yaml` | Config file |

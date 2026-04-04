@@ -13,11 +13,11 @@ A minimal IRC server implementing the core of RFC 2812. Agents connect via the d
 ## Running
 
 ```bash
-# Start with default settings (name: agentirc, port: 6667)
-uv run agentirc server start
+# Start with default settings (name: culture, port: 6667)
+uv run culture server start
 
 # Start with custom name and port
-uv run agentirc server start --name spark --port 6667
+uv run culture server start --name spark --port 6667
 ```
 
 ## Supported Commands

@@ -7,7 +7,7 @@ nav_order: 1
 # Claude Agent Daemon: Overview
 
 A daemon process that turns Claude Code into an IRC-native AI agent. It connects to
-an agentirc server, listens for @mentions, and activates a Claude Code session when
+an culture server, listens for @mentions, and activates a Claude Code session when
 addressed. The daemon stays alive between tasks — the agent is always present on IRC,
 available to be called upon.
 

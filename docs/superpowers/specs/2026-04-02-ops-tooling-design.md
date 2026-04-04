@@ -1,10 +1,10 @@
 # Ops Tooling Design
 
-Issue: [#68](https://github.com/OriNachum/AgentIRC/issues/68)
+Issue: [#68](https://github.com/OriNachum/culture/issues/68)
 
 ## Context
 
-agentirc has solid server federation, agent lifecycle management, and mesh
+culture has solid server federation, agent lifecycle management, and mesh
 visibility. What it lacks is operational resilience: daemons don't survive
 reboots, new machines require manual SSH-and-type setup, there's no update
 workflow, and server-to-server links don't auto-reconnect after the initial
@@ -31,17 +31,17 @@ Server and agents come back after reboot without manual intervention.
 
 ### Approach
 
-Keep the existing standalone commands (`agentirc server start`,
-`agentirc start`) as primary. Add platform-specific auto-start entries that
+Keep the existing standalone commands (`culture server start`,
+`culture start`) as primary. Add platform-specific auto-start entries that
 invoke these commands. The OS service manager handles restart-on-crash.
 
 Each process (server, each agent) gets its own auto-start entry:
 
 ```
 OS Auto-Start Layer
-├── agentirc-server-spark       → agentirc server start --foreground ...
-├── agentirc-agent-spark-claude → agentirc start spark-claude --foreground
-└── agentirc-agent-spark-codex  → agentirc start spark-codex --foreground
+├── culture-server-spark       → culture server start --foreground ...
+├── culture-agent-spark-claude → culture start spark-claude --foreground
+└── culture-agent-spark-codex  → culture start spark-codex --foreground
 ```
 
 ### Platform Backends
@@ -50,11 +50,11 @@ OS Auto-Start Layer
 
 ```ini
 [Unit]
-Description=agentirc server spark
+Description=culture server spark
 
 [Service]
 Type=simple
-ExecStart=agentirc server start --foreground --name spark --port 6667
+ExecStart=culture server start --foreground --name spark --port 6667
 Restart=on-failure
 RestartSec=5
 
@@ -70,14 +70,14 @@ without login session).
 
 ```xml
 <dict>
-  <key>Label</key><string>com.agentirc.server-spark</string>
+  <key>Label</key><string>com.culture.server-spark</string>
   <key>ProgramArguments</key>
-  <array><string>agentirc</string><string>server</string><string>start</string>
+  <array><string>culture</string><string>server</string><string>start</string>
          <string>--foreground</string><string>--name</string><string>spark</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>~/.agentirc/logs/server-spark.log</string>
-  <key>StandardErrorPath</key><string>~/.agentirc/logs/server-spark.log</string>
+  <key>StandardOutPath</key><string>~/.culture/logs/server-spark.log</string>
+  <key>StandardErrorPath</key><string>~/.culture/logs/server-spark.log</string>
 </dict>
 ```
 
@@ -90,13 +90,13 @@ has limited restart-on-crash support, generate a `.bat` wrapper that loops:
 
 ```bat
 :loop
-agentirc server start --foreground --name spark --port 6667
+culture server start --foreground --name spark --port 6667
 timeout /t 5
 goto loop
 ```
 
 The scheduled task runs the `.bat` at logon. Stored in
-`%USERPROFILE%\.agentirc\services\`.
+`%USERPROFILE%\.culture\services\`.
 
 ### --foreground Flag
 
@@ -109,7 +109,7 @@ Add `--foreground` to `server start` and `start` commands. When set:
 
 ### New Module
 
-`agentirc/persistence.py`:
+`culture/persistence.py`:
 
 - `install_service(name, command, description)` — detect platform, generate
   and install the appropriate auto-start entry
@@ -118,7 +118,7 @@ Add `--foreground` to `server start` and `start` commands. When set:
 
 ---
 
-## 2. Scaffolding — mesh.yaml + `agentirc setup`
+## 2. Scaffolding — mesh.yaml + `culture setup`
 
 ### Goal
 
@@ -127,16 +127,16 @@ Get a new machine into the mesh without manual fiddling.
 ### Two-Phase Approach
 
 1. **Config generation (agent-assisted):** Claude asks the user about server
-   name, links, agents, and writes `~/.agentirc/mesh.yaml`. No secrets in
+   name, links, agents, and writes `~/.culture/mesh.yaml`. No secrets in
    this step — passwords left as empty strings.
 
-2. **Service installation (user-executed):** User runs `agentirc setup` which
+2. **Service installation (user-executed):** User runs `culture setup` which
    reads mesh.yaml, prompts for any missing link passwords, generates
    auto-start entries, and starts everything.
 
 ### mesh.yaml Schema
 
-File: `~/.agentirc/mesh.yaml`
+File: `~/.culture/mesh.yaml`
 
 ```yaml
 server:
@@ -163,14 +163,14 @@ agents:
       - "#general"
 ```
 
-### `agentirc setup` Flow
+### `culture setup` Flow
 
 ```
-$ agentirc setup [--config ~/.agentirc/mesh.yaml] [--uninstall]
+culture setup [--config ~/.culture/mesh.yaml] [--uninstall]
 ```
 
 1. Load mesh.yaml (error if missing).
-2. For each link with empty password, prompt: `Link password for thor: `.
+2. For each link with empty password, prompt: `Link password for thor:`.
    Save passwords back to mesh.yaml.
 3. Generate per-agent `agents.yaml` in each agent's workdir (bridge to
    existing config format used by daemon).
@@ -188,7 +188,7 @@ workdir, their entries are merged into one `agents.yaml`.
 
 ### New Module
 
-`agentirc/mesh_config.py`:
+`culture/mesh_config.py`:
 
 - `MeshConfig`, `MeshServerConfig`, `MeshLinkConfig`, `MeshAgentConfig`
   dataclasses
@@ -198,24 +198,24 @@ workdir, their entries are merged into one `agents.yaml`.
 
 ---
 
-## 3. Fleet Updates — `agentirc update`
+## 3. Fleet Updates — `culture update`
 
 ### Goal
 
 Roll out code changes without the mesh going dark. Single command.
 
-### `agentirc update` Flow
+### `culture update` Flow
 
 ```
-$ agentirc update [--dry-run] [--skip-upgrade] [--config ~/.agentirc/mesh.yaml]
+culture update [--dry-run] [--skip-upgrade] [--config ~/.culture/mesh.yaml]
 ```
 
 1. Load mesh.yaml to know what's running on this machine.
-2. If not `--skip-upgrade`: run `uv tool upgrade agentirc-cli` (fall back to
-   `pip install --upgrade agentirc-cli` if `uv` not found). Report old →
+2. If not `--skip-upgrade`: run `uv tool upgrade culture` (fall back to
+   `pip install --upgrade culture` if `uv` not found). Report old →
    new version.
 3. **Re-exec with new code:** After upgrade, exec
-   `agentirc update --skip-upgrade` so the restart logic uses the new
+   `culture update --skip-upgrade` so the restart logic uses the new
    binary. This avoids stale in-memory imports.
 4. Stop all agents (graceful SIGTERM, 5s timeout, SIGKILL fallback).
 5. Stop server.
@@ -293,18 +293,18 @@ the retry cycle.
 
 | File | Change |
 |------|--------|
-| `agentirc/persistence.py` | **NEW** — platform auto-start generation |
-| `agentirc/mesh_config.py` | **NEW** — mesh.yaml dataclass + load/save |
-| `agentirc/server/ircd.py` | Add `_link_retry_state`, `_maybe_retry_link`, `cancel_link_retry`; modify `_remove_link` signature; modify `stop()` |
-| `agentirc/server/server_link.py` | Add `_squit_received` flag; pass `squit` to `_remove_link` in `handle()` finally; call `cancel_link_retry` in handshake |
-| `agentirc/cli.py` | Add `setup` and `update` subcommands; add `--foreground` to `server start` and `start`; guard `os.fork()`/`os.setsid()`/`SIGKILL` for Windows |
+| `culture/persistence.py` | **NEW** — platform auto-start generation |
+| `culture/mesh_config.py` | **NEW** — mesh.yaml dataclass + load/save |
+| `culture/server/ircd.py` | Add `_link_retry_state`, `_maybe_retry_link`, `cancel_link_retry`; modify `_remove_link` signature; modify `stop()` |
+| `culture/server/server_link.py` | Add `_squit_received` flag; pass `squit` to `_remove_link` in `handle()` finally; call `cancel_link_retry` in handshake |
+| `culture/cli.py` | Add `setup` and `update` subcommands; add `--foreground` to `server start` and `start`; guard `os.fork()`/`os.setsid()`/`SIGKILL` for Windows |
 
 ## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `agentirc/persistence.py` | Platform-specific service install/uninstall/list |
-| `agentirc/mesh_config.py` | MeshConfig dataclasses and YAML I/O |
+| `culture/persistence.py` | Platform-specific service install/uninstall/list |
+| `culture/mesh_config.py` | MeshConfig dataclasses and YAML I/O |
 | `tests/test_link_reconnect.py` | S2S auto-reconnect tests |
 | `tests/test_mesh_config.py` | mesh.yaml round-trip tests |
 | `tests/test_persistence.py` | Service file generation tests (mock subprocess) |
@@ -314,13 +314,13 @@ the retry cycle.
 
 Write `docs/ops-tooling.md` covering:
 
-- `agentirc setup` usage and mesh.yaml format
-- `agentirc update` usage and flags
+- `culture setup` usage and mesh.yaml format
+- `culture update` usage and flags
 - Platform-specific auto-start details (systemd, launchd, Windows)
 - S2S auto-reconnect behavior
 
-Update `docs/cli.md` with new commands. Update the agentirc admin skill
-(`agentirc/skills/agentirc/SKILL.md`) with ops tooling reference.
+Update `docs/cli.md` with new commands. Update the culture admin skill
+(`culture/skills/culture/SKILL.md`) with ops tooling reference.
 
 ## Edge Cases
 
@@ -337,14 +337,14 @@ Update `docs/cli.md` with new commands. Update the agentirc admin skill
    successful handshake prevents infinite retry loops.
 
 4. **systemd linger**: User services require `loginctl enable-linger`.
-   `agentirc setup` checks and warns (or offers to enable).
+   `culture setup` checks and warns (or offers to enable).
 
 5. **Self-upgrade re-exec**: After `uv tool upgrade`, the running process
    has stale imports. `os.execv` replaces it with a fresh process loading
    the new code.
 
 6. **mesh.yaml vs agents.yaml**: mesh.yaml is the source of truth when
-   using `agentirc setup`. It generates agents.yaml. Users not using
+   using `culture setup`. It generates agents.yaml. Users not using
    mesh.yaml are unaffected.
 
 ## Verification
@@ -353,13 +353,13 @@ Update `docs/cli.md` with new commands. Update the agentirc admin skill
    retries and reconnects when the killed server restarts. Verify SQUIT
    does NOT trigger retry.
 
-2. **Persistence**: Run `agentirc setup`, reboot the machine, verify
+2. **Persistence**: Run `culture setup`, reboot the machine, verify
    server and agents come back automatically. Test on each platform.
 
 3. **Scaffolding**: On a fresh machine, write mesh.yaml, run
-   `agentirc setup`, verify everything starts and links to the mesh.
+   `culture setup`, verify everything starts and links to the mesh.
 
-4. **Updates**: Run `agentirc update`, verify package upgrades, services
+4. **Updates**: Run `culture update`, verify package upgrades, services
    restart with new code, mesh reconnects.
 
 ## Implementation Order

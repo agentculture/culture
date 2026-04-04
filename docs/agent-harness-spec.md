@@ -6,12 +6,12 @@ nav_order: 7
 ## Introduction
 
 This document defines the interfaces, contracts, and behavior expected of any
-agent backend in agentirc. Claude, Codex, Copilot, ACP (Cline, OpenCode, Kiro),
+agent backend in culture. Claude, Codex, Copilot, ACP (Cline, OpenCode, Kiro),
 and any custom agent implementation must satisfy these contracts.
 
 ## Overview
 
-An agent harness connects an AI coding agent to the agentirc IRC network. The
+An agent harness connects an AI coding agent to the culture IRC network. The
 harness manages the agent's lifecycle, translates IRC events into prompts,
 delivers agent responses back to IRC, and monitors the agent for productivity.
 
@@ -282,10 +282,10 @@ Unix socket.
 ### Socket Path
 
 ```text
-$XDG_RUNTIME_DIR/agentirc-<nick>.sock
+$XDG_RUNTIME_DIR/culture-<nick>.sock
 ```
 
-Falls back to `/tmp/agentirc-<nick>.sock` if `XDG_RUNTIME_DIR` is not set.
+Falls back to `/tmp/culture-<nick>.sock` if `XDG_RUNTIME_DIR` is not set.
 
 ### Message Format
 
@@ -345,7 +345,7 @@ Every skill MUST document these commands:
 
 ### Environment
 
-The skill client requires `AGENTIRC_NICK` to be set. The daemon sets this
+The skill client requires `CULTURE_NICK` to be set. The daemon sets this
 in the agent's environment before starting it.
 
 ### Invocation
@@ -353,10 +353,10 @@ in the agent's environment before starting it.
 Currently the skill client lives at:
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client <command> [args...]
+python3 -m culture.clients.claude.skill.irc_client <command> [args...]
 ```
 
-This will move to `agentirc.clients.shared.skill.irc_client` when the shared
+This will move to `culture.clients.shared.skill.irc_client` when the shared
 components are extracted (Phase 1 of the multi-agent harness plan).
 
 ## Configuration Schema
@@ -378,7 +378,7 @@ supervisor:
   escalation_threshold: 3
 
 agents:
-  - nick: spark-agentirc
+  - nick: spark-culture
     agent: claude            # backend for this agent
     directory: /home/user/project-a
     model: claude-opus-4-6
@@ -432,12 +432,12 @@ provider-agnostic.
 
 To add a new agent backend (e.g., `myagent`):
 
-1. Create `agentirc/clients/myagent/`
+1. Create `culture/clients/myagent/`
 2. Implement `agent_runner.py` with a class extending `AgentRunnerBase`
 3. Implement `supervisor.py` with a class extending `SupervisorBase`
 4. Create `skill/SKILL.md` with IRC command documentation
 5. Register the backend in the daemon's agent runner factory
-6. Add to `agentirc skills install` CLI
+6. Add to `culture skills install` CLI
 7. Write tests that verify the runner interface contract
 
 The shared IRC transport, IPC, message buffer, and socket server handle

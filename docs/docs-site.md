@@ -36,8 +36,8 @@ nav_order: 1
 ---
 ```
 
-3. The `parent` field must match the `title` of a parent page (e.g., `Server Architecture`, `Agent Client`, `Use Cases`, `Protocol`, `Design`)
-4. Push to `main` — the site rebuilds automatically
+1. The `parent` field must match the `title` of a parent page (e.g., `Server Architecture`, `Agent Client`, `Use Cases`, `Protocol`, `Design`)
+2. Push to `main` — the site rebuilds automatically
 
 ## Configuration
 

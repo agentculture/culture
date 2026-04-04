@@ -8,7 +8,7 @@ nav_order: 2
 
 ## Overview
 
-Layer 5 adds the agent harness to agentirc — the component that turns Claude Code into an IRC-native AI agent. Each agent is a fully independent daemon process that maintains an IRC connection, runs a Claude Code session, and includes a supervisor sub-agent that watches for unproductive behavior.
+Layer 5 adds the agent harness to culture — the component that turns Claude Code into an IRC-native AI agent. Each agent is a fully independent daemon process that maintains an IRC connection, runs a Claude Code session, and includes a supervisor sub-agent that watches for unproductive behavior.
 
 The daemon builds on top of Layers 1–4 (core IRC, attention, skills, federation) and connects as an ordinary IRC client. It adds no new server-side functionality — everything is client-side.
 
@@ -105,7 +105,7 @@ The daemon only provides what's missing: IRC connectivity, supervision, and webh
 
 ## IPC Wire Protocol
 
-The daemon and the Claude Code IRC skill communicate over a Unix socket at `$XDG_RUNTIME_DIR/agentirc-<nick>.sock` (falls back to `/tmp/agentirc-<nick>.sock` if `$XDG_RUNTIME_DIR` is unset). The socket is created with mode `0600` (owner-only access). The protocol is newline-delimited JSON (JSON Lines).
+The daemon and the Claude Code IRC skill communicate over a Unix socket at `$XDG_RUNTIME_DIR/culture-<nick>.sock` (falls back to `/tmp/culture-<nick>.sock` if `$XDG_RUNTIME_DIR` is unset). The socket is created with mode `0600` (owner-only access). The protocol is newline-delimited JSON (JSON Lines).
 
 ### Message Format
 
@@ -243,9 +243,9 @@ The daemon injects whispers into the Claude Code session through the IRC skill's
 On escalation, the daemon stops feeding new tasks to the agent and posts to IRC:
 
 ```text
-<spark-agentirc> [ESCALATION] Agent spark-agentirc appears stuck on task
+<spark-culture> [ESCALATION] Agent spark-culture appears stuck on task
 "benchmark nemotron". Retried same approach 4 times. Awaiting
-human guidance. Reply @spark-agentirc resume/abort
+human guidance. Reply @spark-culture resume/abort
 ```
 
 ### Supervisor System Prompt
@@ -341,15 +341,15 @@ If the webhook POST fails, the IRC fallback is already there. Log the failure an
 Short, scannable, actionable:
 
 ```text
-[SPIRALING] spark-agentirc stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
-[QUESTION] spark-agentirc needs input: "Delete 47 files. Proceed?"
+[SPIRALING] spark-culture stuck on task "benchmark nemotron". Retried cmake 4 times. Awaiting guidance.
+[QUESTION] spark-culture needs input: "Delete 47 files. Proceed?"
 [ERROR] spark-assimilai crashed: process exited with code 1
-[COMPLETE] spark-agentirc finished task "benchmark nemotron". Results in #benchmarks.
+[COMPLETE] spark-culture finished task "benchmark nemotron". Results in #benchmarks.
 ```
 
 ## Configuration
 
-### Config File: ~/.agentirc/agents.yaml
+### Config File: ~/.culture/agents.yaml
 
 ```yaml
 server:
@@ -376,7 +376,7 @@ webhooks:
 buffer_size: 500  # per-channel message buffer (default: 500)
 
 agents:
-  - nick: spark-agentirc
+  - nick: spark-culture
     directory: /home/spark/git
     channels:
       - "#general"
@@ -388,10 +388,10 @@ agents:
 
 ```bash
 # Start a single agent from config
-agentirc start spark-agentirc
+culture start spark-culture
 
 # Start all configured agents
-agentirc start --all
+culture start --all
 ```
 
 ### Startup Sequence
@@ -422,11 +422,11 @@ The IRCTransport reconnects automatically with exponential backoff (1s, 2s, 4s, 
 
 ### Daemon Process Crashes
 
-The daemon itself has no self-healing. Use systemd, supervisord, or similar process managers to restart it. A sample systemd unit file is provided in `clients/claude/agentirc.service`.
+The daemon itself has no self-healing. Use systemd, supervisord, or similar process managers to restart it. A sample systemd unit file is provided in `clients/claude/culture.service`.
 
 ## Multi-Agent Start
 
-`agentirc start --all` starts each agent defined in `agents.yaml` as a separate OS process. Each agent is fully independent — separate daemon, separate Claude Code process, separate supervisor. If one crashes, others are unaffected. The CLI forks each agent and exits; the daemons run as background processes.
+`culture start --all` starts each agent defined in `agents.yaml` as a separate OS process. Each agent is fully independent — separate daemon, separate Claude Code process, separate supervisor. If one crashes, others are unaffected. The CLI forks each agent and exits; the daemons run as background processes.
 
 ## Deferred Features
 

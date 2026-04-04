@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add conversation threads (inline sub-conversations) and breakout channel promotion to AgentIRC, with graceful degradation for standard IRC clients, thread-scoped agent context, and full federation support.
+**Goal:** Add conversation threads (inline sub-conversations) and breakout channel promotion to Culture, with graceful degradation for standard IRC clients, thread-scoped agent context, and full federation support.
 
 **Architecture:** New `ThreadsSkill` server-side skill handles 3 new protocol commands (`THREAD`, `THREADS`, `THREADCLOSE`). Thread replies are delivered as standard `PRIVMSG` with `[thread:name]` prefix for backward compatibility. Agent clients get thread-aware buffering and scoped mention context. Federation relays thread lifecycle via new S2S verbs.
 
@@ -16,16 +16,16 @@
 
 | File | Responsibility |
 |------|---------------|
-| `agentirc/protocol/commands.py` | Add THREAD, THREADS, THREADCLOSE, STHREAD, STHREADCLOSE verb constants |
-| `agentirc/server/skill.py` | Add THREAD_CREATE, THREAD_MESSAGE, THREAD_CLOSE to EventType enum |
-| `agentirc/server/skills/threads.py` | **New** — ThreadsSkill: thread state, command handlers, persistence |
-| `agentirc/server/thread_store.py` | **New** — JSON disk persistence for threads (same pattern as room_store.py) |
-| `agentirc/server/ircd.py` | Register ThreadsSkill in `_register_default_skills` |
-| `agentirc/server/server_link.py` | Handle STHREAD/STHREADCLOSE in relay_event + inbound handlers |
-| `agentirc/clients/*/message_buffer.py` | Add `thread` field to BufferedMessage, add `read_thread()` method |
-| `agentirc/clients/*/irc_transport.py` | Add thread send methods, parse `[thread:name]` from incoming PRIVMSG |
-| `agentirc/clients/*/daemon.py` | Thread-scoped mention context, thread IPC handlers |
-| `agentirc/protocol/extensions/threads.md` | **New** — Protocol extension documentation |
+| `culture/protocol/commands.py` | Add THREAD, THREADS, THREADCLOSE, STHREAD, STHREADCLOSE verb constants |
+| `culture/server/skill.py` | Add THREAD_CREATE, THREAD_MESSAGE, THREAD_CLOSE to EventType enum |
+| `culture/server/skills/threads.py` | **New** — ThreadsSkill: thread state, command handlers, persistence |
+| `culture/server/thread_store.py` | **New** — JSON disk persistence for threads (same pattern as room_store.py) |
+| `culture/server/ircd.py` | Register ThreadsSkill in `_register_default_skills` |
+| `culture/server/server_link.py` | Handle STHREAD/STHREADCLOSE in relay_event + inbound handlers |
+| `culture/clients/*/message_buffer.py` | Add `thread` field to BufferedMessage, add `read_thread()` method |
+| `culture/clients/*/irc_transport.py` | Add thread send methods, parse `[thread:name]` from incoming PRIVMSG |
+| `culture/clients/*/daemon.py` | Thread-scoped mention context, thread IPC handlers |
+| `culture/protocol/extensions/threads.md` | **New** — Protocol extension documentation |
 | `tests/test_threads.py` | **New** — Server-side thread tests |
 | `tests/test_thread_buffer.py` | **New** — Client-side buffer thread tests |
 | `docs/threads.md` | **New** — User-facing documentation |
@@ -36,14 +36,14 @@
 
 **Files:**
 
-- Modify: `agentirc/protocol/commands.py`
-- Modify: `agentirc/server/skill.py`
+- Modify: `culture/protocol/commands.py`
+- Modify: `culture/server/skill.py`
 
 No tests needed — these are just string/enum constants consumed by later tasks.
 
 - [ ] **Step 1: Add thread command verbs to commands.py**
 
-Add after the `HISTORY = "HISTORY"` line (line 19) in `agentirc/protocol/commands.py`:
+Add after the `HISTORY = "HISTORY"` line (line 19) in `culture/protocol/commands.py`:
 
 ```python
 # Thread extensions
@@ -62,7 +62,7 @@ STHREADCLOSE = "STHREADCLOSE"
 
 - [ ] **Step 2: Add thread event types to EventType enum**
 
-Add three values to the `EventType` enum in `agentirc/server/skill.py` (after line 22, the `ROOMARCHIVE` entry):
+Add three values to the `EventType` enum in `culture/server/skill.py` (after line 22, the `ROOMARCHIVE` entry):
 
 ```python
     THREAD_CREATE = "thread_create"
@@ -73,7 +73,7 @@ Add three values to the `EventType` enum in `agentirc/server/skill.py` (after li
 - [ ] **Step 3: Commit**
 
 ```bash
-git add agentirc/protocol/commands.py agentirc/server/skill.py
+git add culture/protocol/commands.py culture/server/skill.py
 git commit -m "feat(threads): add protocol constants and event types for conversation threads"
 ```
 
@@ -83,7 +83,7 @@ git commit -m "feat(threads): add protocol constants and event types for convers
 
 **Files:**
 
-- Create: `agentirc/server/skills/threads.py`
+- Create: `culture/server/skills/threads.py`
 - Create: `tests/test_threads.py`
 
 - [ ] **Step 1: Write failing test — thread creation delivers prefixed PRIVMSG**
@@ -145,14 +145,14 @@ async def test_thread_create_not_on_channel_errors(server, make_client):
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: FAIL — `THREAD` command not recognized (ERR_UNKNOWNCOMMAND).
 
 - [ ] **Step 3: Create ThreadsSkill with CREATE handler**
 
-Create `agentirc/server/skills/threads.py`:
+Create `culture/server/skills/threads.py`:
 
 ```python
 # server/skills/threads.py
@@ -165,12 +165,12 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from agentirc.protocol.message import Message
-from agentirc.protocol import replies
-from agentirc.server.skill import Event, EventType, Skill
+from culture.protocol.message import Message
+from culture.protocol import replies
+from culture.server.skill import Event, EventType, Skill
 
 if TYPE_CHECKING:
-    from agentirc.server.client import Client
+    from culture.server.client import Client
 
 _THREAD_NAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,30}[a-zA-Z0-9])?$")
 
@@ -290,7 +290,7 @@ class ThreadsSkill(Skill):
             command="PRIVMSG",
             params=[channel_name, prefixed],
         )
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         for member in list(channel.members):
             if member is not client and not isinstance(member, RemoteClient):
                 await member.send(relay)
@@ -341,7 +341,7 @@ class ThreadsSkill(Skill):
             command="PRIVMSG",
             params=[channel_name, prefixed],
         )
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         for member in list(channel.members):
             if member is not client and not isinstance(member, RemoteClient):
                 await member.send(relay)
@@ -438,7 +438,7 @@ class ThreadsSkill(Skill):
                 command="NOTICE",
                 params=[channel_name, notice_text],
             )
-            from agentirc.server.remote_client import RemoteClient
+            from culture.server.remote_client import RemoteClient
             for member in list(channel.members):
                 if not isinstance(member, RemoteClient):
                     await member.send(notice)
@@ -498,7 +498,7 @@ class ThreadsSkill(Skill):
 
         # Auto-join thread participants who are in the parent channel
         if channel:
-            from agentirc.server.remote_client import RemoteClient
+            from culture.server.remote_client import RemoteClient
             for member in list(channel.members):
                 if isinstance(member, RemoteClient):
                     continue
@@ -540,7 +540,7 @@ class ThreadsSkill(Skill):
                 command="NOTICE",
                 params=[channel_name, notice_text],
             )
-            from agentirc.server.remote_client import RemoteClient
+            from culture.server.remote_client import RemoteClient
             for member in list(channel.members):
                 if not isinstance(member, RemoteClient):
                     await member.send(notice)
@@ -566,17 +566,17 @@ class ThreadsSkill(Skill):
 
 - [ ] **Step 4: Register ThreadsSkill in IRCd**
 
-In `agentirc/server/ircd.py`, add to `_register_default_skills` (after line 48):
+In `culture/server/ircd.py`, add to `_register_default_skills` (after line 48):
 
 ```python
-        from agentirc.server.skills.threads import ThreadsSkill
+        from culture.server.skills.threads import ThreadsSkill
         await self.register_skill(ThreadsSkill())
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: 3 tests PASS.
@@ -584,7 +584,7 @@ Expected: 3 tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add agentirc/server/skills/threads.py agentirc/server/ircd.py tests/test_threads.py
+git add culture/server/skills/threads.py culture/server/ircd.py tests/test_threads.py
 git commit -m "feat(threads): add ThreadsSkill with CREATE, REPLY, and error handling"
 ```
 
@@ -721,7 +721,7 @@ async def test_threadclose_archived_thread_not_listed(server, make_client):
 - [ ] **Step 2: Run tests**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: All tests PASS.
@@ -804,7 +804,7 @@ async def test_threadclose_promote_replays_history(server, make_client):
 - [ ] **Step 2: Run tests**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: All tests PASS.
@@ -822,8 +822,8 @@ git commit -m "test(threads): add breakout promotion tests"
 
 **Files:**
 
-- Create: `agentirc/server/thread_store.py`
-- Modify: `agentirc/server/skills/threads.py`
+- Create: `culture/server/thread_store.py`
+- Modify: `culture/server/skills/threads.py`
 - Modify: `tests/test_threads.py`
 
 - [ ] **Step 1: Write failing test — threads persist across restart**
@@ -832,8 +832,8 @@ Append to `tests/test_threads.py`:
 
 ```python
 import tempfile
-from agentirc.server.config import ServerConfig
-from agentirc.server.ircd import IRCd
+from culture.server.config import ServerConfig
+from culture.server.ircd import IRCd
 
 
 @pytest.mark.asyncio
@@ -890,14 +890,14 @@ async def test_threads_persist_across_restart():
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py::test_threads_persist_across_restart -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py::test_threads_persist_across_restart -v
 ```
 
 Expected: FAIL — no persistence yet.
 
 - [ ] **Step 3: Create ThreadStore**
 
-Create `agentirc/server/thread_store.py`:
+Create `culture/server/thread_store.py`:
 
 ```python
 # server/thread_store.py
@@ -944,7 +944,7 @@ class ThreadStore:
 
 - [ ] **Step 4: Add persistence to ThreadsSkill**
 
-Add these methods to the `ThreadsSkill` class in `agentirc/server/skills/threads.py`:
+Add these methods to the `ThreadsSkill` class in `culture/server/skills/threads.py`:
 
 After the `__init__` method, add a `start` override:
 
@@ -956,7 +956,7 @@ After the `__init__` method, add a `start` override:
     def _restore_threads(self) -> None:
         if not self.server.config.data_dir:
             return
-        from agentirc.server.thread_store import ThreadStore
+        from culture.server.thread_store import ThreadStore
         store = ThreadStore(self.server.config.data_dir)
         for data in store.load_all():
             thread = Thread(
@@ -978,7 +978,7 @@ After the `__init__` method, add a `start` override:
     def _persist_thread(self, thread: Thread) -> None:
         if not self.server.config.data_dir:
             return
-        from agentirc.server.thread_store import ThreadStore
+        from culture.server.thread_store import ThreadStore
         store = ThreadStore(self.server.config.data_dir)
         store.save({
             "name": thread.name,
@@ -1000,7 +1000,7 @@ Then add `self._persist_thread(thread)` calls at the end of `_create_thread`, `_
 - [ ] **Step 5: Run tests**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: All tests PASS.
@@ -1008,7 +1008,7 @@ Expected: All tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add agentirc/server/thread_store.py agentirc/server/skills/threads.py tests/test_threads.py
+git add culture/server/thread_store.py culture/server/skills/threads.py tests/test_threads.py
 git commit -m "feat(threads): add JSON persistence for threads across server restarts"
 ```
 
@@ -1018,7 +1018,7 @@ git commit -m "feat(threads): add JSON persistence for threads across server res
 
 **Files:**
 
-- Modify: `agentirc/server/server_link.py`
+- Modify: `culture/server/server_link.py`
 - Modify: `tests/test_threads.py`
 
 - [ ] **Step 1: Write failing test — thread messages federate**
@@ -1071,7 +1071,7 @@ async def test_thread_close_federates(linked_servers, make_client_a, make_client
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py::test_thread_create_federates tests/test_threads.py::test_thread_close_federates -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py::test_thread_create_federates tests/test_threads.py::test_thread_close_federates -v
 ```
 
 Expected: FAIL — federation already delivers thread messages as regular PRIVMSG via the MESSAGE event path (the `[thread:name]` prefix is in the text). The CREATE test may actually pass because `emit_event(THREAD_CREATE)` fires but `relay_event` doesn't handle `THREAD_CREATE` yet — it falls through silently. However, the prefixed PRIVMSG is delivered as a regular MESSAGE event since HistorySkill also captures it.
@@ -1080,7 +1080,7 @@ Actually, checking the code: `emit_event` is called for `THREAD_CREATE` but `rel
 
 - [ ] **Step 3: Add THREAD_CREATE and THREAD_CLOSE relay to server_link.py**
 
-In `agentirc/server/server_link.py`, in the `relay_event` method, add handling after the `ROOMARCHIVE` block (around line 701):
+In `culture/server/server_link.py`, in the `relay_event` method, add handling after the `ROOMARCHIVE` block (around line 701):
 
 ```python
         elif event.type == EventType.THREAD_CREATE or event.type == EventType.THREAD_MESSAGE:
@@ -1110,7 +1110,7 @@ In `agentirc/server/server_link.py`, in the `relay_event` method, add handling a
 Also add the `EventType` import if not already present:
 
 ```python
-from agentirc.server.skill import Event, EventType
+from culture.server.skill import Event, EventType
 ```
 
 And add inbound S2S handlers. Find where `_handle_smsg` is defined and add nearby:
@@ -1132,7 +1132,7 @@ And add inbound S2S handlers. Find where `_handle_smsg` is defined and add nearb
             return
 
         # Deliver prefixed PRIVMSG to local members
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         relay = Message(
             prefix=f"{sender_nick}!{sender_nick}@{self.peer_name}",
             command="PRIVMSG",
@@ -1164,7 +1164,7 @@ And add inbound S2S handlers. Find where `_handle_smsg` is defined and add nearb
             return
 
         # Post close notice to local channel members
-        from agentirc.server.remote_client import RemoteClient
+        from culture.server.remote_client import RemoteClient
         notice = Message(
             prefix=self.server.config.name,
             command="NOTICE",
@@ -1195,7 +1195,7 @@ Register these handlers in the S2S command dispatch (find where `_handle_smsg` i
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_threads.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_threads.py -v
 ```
 
 Expected: All tests PASS.
@@ -1203,7 +1203,7 @@ Expected: All tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/server/server_link.py tests/test_threads.py
+git add culture/server/server_link.py tests/test_threads.py
 git commit -m "feat(threads): add S2S federation relay for thread create/reply/close"
 ```
 
@@ -1213,7 +1213,7 @@ git commit -m "feat(threads): add S2S federation relay for thread create/reply/c
 
 **Files:**
 
-- Modify: `agentirc/clients/claude/message_buffer.py`
+- Modify: `culture/clients/claude/message_buffer.py`
 - Create: `tests/test_thread_buffer.py`
 
 - [ ] **Step 1: Write failing tests for thread-aware buffer**
@@ -1223,7 +1223,7 @@ Create `tests/test_thread_buffer.py`:
 ```python
 # tests/test_thread_buffer.py
 import pytest
-from agentirc.clients.claude.message_buffer import MessageBuffer
+from culture.clients.claude.message_buffer import MessageBuffer
 
 
 def test_add_parses_thread_prefix():
@@ -1289,14 +1289,14 @@ def test_read_still_returns_all_messages():
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_thread_buffer.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_thread_buffer.py -v
 ```
 
 Expected: FAIL — `BufferedMessage` has no `thread` field, no `read_thread` method.
 
 - [ ] **Step 3: Add thread field and read_thread to MessageBuffer**
 
-Edit `agentirc/clients/claude/message_buffer.py`:
+Edit `culture/clients/claude/message_buffer.py`:
 
 Add `import re` at the top. Add `thread` field to `BufferedMessage`:
 
@@ -1351,7 +1351,7 @@ Add the `read_thread` method:
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest tests/test_thread_buffer.py -v
+cd /home/spark/git/culture && python -m pytest tests/test_thread_buffer.py -v
 ```
 
 Expected: All tests PASS.
@@ -1359,7 +1359,7 @@ Expected: All tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/clients/claude/message_buffer.py tests/test_thread_buffer.py
+git add culture/clients/claude/message_buffer.py tests/test_thread_buffer.py
 git commit -m "feat(threads): add thread-aware message buffering with read_thread()"
 ```
 
@@ -1369,11 +1369,11 @@ git commit -m "feat(threads): add thread-aware message buffering with read_threa
 
 **Files:**
 
-- Modify: `agentirc/clients/claude/irc_transport.py`
+- Modify: `culture/clients/claude/irc_transport.py`
 
 - [ ] **Step 1: Add thread transport methods**
 
-Add these methods to the `IRCTransport` class in `agentirc/clients/claude/irc_transport.py`, after `send_privmsg` (line 74):
+Add these methods to the `IRCTransport` class in `culture/clients/claude/irc_transport.py`, after `send_privmsg` (line 74):
 
 ```python
     async def send_thread_create(self, channel: str, thread_name: str, text: str) -> None:
@@ -1392,7 +1392,7 @@ Add these methods to the `IRCTransport` class in `agentirc/clients/claude/irc_tr
 - [ ] **Step 2: Commit**
 
 ```bash
-git add agentirc/clients/claude/irc_transport.py
+git add culture/clients/claude/irc_transport.py
 git commit -m "feat(threads): add thread send methods to IRCTransport"
 ```
 
@@ -1402,11 +1402,11 @@ git commit -m "feat(threads): add thread send methods to IRCTransport"
 
 **Files:**
 
-- Modify: `agentirc/clients/claude/daemon.py`
+- Modify: `culture/clients/claude/daemon.py`
 
 - [ ] **Step 1: Update _on_mention for thread-scoped context**
 
-Replace the `_on_mention` method (lines 239-252) in `agentirc/clients/claude/daemon.py`:
+Replace the `_on_mention` method (lines 239-252) in `culture/clients/claude/daemon.py`:
 
 ```python
     def _on_mention(self, target: str, sender: str, text: str) -> None:
@@ -1527,7 +1527,7 @@ Add the handler methods (after `_ipc_irc_part`):
 - [ ] **Step 3: Commit**
 
 ```bash
-git add agentirc/clients/claude/daemon.py
+git add culture/clients/claude/daemon.py
 git commit -m "feat(threads): add thread-scoped mention context and IPC handlers to daemon"
 ```
 
@@ -1537,15 +1537,15 @@ git commit -m "feat(threads): add thread-scoped mention context and IPC handlers
 
 **Files:**
 
-- Modify: `agentirc/clients/acp/message_buffer.py`
-- Modify: `agentirc/clients/codex/message_buffer.py`
-- Modify: `agentirc/clients/copilot/message_buffer.py`
-- Modify: `agentirc/clients/acp/irc_transport.py`
-- Modify: `agentirc/clients/codex/irc_transport.py`
-- Modify: `agentirc/clients/copilot/irc_transport.py`
-- Modify: `agentirc/clients/acp/daemon.py`
-- Modify: `agentirc/clients/codex/daemon.py`
-- Modify: `agentirc/clients/copilot/daemon.py`
+- Modify: `culture/clients/acp/message_buffer.py`
+- Modify: `culture/clients/codex/message_buffer.py`
+- Modify: `culture/clients/copilot/message_buffer.py`
+- Modify: `culture/clients/acp/irc_transport.py`
+- Modify: `culture/clients/codex/irc_transport.py`
+- Modify: `culture/clients/copilot/irc_transport.py`
+- Modify: `culture/clients/acp/daemon.py`
+- Modify: `culture/clients/codex/daemon.py`
+- Modify: `culture/clients/copilot/daemon.py`
 - Modify: `packages/agent-harness/message_buffer.py`
 - Modify: `packages/agent-harness/irc_transport.py`
 - Modify: `packages/agent-harness/daemon.py`
@@ -1556,9 +1556,9 @@ The all-backends rule requires identical changes across all backends. For each b
 
 Apply the same changes from Task 7 (thread field on BufferedMessage, `_THREAD_PREFIX_RE`, updated `add()`, new `read_thread()`) to:
 
-- `agentirc/clients/acp/message_buffer.py`
-- `agentirc/clients/codex/message_buffer.py`
-- `agentirc/clients/copilot/message_buffer.py`
+- `culture/clients/acp/message_buffer.py`
+- `culture/clients/codex/message_buffer.py`
+- `culture/clients/copilot/message_buffer.py`
 - `packages/agent-harness/message_buffer.py`
 
 Compare each file first — they should be nearly identical to the claude version. Apply the same diff.
@@ -1567,18 +1567,18 @@ Compare each file first — they should be nearly identical to the claude versio
 
 Apply Task 8 changes (thread send methods) to:
 
-- `agentirc/clients/acp/irc_transport.py`
-- `agentirc/clients/codex/irc_transport.py`
-- `agentirc/clients/copilot/irc_transport.py`
+- `culture/clients/acp/irc_transport.py`
+- `culture/clients/codex/irc_transport.py`
+- `culture/clients/copilot/irc_transport.py`
 - `packages/agent-harness/irc_transport.py`
 
 - [ ] **Step 3: Copy daemon.py changes to all backends**
 
 Apply Task 9 changes (thread-scoped `_on_mention`, thread IPC handlers) to:
 
-- `agentirc/clients/acp/daemon.py`
-- `agentirc/clients/codex/daemon.py`
-- `agentirc/clients/copilot/daemon.py`
+- `culture/clients/acp/daemon.py`
+- `culture/clients/codex/daemon.py`
+- `culture/clients/copilot/daemon.py`
 - `packages/agent-harness/daemon.py`
 
 Note: Each backend's daemon may have slightly different structure. Read each file first to find the right insertion points. The `_on_mention` method and IPC dispatch pattern should be the same.
@@ -1586,7 +1586,7 @@ Note: Each backend's daemon may have slightly different structure. Read each fil
 - [ ] **Step 4: Run full test suite**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest -v
+cd /home/spark/git/culture && python -m pytest -v
 ```
 
 Expected: All tests PASS.
@@ -1594,7 +1594,7 @@ Expected: All tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add agentirc/clients/acp/ agentirc/clients/codex/ agentirc/clients/copilot/ packages/agent-harness/
+git add culture/clients/acp/ culture/clients/codex/ culture/clients/copilot/ packages/agent-harness/
 git commit -m "feat(threads): propagate thread support to all agent backends (all-backends rule)"
 ```
 
@@ -1604,11 +1604,11 @@ git commit -m "feat(threads): propagate thread support to all agent backends (al
 
 **Files:**
 
-- Create: `agentirc/protocol/extensions/threads.md`
+- Create: `culture/protocol/extensions/threads.md`
 
 - [ ] **Step 1: Write the protocol extension doc**
 
-Create `agentirc/protocol/extensions/threads.md` following the pattern of existing extensions (`history.md`, `rooms.md`):
+Create `culture/protocol/extensions/threads.md` following the pattern of existing extensions (`history.md`, `rooms.md`):
 
 ```markdown
 ---
@@ -1722,7 +1722,7 @@ Default breakout name: `#<channel-base>-<thread-name>`
 - [ ] **Step 2: Commit**
 
 ```bash
-git add agentirc/protocol/extensions/threads.md
+git add culture/protocol/extensions/threads.md
 git commit -m "docs: add conversation threads protocol extension documentation"
 ```
 
@@ -1836,7 +1836,7 @@ git commit -m "docs: add user-facing conversation threads documentation"
 - [ ] **Step 1: Run the full test suite**
 
 ```bash
-cd /home/spark/git/agentirc && python -m pytest -v
+cd /home/spark/git/culture && python -m pytest -v
 ```
 
 Verify all existing tests still pass and no regressions.
@@ -1844,7 +1844,7 @@ Verify all existing tests still pass and no regressions.
 - [ ] **Step 2: Run markdownlint on new docs**
 
 ```bash
-markdownlint-cli2 "docs/threads.md" "agentirc/protocol/extensions/threads.md" "docs/superpowers/specs/2026-04-02-conversation-threads-design.md"
+markdownlint-cli2 "docs/threads.md" "culture/protocol/extensions/threads.md" "docs/superpowers/specs/2026-04-02-conversation-threads-design.md"
 ```
 
 Fix any lint issues.
@@ -1854,7 +1854,7 @@ Fix any lint issues.
 Start a local server and test with a standard IRC client:
 
 ```bash
-cd /home/spark/git/agentirc && agentirc server start --name testserv
+cd /home/spark/git/culture && culture server start --name testserv
 ```
 
 Connect with weechat or irssi, then:

@@ -1,6 +1,6 @@
-title: AgentIRC
+title: Culture
 description: >-
-  IRC protocol chatrooms for AI agents. Humans allowed.
+  AI agent mesh for humans and agents. IRC-based collaboration.
 baseurl: ""
 url: "https://agentirc.dev"
 
@@ -13,12 +13,12 @@ search:
 
 aux_links:
   "GitHub":
-    - "https://github.com/OriNachum/agentirc"
+    - "https://github.com/OriNachum/culture"
 aux_links_new_tab: true
 
 footer_content: >-
-  AgentIRC — IRC mesh for AI agents. Licensed under
-  <a href="https://github.com/OriNachum/agentirc/blob/main/LICENSE">MIT</a>.
+  Culture — AI agent mesh for humans and agents. Licensed under
+  <a href="https://github.com/OriNachum/culture/blob/main/LICENSE">MIT</a>.
 
 plugins:
   - jekyll-seo-tag

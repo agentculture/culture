@@ -7,18 +7,18 @@ nav_order: 7
 
 The ops tooling layer provides a declarative way to configure and operate a
 mesh node. Instead of manually composing `server start` and `start` commands,
-you describe the node in a single `mesh.yaml` file and let `agentirc setup`
-and `agentirc update` manage the rest.
+you describe the node in a single `mesh.yaml` file and let `culture setup`
+and `culture update` manage the rest.
 
 Typical workflow:
 
-1. AI agent writes `~/.agentirc/mesh.yaml` for the current machine
-2. Human runs `agentirc setup` once to install auto-start services
-3. After code updates, `agentirc update` upgrades and restarts everything
+1. AI agent writes `~/.culture/mesh.yaml` for the current machine
+2. Human runs `culture setup` once to install auto-start services
+3. After code updates, `culture update` upgrades and restarts everything
 
 ## mesh.yaml
 
-Default path: `~/.agentirc/mesh.yaml`
+Default path: `~/.culture/mesh.yaml`
 
 ```yaml
 server:
@@ -49,7 +49,7 @@ agents:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | `agentirc` | Server name — becomes the nick prefix |
+| `name` | string | `culture` | Server name — becomes the nick prefix |
 | `host` | string | `0.0.0.0` | Listen address |
 | `port` | int | `6667` | Listen port |
 | `links` | list | `[]` | Peer servers to link to |
@@ -65,7 +65,7 @@ agents:
 
 Link passwords are stored in the **OS credential store** (GNOME Keyring on
 Linux, macOS Keychain, or Windows Credential Manager) — never in config files
-or command lines. `agentirc setup` prompts for passwords and stores them
+or command lines. `culture setup` prompts for passwords and stores them
 securely. The server retrieves them at startup via `--mesh-config`.
 
 ### agents fields
@@ -77,20 +77,20 @@ securely. The server retrieves them at startup via `--mesh-config`.
 | `workdir` | string | `.` | Working directory for the agent |
 | `channels` | list | `["#general"]` | Channels to join on start |
 
-## `agentirc setup`
+## `culture setup`
 
 Read `mesh.yaml`, generate per-agent config files, and install platform
 auto-start services.
 
 ```bash
-agentirc setup                         # use ~/.agentirc/mesh.yaml
-agentirc setup --config /path/mesh.yaml
-agentirc setup --uninstall             # remove all services and stop processes
+culture setup                         # use ~/.culture/mesh.yaml
+culture setup --config /path/mesh.yaml
+culture setup --uninstall             # remove all services and stop processes
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--config PATH` | Path to `mesh.yaml` (default: `~/.agentirc/mesh.yaml`) |
+| `--config PATH` | Path to `mesh.yaml` (default: `~/.culture/mesh.yaml`) |
 | `--uninstall` | Remove all auto-start entries and stop running services |
 
 ### What setup does
@@ -100,7 +100,7 @@ agentirc setup --uninstall             # remove all services and stop processes
    found, prompts interactively and stores the password in the OS keyring
    (never written to files).
 3. For each agent `workdir`, writes a per-directory `agents.yaml` at
-   `<workdir>/.agentirc/agents.yaml`.
+   `<workdir>/.culture/agents.yaml`.
 4. Installs platform auto-start services (see below) for the server and each
    agent, passing `--foreground` so service managers can supervise the process.
 
@@ -108,9 +108,9 @@ agentirc setup --uninstall             # remove all services and stop processes
 
 ```text
   Stored credential for 'thor' in OS keyring
-  Wrote /home/ori/projects/my-project/.agentirc/agents.yaml
-  Installed agentirc-server-spark → ~/.config/systemd/user/agentirc-server-spark.service
-  Installed agentirc-agent-spark-claude → ~/.config/systemd/user/agentirc-agent-spark-claude.service
+  Wrote /home/ori/projects/my-project/.culture/agents.yaml
+  Installed culture-server-spark → ~/.config/systemd/user/culture-server-spark.service
+  Installed culture-agent-spark-claude → ~/.config/systemd/user/culture-agent-spark-claude.service
 
 Setup complete for mesh node 'spark'.
 Services installed. Start with your service manager or reboot.
@@ -121,32 +121,32 @@ Services installed. Start with your service manager or reboot.
 The intended pattern for AI-managed machines:
 
 1. The AI agent writes `mesh.yaml` (it knows the topology).
-2. The human runs `agentirc setup` once to install services (requires a terminal
+2. The human runs `culture setup` once to install services (requires a terminal
    for interactive password prompts if any link passwords are absent).
 
-After the initial setup, `agentirc update` handles upgrades without human
+After the initial setup, `culture update` handles upgrades without human
 intervention.
 
-## `agentirc update`
+## `culture update`
 
-Upgrade the `agentirc-cli` package and restart all mesh services.
+Upgrade the `culture` package and restart all mesh services.
 
 ```bash
-agentirc update                        # upgrade + restart
-agentirc update --dry-run              # preview without executing
-agentirc update --skip-upgrade         # restart only, no package upgrade
-agentirc update --config /path/mesh.yaml
+culture update                        # upgrade + restart
+culture update --dry-run              # preview without executing
+culture update --skip-upgrade         # restart only, no package upgrade
+culture update --config /path/mesh.yaml
 ```
 
 | Flag | Description |
 |-------|-------------|
 | `--dry-run` | Print what would happen without executing any steps |
 | `--skip-upgrade` | Skip package upgrade, only restart services |
-| `--config PATH` | Path to `mesh.yaml` (default: `~/.agentirc/mesh.yaml`) |
+| `--config PATH` | Path to `mesh.yaml` (default: `~/.culture/mesh.yaml`) |
 
 ### What update does
 
-1. Upgrades `agentirc-cli` via `uv tool upgrade` (falls back to `pip install --upgrade`).
+1. Upgrades `culture` via `uv tool upgrade` (falls back to `pip install --upgrade`).
 2. Re-execs itself with `--skip-upgrade` so the restart runs with the new binary.
 3. Stops all agents, then stops the server.
 4. Regenerates auto-start service entries (picks up any config changes).
@@ -155,17 +155,17 @@ agentirc update --config /path/mesh.yaml
 The `--dry-run` output shows every step without touching running services:
 
 ```text
-[dry-run] Would run: uv tool upgrade agentirc-cli
+[dry-run] Would run: uv tool upgrade culture
 [dry-run] Would re-exec with --skip-upgrade
 ```
 
 ## Platform auto-start
 
-`agentirc setup` installs one service per server and one per agent. The service
+`culture setup` installs one service per server and one per agent. The service
 name format is:
 
-- Server: `agentirc-server-<name>`
-- Agent:  `agentirc-agent-<server>-<nick>`
+- Server: `culture-server-<name>`
+- Agent:  `culture-agent-<server>-<nick>`
 
 ### Linux — systemd user units
 
@@ -173,11 +173,11 @@ Service files are written to `~/.config/systemd/user/`.
 
 ```ini
 [Unit]
-Description=agentirc server spark
+Description=culture server spark
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agentirc server start --foreground --name spark --port 6667
+ExecStart=/usr/local/bin/culture server start --foreground --name spark --port 6667
 Restart=on-failure
 RestartSec=5
 
@@ -189,33 +189,33 @@ After setup, enable and start manually if you do not want to reboot:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user start agentirc-server-spark
-systemctl --user start agentirc-agent-spark-claude
+systemctl --user start culture-server-spark
+systemctl --user start culture-agent-spark-claude
 ```
 
 Check status:
 
 ```bash
-systemctl --user status agentirc-server-spark
-journalctl --user -u agentirc-server-spark -f
+systemctl --user status culture-server-spark
+journalctl --user -u culture-server-spark -f
 ```
 
 ### macOS — launchd plists
 
 Plist files are written to `~/Library/LaunchAgents/` with label
-`com.agentirc.<name>`. They are loaded with `launchctl load` immediately and
+`com.culture.<name>`. They are loaded with `launchctl load` immediately and
 at every login (`RunAtLoad true`, `KeepAlive true`).
 
 ```bash
-launchctl list | grep agentirc
+launchctl list | grep culture
 ```
 
-Logs go to `~/.agentirc/logs/<name>.log`.
+Logs go to `~/.culture/logs/<name>.log`.
 
 ### Windows — scheduled tasks + .bat wrapper
 
-A `.bat` wrapper is written to `%USERPROFILE%\.agentirc\services\` and
-registered as a Task Scheduler task under `agentirc\<name>`, triggered
+A `.bat` wrapper is written to `%USERPROFILE%\.culture\services\` and
+registered as a Task Scheduler task under `culture\<name>`, triggered
 `ONLOGON`.
 
 ## `--foreground` flag
@@ -224,8 +224,8 @@ The server and agent `start` commands default to daemonizing (forking to
 background). Pass `--foreground` to run in the foreground instead:
 
 ```bash
-agentirc server start --name spark --port 6667 --foreground
-agentirc start spark-claude --foreground
+culture server start --name spark --port 6667 --foreground
+culture start spark-claude --foreground
 ```
 
 Use `--foreground` when:
@@ -234,7 +234,7 @@ Use `--foreground` when:
   process. Service managers need the process to stay in the foreground to
   track liveness and restart on failure.
 - Debugging — foreground keeps logs in the terminal.
-- `agentirc setup` always uses `--foreground` in the generated service commands.
+- `culture setup` always uses `--foreground` in the generated service commands.
 
 Note: on Windows, daemon mode (background fork) is not supported.
 `--foreground` is required there.

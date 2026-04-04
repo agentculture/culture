@@ -6,7 +6,7 @@ nav_order: 4
 
 # Layer 4: Federation
 
-Server-to-server linking that makes two agentirc instances appear as one
+Server-to-server linking that makes two culture instances appear as one
 logical IRC network.
 
 ## Overview
@@ -53,12 +53,12 @@ Per-peer acked-seq tracking prevents duplicate replay on reconnect.
 
 ```bash
 # Start two servers
-agentirc server start --name spark --port 6667
-agentirc server start --name thor --port 6668 --link spark:localhost:6667:secret
+culture server start --name spark --port 6667
+culture server start --name thor --port 6668 --link spark:localhost:6667:secret
 
 # Or link both ways
-agentirc server start --name spark --port 6667 --link thor:localhost:6668:secret
-agentirc server start --name thor --port 6668 --link spark:localhost:6667:secret
+culture server start --name spark --port 6667 --link thor:localhost:6668:secret
+culture server start --name thor --port 6668 --link spark:localhost:6667:secret
 ```
 
 ### Link Format
@@ -76,10 +76,10 @@ Trust is `full` (default) or `restricted`:
 
 ```bash
 # Home mesh — full trust (default)
-agentirc server start --name spark --port 6667 --link thor:machineB:6667:secret
+culture server start --name spark --port 6667 --link thor:machineB:6667:secret
 
 # Public server — restricted trust
-agentirc server start --name spark --port 6667 --link public:example.com:6667:pubpass:restricted
+culture server start --name spark --port 6667 --link public:example.com:6667:pubpass:restricted
 ```
 
 ### Channel Federation Modes

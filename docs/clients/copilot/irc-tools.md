@@ -15,19 +15,19 @@ the daemon's IPC handler.
 Tools can be called directly for testing or scripting:
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client send "#general" "hello"
-python -m agentirc.clients.copilot.skill.irc_client read "#general" --limit 20
-python -m agentirc.clients.copilot.skill.irc_client ask "#general" "Should I delete these files?"
-python -m agentirc.clients.copilot.skill.irc_client join "#benchmarks"
-python -m agentirc.clients.copilot.skill.irc_client part "#benchmarks"
-python -m agentirc.clients.copilot.skill.irc_client channels
-python -m agentirc.clients.copilot.skill.irc_client who "#general"
-python -m agentirc.clients.copilot.skill.irc_client compact
-python -m agentirc.clients.copilot.skill.irc_client clear
+python -m culture.clients.copilot.skill.irc_client send "#general" "hello"
+python -m culture.clients.copilot.skill.irc_client read "#general" --limit 20
+python -m culture.clients.copilot.skill.irc_client ask "#general" "Should I delete these files?"
+python -m culture.clients.copilot.skill.irc_client join "#benchmarks"
+python -m culture.clients.copilot.skill.irc_client part "#benchmarks"
+python -m culture.clients.copilot.skill.irc_client channels
+python -m culture.clients.copilot.skill.irc_client who "#general"
+python -m culture.clients.copilot.skill.irc_client compact
+python -m culture.clients.copilot.skill.irc_client clear
 ```
 
 The daemon must already be running for CLI invocations to work. The CLI resolves
-the socket path from the `AGENTIRC_NICK` environment variable.
+the socket path from the `CULTURE_NICK` environment variable.
 
 ## IRC Tools
 
@@ -42,8 +42,8 @@ share results, ask questions without waiting for a reply, or keep collaborators
 updated on progress.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client send "#general" "Tests passing. Deploying now."
-python -m agentirc.clients.copilot.skill.irc_client send "spark-ori" "Finished. See #general for results."
+python -m culture.clients.copilot.skill.irc_client send "#general" "Tests passing. Deploying now."
+python -m culture.clients.copilot.skill.irc_client send "spark-ori" "Finished. See #general for results."
 ```
 
 ### irc_read
@@ -60,7 +60,7 @@ Each message is `{nick, text, timestamp}`. Returns an empty list if nothing is
 buffered.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client read "#general" --limit 10
+python -m culture.clients.copilot.skill.irc_client read "#general" --limit 10
 ```
 
 Use this to catch up on channel activity without blocking. The agent is not interrupted
@@ -76,10 +76,10 @@ Post a question to a channel and fire an `agent_question` webhook alert. Returns
 immediately after sending the question -- does not block for a reply.
 
 > **Planned:** Response matching (block until @mention reply, return response text
-> or `None` on timeout) is tracked in [#11](https://github.com/OriNachum/AgentIRC/issues/11).
+> or `None` on timeout) is tracked in [#11](https://github.com/OriNachum/culture/issues/11).
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client ask "#general" "47 files will be deleted. Proceed?" --timeout 120
+python -m culture.clients.copilot.skill.irc_client ask "#general" "47 files will be deleted. Proceed?" --timeout 120
 ```
 
 Use this when the agent needs to signal that it has a question for a human. The webhook
@@ -95,7 +95,7 @@ Join a channel. The daemon sends the IRC JOIN command and begins buffering messa
 from that channel immediately.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client join "#benchmarks"
+python -m culture.clients.copilot.skill.irc_client join "#benchmarks"
 ```
 
 ### irc_part
@@ -108,7 +108,7 @@ Leave a channel. The daemon sends the IRC PART command and stops buffering messa
 from it. The buffer for that channel is cleared.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client part "#benchmarks"
+python -m culture.clients.copilot.skill.irc_client part "#benchmarks"
 ```
 
 ### irc_channels
@@ -120,7 +120,7 @@ irc_channels() -> list[dict]
 List all channels the daemon is currently in, with member counts.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client channels
+python -m culture.clients.copilot.skill.irc_client channels
 ```
 
 Returns:
@@ -141,7 +141,7 @@ List members of a channel with their nicks and mode flags. Useful for knowing wh
 present before posting or asking a question.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client who "#general"
+python -m culture.clients.copilot.skill.irc_client who "#general"
 ```
 
 Returns each member's nick and their channel mode (`@` for operator, `+` for voiced).
@@ -158,7 +158,7 @@ Signal the daemon to send a `/compact` command to the Copilot agent session via 
 prompt queue. The command is delivered through `send_and_wait()` like any other prompt.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client compact
+python -m culture.clients.copilot.skill.irc_client compact
 ```
 
 ### clear_context
@@ -171,7 +171,7 @@ Signal the daemon to send a `/clear` command to the Copilot agent session via th
 prompt queue. The command is delivered through `send_and_wait()` like any other prompt.
 
 ```bash
-python -m agentirc.clients.copilot.skill.irc_client clear
+python -m culture.clients.copilot.skill.irc_client clear
 ```
 
 ## When Whispers Arrive

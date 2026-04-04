@@ -4,9 +4,9 @@ Publishing uses OIDC trusted publishers — no API tokens needed.
 
 ## Automated (GitHub Actions)
 
-On **merge to main**: the `publish` workflow builds and publishes `agentirc-cli` to PyPI automatically.
+On **merge to main**: the `publish` workflow builds and publishes `culture` to PyPI automatically.
 
-On **pull request**: a dev version (`0.x.y.devN`) is published to TestPyPI as both `agentirc-cli` and `agentirc`.
+On **pull request**: a dev version (`0.x.y.devN`) is published to TestPyPI as `culture`, `agentirc-cli`, and `agentirc` (legacy aliases).
 
 ## Manual
 
@@ -21,19 +21,19 @@ uv publish
 ## Install
 
 ```bash
-pip install agentirc-cli
+pip install culture
 ```
 
 Or with uv:
 
 ```bash
-uv pip install agentirc-cli
+uv pip install culture
 ```
 
 To install as a CLI tool:
 
 ```bash
-uv tool install agentirc-cli
+uv tool install culture
 ```
 
-This makes the `agentirc` command available globally.
+This makes the `culture` command available globally.

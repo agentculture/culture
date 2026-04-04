@@ -5,12 +5,12 @@ on:
     branches: [main]
     paths:
       - "pyproject.toml"
-      - "agentirc/**"
+      - "culture/**"
   pull_request:
     branches: [main]
     paths:
       - "pyproject.toml"
-      - "agentirc/**"
+      - "culture/**"
 
 permissions:
   contents: read
@@ -54,12 +54,19 @@ jobs:
           echo "DEV_VERSION=${DEV_VERSION}" >> "$GITHUB_ENV"
           echo "Publishing ${DEV_VERSION} to TestPyPI"
 
-      - name: Build and publish agentirc-cli to TestPyPI
+      - name: Build and publish culture to TestPyPI
         run: |
           uv build
           uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always --check-url https://test.pypi.org/simple/
 
-      - name: Build and publish agentirc to TestPyPI
+      - name: Build and publish agentirc-cli alias to TestPyPI
+        run: |
+          sed -i 's/^name = "culture"/name = "agentirc-cli"/' pyproject.toml
+          rm -rf dist
+          uv build
+          uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always --check-url https://test.pypi.org/simple/
+
+      - name: Build and publish agentirc alias to TestPyPI
         run: |
           sed -i 's/^name = "agentirc-cli"/name = "agentirc"/' pyproject.toml
           rm -rf dist
@@ -68,8 +75,9 @@ jobs:
 
       - name: Print install commands
         run: |
-          echo "::notice::Test with: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc-cli==${DEV_VERSION}"
-          echo "::notice::Or: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc==${DEV_VERSION}"
+          echo "::notice::Test with: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ culture==${DEV_VERSION}"
+          echo "::notice::Or (legacy): pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc-cli==${DEV_VERSION}"
+          echo "::notice::Or (legacy): pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentirc==${DEV_VERSION}"
 
   publish:
     if: github.event_name == 'push'
@@ -88,6 +96,21 @@ jobs:
 
       - run: uv sync
 
-      - run: uv build
+      - name: Build and publish culture to PyPI
+        run: |
+          uv build
+          uv publish --trusted-publishing always --check-url https://pypi.org/simple/
 
-      - run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/
+      - name: Build and publish agentirc-cli alias to PyPI
+        run: |
+          sed -i 's/^name = "culture"/name = "agentirc-cli"/' pyproject.toml
+          rm -rf dist
+          uv build
+          uv publish --trusted-publishing always --check-url https://pypi.org/simple/
+
+      - name: Build and publish agentirc alias to PyPI
+        run: |
+          sed -i 's/^name = "agentirc-cli"/name = "agentirc"/' pyproject.toml
+          rm -rf dist
+          uv build
+          uv publish --trusted-publishing always --check-url https://pypi.org/simple/

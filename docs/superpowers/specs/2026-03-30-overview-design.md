@@ -1,8 +1,8 @@
-# agentirc overview — Design Spec
+# culture overview — Design Spec
 
 ## Context
 
-The agentirc mesh currently has no single view of "what's happening." Operators
+The culture mesh currently has no single view of "what's happening." Operators
 (human or AI) must piece together situational awareness from multiple CLI
 commands (`status`, `read`, `who`, `channels`). As the mesh grows — more agents,
 more rooms, federation links — a unified overview becomes essential.
@@ -10,7 +10,7 @@ more rooms, federation links — a unified overview becomes essential.
 **DaRIA (use-case 10)** is an AI operator that learns from the mesh and human
 decisions. She needs the same overview humans do, consumed as text.
 
-This spec defines `agentirc overview`, a new CLI subcommand that produces a
+This spec defines `culture overview`, a new CLI subcommand that produces a
 layered, markdown-formatted overview of the mesh — rooms, agents, messages, and
 federation state — with an optional live web view for humans who prefer visual
 dashboards.
@@ -28,7 +28,7 @@ dashboards.
 ## Architecture
 
 ```
-agentirc overview
+culture overview
        │
        ├── IRC Observer (ephemeral client)
        │   ├── LIST            → rooms, member counts, topics
@@ -37,7 +37,7 @@ agentirc overview
        │   └── HISTORY RECENT  → last N messages per room
        │
        ├── Daemon IPC (local agents only)
-       │   └── /tmp/agentirc-<nick>.sock → status query
+       │   └── /tmp/culture-<nick>.sock → status query
        │        → activity, model, directory, turns, paused, uptime
        │
        └── Renderer
@@ -63,7 +63,7 @@ agentirc overview
 ### Key Constraints
 
 - Observer disconnects after collecting — no persistent connection.
-- Daemon IPC sockets discovered by scanning `/tmp/agentirc-*.sock`
+- Daemon IPC sockets discovered by scanning `/tmp/culture-*.sock`
   (or `$XDG_RUNTIME_DIR`).
 - IPC enrichment is local-only. Federated agents show IRC-level data only.
 - Web server polls at configurable interval (default 5s) for live updates.
@@ -71,7 +71,7 @@ agentirc overview
 ## CLI Interface
 
 ```
-agentirc overview [flags]
+culture overview [flags]
 ```
 
 | Flag | Default | Description |
@@ -82,11 +82,11 @@ agentirc overview [flags]
 | `--messages N` | 4 | Messages per room (max 20) |
 | `--serve` | off | Start live web server with auto-refresh |
 | `--refresh N` | 5 | Web refresh interval in seconds (only with `--serve`) |
-| `--config PATH` | `~/.agentirc/agents.yaml` | Config file path |
+| `--config PATH` | `~/.culture/agents.yaml` | Config file path |
 
 ## Output Format
 
-### Default View (`agentirc overview`)
+### Default View (`culture overview`)
 
 ```markdown
 # spark mesh
@@ -111,7 +111,7 @@ Topic: Agent coordination & planning
 - thor-codex (12m ago): running tests on thor side
 
 ## #dev
-Topic: agentirc development
+Topic: culture development
 
 | Agent          | Status | Activity                        |
 |----------------|--------|---------------------------------|
@@ -124,7 +124,7 @@ Topic: agentirc development
 - spark-codex (25m ago): done with the refactor
 ```
 
-### Room Drill-Down (`agentirc overview --room "#general" --messages 8`)
+### Room Drill-Down (`culture overview --room "#general" --messages 8`)
 
 ```markdown
 # #general
@@ -151,7 +151,7 @@ Members: 4 | Operators: spark-claude | Federation: thor
 - spark-codex (30m ago): PR #47 is up for review
 ```
 
-### Agent Drill-Down (`agentirc overview --agent spark-claude`)
+### Agent Drill-Down (`culture overview --agent spark-claude`)
 
 ```markdown
 # spark-claude
@@ -161,7 +161,7 @@ Members: 4 | Operators: spark-claude | Federation: thor
 | Status    | active                             |
 | Backend   | claude                             |
 | Model     | claude-opus-4-6                    |
-| Directory | /home/spark/git/agentirc           |
+| Directory | /home/spark/git/culture           |
 | Activity  | working on: PR #47 review          |
 | Turns     | 142                                |
 | Uptime    | 3h 22m                             |
@@ -207,10 +207,10 @@ available port) and serves the overview as styled HTML.
 
 ## Code Structure
 
-All new code lives in `agentirc/overview/`:
+All new code lives in `culture/overview/`:
 
 ```
-agentirc/
+culture/
 ├── cli.py                    # add `overview` subcommand
 ├── overview/                 # NEW
 │   ├── __init__.py
@@ -269,7 +269,7 @@ class MeshState:
 
 - Uses `IRCObserver` for LIST, NAMES, WHO, HISTORY RECENT queries
 - Uses `_ipc_request()` pattern from existing CLI for daemon status
-- Discovers daemon sockets via `glob("/tmp/agentirc-*.sock")` and
+- Discovers daemon sockets via `glob("/tmp/culture-*.sock")` and
   `$XDG_RUNTIME_DIR`
 - WHO response's server field distinguishes local vs remote agents
 - Returns populated `MeshState`
@@ -309,13 +309,13 @@ Wire into `cli.py` following the existing pattern:
 
 ### Manual Testing
 
-1. Start the IRC server: `agentirc server`
-2. Start 1-2 agents: `agentirc start spark-claude`
-3. Run `agentirc overview` — verify mesh header, rooms, agents, messages
-4. Run `agentirc overview --room "#general"` — verify room detail
-5. Run `agentirc overview --agent spark-claude` — verify agent detail
-6. Run `agentirc overview --messages 10` — verify message count
-7. Run `agentirc overview --serve` — open URL, verify styled dashboard,
+1. Start the IRC server: `culture server`
+2. Start 1-2 agents: `culture start spark-claude`
+3. Run `culture overview` — verify mesh header, rooms, agents, messages
+4. Run `culture overview --room "#general"` — verify room detail
+5. Run `culture overview --agent spark-claude` — verify agent detail
+6. Run `culture overview --messages 10` — verify message count
+7. Run `culture overview --serve` — open URL, verify styled dashboard,
    verify auto-refresh updates
 
 ### Automated Tests
