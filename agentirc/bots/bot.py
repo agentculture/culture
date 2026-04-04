@@ -32,11 +32,9 @@ class Bot:
 
     @property
     def webhook_url(self) -> str:
+        """Webhook URL always uses localhost since the listener binds to 127.0.0.1."""
         port = self.server.config.webhook_port
-        host = self.server.config.host
-        if host == "0.0.0.0":  # noqa: S104
-            host = "localhost"
-        return f"http://{host}:{port}/{self.config.name}"
+        return f"http://localhost:{port}/{self.config.name}"
 
     async def start(self) -> None:
         """Activate the bot: create virtual client and join channels."""
@@ -118,14 +116,28 @@ class Bot:
         handler_path: Path,
         payload: dict,
     ) -> str | None:
-        """Load and execute a custom handler.py."""
+        """Load and execute a custom handler.py.
+
+        Security: handler_path is always constructed as
+        BOTS_DIR / self.config.name / "handler.py" — the bot name
+        comes from a validated YAML config on disk, not from user input
+        or webhook payloads. This is equivalent to loading a plugin from
+        a trusted directory under ~/.agentirc/bots/.
+        """
+        # Verify the handler is inside the bots directory
+        try:
+            handler_path.resolve().relative_to(BOTS_DIR.resolve())
+        except ValueError:
+            logger.error("handler.py path %s is outside bots dir", handler_path)
+            return self._render_message(payload)
+
         try:
             spec = importlib.util.spec_from_file_location(
                 f"bot_handler_{self.config.name}",
                 handler_path,
             )
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            spec.loader.exec_module(module)  # noqa: S102
             handle_fn = getattr(module, "handle", None)
             if handle_fn is None:
                 logger.error("handler.py for %s has no handle() function", self.config.name)
