@@ -110,7 +110,7 @@ class CopilotAgentRunner:
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                raise
             self._task = None
 
         if self._session:
@@ -175,7 +175,7 @@ class CopilotAgentRunner:
                         return
 
         except asyncio.CancelledError:
-            pass
+            raise
 
         if not self._stopping and self.on_exit:
             await self.on_exit(0)

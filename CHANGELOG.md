@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.2] - 2026-04-05
+
+
+### Fixed
+
+- Re-raise asyncio.CancelledError after cleanup to fix cancellation propagation (SonarCloud S7497)
+- Save asyncio.create_task() results to prevent garbage collection (SonarCloud S7502)
+
 ## [1.0.1] - 2026-04-05
 
 

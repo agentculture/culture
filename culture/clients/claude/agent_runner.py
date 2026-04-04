@@ -87,7 +87,7 @@ class AgentRunner:
                 try:
                     await self._task
                 except asyncio.CancelledError:
-                    pass
+                    raise
         self._task = None
 
     def is_running(self) -> bool:
@@ -149,7 +149,7 @@ class AgentRunner:
                     return
 
         except asyncio.CancelledError:
-            return
+            raise
 
         # Loop exited normally (stopping flag set)
         if self.on_exit:

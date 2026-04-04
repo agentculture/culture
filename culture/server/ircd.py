@@ -36,6 +36,7 @@ class IRCd:
             {}
         )  # peer_name -> {"delay": float, "task": asyncio.Task}
         self._stopping = False
+        self._background_tasks: set[asyncio.Task] = set()
         # Bots
         self.bot_manager = None  # set in start() if webhook_port configured
 
@@ -159,7 +160,9 @@ class IRCd:
 
         reader, writer = await asyncio.open_connection(host, port)
         link = ServerLink(reader, writer, self, password, initiator=True, trust=trust)
-        asyncio.create_task(link.handle())
+        task = asyncio.create_task(link.handle())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         return link
 
     def maybe_retry_link(self, peer_name: str) -> None:
@@ -227,7 +230,7 @@ class IRCd:
                 # Exponential backoff, cap at 120s
                 state["delay"] = min(state["delay"] * 2, 120)
         except asyncio.CancelledError:
-            pass
+            raise
         finally:
             # Cleanup retry state
             self._link_retry_state.pop(peer_name, None)

@@ -52,7 +52,7 @@ class SkillClient:
             try:
                 await self._read_task
             except asyncio.CancelledError:
-                pass
+                raise
             self._read_task = None
 
         if self._writer is not None:

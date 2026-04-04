@@ -65,6 +65,9 @@ class AgentDaemon:
         self._paused: bool = False
         self._last_activation: float | None = None
 
+        # Background tasks — prevent fire-and-forget create_task GC
+        self._background_tasks: set[asyncio.Task] = set()
+
         # Status query state — for asking the agent what it's doing
         self._status_query_event: asyncio.Event | None = None
         self._status_query_response: str = ""
@@ -118,7 +121,7 @@ class AgentDaemon:
             try:
                 await self._sleep_task
             except asyncio.CancelledError:
-                pass
+                raise
             self._sleep_task = None
 
         if self._socket_server:
@@ -187,7 +190,7 @@ class AgentDaemon:
                     self._paused = False
                     logger.info("Sleep schedule: resuming %s", self.agent.nick)
             except asyncio.CancelledError:
-                return
+                raise
             except Exception:
                 logger.exception("Sleep scheduler error")
 
@@ -327,7 +330,9 @@ class AgentDaemon:
             if self._stop_event:
                 self._stop_event.set()
             else:
-                asyncio.create_task(self.stop())
+                task = asyncio.create_task(self.stop())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
             return make_response(req_id, ok=True)
 
         else:

@@ -144,21 +144,21 @@ class ACPAgentRunner:
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                raise
 
         if self._reader_task:
             self._reader_task.cancel()
             try:
                 await self._reader_task
             except asyncio.CancelledError:
-                pass
+                raise
 
         if self._stderr_task:
             self._stderr_task.cancel()
             try:
                 await self._stderr_task
             except asyncio.CancelledError:
-                pass
+                raise
 
         if self._process:
             try:
@@ -250,7 +250,9 @@ class ACPAgentRunner:
                 elif "method" in msg:
                     await self._handle_notification(msg)
 
-        except (asyncio.CancelledError, ConnectionError):
+        except asyncio.CancelledError:
+            raise
+        except ConnectionError:
             pass
         except Exception:
             logger.exception("ACP read loop error")
@@ -295,7 +297,9 @@ class ACPAgentRunner:
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text:
                     logger.warning("acp[%s] stderr: %s", cmd_name, text)
-        except (asyncio.CancelledError, ConnectionError):
+        except asyncio.CancelledError:
+            raise
+        except ConnectionError:
             pass
 
     async def _handle_notification(self, msg: dict) -> None:
@@ -381,4 +385,4 @@ class ACPAgentRunner:
                     logger.exception("ACP turn error")
 
         except asyncio.CancelledError:
-            pass
+            raise

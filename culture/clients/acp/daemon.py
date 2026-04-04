@@ -82,6 +82,9 @@ class ACPDaemon:
         self._stop_event: asyncio.Event | None = None
         self._pid_name: str = ""
 
+        # Background task tracking (prevent GC of fire-and-forget tasks)
+        self._background_tasks: set[asyncio.Task] = set()
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -150,7 +153,9 @@ class ACPDaemon:
                 )
                 self._agent_runner = None
                 self._crash_times.append(time.time())
-                asyncio.create_task(self._delayed_restart())
+                task = asyncio.create_task(self._delayed_restart())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
         # 7. Sleep scheduler background task
         self._sleep_task = asyncio.create_task(self._sleep_scheduler())
@@ -169,7 +174,7 @@ class ACPDaemon:
             try:
                 await self._sleep_task
             except asyncio.CancelledError:
-                pass
+                raise
             self._sleep_task = None
 
         if self._agent_runner is not None:
@@ -236,7 +241,7 @@ class ACPDaemon:
                     self._paused = False
                     logger.info("Sleep schedule: resuming %s", self.agent.nick)
             except asyncio.CancelledError:
-                return
+                raise
             except Exception:
                 logger.exception("Sleep scheduler error")
 
@@ -303,11 +308,15 @@ class ACPDaemon:
                     prompt = f"[IRC @mention in {target}] <{sender}> {text}"
             else:
                 prompt = f"[IRC DM] <{sender}> {text}"
-            asyncio.create_task(self._agent_runner.send_prompt(prompt))
+            task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     def _on_roominvite(self, channel: str, meta_text: str) -> None:
         """Called by IRCTransport when a ROOMINVITE is received."""
-        asyncio.create_task(self._handle_roominvite(channel, meta_text))
+        task = asyncio.create_task(self._handle_roominvite(channel, meta_text))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _handle_roominvite(self, channel: str, meta_text: str) -> None:
         """Evaluate a room invitation using the agent's LLM."""
@@ -457,7 +466,9 @@ class ACPDaemon:
             len(self._crash_times),
             MAX_CRASH_COUNT,
         )
-        asyncio.create_task(self._delayed_restart())
+        task = asyncio.create_task(self._delayed_restart())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _delayed_restart(self) -> None:
         await asyncio.sleep(CRASH_RESTART_DELAY)
@@ -554,7 +565,9 @@ class ACPDaemon:
                 return await self._ipc_irc_thread_read(req_id, msg)
 
             elif msg_type == "shutdown":
-                asyncio.create_task(self._graceful_shutdown())
+                task = asyncio.create_task(self._graceful_shutdown())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
                 return make_response(req_id, ok=True)
 
             else:
