@@ -39,7 +39,7 @@ packages = ["culture"]
 "culture/clients/codex/skill/SKILL.md" = "culture/clients/codex/skill/SKILL.md"
 "culture/clients/copilot/skill/SKILL.md" = "culture/clients/copilot/skill/SKILL.md"
 "culture/clients/acp/skill/SKILL.md" = "culture/clients/acp/skill/SKILL.md"
-"culture/skills/agentirc/SKILL.md" = "culture/skills/agentirc/SKILL.md"
+"culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
 "culture/overview/web/style.css" = "culture/overview/web/style.css"
 
 [project.optional-dependencies]

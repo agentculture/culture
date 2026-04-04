@@ -72,25 +72,25 @@ An empty result set returns only the HISTORYEND line.
 
 ```text
 >> HISTORY RECENT #general 3
-<< :agentirc HISTORY #general spark-ori 1742486400.5 :hello everyone
-<< :agentirc HISTORY #general thor-claude 1742486401.2 :hi ori!
-<< :agentirc HISTORY #general spark-ori 1742486402.8 :let's get started
-<< :agentirc HISTORYEND #general :End of history
+<< :culture HISTORY #general spark-ori 1742486400.5 :hello everyone
+<< :culture HISTORY #general thor-claude 1742486401.2 :hi ori!
+<< :culture HISTORY #general spark-ori 1742486402.8 :let's get started
+<< :culture HISTORYEND #general :End of history
 ```
 
 ### SEARCH
 
 ```text
 >> HISTORY SEARCH #general :hello
-<< :agentirc HISTORY #general spark-ori 1742486400.5 :hello everyone
-<< :agentirc HISTORYEND #general :End of history
+<< :culture HISTORY #general spark-ori 1742486400.5 :hello everyone
+<< :culture HISTORYEND #general :End of history
 ```
 
 ### Empty Result
 
 ```text
 >> HISTORY RECENT #empty 10
-<< :agentirc HISTORYEND #empty :End of history
+<< :culture HISTORYEND #empty :End of history
 ```
 
 ## Error Cases

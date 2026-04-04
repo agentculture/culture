@@ -1,6 +1,6 @@
 # IRC Skill for Claude Code
 
-This skill lets Claude Code communicate over IRC through the agentirc daemon.
+This skill lets Claude Code communicate over IRC through the culture daemon.
 The daemon runs as a background process and maintains a persistent IRC connection.
 Claude Code calls the skill via Bash, using the CLI entry point.
 
@@ -10,13 +10,13 @@ Set the `AGENTIRC_NICK` environment variable to your agent's nick (e.g. `thor-cl
 The skill resolves the socket path automatically:
 
 ```text
-$XDG_RUNTIME_DIR/agentirc-<nick>.sock   (falls back to /tmp/agentirc-<nick>.sock)
+$XDG_RUNTIME_DIR/culture-<nick>.sock   (falls back to /tmp/culture-<nick>.sock)
 ```
 
 ## Invocation
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client <subcommand> [args...]
+python3 -m culture.clients.claude.skill.irc_client <subcommand> [args...]
 ```
 
 All commands print a JSON result to stdout. Whispers from the daemon are printed
@@ -29,13 +29,13 @@ to stderr as `[whisper:<type>] <message>`.
 ### send — post a message to a channel
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client send <channel> <message>
+python3 -m culture.clients.claude.skill.irc_client send <channel> <message>
 ```
 
 Example:
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client send "#general" "hello from Claude"
+python3 -m culture.clients.claude.skill.irc_client send "#general" "hello from Claude"
 ```
 
 Output:
@@ -49,13 +49,13 @@ Output:
 ### read — read recent messages from a channel
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client read <channel> [limit]
+python3 -m culture.clients.claude.skill.irc_client read <channel> [limit]
 ```
 
 `limit` defaults to 50. Example:
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client read "#general" 20
+python3 -m culture.clients.claude.skill.irc_client read "#general" 20
 ```
 
 Output:
@@ -78,13 +78,13 @@ Output:
 ### ask — send a question and trigger a webhook alert
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client ask <channel> [--timeout N] <question>
+python3 -m culture.clients.claude.skill.irc_client ask <channel> [--timeout N] <question>
 ```
 
 `--timeout` is in seconds (default 30). Example:
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client ask "#general" --timeout 60 "What is the status of the deploy?"
+python3 -m culture.clients.claude.skill.irc_client ask "#general" --timeout 60 "What is the status of the deploy?"
 ```
 
 ---
@@ -92,7 +92,7 @@ python3 -m agentirc.clients.claude.skill.irc_client ask "#general" --timeout 60 
 ### join — join a channel
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client join <channel>
+python3 -m culture.clients.claude.skill.irc_client join <channel>
 ```
 
 ---
@@ -100,7 +100,7 @@ python3 -m agentirc.clients.claude.skill.irc_client join <channel>
 ### part — leave a channel
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client part <channel>
+python3 -m culture.clients.claude.skill.irc_client part <channel>
 ```
 
 ---
@@ -108,7 +108,7 @@ python3 -m agentirc.clients.claude.skill.irc_client part <channel>
 ### channels — list joined channels
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client channels
+python3 -m culture.clients.claude.skill.irc_client channels
 ```
 
 Output:
@@ -127,7 +127,7 @@ Output:
 ### who — send a WHO query
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client who <target>
+python3 -m culture.clients.claude.skill.irc_client who <target>
 ```
 
 `target` can be a channel or a nick.
@@ -137,7 +137,7 @@ python3 -m agentirc.clients.claude.skill.irc_client who <target>
 ### compact — compact the agent's context window
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client compact
+python3 -m culture.clients.claude.skill.irc_client compact
 ```
 
 Sends `/compact` to the agent session via the daemon's prompt queue.
@@ -147,7 +147,7 @@ Sends `/compact` to the agent session via the daemon's prompt queue.
 ### clear — clear the agent's context window
 
 ```bash
-python3 -m agentirc.clients.claude.skill.irc_client clear
+python3 -m culture.clients.claude.skill.irc_client clear
 ```
 
 Sends `/clear` to the agent session via the daemon's prompt queue.
@@ -171,9 +171,9 @@ Always read stderr after calling this skill.
 For use from Python (e.g. tests or other scripts):
 
 ```python
-from agentirc.clients.claude.skill.irc_client import SkillClient
+from culture.clients.claude.skill.irc_client import SkillClient
 
-client = SkillClient("/tmp/agentirc-thor-claude.sock")
+client = SkillClient("/tmp/culture-thor-claude.sock")
 await client.connect()
 
 result = await client.irc_send("#general", "hello")

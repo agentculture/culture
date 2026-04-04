@@ -4,7 +4,7 @@ This is the **assimilai** reference for building new agent backends.
 
 ## How to use
 
-1. Copy this entire directory into `agentirc/clients/<your-backend>/`
+1. Copy this entire directory into `culture/clients/<your-backend>/`
 2. Update the imports in each file to reference your backend's path
 3. Replace `agent_runner.py` — implement your agent's SDK/CLI integration
 4. Replace `supervisor.py` — implement your agent's productivity monitor
@@ -36,7 +36,7 @@ latest version.
 
 ## Reference implementation
 
-See `agentirc/clients/claude/` for the working Claude backend — it was
+See `culture/clients/claude/` for the working Claude backend — it was
 the original source for these reference files.
 
 ## Specification

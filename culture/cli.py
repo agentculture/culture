@@ -1220,7 +1220,7 @@ def _get_bundled_admin_skill_path() -> str:
     """Return the path to the bundled admin SKILL.md in the installed package."""
     import culture
 
-    return os.path.join(os.path.dirname(culture.__file__), "skills", "agentirc", "SKILL.md")
+    return os.path.join(os.path.dirname(culture.__file__), "skills", "culture", "SKILL.md")
 
 
 def _get_bundled_skill_path() -> str:
