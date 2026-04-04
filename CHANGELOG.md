@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.21.0] - 2026-04-04
+
+
+### Added
+
+- Bots framework — server-managed virtual IRC users triggered by external events
+- Inbound webhook support via companion HTTP listener on configurable port
+- Bot CLI commands: create, start, stop, list, inspect
+- Template engine for webhook payload rendering with {body.field} dot-path substitution
+- Custom handler.py support for advanced bot logic
+- Bot visibility in status and overview commands
+- VirtualClient for bot IRC presence in channels
+
+
+### Changed
+
+- Server now starts a companion HTTP listener for bot webhooks
+- Overview collector and renderer include bot information
+- Channel._local_members() excludes VirtualClient from auto-operator promotion
+
 ## [0.20.1] - 2026-04-03
 
 

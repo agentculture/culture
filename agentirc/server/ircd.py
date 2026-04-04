@@ -6,8 +6,8 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING
 
-from agentirc.server.config import ServerConfig
 from agentirc.server.channel import Channel
+from agentirc.server.config import ServerConfig
 from agentirc.server.skill import Event, Skill
 
 if TYPE_CHECKING:
@@ -31,17 +31,45 @@ class IRCd:
         self._seq: int = 0
         self._event_log: deque[tuple[int, Event]] = deque(maxlen=10000)
         self._peer_acked_seq: dict[str, int] = {}  # peer_name -> our _seq when link last dropped
-        self._link_retry_state: dict[str, dict] = {}  # peer_name -> {"delay": float, "task": asyncio.Task}
+        self._link_retry_state: dict[str, dict] = (
+            {}
+        )  # peer_name -> {"delay": float, "task": asyncio.Task}
         self._stopping = False
+        # Bots
+        self.bot_manager = None  # set in start() if webhook_port configured
 
     async def start(self) -> None:
         await self._register_default_skills()
         self._restore_persistent_rooms()
+
+        # Initialize bot manager and webhook HTTP listener
+        from agentirc.bots.bot_manager import BotManager
+        from agentirc.bots.http_listener import HttpListener
+
+        self.bot_manager = BotManager(self)
+        await self.bot_manager.load_bots()
+
         self._server = await asyncio.start_server(
             self._handle_connection,
             self.config.host,
             self.config.port,
         )
+
+        self._http_listener = HttpListener(
+            self.bot_manager,
+            self.config.host,
+            self.config.webhook_port,
+        )
+        try:
+            await self._http_listener.start()
+        except OSError:
+            # Port unavailable (e.g. in tests using port 0 that got
+            # assigned an in-use ephemeral port). Non-fatal — bots
+            # still work, just without the HTTP endpoint.
+            logging.getLogger(__name__).warning(
+                "Could not start webhook listener on port %d",
+                self.config.webhook_port,
+            )
 
     async def _register_default_skills(self) -> None:
         from agentirc.server.skills.history import HistorySkill
@@ -80,9 +108,7 @@ class IRCd:
                 try:
                     await link.relay_event(event)
                 except Exception:
-                    logging.getLogger(__name__).exception(
-                        "Failed to relay event to %s", peer_name
-                    )
+                    logging.getLogger(__name__).exception("Failed to relay event to %s", peer_name)
 
     def get_skill_for_command(self, command: str) -> Skill | None:
         for skill in self.skills:
@@ -91,11 +117,23 @@ class IRCd:
         return None
 
     def get_client(self, nick: str) -> Client | RemoteClient | None:
-        """Look up a client by nick, checking both local and remote."""
-        return self.clients.get(nick) or self.remote_clients.get(nick)
+        """Look up a client by nick, checking local, remote, and bots."""
+        client = self.clients.get(nick) or self.remote_clients.get(nick)
+        if client:
+            return client
+        if self.bot_manager:
+            bot = self.bot_manager.get_bot(nick)
+            if bot and bot.virtual_client:
+                return bot.virtual_client
+        return None
 
     async def stop(self) -> None:
         self._stopping = True
+        # Stop bots and HTTP listener
+        if self.bot_manager:
+            await self.bot_manager.stop_all()
+        if hasattr(self, "_http_listener") and self._http_listener:
+            await self._http_listener.stop()
         for skill in self.skills:
             await skill.stop()
         # Cancel all pending retry tasks
@@ -141,14 +179,10 @@ class IRCd:
             return
 
         state = {"delay": 5.0, "task": None}
-        state["task"] = asyncio.create_task(
-            self._retry_link_loop(peer_name, link_config, state)
-        )
+        state["task"] = asyncio.create_task(self._retry_link_loop(peer_name, link_config, state))
         self._link_retry_state[peer_name] = state
 
-    async def _retry_link_loop(
-        self, peer_name: str, link_config, state: dict
-    ) -> None:
+    async def _retry_link_loop(self, peer_name: str, link_config, state: dict) -> None:
         """Retry connecting to a peer with exponential backoff."""
         logger = logging.getLogger(__name__)
         try:
@@ -176,9 +210,7 @@ class IRCd:
                         logger.info("Reconnected to peer %s", peer_name)
                         break
                     else:
-                        logger.warning(
-                            "Handshake with %s did not complete, retrying", peer_name
-                        )
+                        logger.warning("Handshake with %s did not complete, retrying", peer_name)
                         # Close the stale link to avoid leaked connections
                         try:
                             link.writer.close()
@@ -209,9 +241,9 @@ class IRCd:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         """Peek at first message to detect S2S vs C2S."""
+        from agentirc.protocol.message import Message
         from agentirc.server.client import Client
         from agentirc.server.server_link import ServerLink
-        from agentirc.protocol.message import Message
 
         # Read first line to detect connection type
         first_data = await reader.read(4096)
@@ -232,7 +264,9 @@ class IRCd:
                 writer.close()
                 return
 
-            link = ServerLink(reader, writer, self, password=None, initiator=False, trust="restricted")
+            link = ServerLink(
+                reader, writer, self, password=None, initiator=False, trust="restricted"
+            )
             try:
                 await link.handle(initial_msg=text)
             except (ConnectionError, asyncio.IncompleteReadError):
@@ -272,16 +306,11 @@ class IRCd:
             self._peer_acked_seq[peer_name] = self._seq
 
         # Find all remote clients from this link
-        to_remove = [
-            nick for nick, rc in self.remote_clients.items()
-            if rc.link is link
-        ]
+        to_remove = [nick for nick, rc in self.remote_clients.items() if rc.link is link]
 
         for nick in to_remove:
             rc = self.remote_clients[nick]
-            quit_msg = Message(
-                prefix=rc.prefix, command="QUIT", params=["Server link closed"]
-            )
+            quit_msg = Message(prefix=rc.prefix, command="QUIT", params=["Server link closed"])
             notified: set = set()
             for channel in list(rc.channels):
                 for member in list(channel.members):

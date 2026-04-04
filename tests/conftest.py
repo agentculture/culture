@@ -1,6 +1,9 @@
 # tests/conftest.py
 import asyncio
+from unittest.mock import patch
+
 import pytest_asyncio
+
 from agentirc.server.config import LinkConfig, ServerConfig
 from agentirc.server.ircd import IRCd
 
@@ -44,14 +47,23 @@ class IRCTestClient:
 
 
 @pytest_asyncio.fixture
-async def server():
-    config = ServerConfig(name="testserv", host="127.0.0.1", port=0)
-    ircd = IRCd(config)
-    await ircd.start()
-    # Get actual port from OS-assigned random port
-    ircd.config.port = ircd._server.sockets[0].getsockname()[1]
-    yield ircd
-    await ircd.stop()
+async def server(tmp_path):
+    # Isolate bot loading to an empty temp directory so tests
+    # never read/write the real ~/.agentirc/bots/ directory.
+    empty_bots = tmp_path / "_bots"
+    empty_bots.mkdir()
+    config = ServerConfig(name="testserv", host="127.0.0.1", port=0, webhook_port=0)
+    with (
+        patch("agentirc.bots.bot_manager.BOTS_DIR", empty_bots),
+        patch("agentirc.bots.config.BOTS_DIR", empty_bots),
+        patch("agentirc.bots.bot.BOTS_DIR", empty_bots),
+    ):
+        ircd = IRCd(config)
+        await ircd.start()
+        # Get actual port from OS-assigned random port
+        ircd.config.port = ircd._server.sockets[0].getsockname()[1]
+        yield ircd
+        await ircd.stop()
 
 
 @pytest_asyncio.fixture
@@ -81,28 +93,37 @@ async def make_client(server):
 
 
 @pytest_asyncio.fixture
-async def linked_servers():
+async def linked_servers(tmp_path):
     """Two IRCd instances linked via S2S federation."""
     password = "testlink123"
+    empty_bots = tmp_path / "_bots"
+    empty_bots.mkdir()
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
+        webhook_port=0,
         links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
+        webhook_port=0,
         links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
     )
 
     server_a = IRCd(config_a)
     server_b = IRCd(config_b)
 
-    await server_a.start()
-    await server_b.start()
+    with (
+        patch("agentirc.bots.bot_manager.BOTS_DIR", empty_bots),
+        patch("agentirc.bots.config.BOTS_DIR", empty_bots),
+        patch("agentirc.bots.bot.BOTS_DIR", empty_bots),
+    ):
+        await server_a.start()
+        await server_b.start()
 
     server_a.config.port = server_a._server.sockets[0].getsockname()[1]
     server_b.config.port = server_b._server.sockets[0].getsockname()[1]

@@ -1,9 +1,10 @@
 """Render MeshState as markdown text."""
+
 from __future__ import annotations
 
 import time
 
-from .model import MeshState, Room, Agent, Message
+from .model import Agent, BotInfo, MeshState, Message, Room
 
 
 def _relative_time(timestamp: float) -> str:
@@ -103,6 +104,17 @@ def _render_default(mesh: MeshState, message_limit: int) -> str:
         parts.append("")
         parts.append(_render_room(room, message_limit))
 
+    # Bots section
+    if mesh.bots:
+        parts.append("")
+        parts.append("## Bots")
+        parts.append("")
+        parts.append("| Bot | Trigger | Channels | Owner |")
+        parts.append("|-----|---------|----------|-------|")
+        for bot in mesh.bots:
+            channels = ", ".join(bot.channels) if bot.channels else "-"
+            parts.append(f"| {bot.name} | {bot.trigger_type} | {channels} | {bot.owner} |")
+
     return "\n".join(parts) + "\n"
 
 
@@ -175,9 +187,11 @@ def _render_agent_detail(mesh: MeshState, nick: str, message_limit: int) -> str:
     parts.append("| Channel | Role | Last spoke |")
     parts.append("|---------|------|------------|")
     for ch_name in agent.channels:
-        role = "operator" if any(
-            r.name == ch_name and agent.nick in r.operators for r in mesh.rooms
-        ) else "member"
+        role = (
+            "operator"
+            if any(r.name == ch_name and agent.nick in r.operators for r in mesh.rooms)
+            else "member"
+        )
         last_spoke = "never"
         for room in mesh.rooms:
             if room.name == ch_name:
@@ -204,5 +218,15 @@ def _render_agent_detail(mesh: MeshState, nick: str, message_limit: int) -> str:
             parts.append(f"- {msg.channel} ({_relative_time(msg.timestamp)}): {msg.text}")
     else:
         parts.append("No recent activity.")
+
+    # Owned bots
+    owned_bots = [b for b in mesh.bots if b.owner == nick]
+    if owned_bots:
+        parts.append("")
+        parts.append(f"## Bots ({len(owned_bots)})")
+        parts.append("")
+        for bot in owned_bots:
+            channels = ", ".join(bot.channels) if bot.channels else "-"
+            parts.append(f"- {bot.name} ({bot.trigger_type}, {channels}, {bot.status})")
 
     return "\n".join(parts) + "\n"

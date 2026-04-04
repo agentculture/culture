@@ -17,6 +17,7 @@ Subcommands:
     agentirc setup [--config X] [--uninstall] Set up mesh from mesh.yaml
     agentirc update [--dry-run] [--skip-upgrade] Upgrade and restart mesh
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,6 +70,7 @@ def _parse_link(value: str):
         raise argparse.ArgumentTypeError(f"Invalid port: {port_str}")
     return LinkConfig(name=name, host=host, port=port, password=password, trust=trust)
 
+
 DEFAULT_CONFIG = os.path.expanduser("~/.agentirc/agents.yaml")
 LOG_DIR = os.path.expanduser("~/.agentirc/logs")
 
@@ -76,6 +78,7 @@ LOG_DIR = os.path.expanduser("~/.agentirc/logs")
 # -----------------------------------------------------------------------
 # Main entry point
 # -----------------------------------------------------------------------
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -93,15 +96,26 @@ def _build_parser() -> argparse.ArgumentParser:
     srv_start.add_argument("--host", default="0.0.0.0", help="Listen address")
     srv_start.add_argument("--port", type=int, default=6667, help="Listen port")
     srv_start.add_argument(
-        "--link", type=_parse_link, action="append", default=[],
+        "--link",
+        type=_parse_link,
+        action="append",
+        default=[],
         help="Link to peer: name:host:port:password",
     )
     srv_start.add_argument(
-        "--mesh-config", default=None,
+        "--mesh-config",
+        default=None,
         help="Read links from mesh.yaml + OS keyring (no passwords in CLI args)",
     )
     srv_start.add_argument(
-        "--foreground", action="store_true",
+        "--webhook-port",
+        type=int,
+        default=7680,
+        help="HTTP port for bot webhooks (default: 7680)",
+    )
+    srv_start.add_argument(
+        "--foreground",
+        action="store_true",
         help="Run in foreground (for service managers)",
     )
 
@@ -115,8 +129,17 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser = sub.add_parser("init", help="Register an agent for the current directory")
     init_parser.add_argument("--server", default=None, help="Server name prefix")
     init_parser.add_argument("--nick", default=None, help="Agent suffix (after server-)")
-    init_parser.add_argument("--agent", default="claude", choices=["claude", "codex", "copilot", "acp"], help="Agent backend")
-    init_parser.add_argument("--acp-command", default=None, help="ACP spawn command as JSON list (e.g. '[\"cline\",\"--acp\"]')")
+    init_parser.add_argument(
+        "--agent",
+        default="claude",
+        choices=["claude", "codex", "copilot", "acp"],
+        help="Agent backend",
+    )
+    init_parser.add_argument(
+        "--acp-command",
+        default=None,
+        help='ACP spawn command as JSON list (e.g. \'["cline","--acp"]\')',
+    )
     init_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
 
     # -- start subcommand --------------------------------------------------
@@ -125,7 +148,8 @@ def _build_parser() -> argparse.ArgumentParser:
     start_parser.add_argument("--all", action="store_true", help="Start all agents")
     start_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
     start_parser.add_argument(
-        "--foreground", action="store_true",
+        "--foreground",
+        action="store_true",
         help="Run in foreground (for service managers)",
     )
 
@@ -138,7 +162,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # -- status subcommand -------------------------------------------------
     status_parser = sub.add_parser("status", help="List running agents")
     status_parser.add_argument("nick", nargs="?", help="Show detailed status for a specific agent")
-    status_parser.add_argument("--full", action="store_true", help="Query agents for activity status")
+    status_parser.add_argument(
+        "--full", action="store_true", help="Query agents for activity status"
+    )
     status_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
 
     # -- read subcommand ---------------------------------------------------
@@ -184,7 +210,8 @@ def _build_parser() -> argparse.ArgumentParser:
     skills_sub = skills_parser.add_subparsers(dest="skills_command")
     skills_install = skills_sub.add_parser("install", help="Install IRC skill for an agent")
     skills_install.add_argument(
-        "target", choices=["claude", "codex", "copilot", "acp", "opencode", "all"],
+        "target",
+        choices=["claude", "codex", "copilot", "acp", "opencode", "all"],
         help="Target agent: claude, codex, copilot, acp, opencode (alias of acp), or all",
     )
 
@@ -192,36 +219,80 @@ def _build_parser() -> argparse.ArgumentParser:
     overview_parser = sub.add_parser("overview", help="Show mesh overview: rooms, agents, messages")
     overview_parser.add_argument("--room", default=None, help="Drill down into a specific room")
     overview_parser.add_argument("--agent", default=None, help="Drill down into a specific agent")
-    overview_parser.add_argument("--messages", "-n", type=int, default=4, help="Messages per room (default: 4, max: 20)")
+    overview_parser.add_argument(
+        "--messages", "-n", type=int, default=4, help="Messages per room (default: 4, max: 20)"
+    )
     overview_parser.add_argument("--serve", action="store_true", help="Start live web dashboard")
-    overview_parser.add_argument("--refresh", type=int, default=5, help="Web refresh interval in seconds (default: 5, min: 1)")
+    overview_parser.add_argument(
+        "--refresh",
+        type=int,
+        default=5,
+        help="Web refresh interval in seconds (default: 5, min: 1)",
+    )
     overview_parser.add_argument("--config", default=DEFAULT_CONFIG)
 
     # -- setup subcommand --------------------------------------------------
     setup_parser = sub.add_parser("setup", help="Set up mesh from mesh.yaml")
     setup_parser.add_argument(
-        "--config", default=os.path.expanduser("~/.agentirc/mesh.yaml"),
+        "--config",
+        default=os.path.expanduser("~/.agentirc/mesh.yaml"),
         help="Path to mesh.yaml",
     )
     setup_parser.add_argument(
-        "--uninstall", action="store_true",
+        "--uninstall",
+        action="store_true",
         help="Remove auto-start entries and stop services",
     )
 
     # -- update subcommand -------------------------------------------------
     update_parser = sub.add_parser("update", help="Upgrade and restart the mesh")
     update_parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Show what would happen without executing",
     )
     update_parser.add_argument(
-        "--skip-upgrade", action="store_true",
+        "--skip-upgrade",
+        action="store_true",
         help="Just restart, don't upgrade the package",
     )
     update_parser.add_argument(
-        "--config", default=os.path.expanduser("~/.agentirc/mesh.yaml"),
+        "--config",
+        default=os.path.expanduser("~/.agentirc/mesh.yaml"),
         help="Path to mesh.yaml",
     )
+
+    # -- bot subcommand ----------------------------------------------------
+    bot_parser = sub.add_parser("bot", help="Manage bots and webhooks")
+    bot_sub = bot_parser.add_subparsers(dest="bot_command")
+
+    bot_create = bot_sub.add_parser("create", help="Create a new bot")
+    bot_create.add_argument("name", help="Bot name (e.g. ghci)")
+    bot_create.add_argument("--owner", required=True, help="Owner nick (e.g. spark-ori)")
+    bot_create.add_argument("--channels", nargs="+", default=[], help="Channels to join")
+    bot_create.add_argument(
+        "--trigger", default="webhook", choices=["webhook"], help="Trigger type"
+    )
+    bot_create.add_argument("--mention", default=None, help="Agent to @mention on trigger")
+    bot_create.add_argument("--template", default=None, help="Message template")
+    bot_create.add_argument("--dm-owner", action="store_true", help="DM the owner on trigger")
+    bot_create.add_argument("--description", default="", help="Bot description")
+    bot_create.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
+
+    bot_start = bot_sub.add_parser("start", help="Start a bot")
+    bot_start.add_argument("name", help="Bot name")
+    bot_start.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
+
+    bot_stop = bot_sub.add_parser("stop", help="Stop a bot")
+    bot_stop.add_argument("name", help="Bot name")
+    bot_stop.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
+
+    bot_list = bot_sub.add_parser("list", help="List bots")
+    bot_list.add_argument("owner", nargs="?", default=None, help="Filter by owner nick")
+
+    bot_inspect = bot_sub.add_parser("inspect", help="Show bot details")
+    bot_inspect.add_argument("name", help="Bot name")
+    bot_inspect.add_argument("--config", default=DEFAULT_CONFIG, help="Config file path")
 
     return parser
 
@@ -257,6 +328,7 @@ def main() -> None:
             "overview": _cmd_overview,
             "setup": _cmd_setup,
             "update": _cmd_update,
+            "bot": _cmd_bot,
         }
         handler = dispatch.get(args.command)
         if handler:
@@ -274,6 +346,7 @@ def main() -> None:
 # -----------------------------------------------------------------------
 # Server subcommands
 # -----------------------------------------------------------------------
+
 
 def _cmd_server(args: argparse.Namespace) -> None:
     if not args.server_command:
@@ -308,8 +381,9 @@ def _server_start(args: argparse.Namespace) -> None:
         os.makedirs(LOG_DIR, exist_ok=True)
         print(f"Server '{args.name}' starting in foreground (PID {os.getpid()})")
         print(f"  Listening on {args.host}:{args.port}")
+        print(f"  Webhook port: {args.webhook_port}")
         try:
-            asyncio.run(_run_server(args.name, args.host, args.port, links))
+            asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
         finally:
             remove_pid(pid_name)
         return
@@ -349,18 +423,22 @@ def _server_start(args: argparse.Namespace) -> None:
     write_pid(pid_name, os.getpid())
 
     try:
-        asyncio.run(_run_server(args.name, args.host, args.port, links))
+        asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
     finally:
         remove_pid(pid_name)
         os._exit(0)
 
 
-async def _run_server(name: str, host: str, port: int, links: list | None = None) -> None:
+async def _run_server(
+    name: str, host: str, port: int, links: list | None = None, webhook_port: int = 7680
+) -> None:
     """Run the IRC server (called in the daemon child process)."""
     from agentirc.server.config import ServerConfig
     from agentirc.server.ircd import IRCd
 
-    config = ServerConfig(name=name, host=host, port=port, links=links or [])
+    config = ServerConfig(
+        name=name, host=host, port=port, webhook_port=webhook_port, links=links or []
+    )
     ircd = IRCd(config)
     await ircd.start()
     logger.info("Server '%s' listening on %s:%d", name, host, port)
@@ -448,6 +526,7 @@ def _server_status(args: argparse.Namespace) -> None:
 # Agent init
 # -----------------------------------------------------------------------
 
+
 def _cmd_init(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
 
@@ -467,8 +546,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
     for existing in config.agents:
         if existing.nick == full_nick:
             channels = existing.channels if isinstance(existing.channels, list) else []
-            print(f"Agent '{full_nick}' already exists in config",
-                  file=sys.stderr)
+            print(f"Agent '{full_nick}' already exists in config", file=sys.stderr)
             print(f"  Directory: {existing.directory}", file=sys.stderr)
             print(f"  Backend:   {existing.agent}", file=sys.stderr)
             print(f"  Channels:  {', '.join(channels)}", file=sys.stderr)
@@ -481,6 +559,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
     # Use backend-specific config for correct defaults
     if args.agent == "codex":
         from agentirc.clients.codex.config import AgentConfig as CodexAgentConfig
+
         agent = CodexAgentConfig(
             nick=full_nick,
             agent="codex",
@@ -489,6 +568,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
         )
     elif args.agent == "copilot":
         from agentirc.clients.copilot.config import AgentConfig as CopilotAgentConfig
+
         agent = CopilotAgentConfig(
             nick=full_nick,
             agent="copilot",
@@ -497,7 +577,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
         )
     elif args.agent == "acp":
         import json as _json
+
         from agentirc.clients.acp.config import AgentConfig as ACPAgentConfig
+
         acp_cmd = ["opencode", "acp"]
         if args.acp_command:
             try:
@@ -505,7 +587,11 @@ def _cmd_init(args: argparse.Namespace) -> None:
             except _json.JSONDecodeError:
                 # Treat as a simple command name (e.g. "cline --acp")
                 acp_cmd = args.acp_command.split()
-        if not isinstance(acp_cmd, list) or not acp_cmd or not all(isinstance(s, str) for s in acp_cmd):
+        if (
+            not isinstance(acp_cmd, list)
+            or not acp_cmd
+            or not all(isinstance(s, str) for s in acp_cmd)
+        ):
             print("Error: --acp-command must be a non-empty list of strings", file=sys.stderr)
             sys.exit(1)
         agent = ACPAgentConfig(
@@ -536,6 +622,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 # Agent start
 # -----------------------------------------------------------------------
+
 
 def _cmd_start(args: argparse.Namespace) -> None:
     config = load_config(args.config)
@@ -605,7 +692,10 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 print(f"Starting agent {agent.nick}...")
                 asyncio.run(_run_single_agent(config, agent))
             else:
-                print("Multi-agent daemon mode not supported on Windows. Start agents individually.", file=sys.stderr)
+                print(
+                    "Multi-agent daemon mode not supported on Windows. Start agents individually.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
         else:
             # Daemonize all agents (fork each into background)
@@ -617,10 +707,9 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
     backend = getattr(agent, "agent", "claude")
 
     if backend == "codex":
+        from agentirc.clients.codex.config import DaemonConfig as CodexDaemonConfig
         from agentirc.clients.codex.daemon import CodexDaemon
-        from agentirc.clients.codex.config import (
-            DaemonConfig as CodexDaemonConfig,
-        )
+
         # Re-load config through Codex module for correct supervisor defaults
         codex_config = CodexDaemonConfig(
             server=config.server,
@@ -630,11 +719,10 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
         )
         daemon = CodexDaemon(codex_config, agent)
     elif backend in ("acp", "opencode"):
+        from agentirc.clients.acp.config import AgentConfig as ACPAgentConfig
+        from agentirc.clients.acp.config import DaemonConfig as ACPDaemonConfig
         from agentirc.clients.acp.daemon import ACPDaemon
-        from agentirc.clients.acp.config import (
-            DaemonConfig as ACPDaemonConfig,
-            AgentConfig as ACPAgentConfig,
-        )
+
         # Re-load config through ACP module for correct supervisor defaults
         acp_config = ACPDaemonConfig(
             server=config.server,
@@ -658,10 +746,9 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
             acp_agent = agent
         daemon = ACPDaemon(acp_config, acp_agent)
     elif backend == "copilot":
+        from agentirc.clients.copilot.config import DaemonConfig as CopilotDaemonConfig
         from agentirc.clients.copilot.daemon import CopilotDaemon
-        from agentirc.clients.copilot.config import (
-            DaemonConfig as CopilotDaemonConfig,
-        )
+
         # Re-load config through Copilot module for correct supervisor defaults
         copilot_config = CopilotDaemonConfig(
             server=config.server,
@@ -672,6 +759,7 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
         daemon = CopilotDaemon(copilot_config, agent)
     else:
         from agentirc.clients.claude.daemon import AgentDaemon
+
         daemon = AgentDaemon(config, agent)
 
     stop_event = asyncio.Event()
@@ -724,6 +812,7 @@ def _run_multi_agents(config: DaemonConfig, agents: list[AgentConfig]) -> None:
 # -----------------------------------------------------------------------
 # Agent stop
 # -----------------------------------------------------------------------
+
 
 def _cmd_stop(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
@@ -868,6 +957,7 @@ async def _ipc_shutdown(socket_path: str) -> bool:
 # Agent status
 # -----------------------------------------------------------------------
 
+
 def _agent_socket_path(nick: str) -> str:
     return os.path.join(
         os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
@@ -914,9 +1004,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
         # Query IPC for activity if running — ask the agent directly
         if status == "running":
-            resp = asyncio.run(_ipc_request(
-                _agent_socket_path(agent.nick), "status", query=True
-            ))
+            resp = asyncio.run(_ipc_request(_agent_socket_path(agent.nick), "status", query=True))
             if resp and resp.get("ok"):
                 data = resp.get("data", {})
                 print(f"  Activity:   {data.get('description', 'nothing')}")
@@ -960,10 +1048,31 @@ def _cmd_status(args: argparse.Namespace) -> None:
         else:
             print(f"{agent.nick:<30} {status:<12} {str(pid or '-'):<10}")
 
+    # Show bots
+    from agentirc.bots.config import BOTS_DIR, load_bot_config
+
+    if BOTS_DIR.is_dir():
+        bot_configs = []
+        for bot_dir in sorted(BOTS_DIR.iterdir()):
+            yaml_path = bot_dir / "bot.yaml"
+            if yaml_path.is_file():
+                try:
+                    bot_configs.append(load_bot_config(yaml_path))
+                except Exception:
+                    pass
+        if bot_configs:
+            print()
+            print(f"{'BOT':<30} {'TRIGGER':<12} {'CHANNELS'}")
+            print("-" * 60)
+            for bc in bot_configs:
+                channels = ", ".join(bc.channels) if bc.channels else "-"
+                print(f"{bc.name:<30} {bc.trigger_type:<12} {channels}")
+
 
 # -----------------------------------------------------------------------
 # Observation subcommands
 # -----------------------------------------------------------------------
+
 
 def _get_observer(config_path: str):
     """Create an IRCObserver from the config file."""
@@ -1039,18 +1148,22 @@ def _cmd_learn(args: argparse.Namespace) -> None:
                 break
 
     if agent:
-        print(generate_learn_prompt(
-            nick=agent.nick,
-            server=config.server.name,
-            directory=agent.directory,
-            backend=agent.agent,
-            channels=agent.channels,
-        ))
+        print(
+            generate_learn_prompt(
+                nick=agent.nick,
+                server=config.server.name,
+                directory=agent.directory,
+                backend=agent.agent,
+                channels=agent.channels,
+            )
+        )
     else:
-        print(generate_learn_prompt(
-            server=config.server.name,
-            directory=cwd,
-        ))
+        print(
+            generate_learn_prompt(
+                server=config.server.name,
+                directory=cwd,
+            )
+        )
 
 
 def _cmd_send(args: argparse.Namespace) -> None:
@@ -1104,16 +1217,21 @@ def _cmd_channels(args: argparse.Namespace) -> None:
 # Skills install
 # -----------------------------------------------------------------------
 
+
 def _get_bundled_admin_skill_path() -> str:
     """Return the path to the bundled admin SKILL.md in the installed package."""
     import agentirc
+
     return os.path.join(os.path.dirname(agentirc.__file__), "skills", "agentirc", "SKILL.md")
 
 
 def _get_bundled_skill_path() -> str:
     """Return the path to the bundled SKILL.md in the installed package."""
     import agentirc
-    return os.path.join(os.path.dirname(agentirc.__file__), "clients", "claude", "skill", "SKILL.md")
+
+    return os.path.join(
+        os.path.dirname(agentirc.__file__), "clients", "claude", "skill", "SKILL.md"
+    )
 
 
 def _install_admin_skill(root_dir: str, label: str) -> None:
@@ -1124,6 +1242,7 @@ def _install_admin_skill(root_dir: str, label: str) -> None:
 
     os.makedirs(dest_dir, exist_ok=True)
     import shutil
+
     shutil.copy2(src, dest)
     print(f"Installed {label} admin skill: {dest}")
 
@@ -1136,6 +1255,7 @@ def _install_skill_claude() -> None:
 
     os.makedirs(dest_dir, exist_ok=True)
     import shutil
+
     shutil.copy2(src, dest)
     print(f"Installed Claude Code messaging skill: {dest}")
     _install_admin_skill("~/.claude/skills", "Claude Code")
@@ -1144,6 +1264,7 @@ def _install_skill_claude() -> None:
 def _get_bundled_codex_skill_path() -> str:
     """Return the path to the bundled Codex SKILL.md in the installed package."""
     import agentirc
+
     return os.path.join(os.path.dirname(agentirc.__file__), "clients", "codex", "skill", "SKILL.md")
 
 
@@ -1155,6 +1276,7 @@ def _install_skill_codex() -> None:
 
     os.makedirs(dest_dir, exist_ok=True)
     import shutil
+
     shutil.copy2(src, dest)
     print(f"Installed Codex messaging skill: {dest}")
     _install_admin_skill("~/.agents/skills", "Codex")
@@ -1163,7 +1285,10 @@ def _install_skill_codex() -> None:
 def _get_bundled_copilot_skill_path() -> str:
     """Return the path to the bundled Copilot SKILL.md in the installed package."""
     import agentirc
-    return os.path.join(os.path.dirname(agentirc.__file__), "clients", "copilot", "skill", "SKILL.md")
+
+    return os.path.join(
+        os.path.dirname(agentirc.__file__), "clients", "copilot", "skill", "SKILL.md"
+    )
 
 
 def _install_skill_copilot() -> None:
@@ -1174,6 +1299,7 @@ def _install_skill_copilot() -> None:
 
     os.makedirs(dest_dir, exist_ok=True)
     import shutil
+
     shutil.copy2(src, dest)
     print(f"Installed Copilot messaging skill: {dest}")
     _install_admin_skill("~/.copilot_skills", "Copilot")
@@ -1182,6 +1308,7 @@ def _install_skill_copilot() -> None:
 def _get_bundled_acp_skill_path() -> str:
     """Return the path to the bundled ACP SKILL.md in the installed package."""
     import agentirc
+
     return os.path.join(os.path.dirname(agentirc.__file__), "clients", "acp", "skill", "SKILL.md")
 
 
@@ -1193,6 +1320,7 @@ def _install_skill_acp() -> None:
 
     os.makedirs(dest_dir, exist_ok=True)
     import shutil
+
     shutil.copy2(src, dest)
     print(f"Installed ACP messaging skill: {dest}")
     _install_admin_skill("~/.acp/skills", "ACP")
@@ -1223,6 +1351,7 @@ def _cmd_skills(args: argparse.Namespace) -> None:
 # Overview subcommand
 # -----------------------------------------------------------------------
 
+
 def _cmd_overview(args: argparse.Namespace) -> None:
     """Show mesh overview."""
     from agentirc.overview.collector import collect_mesh_state
@@ -1234,6 +1363,7 @@ def _cmd_overview(args: argparse.Namespace) -> None:
 
     if args.serve:
         from agentirc.overview.renderer_web import serve_web
+
         serve_web(
             host=config.server.host,
             port=config.server.port,
@@ -1245,12 +1375,14 @@ def _cmd_overview(args: argparse.Namespace) -> None:
         )
         return
 
-    mesh = asyncio.run(collect_mesh_state(
-        host=config.server.host,
-        port=config.server.port,
-        server_name=config.server.name,
-        message_limit=message_limit,
-    ))
+    mesh = asyncio.run(
+        collect_mesh_state(
+            host=config.server.host,
+            port=config.server.port,
+            server_name=config.server.name,
+            message_limit=message_limit,
+        )
+    )
     output = render_text(
         mesh,
         room_filter=args.room,
@@ -1264,10 +1396,11 @@ def _cmd_overview(args: argparse.Namespace) -> None:
 # Credential helpers
 # -----------------------------------------------------------------------
 
+
 def _resolve_links_from_mesh(mesh_config_path: str) -> list:
     """Load link configs from mesh.yaml, looking up passwords from OS keyring."""
-    from agentirc.mesh_config import load_mesh_config
     from agentirc.credentials import lookup_credential
+    from agentirc.mesh_config import load_mesh_config
     from agentirc.server.config import LinkConfig
 
     mesh = load_mesh_config(mesh_config_path)
@@ -1277,19 +1410,26 @@ def _resolve_links_from_mesh(mesh_config_path: str) -> list:
         if not password:
             logger.warning(
                 "No credential found for peer '%s' — link will not be established. "
-                "Run 'agentirc setup' to store link passwords.", lc.name
+                "Run 'agentirc setup' to store link passwords.",
+                lc.name,
             )
             continue
-        links.append(LinkConfig(
-            name=lc.name, host=lc.host, port=lc.port,
-            password=password, trust=lc.trust,
-        ))
+        links.append(
+            LinkConfig(
+                name=lc.name,
+                host=lc.host,
+                port=lc.port,
+                password=password,
+                trust=lc.trust,
+            )
+        )
     return links
 
 
 # -----------------------------------------------------------------------
 # Shared helpers for setup / update
 # -----------------------------------------------------------------------
+
 
 def _build_server_start_cmd(mesh, agentirc_bin: str, mesh_config_path: str) -> list[str]:
     """Build the server start command with --foreground and --mesh-config.
@@ -1298,11 +1438,18 @@ def _build_server_start_cmd(mesh, agentirc_bin: str, mesh_config_path: str) -> l
     at startup via --mesh-config.
     """
     return [
-        agentirc_bin, "server", "start", "--foreground",
-        "--name", mesh.server.name,
-        "--host", mesh.server.host,
-        "--port", str(mesh.server.port),
-        "--mesh-config", mesh_config_path,
+        agentirc_bin,
+        "server",
+        "start",
+        "--foreground",
+        "--name",
+        mesh.server.name,
+        "--host",
+        mesh.server.host,
+        "--port",
+        str(mesh.server.port),
+        "--mesh-config",
+        mesh_config_path,
     ]
 
 
@@ -1310,10 +1457,12 @@ def _build_server_start_cmd(mesh, agentirc_bin: str, mesh_config_path: str) -> l
 # Setup — mesh.yaml → auto-start services
 # -----------------------------------------------------------------------
 
+
 def _cmd_setup(args: argparse.Namespace) -> None:
     import getpass
+
     from agentirc.mesh_config import load_mesh_config
-    from agentirc.persistence import install_service, uninstall_service, list_services
+    from agentirc.persistence import install_service, list_services, uninstall_service
 
     try:
         mesh = load_mesh_config(args.config)
@@ -1342,7 +1491,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         return
 
     # Prompt for link passwords and store in OS keyring (never in files)
-    from agentirc.credentials import store_credential, lookup_credential
+    from agentirc.credentials import lookup_credential, store_credential
 
     for link in mesh.server.links:
         existing = lookup_credential(link.name)
@@ -1354,11 +1503,14 @@ def _cmd_setup(args: argparse.Namespace) -> None:
                 print(f"  Stored credential for '{link.name}' in OS keyring")
             else:
                 print(f"  Warning: failed to store credential for '{link.name}'", file=sys.stderr)
-                print(f"  You may need to install secret-tool (Linux) or check Keychain access (macOS)", file=sys.stderr)
+                print(
+                    f"  You may need to install secret-tool (Linux) or check Keychain access (macOS)",
+                    file=sys.stderr,
+                )
 
     # Generate agents.yaml for each workdir
+    from agentirc.clients.claude.config import AgentConfig as BaseAgentConfig
     from agentirc.clients.claude.config import (
-        AgentConfig as BaseAgentConfig,
         DaemonConfig,
         ServerConnConfig,
         save_config,
@@ -1377,12 +1529,14 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         agent_configs = []
         for a in agents:
             full_nick = f"{server_name}-{a.nick}"
-            agent_configs.append(BaseAgentConfig(
-                nick=full_nick,
-                agent=a.type,
-                directory=workdir,
-                channels=list(a.channels),
-            ))
+            agent_configs.append(
+                BaseAgentConfig(
+                    nick=full_nick,
+                    agent=a.type,
+                    directory=workdir,
+                    channels=list(a.channels),
+                )
+            )
 
         daemon_config = DaemonConfig(
             server=ServerConnConfig(name=server_name, host="localhost", port=mesh.server.port),
@@ -1445,6 +1599,7 @@ def _server_stop_by_name(name: str) -> None:
 # Update — upgrade + restart
 # -----------------------------------------------------------------------
 
+
 def _cmd_update(args: argparse.Namespace) -> None:
     from agentirc.mesh_config import load_mesh_config
 
@@ -1468,7 +1623,8 @@ def _cmd_update(args: argparse.Namespace) -> None:
             print("Upgrading via uv...")
             result = subprocess.run(
                 [uv, "tool", "upgrade", "agentirc-cli"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             print(result.stdout.strip() if result.stdout else "")
             if result.returncode != 0:
@@ -1480,7 +1636,8 @@ def _cmd_update(args: argparse.Namespace) -> None:
                 print("Upgrading via pip...")
                 result = subprocess.run(
                     [pip, "install", "--upgrade", "agentirc-cli"],
-                    capture_output=True, text=True,
+                    capture_output=True,
+                    text=True,
                 )
                 if result.returncode != 0:
                     print(f"pip upgrade failed: {result.stderr}", file=sys.stderr)
@@ -1543,19 +1700,32 @@ def _cmd_update(args: argparse.Namespace) -> None:
     if not restart_service(server_svc):
         # Fallback: start via CLI if no service file installed
         if sys.platform == "win32":
-            print(f"  No service file found. Run 'agentirc setup' to install services.", file=sys.stderr)
+            print(
+                f"  No service file found. Run 'agentirc setup' to install services.",
+                file=sys.stderr,
+            )
         else:
             print(f"  No service file found, starting via CLI...")
-            subprocess.run([
-                agentirc_bin, "server", "start",
-                "--name", server_name,
-                "--host", mesh.server.host,
-                "--port", str(mesh.server.port),
-                "--mesh-config", args.config,
-            ], check=False)
+            subprocess.run(
+                [
+                    agentirc_bin,
+                    "server",
+                    "start",
+                    "--name",
+                    server_name,
+                    "--host",
+                    mesh.server.host,
+                    "--port",
+                    str(mesh.server.port),
+                    "--mesh-config",
+                    args.config,
+                ],
+                check=False,
+            )
 
     # Wait for server to be ready
     import socket as _socket
+
     for _ in range(50):
         try:
             with _socket.create_connection(("localhost", mesh.server.port), timeout=1):
@@ -1577,3 +1747,160 @@ def _cmd_update(args: argparse.Namespace) -> None:
             )
 
     print(f"\nUpdate complete. All services restarted.")
+
+
+# -----------------------------------------------------------------------
+# Bot subcommands
+# -----------------------------------------------------------------------
+
+
+def _cmd_bot(args: argparse.Namespace) -> None:
+    if not args.bot_command:
+        print("Usage: agentirc bot {create|start|stop|list|inspect}", file=sys.stderr)
+        sys.exit(1)
+
+    handlers = {
+        "create": _bot_create,
+        "start": _bot_start,
+        "stop": _bot_stop,
+        "list": _bot_list,
+        "inspect": _bot_inspect,
+    }
+    handler = handlers.get(args.bot_command)
+    if handler:
+        handler(args)
+    else:
+        print(f"Unknown bot command: {args.bot_command}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _bot_create(args: argparse.Namespace) -> None:
+    from agentirc.bots.config import BOTS_DIR, BotConfig, save_bot_config
+
+    # Derive full bot name: <server>-<owner-suffix>-<name>
+    # If the user provides a full name (includes server prefix), use it as-is
+    name = args.name
+    config = load_config_or_default(args.config)
+    server_name = config.server.name
+
+    # Build full name if not already fully qualified
+    if not name.startswith(f"{server_name}-"):
+        name = f"{args.owner}-{name}"
+
+    bot_config = BotConfig(
+        name=name,
+        owner=args.owner,
+        description=args.description,
+        created=time.strftime("%Y-%m-%d"),
+        trigger_type=args.trigger,
+        channels=args.channels,
+        dm_owner=args.dm_owner,
+        mention=args.mention,
+        template=args.template,
+        fallback="json",
+    )
+
+    bot_dir = BOTS_DIR / name
+    if (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{name}' already exists at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    save_bot_config(bot_dir / "bot.yaml", bot_config)
+    print(f"Bot '{name}' created at {bot_dir}")
+    print(f"  Owner:    {args.owner}")
+    print(f"  Trigger:  {args.trigger}")
+    if args.channels:
+        print(f"  Channels: {', '.join(args.channels)}")
+    if args.mention:
+        print(f"  Mentions: {args.mention}")
+    print(f"\nTo activate, restart the server or run: agentirc bot start {name}")
+
+
+def _bot_start(args: argparse.Namespace) -> None:
+    from agentirc.bots.config import BOTS_DIR
+
+    bot_dir = BOTS_DIR / args.name
+    if not (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Bot '{args.name}' will be loaded on next server restart.")
+    print("(Live reload via IPC will be available in a future release.)")
+
+
+def _bot_stop(args: argparse.Namespace) -> None:
+    from agentirc.bots.config import BOTS_DIR
+
+    bot_dir = BOTS_DIR / args.name
+    if not (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Bot '{args.name}' will be unloaded on next server restart.")
+    print("(Live reload via IPC will be available in a future release.)")
+
+
+def _bot_list(args: argparse.Namespace) -> None:
+    from agentirc.bots.config import BOTS_DIR, load_bot_config
+
+    if not BOTS_DIR.is_dir():
+        print("No bots configured.")
+        return
+
+    bots = []
+    for bot_dir in sorted(BOTS_DIR.iterdir()):
+        yaml_path = bot_dir / "bot.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            config = load_bot_config(yaml_path)
+            if args.owner and config.owner != args.owner:
+                continue
+            bots.append(config)
+        except Exception:
+            continue
+
+    if not bots:
+        if args.owner:
+            print(f"No bots found for owner '{args.owner}'.")
+        else:
+            print("No bots configured.")
+        return
+
+    # Table header
+    print(f"{'NAME':<35} {'TRIGGER':<10} {'CHANNELS':<20} {'OWNER':<20}")
+    for config in bots:
+        channels = ", ".join(config.channels) if config.channels else "-"
+        print(f"{config.name:<35} {config.trigger_type:<10} {channels:<20} {config.owner:<20}")
+
+
+def _bot_inspect(args: argparse.Namespace) -> None:
+    from agentirc.bots.config import BOTS_DIR, load_bot_config
+
+    bot_dir = BOTS_DIR / args.name
+    yaml_path = bot_dir / "bot.yaml"
+    if not yaml_path.is_file():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_bot_config(yaml_path)
+
+    webhook_port = 7680  # default
+    webhook_url = f"http://localhost:{webhook_port}/{config.name}"
+
+    print(f"Bot:         {config.name}")
+    print(f"Owner:       {config.owner}")
+    print(f"Description: {config.description or '-'}")
+    print(f"Created:     {config.created or '-'}")
+    print(f"Trigger:     {config.trigger_type}")
+    print(f"Webhook URL: {webhook_url}")
+    print(f"Channels:    {', '.join(config.channels) if config.channels else '-'}")
+    print(f"DM Owner:    {'yes' if config.dm_owner else 'no'}")
+    print(f"Mentions:    {config.mention or '-'}")
+    if config.template:
+        # Show first line of template
+        first_line = config.template.strip().split("\n")[0]
+        if len(first_line) > 60:
+            first_line = first_line[:57] + "..."
+        print(f"Template:    {first_line}")
+    print(f"Handler:     {'custom (handler.py)' if config.has_handler else 'template'}")

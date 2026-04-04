@@ -1,4 +1,5 @@
 """Collect mesh state via IRC Observer queries and daemon IPC."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,8 +8,7 @@ import os
 
 from agentirc.protocol.message import Message as IRCMessage
 
-from .model import Agent, Message, MeshState, Room
-
+from .model import Agent, BotInfo, MeshState, Message, Room
 
 RECV_TIMEOUT = 5.0
 REGISTER_TIMEOUT = 10.0
@@ -64,19 +64,21 @@ async def collect_mesh_state(
 
             op_nicks = [n for n, is_op in members if is_op]
             room_meta = await _query_roommeta(reader, writer, nick, ch_name)
-            rooms.append(Room(
-                name=ch_name,
-                topic=ch_topic,
-                members=room_agents,
-                operators=op_nicks,
-                federation_servers=sorted(fed_servers),
-                messages=messages,
-                room_id=room_meta.get("room_id"),
-                owner=room_meta.get("owner"),
-                purpose=room_meta.get("purpose"),
-                tags=room_meta.get("tags", []),
-                persistent=room_meta.get("persistent", False),
-            ))
+            rooms.append(
+                Room(
+                    name=ch_name,
+                    topic=ch_topic,
+                    members=room_agents,
+                    operators=op_nicks,
+                    federation_servers=sorted(fed_servers),
+                    messages=messages,
+                    room_id=room_meta.get("room_id"),
+                    owner=room_meta.get("owner"),
+                    purpose=room_meta.get("purpose"),
+                    tags=room_meta.get("tags", []),
+                    persistent=room_meta.get("persistent", False),
+                )
+            )
 
         fed_links = sorted({a.server for a in all_agents.values() if a.server != server_name})
 
@@ -89,22 +91,29 @@ async def collect_mesh_state(
             if agent.server == server_name:
                 agent.tags = await _query_tags(reader, writer, nick, agent_nick)
 
+        # Collect bot info from disk
+        bots = _collect_bots()
+
         return MeshState(
             server_name=server_name,
             rooms=rooms,
             agents=sorted(all_agents.values(), key=lambda a: a.nick),
             federation_links=fed_links,
+            bots=bots,
         )
     finally:
         await _disconnect(writer)
 
 
 async def _connect(
-    host: str, port: int, server_name: str,
+    host: str,
+    port: int,
+    server_name: str,
 ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, str]:
     """Connect and register as an ephemeral observer."""
     reader, writer = await asyncio.wait_for(
-        asyncio.open_connection(host, port), timeout=REGISTER_TIMEOUT,
+        asyncio.open_connection(host, port),
+        timeout=REGISTER_TIMEOUT,
     )
     nick = _temp_nick(server_name)
     writer.write(f"NICK {nick}\r\nUSER overview 0 * :overview\r\n".encode())
@@ -247,12 +256,14 @@ async def _query_history(
     result = []
     for msg in messages:
         if msg.command == "HISTORY" and len(msg.params) >= 4:
-            result.append(Message(
-                nick=msg.params[1],
-                text=msg.params[3],
-                timestamp=float(msg.params[2]),
-                channel=channel,
-            ))
+            result.append(
+                Message(
+                    nick=msg.params[1],
+                    text=msg.params[3],
+                    timestamp=float(msg.params[2]),
+                    channel=channel,
+                )
+            )
     return result
 
 
@@ -265,7 +276,9 @@ async def _query_roommeta(
     """Query ROOMMETA and return a dict with room metadata fields."""
     writer.write(f"ROOMMETA {channel}\r\n".encode())
     await writer.drain()
-    messages = await _recv_until(reader, writer, {"ROOMETAEND", "ERR_NOSUCHCHANNEL", "ERR_UNKNOWNCOMMAND"})
+    messages = await _recv_until(
+        reader, writer, {"ROOMETAEND", "ERR_NOSUCHCHANNEL", "ERR_UNKNOWNCOMMAND"}
+    )
     result: dict = {}
     for msg in messages:
         if msg.command == "ROOMMETA" and len(msg.params) >= 3:
@@ -294,13 +307,45 @@ async def _query_tags(
     """Query TAGS for an agent and return a list of tag strings."""
     writer.write(f"TAGS {target_nick}\r\n".encode())
     await writer.drain()
-    messages = await _recv_until(reader, writer, {"TAGSEND", "ERR_NOSUCHNICK", "ERR_UNKNOWNCOMMAND"})
+    messages = await _recv_until(
+        reader, writer, {"TAGSEND", "ERR_NOSUCHNICK", "ERR_UNKNOWNCOMMAND"}
+    )
     for msg in messages:
         if msg.command == "TAGS" and len(msg.params) >= 2:
             # Expected format: TAGS <nick> <tag1,tag2,...>
             tags_str = msg.params[-1]
             return [t.strip() for t in tags_str.split(",") if t.strip()]
     return []
+
+
+def _collect_bots() -> list[BotInfo]:
+    """Read bot configs from ~/.agentirc/bots/ on disk."""
+    from agentirc.bots.config import BOTS_DIR, load_bot_config
+
+    bots = []
+    if not BOTS_DIR.is_dir():
+        return bots
+
+    for bot_dir in sorted(BOTS_DIR.iterdir()):
+        yaml_path = bot_dir / "bot.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            config = load_bot_config(yaml_path)
+            bots.append(
+                BotInfo(
+                    name=config.name,
+                    owner=config.owner,
+                    trigger_type=config.trigger_type,
+                    channels=config.channels,
+                    status="active",  # from disk we assume active; live status requires IPC
+                    description=config.description,
+                    mention=config.mention,
+                )
+            )
+        except Exception:
+            continue
+    return bots
 
 
 async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
@@ -313,7 +358,7 @@ async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
     for sock_path in glob.glob(socket_pattern):
         # Extract nick from socket filename: agentirc-<nick>.sock
         basename = os.path.basename(sock_path)
-        agent_nick = basename[len("agentirc-"):-len(".sock")]
+        agent_nick = basename[len("agentirc-") : -len(".sock")]
 
         if agent_nick not in agents:
             continue
@@ -324,7 +369,8 @@ async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
 
         try:
             r, w = await asyncio.wait_for(
-                asyncio.open_unix_connection(sock_path), timeout=3.0,
+                asyncio.open_unix_connection(sock_path),
+                timeout=3.0,
             )
             req = make_request("status")
             w.write(encode_message(req))

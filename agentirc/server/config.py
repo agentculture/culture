@@ -19,5 +19,6 @@ class ServerConfig:
     name: str = "agentirc"
     host: str = "0.0.0.0"
     port: int = 6667
+    webhook_port: int = 7680
     data_dir: str = ""
     links: list[LinkConfig] = field(default_factory=list)
