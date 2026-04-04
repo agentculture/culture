@@ -55,6 +55,7 @@ jobs:
           echo "Publishing ${DEV_VERSION} to TestPyPI"
 
       - name: Build and publish culture to TestPyPI
+        continue-on-error: true
         run: |
           uv build
           uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always --check-url https://test.pypi.org/simple/
@@ -70,11 +71,13 @@ jobs:
       - name: Build and publish agentirc alias to TestPyPI
         run: |
           sed -i 's/^name = "agentirc-cli"/name = "agentirc"/' pyproject.toml
+          sed -i 's/^name = "culture"/name = "agentirc"/' pyproject.toml
           rm -rf dist
           uv build
           uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always --check-url https://test.pypi.org/simple/
 
       - name: Print install commands
+        if: always()
         run: |
           echo "::notice::Test with: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ culture==${DEV_VERSION}"
           echo "::warning::agentirc on TestPyPI is not intended for production use — install culture instead"
@@ -97,6 +100,7 @@ jobs:
       - run: uv sync
 
       - name: Build and publish culture to PyPI
+        continue-on-error: true
         run: |
           uv build
           uv publish --trusted-publishing always --check-url https://pypi.org/simple/
@@ -112,6 +116,7 @@ jobs:
       - name: Build and publish agentirc alias to PyPI
         run: |
           sed -i 's/^name = "agentirc-cli"/name = "agentirc"/' pyproject.toml
+          sed -i 's/^name = "culture"/name = "agentirc"/' pyproject.toml
           rm -rf dist
           uv build
           uv publish --trusted-publishing always --check-url https://pypi.org/simple/
