@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.3] - 2026-04-05
+
+
+### Changed
+
+- Parallelize test suite with pytest-xdist for ~15x speedup (10min → 40s)
+
 ## [1.0.2] - 2026-04-05
 
 

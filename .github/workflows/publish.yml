@@ -27,7 +27,7 @@ jobs:
 
       - run: uv sync
 
-      - run: uv run pytest -v
+      - run: uv run pytest -n auto -v
 
   test-publish:
     if: github.event_name == 'pull_request'

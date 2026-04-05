@@ -19,7 +19,7 @@ jobs:
 
       - run: uv sync
 
-      - run: uv run pytest -v
+      - run: uv run pytest -n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v
 
   version-check:
     runs-on: ubuntu-latest
