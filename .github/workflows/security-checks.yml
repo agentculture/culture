@@ -46,10 +46,6 @@ jobs:
             pylint-results.json
             safety-results.json
 
-      - name: Run test coverage
-        run: |
-          uv run pytest -n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v
-        continue-on-error: true
 
   dependency-review:
     name: Dependency Review
