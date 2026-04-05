@@ -75,10 +75,12 @@ class IRCd:
 
     async def _register_default_skills(self) -> None:
         from culture.server.skills.history import HistorySkill
+        from culture.server.skills.icon import IconSkill
         from culture.server.skills.rooms import RoomsSkill
         from culture.server.skills.threads import ThreadsSkill
 
         await self.register_skill(HistorySkill())
+        await self.register_skill(IconSkill())
         await self.register_skill(RoomsSkill())
         await self.register_skill(ThreadsSkill())
 

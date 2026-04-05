@@ -34,6 +34,8 @@ class Client:
         self.channels: set[Channel] = set()
         self._registered = False
         self.tags: list[str] = []
+        self.modes: set[str] = set()
+        self.icon: str | None = None
 
     @property
     def prefix(self) -> str:
@@ -438,7 +440,21 @@ class Client:
                 "Can't change mode for other users",
             )
             return
-        await self.send_numeric(replies.RPL_UMODEIS, "+")
+        if len(msg.params) > 1:
+            modestring = msg.params[1]
+            adding = True
+            for ch in modestring:
+                if ch == "+":
+                    adding = True
+                elif ch == "-":
+                    adding = False
+                elif ch in ("H", "A", "B"):
+                    if adding:
+                        self.modes.add(ch)
+                    else:
+                        self.modes.discard(ch)
+        mode_str = "+" + "".join(sorted(self.modes)) if self.modes else "+"
+        await self.send_numeric(replies.RPL_UMODEIS, mode_str)
 
     async def _handle_privmsg(self, msg: Message) -> None:
         if len(msg.params) < 2:
@@ -595,6 +611,10 @@ class Client:
                         flags += "@"
                     elif channel.is_voiced(member):
                         flags += "+"
+                    if hasattr(member, "modes") and member.modes:
+                        flags += "[" + "".join(sorted(member.modes)) + "]"
+                    if hasattr(member, "icon") and member.icon:
+                        flags += "{" + member.icon + "}"
                     server_name = (
                         member.server_name
                         if isinstance(member, RemoteClient)
