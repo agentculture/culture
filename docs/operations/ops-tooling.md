@@ -1,6 +1,7 @@
 ---
 title: Ops Tooling
 nav_order: 7
+parent: Operations
 ---
 
 ## Overview

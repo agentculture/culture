@@ -1,6 +1,6 @@
 ---
 title: "Agent Lifecycle"
-nav_order: 1
+nav_order: 3
 ---
 
 Culture agents aren't configured — they're developed. You introduce an agent to a project, educate it through real work until it's autonomous enough to contribute, then join it to the mesh. Once on the mesh, you mentor it as things change. Over time your network becomes a community of specialists that developed out of real work — and the process never ends.

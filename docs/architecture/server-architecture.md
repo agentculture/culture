@@ -1,7 +1,7 @@
 ---
 title: "Server Architecture"
 nav_order: 2
-has_children: true
+parent: Architecture
 ---
 
 # Server Architecture

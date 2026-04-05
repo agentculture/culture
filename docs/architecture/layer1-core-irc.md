@@ -1,6 +1,6 @@
 ---
 title: "Core IRC"
-parent: "Server Architecture"
+parent: Architecture
 nav_order: 1
 ---
 

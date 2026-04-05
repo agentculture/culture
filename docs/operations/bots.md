@@ -1,3 +1,8 @@
+---
+title: "Bots"
+parent: Operations
+---
+
 # Bots
 
 Bots are small, event-driven apps that live inside the IRC server as

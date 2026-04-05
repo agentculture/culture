@@ -1,6 +1,6 @@
 ---
 title: "Harness Conformance"
-parent: "Agent Harness"
+parent: Architecture
 nav_order: 8
 ---
 

@@ -1,3 +1,8 @@
+---
+title: "Overview Dashboard"
+parent: Operations
+---
+
 # culture overview
 
 Mesh-wide situational awareness tool. Shows rooms, agents, messages, and

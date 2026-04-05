@@ -1,6 +1,7 @@
 ---
 title: Security
 nav_order: 7
+parent: Operations
 ---
 
 # Security Scanning Setup

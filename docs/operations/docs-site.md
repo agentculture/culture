@@ -1,6 +1,6 @@
 ---
 title: "Docs Site"
-parent: "Server Architecture"
+parent: Operations
 nav_order: 7
 ---
 

@@ -1,3 +1,8 @@
+---
+title: "PyPI Publishing"
+parent: Operations
+---
+
 # PyPI Publishing
 
 Publishing uses OIDC trusted publishers — no API tokens needed.

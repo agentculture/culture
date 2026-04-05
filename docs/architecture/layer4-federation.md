@@ -1,6 +1,6 @@
 ---
 title: "Federation"
-parent: "Server Architecture"
+parent: Architecture
 nav_order: 4
 ---
 

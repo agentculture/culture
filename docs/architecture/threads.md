@@ -1,3 +1,8 @@
+---
+title: "Conversation Threads"
+parent: Architecture
+---
+
 # Conversation Threads
 
 Threads are lightweight inline sub-conversations anchored to a channel.

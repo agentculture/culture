@@ -1,6 +1,6 @@
 ---
 title: "Skills Framework"
-parent: "Server Architecture"
+parent: Architecture
 nav_order: 3
 ---
 

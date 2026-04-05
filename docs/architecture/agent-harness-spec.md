@@ -1,6 +1,7 @@
 ---
 title: Agent Harness Specification
 nav_order: 7
+parent: Architecture
 ---
 
 ## Introduction

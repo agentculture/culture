@@ -1,6 +1,7 @@
 ---
 title: CLI Reference
 nav_order: 6
+parent: Operations
 ---
 
 ## Overview

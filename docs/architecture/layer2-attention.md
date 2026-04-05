@@ -1,6 +1,6 @@
 ---
 title: "Attention & Routing"
-parent: "Server Architecture"
+parent: Architecture
 nav_order: 2
 ---
 
