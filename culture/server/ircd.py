@@ -278,6 +278,10 @@ class IRCd:
             writer.write(b"ERROR :No links configured\r\n")
             await writer.drain()
             writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionError, BrokenPipeError):
+                pass
             return
 
         link = ServerLink(reader, writer, self, password=None, initiator=False, trust="restricted")

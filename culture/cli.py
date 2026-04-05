@@ -1638,9 +1638,9 @@ def _server_stop_by_name(name: str) -> None:
 def _upgrade_culture_package(args: argparse.Namespace) -> bool:
     """Upgrade the culture-cli package via uv or pip, then re-exec with --skip-upgrade.
 
-    Returns True if the caller should continue (i.e. ``--skip-upgrade`` was set or
-    dry-run printed its messages). Never returns False — either re-execs, exits, or
-    returns True to signal the caller to proceed with the restart phase.
+    Returns True if the caller should proceed with the restart phase
+    (``--skip-upgrade`` was set). Returns False for dry-run (caller should stop).
+    On success, re-execs the process and never returns.
     """
     if args.skip_upgrade:
         return True
