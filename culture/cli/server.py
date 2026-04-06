@@ -77,10 +77,34 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Config file path",
     )
 
+    srv_archive = server_sub.add_parser(
+        "archive", help="Archive the server and all its agents/bots"
+    )
+    srv_archive.add_argument("--name", default="culture", help="Server name")
+    srv_archive.add_argument("--reason", default="", help="Reason for archiving")
+    srv_archive.add_argument(
+        "--config",
+        default=os.path.expanduser("~/.culture/agents.yaml"),
+        help="Config file path",
+    )
+
+    srv_unarchive = server_sub.add_parser(
+        "unarchive", help="Restore an archived server and all its agents/bots"
+    )
+    srv_unarchive.add_argument("--name", default="culture", help="Server name")
+    srv_unarchive.add_argument(
+        "--config",
+        default=os.path.expanduser("~/.culture/agents.yaml"),
+        help="Config file path",
+    )
+
 
 def dispatch(args: argparse.Namespace) -> None:
     if not args.server_command:
-        print("Usage: culture server {start|stop|status|default|rename}", file=sys.stderr)
+        print(
+            "Usage: culture server {start|stop|status|default|rename|archive|unarchive}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if args.server_command == "start":
@@ -96,6 +120,10 @@ def dispatch(args: argparse.Namespace) -> None:
         print(f"Default server set to '{args.name}'")
     elif args.server_command == "rename":
         _server_rename(args)
+    elif args.server_command == "archive":
+        _server_archive(args)
+    elif args.server_command == "unarchive":
+        _server_unarchive(args)
 
 
 # -----------------------------------------------------------------------
@@ -182,6 +210,19 @@ def _wait_for_port(
 
 
 def _server_start(args: argparse.Namespace) -> None:
+    # Check if server is archived
+    from culture.clients.claude.config import load_config_or_default
+
+    config_path = getattr(args, "config", os.path.expanduser("~/.culture/agents.yaml"))
+    config = load_config_or_default(config_path)
+    if config.server.archived:
+        print(
+            f"Server '{args.name}' is archived. Unarchive first:",
+            file=sys.stderr,
+        )
+        print(f"  culture server unarchive --name {args.name}", file=sys.stderr)
+        sys.exit(1)
+
     pid_name = f"server-{args.name}"
 
     existing = read_pid(pid_name)
@@ -363,3 +404,116 @@ def _server_status(args: argparse.Namespace) -> None:
     else:
         print(f"Server '{args.name}': not running (stale PID {pid})")
         remove_pid(pid_name)
+
+
+# -----------------------------------------------------------------------
+# Archive / Unarchive
+# -----------------------------------------------------------------------
+
+
+def _server_archive(args: argparse.Namespace) -> None:
+    """Archive the server and cascade to all agents and bots."""
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+    from culture.clients.claude.config import (
+        archive_server,
+        load_config_or_default,
+    )
+
+    config = load_config_or_default(args.config)
+
+    if config.server.archived:
+        print(f"Server '{config.server.name}' is already archived")
+        return
+
+    # Stop server if running
+    pid_name = f"server-{args.name}"
+    pid = read_pid(pid_name)
+    if pid and is_process_alive(pid):
+        print(f"Stopping server '{args.name}'...")
+        _server_stop(args)
+
+    # Stop all running agents
+    from culture.cli._helpers import stop_agent
+
+    for agent in config.agents:
+        agent_pid = read_pid(f"agent-{agent.nick}")
+        if agent_pid and is_process_alive(agent_pid):
+            stop_agent(agent.nick)
+
+    # Archive server + agents in config
+    archived_nicks = archive_server(args.config, reason=args.reason)
+
+    # Archive bots whose owner matches any agent on this server
+    import time as _time
+
+    today = _time.strftime("%Y-%m-%d")
+    agent_nicks = {a.nick for a in config.agents}
+    archived_bots = []
+    if BOTS_DIR.is_dir():
+        for bot_dir in BOTS_DIR.iterdir():
+            yaml_path = bot_dir / "bot.yaml"
+            if not yaml_path.is_file():
+                continue
+            try:
+                bot_config = load_bot_config(yaml_path)
+                if bot_config.owner in agent_nicks and not bot_config.archived:
+                    bot_config.archived = True
+                    bot_config.archived_at = today
+                    bot_config.archived_reason = args.reason
+                    save_bot_config(yaml_path, bot_config)
+                    archived_bots.append(bot_config.name)
+            except Exception:
+                continue
+
+    print(f"Server archived: {config.server.name}")
+    if args.reason:
+        print(f"  Reason: {args.reason}")
+    if archived_nicks:
+        print(f"  Agents: {', '.join(archived_nicks)}")
+    if archived_bots:
+        print(f"  Bots:   {', '.join(archived_bots)}")
+    print(f"\nTo restore: culture server unarchive --name {args.name}")
+
+
+def _server_unarchive(args: argparse.Namespace) -> None:
+    """Restore an archived server and cascade to agents and bots."""
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+    from culture.clients.claude.config import (
+        load_config_or_default,
+        unarchive_server,
+    )
+
+    config = load_config_or_default(args.config)
+
+    if not config.server.archived:
+        print(f"Server '{config.server.name}' is not archived", file=sys.stderr)
+        sys.exit(1)
+
+    # Unarchive server + agents
+    unarchived_nicks = unarchive_server(args.config)
+
+    # Unarchive bots whose owner matches any agent on this server
+    agent_nicks = {a.nick for a in config.agents}
+    unarchived_bots = []
+    if BOTS_DIR.is_dir():
+        for bot_dir in BOTS_DIR.iterdir():
+            yaml_path = bot_dir / "bot.yaml"
+            if not yaml_path.is_file():
+                continue
+            try:
+                bot_config = load_bot_config(yaml_path)
+                if bot_config.owner in agent_nicks and bot_config.archived:
+                    bot_config.archived = False
+                    bot_config.archived_at = ""
+                    bot_config.archived_reason = ""
+                    save_bot_config(yaml_path, bot_config)
+                    unarchived_bots.append(bot_config.name)
+            except Exception:
+                continue
+
+    print(f"Server unarchived: {config.server.name}")
+    if unarchived_nicks:
+        print(f"  Agents: {', '.join(unarchived_nicks)}")
+    if unarchived_bots:
+        print(f"  Bots:   {', '.join(unarchived_bots)}")
+    print(f"\nStart with: culture server start --name {args.name}")

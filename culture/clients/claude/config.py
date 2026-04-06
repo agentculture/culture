@@ -16,6 +16,9 @@ class ServerConnConfig:
     name: str = "culture"
     host: str = "localhost"
     port: int = 6667
+    archived: bool = False
+    archived_at: str = ""
+    archived_reason: str = ""
 
 
 @dataclass
@@ -60,6 +63,9 @@ class AgentConfig:
     system_prompt: str = ""
     tags: list[str] = field(default_factory=list)
     icon: str | None = None
+    archived: bool = False
+    archived_at: str = ""
+    archived_reason: str = ""
 
 
 @dataclass
@@ -252,3 +258,99 @@ def rename_agent(
             return
 
     raise ValueError(f"agent {old_nick!r} not found in config")
+
+
+def archive_agent(
+    path: str | Path,
+    nick: str,
+    reason: str = "",
+) -> None:
+    """Set the archived flag on an agent.
+
+    Raises ValueError if the agent is not found.
+    """
+    import time
+
+    config = load_config_or_default(path)
+    for agent in config.agents:
+        if agent.nick == nick:
+            agent.archived = True
+            agent.archived_at = time.strftime("%Y-%m-%d")
+            agent.archived_reason = reason
+            save_config(path, config)
+            return
+    raise ValueError(f"agent {nick!r} not found in config")
+
+
+def unarchive_agent(
+    path: str | Path,
+    nick: str,
+) -> None:
+    """Clear the archived flag on an agent.
+
+    Raises ValueError if not found or not currently archived.
+    """
+    config = load_config_or_default(path)
+    for agent in config.agents:
+        if agent.nick == nick:
+            if not agent.archived:
+                raise ValueError(f"agent {nick!r} is not archived")
+            agent.archived = False
+            agent.archived_at = ""
+            agent.archived_reason = ""
+            save_config(path, config)
+            return
+    raise ValueError(f"agent {nick!r} not found in config")
+
+
+def archive_server(
+    path: str | Path,
+    reason: str = "",
+) -> list[str]:
+    """Set the archived flag on the server and all its agents.
+
+    Returns a list of archived agent nicks.
+    """
+    import time
+
+    config = load_config_or_default(path)
+    today = time.strftime("%Y-%m-%d")
+
+    config.server.archived = True
+    config.server.archived_at = today
+    config.server.archived_reason = reason
+
+    archived_nicks = []
+    for agent in config.agents:
+        agent.archived = True
+        agent.archived_at = today
+        agent.archived_reason = reason
+        archived_nicks.append(agent.nick)
+
+    save_config(path, config)
+    return archived_nicks
+
+
+def unarchive_server(
+    path: str | Path,
+) -> list[str]:
+    """Clear the archived flag on the server and all its agents.
+
+    Returns a list of unarchived agent nicks.
+    """
+    config = load_config_or_default(path)
+
+    config.server.archived = False
+    config.server.archived_at = ""
+    config.server.archived_reason = ""
+
+    unarchived_nicks = []
+    for agent in config.agents:
+        if agent.archived:
+            agent.archived = False
+            agent.archived_at = ""
+            agent.archived_reason = ""
+            unarchived_nicks.append(agent.nick)
+
+    save_config(path, config)
+    return unarchived_nicks

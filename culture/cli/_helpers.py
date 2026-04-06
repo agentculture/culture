@@ -381,7 +381,9 @@ def print_agent_detail(agent, config_path: str, args: argparse.Namespace) -> Non
     print(f"  Config:     {config_path}")
 
 
-def print_agents_overview(agents: list, show_activity: bool) -> None:
+def print_agents_overview(
+    agents: list, show_activity: bool, show_archived_marker: bool = False
+) -> None:
     """Print a table of all agents with status, PID, and optionally activity."""
     if show_activity:
         print(f"{'NICK':<30} {'STATUS':<12} {'PID':<10} {'ACTIVITY'}")
@@ -391,7 +393,12 @@ def print_agents_overview(agents: list, show_activity: bool) -> None:
         print("-" * 52)
 
     for agent in agents:
-        status, pid = agent_process_status(agent)
+        archived = getattr(agent, "archived", False)
+        if archived:
+            status = "archived"
+            pid = None
+        else:
+            status, pid = agent_process_status(agent)
         activity = "-"
 
         if show_activity and status == "running":

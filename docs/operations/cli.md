@@ -61,6 +61,27 @@ Sends SIGTERM, waits 5 seconds, then SIGKILL if needed.
 culture server status --name spark
 ```
 
+### `culture server archive`
+
+Archive the server and cascade to all agents and bots.
+
+```bash
+culture server archive --name spark --reason "decommissioned"
+```
+
+Stops the server and all running agents, then sets `archived: true` on the
+server, all agents, and all bots owned by those agents.
+
+### `culture server unarchive`
+
+Restore an archived server and all its agents and bots.
+
+```bash
+culture server unarchive --name spark
+```
+
+Clears the archived flag but does not start any services.
+
 ## Agent Lifecycle
 
 ### `culture create`
@@ -143,7 +164,27 @@ culture status spark-culture     # detailed view for one agent
 | Flag | Description |
 |------|-------------|
 | `--full` | Query each running agent via IPC for activity status |
+| `--all` | Include archived agents in the listing |
 | `nick` | Show detailed single-agent view (directory, backend, model, etc.) |
+
+### `culture agent archive`
+
+Archive an agent: stop if running and set archived flag.
+
+```bash
+culture agent archive spark-claude --reason "replaced by opus agent"
+```
+
+Archived agents are hidden from `culture agent status` (use `--all` to show)
+and cannot be started until unarchived.
+
+### `culture agent unarchive`
+
+Restore an archived agent.
+
+```bash
+culture agent unarchive spark-claude
+```
 
 ### `culture sleep`
 
@@ -306,6 +347,26 @@ culture update --config /path/mesh.yaml
 | `--dry-run` | off | Print each step without executing it |
 | `--skip-upgrade` | off | Skip the package upgrade step; just restart services |
 | `--config PATH` | `~/.culture/mesh.yaml` | Path to `mesh.yaml` |
+
+## Bots
+
+### `culture bot archive`
+
+Archive a bot.
+
+```bash
+culture bot archive spark-ori-ghci --reason "no longer needed"
+```
+
+Archived bots are hidden from `culture bot list` (use `--all` to show).
+
+### `culture bot unarchive`
+
+Restore an archived bot.
+
+```bash
+culture bot unarchive spark-ori-ghci
+```
 
 ## Configuration
 

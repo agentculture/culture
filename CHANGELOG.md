@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.0] - 2026-04-07
+
+
+### Added
+
+- Archive and unarchive commands for servers, agents, and bots
+- Cascade archive: server archive automatically archives all agents and bots
+- Visibility filtering: archived entities hidden from default status/list views
+- --all flag on status/list to reveal archived entities
+- Start guard: archived entities cannot be started until unarchived
+
 ## [4.1.3] - 2026-04-06
 
 

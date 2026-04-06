@@ -46,6 +46,7 @@ class MeshAgentConfig:
     type: str = "claude"
     workdir: str = "."
     channels: list[str] = field(default_factory=lambda: ["#general"])
+    archived: bool = False
 
 
 @dataclass

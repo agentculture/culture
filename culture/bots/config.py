@@ -26,6 +26,9 @@ class BotConfig:
     mention: str | None = None
     template: str | None = None
     fallback: str = "json"
+    archived: bool = False
+    archived_at: str = ""
+    archived_reason: str = ""
 
     @property
     def has_handler(self) -> bool:
@@ -54,6 +57,9 @@ def load_bot_config(path: Path) -> BotConfig:
         mention=output_section.get("mention"),
         template=output_section.get("template"),
         fallback=output_section.get("fallback", "json"),
+        archived=bot_section.get("archived", False),
+        archived_at=bot_section.get("archived_at", ""),
+        archived_reason=bot_section.get("archived_reason", ""),
     )
 
 
@@ -61,13 +67,19 @@ def save_bot_config(path: Path, config: BotConfig) -> None:
     """Serialize a BotConfig to YAML and write atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    bot_section = {
+        "name": config.name,
+        "owner": config.owner,
+        "description": config.description,
+        "created": config.created,
+    }
+    if config.archived:
+        bot_section["archived"] = config.archived
+        bot_section["archived_at"] = config.archived_at
+        bot_section["archived_reason"] = config.archived_reason
+
     data = {
-        "bot": {
-            "name": config.name,
-            "owner": config.owner,
-            "description": config.description,
-            "created": config.created,
-        },
+        "bot": bot_section,
         "trigger": {
             "type": config.trigger_type,
         },

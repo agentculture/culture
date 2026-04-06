@@ -40,15 +40,26 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     bot_list = bot_sub.add_parser("list", help="List bots")
     bot_list.add_argument("owner", nargs="?", default=None, help="Filter by owner nick")
+    bot_list.add_argument("--all", action="store_true", help="Include archived bots")
 
     bot_inspect = bot_sub.add_parser("inspect", help="Show bot details")
     bot_inspect.add_argument("name", help="Bot name")
     bot_inspect.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
+    bot_archive = bot_sub.add_parser("archive", help="Archive a bot")
+    bot_archive.add_argument("name", help="Bot name to archive")
+    bot_archive.add_argument("--reason", default="", help="Reason for archiving")
+
+    bot_unarchive = bot_sub.add_parser("unarchive", help="Restore an archived bot")
+    bot_unarchive.add_argument("name", help="Bot name to unarchive")
+
 
 def dispatch(args: argparse.Namespace) -> None:
     if not args.bot_command:
-        print("Usage: culture bot {create|start|stop|list|inspect}", file=sys.stderr)
+        print(
+            "Usage: culture bot {create|start|stop|list|inspect|archive|unarchive}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     handlers = {
@@ -57,6 +68,8 @@ def dispatch(args: argparse.Namespace) -> None:
         "stop": _bot_stop,
         "list": _bot_list,
         "inspect": _bot_inspect,
+        "archive": _bot_archive,
+        "unarchive": _bot_unarchive,
     }
     handler = handlers.get(args.bot_command)
     if handler:
@@ -146,6 +159,7 @@ def _bot_list(args: argparse.Namespace) -> None:
         print("No bots configured.")
         return
 
+    show_all = getattr(args, "all", False)
     bots = []
     for bot_dir in sorted(BOTS_DIR.iterdir()):
         yaml_path = bot_dir / "bot.yaml"
@@ -154,6 +168,8 @@ def _bot_list(args: argparse.Namespace) -> None:
         try:
             config = load_bot_config(yaml_path)
             if args.owner and config.owner != args.owner:
+                continue
+            if not show_all and config.archived:
                 continue
             bots.append(config)
         except Exception:
@@ -169,7 +185,10 @@ def _bot_list(args: argparse.Namespace) -> None:
     print(f"{'NAME':<35} {'TRIGGER':<10} {'CHANNELS':<20} {'OWNER':<20}")
     for config in bots:
         channels = ", ".join(config.channels) if config.channels else "-"
-        print(f"{config.name:<35} {config.trigger_type:<10} {channels:<20} {config.owner:<20}")
+        name = config.name
+        if show_all and config.archived:
+            name = f"{name} [archived]"
+        print(f"{name:<35} {config.trigger_type:<10} {channels:<20} {config.owner:<20}")
 
 
 def _bot_inspect(args: argparse.Namespace) -> None:
@@ -201,3 +220,61 @@ def _bot_inspect(args: argparse.Namespace) -> None:
             first_line = first_line[:57] + "..."
         print(f"Template:    {first_line}")
     print(f"Handler:     {'custom (handler.py)' if config.has_handler else 'template'}")
+    if config.archived:
+        print(f"Archived:    yes (since {config.archived_at})")
+        if config.archived_reason:
+            print(f"Reason:      {config.archived_reason}")
+
+
+# -----------------------------------------------------------------------
+# Archive / Unarchive
+# -----------------------------------------------------------------------
+
+
+def _bot_archive(args: argparse.Namespace) -> None:
+    import time as _time
+
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+
+    bot_dir = BOTS_DIR / args.name
+    yaml_path = bot_dir / "bot.yaml"
+    if not yaml_path.is_file():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_bot_config(yaml_path)
+    if config.archived:
+        print(f"Bot '{args.name}' is already archived")
+        return
+
+    config.archived = True
+    config.archived_at = _time.strftime("%Y-%m-%d")
+    config.archived_reason = args.reason
+    save_bot_config(yaml_path, config)
+
+    print(f"Bot archived: {args.name}")
+    if args.reason:
+        print(f"  Reason: {args.reason}")
+    print(f"\nTo restore: culture bot unarchive {args.name}")
+
+
+def _bot_unarchive(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+
+    bot_dir = BOTS_DIR / args.name
+    yaml_path = bot_dir / "bot.yaml"
+    if not yaml_path.is_file():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_bot_config(yaml_path)
+    if not config.archived:
+        print(f"Bot '{args.name}' is not archived", file=sys.stderr)
+        sys.exit(1)
+
+    config.archived = False
+    config.archived_at = ""
+    config.archived_reason = ""
+    save_bot_config(yaml_path, config)
+
+    print(f"Bot unarchived: {args.name}")

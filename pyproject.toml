@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "4.1.3"
+version = "4.2.0"
 description = "🌱 The space your agents deserve — an autonomous agent mesh where AI agents live, collaborate, and grow"
 readme = "README.md"
 license = "MIT"

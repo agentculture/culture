@@ -13,9 +13,11 @@ from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
     add_agent_to_config,
+    archive_agent,
     load_config,
     load_config_or_default,
     sanitize_agent_name,
+    unarchive_agent,
 )
 from culture.pidfile import (
     is_process_alive,
@@ -99,6 +101,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     status_parser.add_argument(
         "--full", action="store_true", help="Query agents for activity status"
     )
+    status_parser.add_argument("--all", action="store_true", help="Include archived agents")
     status_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
     # -- rename ---------------------------------------------------------------
@@ -144,11 +147,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     read_parser.add_argument("--limit", "-n", type=int, default=50, help="Number of messages")
     read_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
+    # -- archive --------------------------------------------------------------
+    archive_parser = agent_sub.add_parser("archive", help="Archive an agent (stop and retire)")
+    archive_parser.add_argument("nick", help="Agent nick to archive")
+    archive_parser.add_argument("--reason", default="", help="Reason for archiving")
+    archive_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
+    # -- unarchive ------------------------------------------------------------
+    unarchive_parser = agent_sub.add_parser("unarchive", help="Restore an archived agent")
+    unarchive_parser.add_argument("nick", help="Agent nick to unarchive")
+    unarchive_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
 
 def dispatch(args: argparse.Namespace) -> None:
     if not args.agent_command:
         print(
-            "Usage: culture agent {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read}",
+            "Usage: culture agent {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -166,6 +180,8 @@ def dispatch(args: argparse.Namespace) -> None:
         "learn": _cmd_learn,
         "message": _cmd_message,
         "read": _cmd_read,
+        "archive": _cmd_archive,
+        "unarchive": _cmd_unarchive,
     }
     handler = handlers.get(args.agent_command)
     if handler:
@@ -291,25 +307,42 @@ def _cmd_join(args: argparse.Namespace) -> None:
 def _resolve_agents_to_start(config, args) -> list:
     """Return the list of agents to start, or exit with an error message."""
     if args.all:
-        agents = config.agents
+        # Skip archived agents when starting --all
+        agents = [a for a in config.agents if not a.archived]
     elif args.nick:
         agent = config.get_agent(args.nick)
         if not agent:
             print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
             sys.exit(1)
+        if agent.archived:
+            print(
+                f"Agent '{args.nick}' is archived. Unarchive first:",
+                file=sys.stderr,
+            )
+            print(f"  culture agent unarchive {args.nick}", file=sys.stderr)
+            sys.exit(1)
         agents = [agent]
     else:
-        if len(config.agents) == 1:
-            agents = config.agents
-        elif len(config.agents) == 0:
-            print("No agents configured. Run 'culture agent create' first.", file=sys.stderr)
+        active = [a for a in config.agents if not a.archived]
+        if len(active) == 1:
+            agents = active
+        elif len(active) == 0:
+            archived_count = sum(1 for a in config.agents if a.archived)
+            if archived_count:
+                print(
+                    f"No active agents ({archived_count} archived). "
+                    "Unarchive an agent or create a new one.",
+                    file=sys.stderr,
+                )
+            else:
+                print("No agents configured. Run 'culture agent create' first.", file=sys.stderr)
             sys.exit(1)
         else:
             print(
                 "Multiple agents configured. Specify a nick or use --all.",
                 file=sys.stderr,
             )
-            for a in config.agents:
+            for a in active:
                 print(f"  {a.nick}", file=sys.stderr)
             sys.exit(1)
 
@@ -527,9 +560,27 @@ def _cmd_status(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         print_agent_detail(agent, args.config, args)
+        if agent.archived:
+            print(f"\n  [archived since {agent.archived_at}]")
+            if agent.archived_reason:
+                print(f"  Reason: {agent.archived_reason}")
         return
 
-    print_agents_overview(config.agents, args.full)
+    show_all = getattr(args, "all", False)
+    if show_all:
+        agents = config.agents
+    else:
+        agents = [a for a in config.agents if not a.archived]
+
+    if not agents and not show_all:
+        archived_count = sum(1 for a in config.agents if a.archived)
+        if archived_count:
+            print(f"No active agents ({archived_count} archived, use --all to show)")
+        else:
+            print("No agents configured")
+        return
+
+    print_agents_overview(agents, args.full, show_archived_marker=show_all)
     print_bot_listing()
 
 
@@ -738,3 +789,45 @@ def _cmd_read(args: argparse.Namespace) -> None:
     )
     print("Use 'culture channel read <channel>' for channel history.", file=sys.stderr)
     sys.exit(1)
+
+
+# -----------------------------------------------------------------------
+# Archive / Unarchive
+# -----------------------------------------------------------------------
+
+
+def _cmd_archive(args: argparse.Namespace) -> None:
+    """Archive an agent: stop if running, set archived flag."""
+    config = load_config_or_default(args.config)
+    agent = config.get_agent(args.nick)
+    if not agent:
+        print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
+        sys.exit(1)
+
+    if agent.archived:
+        print(f"Agent '{args.nick}' is already archived")
+        return
+
+    # Stop the agent if it's running
+    pid = read_pid(f"agent-{args.nick}")
+    if pid and is_process_alive(pid):
+        stop_agent(args.nick)
+
+    archive_agent(args.config, args.nick, reason=args.reason)
+
+    print(f"Agent archived: {args.nick}")
+    if args.reason:
+        print(f"  Reason: {args.reason}")
+    print(f"\nTo restore: culture agent unarchive {args.nick}")
+
+
+def _cmd_unarchive(args: argparse.Namespace) -> None:
+    """Restore an archived agent."""
+    try:
+        unarchive_agent(args.config, args.nick)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Agent unarchived: {args.nick}")
+    print(f"\nStart with: culture agent start {args.nick}")
