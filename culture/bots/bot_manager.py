@@ -32,6 +32,9 @@ class BotManager:
                 continue
             try:
                 config = load_bot_config(yaml_path)
+                if config.archived:
+                    logger.info("Skipping archived bot %s", config.name)
+                    continue
                 bot = Bot(config, self.server)
                 self.bots[config.name] = bot
                 await bot.start()
