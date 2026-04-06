@@ -391,39 +391,43 @@ def main() -> None:
 # -----------------------------------------------------------------------
 
 
-def _cmd_console(args: argparse.Namespace) -> None:
-    """Launch the interactive console TUI."""
-    from culture.pidfile import list_servers, read_default_server, read_port
+def _resolve_server(server_name: str | None) -> tuple[str, int] | None:
+    """Resolve server name and port from running servers.
 
-    server_name = args.server_name
-    host = "127.0.0.1"
-    port = 6667
+    Returns (server_name, port) or None if no servers are running.
+    """
+    from culture.pidfile import list_servers, read_default_server, read_port
 
     if server_name:
         p = read_port(server_name)
-        if p:
-            port = p
-    else:
-        servers = list_servers()
-        if not servers:
-            print("No culture servers running. Start one with: culture server start")
-            return
-        if len(servers) == 1:
-            server_name = servers[0]["name"]
-            port = servers[0]["port"]
-        else:
-            default = read_default_server()
-            if default:
-                match = [s for s in servers if s["name"] == default]
-                if match:
-                    server_name = match[0]["name"]
-                    port = match[0]["port"]
-                else:
-                    server_name = servers[0]["name"]
-                    port = servers[0]["port"]
-            else:
-                server_name = servers[0]["name"]
-                port = servers[0]["port"]
+        port = p if p else 6667
+        return server_name, port
+
+    servers = list_servers()
+    if not servers:
+        return None
+
+    if len(servers) == 1:
+        return servers[0]["name"], servers[0]["port"]
+
+    default = read_default_server()
+    if default:
+        match = [s for s in servers if s["name"] == default]
+        if match:
+            return match[0]["name"], match[0]["port"]
+
+    return servers[0]["name"], servers[0]["port"]
+
+
+def _cmd_console(args: argparse.Namespace) -> None:
+    """Launch the interactive console TUI."""
+    result = _resolve_server(args.server_name)
+    if result is None:
+        print("No culture servers running. Start one with: culture server start")
+        return
+
+    server_name, port = result
+    host = "127.0.0.1"
 
     nick_suffix = _resolve_console_nick()
     nick = f"{server_name}-{nick_suffix}"

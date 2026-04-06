@@ -85,7 +85,7 @@ class InfoPanel(Widget):
 
         name = info.get("name", "")
         if name:
-            lines.append(f"[bold $warning]CHANNEL[/]")
+            lines.append("[bold $warning]CHANNEL[/]")
             lines.append(f"  {name}")
 
         topic = info.get("topic", "")
@@ -111,7 +111,7 @@ class InfoPanel(Widget):
     def set_agent_actions(self, nick: str) -> None:
         """Display quick-action menu for agent ``nick``."""
         lines: list[str] = [
-            f"[bold $warning]AGENT[/]",
+            "[bold $warning]AGENT[/]",
             f"  {nick}",
             "",
             "[bold $warning]ACTIONS[/]",

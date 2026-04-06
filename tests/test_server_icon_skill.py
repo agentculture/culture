@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_user_mode_set_H(server, make_client):
+async def test_user_mode_set_h(server, make_client):
     """MODE <nick> +H sets the Human mode flag and is returned in RPL_UMODEIS."""
     client = await make_client(nick="testserv-ori", user="ori")
     await client.send("MODE testserv-ori +H")
@@ -19,7 +19,7 @@ async def test_user_mode_set_H(server, make_client):
 
 
 @pytest.mark.asyncio
-async def test_user_mode_set_A(server, make_client):
+async def test_user_mode_set_a(server, make_client):
     """MODE <nick> +A sets the Admin flag."""
     client = await make_client(nick="testserv-ori", user="ori")
     await client.send("MODE testserv-ori +A")
@@ -30,7 +30,7 @@ async def test_user_mode_set_A(server, make_client):
 
 
 @pytest.mark.asyncio
-async def test_user_mode_set_B(server, make_client):
+async def test_user_mode_set_b(server, make_client):
     """MODE <nick> +B sets the Bot flag."""
     client = await make_client(nick="testserv-ori", user="ori")
     await client.send("MODE testserv-ori +B")

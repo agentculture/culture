@@ -32,6 +32,8 @@ class ChatPanel(Widget):
         Clear all messages from the log.
     """
 
+    _CHAT_LOG_ID = "#chat-log"
+
     DEFAULT_CSS = """
     ChatPanel {
         width: 1fr;
@@ -107,7 +109,7 @@ class ChatPanel(Widget):
         text:
             Message body.
         """
-        log: RichLog = self.query_one("#chat-log", RichLog)
+        log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
         ts = datetime.fromtimestamp(timestamp).strftime("%H:%M")
         icon_str = icon if icon else ""
         line = f"[dim]{ts}[/] {icon_str}[bold]{nick}[/] {text}"
@@ -134,12 +136,12 @@ class ChatPanel(Widget):
         """
         header: Static = self.query_one("#chat-header", Static)
         header.update(f"  {title}")
-        log: RichLog = self.query_one("#chat-log", RichLog)
+        log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
         log.clear()
         for line in lines:
             log.write(line)
 
     def clear_log(self) -> None:
         """Clear all messages from the log."""
-        log: RichLog = self.query_one("#chat-log", RichLog)
+        log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
         log.clear()

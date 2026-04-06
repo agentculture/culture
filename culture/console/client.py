@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from culture.protocol.message import Message
 
@@ -33,7 +33,7 @@ class ChatMessage:
     timestamp: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.timestamp == 0.0:
+        if not self.timestamp:
             self.timestamp = time.time()
 
 
@@ -74,6 +74,19 @@ class ConsoleIRCClient:
         # Accumulation buffers for multi-line query responses
         # keyed by query key (e.g. "LIST", "WHO #chan", "HISTORY #chan")
         self._collect_buffers: dict[str, list[Any]] = {}
+
+        # Dispatch table for IRC message handling
+        self._msg_handlers: dict[str, Callable[[Message], Any]] = {
+            "PING": self._on_ping,
+            "001": self._on_welcome,
+            "PRIVMSG": self._on_privmsg_msg,
+            "322": self._on_rpl_list,
+            "323": self._on_rpl_listend,
+            "352": self._on_rpl_whoreply,
+            "315": self._on_rpl_endofwho,
+            "HISTORY": self._on_history,
+            "HISTORYEND": self._on_historyend,
+        }
 
     # ------------------------------------------------------------------
     # Public API
@@ -128,12 +141,12 @@ class ConsoleIRCClient:
         if self._writer:
             try:
                 await self._send_raw("QUIT :console done")
-            except (ConnectionError, BrokenPipeError, OSError):
+            except OSError:
                 pass
             self._writer.close()
             try:
                 await self._writer.wait_closed()
-            except (ConnectionError, BrokenPipeError, OSError):
+            except OSError:
                 pass
             self._writer = None
             self._reader = None
@@ -267,82 +280,88 @@ class ConsoleIRCClient:
 
     async def _handle(self, msg: Message) -> None:
         """Route a parsed IRC message to the appropriate handler."""
-        if msg.command == "PING":
-            await self._on_ping(msg)
+        handler = self._msg_handlers.get(msg.command)
+        if handler:
+            result = handler(msg)
+            if asyncio.iscoroutine(result):
+                await result
 
-        elif msg.command == "001":
-            # RPL_WELCOME — resolve the welcome future
-            self.connected = True
-            fut = self._pending.pop("001", None)
-            if fut and not fut.done():
-                fut.set_result(msg)
+    # ------------------------------------------------------------------
+    # IRC message handlers
+    # ------------------------------------------------------------------
 
-        elif msg.command == "PRIVMSG":
-            self._on_privmsg(msg)
+    def _on_welcome(self, msg: Message) -> None:
+        """RPL_WELCOME (001) — mark connected and resolve the welcome future."""
+        self.connected = True
+        fut = self._pending.pop("001", None)
+        if fut and not fut.done():
+            fut.set_result(msg)
 
-        elif msg.command == "322":
-            # RPL_LIST: accumulate channel name
-            # params: [our_nick, channel, user_count, :topic]
-            if len(msg.params) >= 2:
-                channel_name = msg.params[1]
-                buf = self._collect_buffers.get("LIST")
-                if buf is not None:
-                    buf.append(channel_name)
+    def _on_privmsg_msg(self, msg: Message) -> None:
+        """Buffer an incoming PRIVMSG message (dispatch wrapper)."""
+        self._on_privmsg(msg)
 
-        elif msg.command == "323":
-            # RPL_LISTEND
-            fut = self._pending.pop("323", None)
-            if fut and not fut.done():
-                fut.set_result(None)
+    def _on_rpl_list(self, msg: Message) -> None:
+        """RPL_LIST (322) — accumulate channel name."""
+        if len(msg.params) >= 2:
+            channel_name = msg.params[1]
+            buf = self._collect_buffers.get("LIST")
+            if buf is not None:
+                buf.append(channel_name)
 
-        elif msg.command == "352":
-            # RPL_WHOREPLY:
-            # params: [our_nick, target, user, host, server, nick, flags, :realname]
-            if len(msg.params) >= 6:
-                entry = {
-                    "nick": msg.params[5],
-                    "user": msg.params[2],
-                    "host": msg.params[3],
-                    "server": msg.params[4],
-                    "flags": msg.params[6] if len(msg.params) > 6 else "",
-                    "realname": msg.params[7] if len(msg.params) > 7 else "",
-                }
-                target = msg.params[1]
-                key = f"WHO {target}"
-                buf = self._collect_buffers.get(key)
-                if buf is not None:
-                    buf.append(entry)
+    def _on_rpl_listend(self, msg: Message) -> None:
+        """RPL_LISTEND (323) — resolve the LIST future."""
+        fut = self._pending.pop("323", None)
+        if fut and not fut.done():
+            fut.set_result(None)
 
-        elif msg.command == "315":
-            # RPL_ENDOFWHO: params[1] is the target
-            target = msg.params[1] if len(msg.params) >= 2 else ""
-            fut_key = f"315:{target}"
-            fut = self._pending.pop(fut_key, None)
-            if fut and not fut.done():
-                fut.set_result(None)
+    def _on_rpl_whoreply(self, msg: Message) -> None:
+        """RPL_WHOREPLY (352) — accumulate WHO entry."""
+        if len(msg.params) >= 6:
+            entry = {
+                "nick": msg.params[5],
+                "user": msg.params[2],
+                "host": msg.params[3],
+                "server": msg.params[4],
+                "flags": msg.params[6] if len(msg.params) > 6 else "",
+                "realname": msg.params[7] if len(msg.params) > 7 else "",
+            }
+            target = msg.params[1]
+            key = f"WHO {target}"
+            buf = self._collect_buffers.get(key)
+            if buf is not None:
+                buf.append(entry)
 
-        elif msg.command == "HISTORY":
-            # HISTORY response: params [channel, nick, timestamp, text]
-            if len(msg.params) >= 4:
-                channel = msg.params[0]
-                entry = {
-                    "channel": channel,
-                    "nick": msg.params[1],
-                    "timestamp": msg.params[2],
-                    "text": msg.params[3],
-                }
-                key = f"HISTORY {channel}"
-                buf = self._collect_buffers.get(key)
-                if buf is not None:
-                    buf.append(entry)
+    def _on_rpl_endofwho(self, msg: Message) -> None:
+        """RPL_ENDOFWHO (315) — resolve the WHO future."""
+        target = msg.params[1] if len(msg.params) >= 2 else ""
+        fut_key = f"315:{target}"
+        fut = self._pending.pop(fut_key, None)
+        if fut and not fut.done():
+            fut.set_result(None)
 
-        elif msg.command == "HISTORYEND":
-            # HISTORYEND: params[0] is the channel
-            channel = msg.params[0] if msg.params else ""
-            fut_key = f"HISTORYEND:{channel}"
-            fut = self._pending.pop(fut_key, None)
-            if fut and not fut.done():
-                fut.set_result(None)
+    def _on_history(self, msg: Message) -> None:
+        """HISTORY response — accumulate history entry."""
+        if len(msg.params) >= 4:
+            channel = msg.params[0]
+            entry = {
+                "channel": channel,
+                "nick": msg.params[1],
+                "timestamp": msg.params[2],
+                "text": msg.params[3],
+            }
+            key = f"HISTORY {channel}"
+            buf = self._collect_buffers.get(key)
+            if buf is not None:
+                buf.append(entry)
+
+    def _on_historyend(self, msg: Message) -> None:
+        """HISTORYEND — resolve the HISTORY future."""
+        channel = msg.params[0] if msg.params else ""
+        fut_key = f"HISTORYEND:{channel}"
+        fut = self._pending.pop(fut_key, None)
+        if fut and not fut.done():
+            fut.set_result(None)
 
     async def _on_ping(self, msg: Message) -> None:
         """Respond to PING with PONG."""

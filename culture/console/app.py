@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -26,6 +27,7 @@ class ConsoleApp(App):
     """Main TUI application — wires IRC client, sidebar, chat, and info panel."""
 
     TITLE = "culture console"
+    _CHAT_INPUT_ID = "#chat-input"
 
     BINDINGS = [
         Binding("ctrl+o", "show_overview", "Overview", show=True),
@@ -61,6 +63,27 @@ class ConsoleApp(App):
         self._current_view: str = "chat"  # "chat" | "overview" | "status"
 
         self._buffer_task: asyncio.Task | None = None
+        self._background_tasks: set[asyncio.Task] = set()
+
+        # Dispatch table for command execution
+        self._command_handlers: dict[CommandType, Any] = {
+            CommandType.CHAT: self._handle_chat,
+            CommandType.JOIN: self._handle_join,
+            CommandType.PART: self._handle_part,
+            CommandType.CHANNELS: self._handle_channels,
+            CommandType.WHO: self._handle_who,
+            CommandType.READ: self._handle_read,
+            CommandType.SEND: self._handle_send,
+            CommandType.OVERVIEW: self._handle_overview,
+            CommandType.STATUS: self._handle_status,
+            CommandType.AGENTS: self._handle_agents,
+            CommandType.ICON: self._handle_icon,
+            CommandType.TOPIC: self._handle_topic,
+            CommandType.KICK: self._handle_kick,
+            CommandType.INVITE: self._handle_invite,
+            CommandType.SERVER: self._handle_server,
+            CommandType.QUIT: self._handle_quit,
+        }
 
     # ------------------------------------------------------------------
     # Composition
@@ -97,7 +120,7 @@ class ConsoleApp(App):
                 await asyncio.sleep(BUFFER_INTERVAL)
                 self._flush_messages()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception:
                 logger.exception("Error in _buffer_loop")
 
@@ -123,7 +146,9 @@ class ConsoleApp(App):
     def on_chat_panel_user_input(self, event: ChatPanel.UserInput) -> None:
         """Handle user input submitted from the ChatPanel."""
         cmd = parse_command(event.value)
-        asyncio.create_task(self._execute_command(cmd))
+        task = asyncio.create_task(self._execute_command(cmd))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     # ------------------------------------------------------------------
     # Command dispatcher
@@ -131,172 +156,189 @@ class ConsoleApp(App):
 
     async def _execute_command(self, cmd) -> None:  # noqa: ANN001
         """Dispatch a ParsedCommand to the appropriate handler."""
-        chat: ChatPanel = self.query_one(ChatPanel)
-
-        if cmd.type == CommandType.CHAT:
-            if not cmd.text:
-                return
-            if not self._current_channel:
-                chat.add_message(
-                    time.time(), "", "system", "[red]Not in a channel — use /join #channel[/]"
-                )
-                return
-            await self._client.send_privmsg(self._current_channel, cmd.text)
-            # Echo locally
-            chat.add_message(time.time(), "", self._client.nick, cmd.text)
-
-        elif cmd.type == CommandType.JOIN:
-            if not cmd.args:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /join #channel[/]")
-                return
-            channel = cmd.args[0]
-            await self._client.join(channel)
-            self._current_channel = channel
-            self._sync_sidebar()
-            chat.set_channel(channel)
-            chat.add_message(time.time(), "", "system", f"Joined [bold]{channel}[/]")
-
-        elif cmd.type == CommandType.PART:
-            channel = cmd.args[0] if cmd.args else self._current_channel
-            if not channel:
-                chat.add_message(time.time(), "", "system", "[red]Not in a channel[/]")
-                return
-            await self._client.part(channel)
-            self._sync_sidebar()
-            if self._current_channel == channel:
-                # Switch to another channel if available
-                remaining = sorted(self._client.joined_channels)
-                self._current_channel = remaining[0] if remaining else ""
-                chat.set_channel(self._current_channel)
-            chat.add_message(time.time(), "", "system", f"Parted [bold]{channel}[/]")
-
-        elif cmd.type == CommandType.CHANNELS:
-            channels = await self._client.list_channels()
-            lines = ["[bold $warning]CHANNELS ON SERVER[/]", ""]
-            for ch in channels:
-                lines.append(f"  {ch}")
-            if not channels:
-                lines.append("  [dim](none)[/]")
-            chat.set_content("Channel List", lines)
-
-        elif cmd.type == CommandType.WHO:
-            target = cmd.args[0] if cmd.args else self._current_channel
-            if not target:
-                chat.add_message(
-                    time.time(), "", "system", "[red]Usage: /who #channel or /who <nick>[/]"
-                )
-                return
-            entries = await self._client.who(target)
-            lines = [f"[bold $warning]WHO {target}[/]", ""]
-            for e in entries:
-                flags = e.get("flags", "")
-                nick = e.get("nick", "")
-                realname = e.get("realname", "")
-                lines.append(f"  [bold]{nick}[/] {flags}  [dim]{realname}[/]")
-            if not entries:
-                lines.append("  [dim](no results)[/]")
-            chat.set_content(f"WHO {target}", lines)
-
-        elif cmd.type == CommandType.READ:
-            channel = cmd.args[0] if cmd.args else self._current_channel
-            if not channel:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /read #channel[/]")
-                return
-            limit = 50
-            for i, arg in enumerate(cmd.args[1:], start=1):
-                if arg == "-n" and i + 1 <= len(cmd.args) - 1:
-                    try:
-                        limit = int(cmd.args[i + 1])
-                    except ValueError:
-                        pass
-                    break
-            entries = await self._client.history(channel, limit=limit)
-            chat.clear_log()
-            for e in entries:
-                try:
-                    ts = float(e.get("timestamp", 0))
-                except (ValueError, TypeError):
-                    ts = time.time()
-                chat.add_message(ts, "", e.get("nick", ""), e.get("text", ""))
-            if not entries:
-                chat.add_message(time.time(), "", "system", f"[dim]No history for {channel}[/]")
-
-        elif cmd.type == CommandType.SEND:
-            if len(cmd.args) < 1:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /send <target> <text>[/]")
-                return
-            target = cmd.args[0]
-            text = cmd.text
-            if not text:
-                chat.add_message(time.time(), "", "system", "[red]No message text provided[/]")
-                return
-            await self._client.send_privmsg(target, text)
-            chat.add_message(time.time(), "", self._client.nick, f"→ {target}: {text}")
-
-        elif cmd.type == CommandType.OVERVIEW:
-            await self.action_show_overview()
-
-        elif cmd.type == CommandType.STATUS:
-            agent = cmd.args[0] if cmd.args else None
-            await self._show_status(agent=agent)
-
-        elif cmd.type == CommandType.AGENTS:
-            await self._show_agents()
-
-        elif cmd.type == CommandType.ICON:
-            if not cmd.args:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /icon <emoji>[/]")
-                return
-            # /icon <emoji> — sets own icon
-            # /icon <nick> <emoji> — sets own icon (nick arg ignored for now)
-            icon = cmd.args[-1]
-            await self._client.send_raw(f"ICON {icon}")
-            chat.add_message(time.time(), "", "system", f"Icon set to {icon}")
-
-        elif cmd.type == CommandType.TOPIC:
-            channel = cmd.args[0] if cmd.args else self._current_channel
-            if not channel or not cmd.text:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /topic #channel <text>[/]")
-                return
-            await self._client.send_raw(f"TOPIC {channel} :{cmd.text}")
-
-        elif cmd.type == CommandType.KICK:
-            if len(cmd.args) < 2:
-                chat.add_message(time.time(), "", "system", "[red]Usage: /kick #channel <nick>[/]")
-                return
-            await self._client.send_raw(f"KICK {cmd.args[0]} {cmd.args[1]}")
-
-        elif cmd.type == CommandType.INVITE:
-            if len(cmd.args) < 2:
-                chat.add_message(
-                    time.time(), "", "system", "[red]Usage: /invite <nick> #channel[/]"
-                )
-                return
-            await self._client.send_raw(f"INVITE {cmd.args[0]} {cmd.args[1]}")
-
+        handler = self._command_handlers.get(cmd.type)
+        if handler:
+            await handler(cmd)
         elif cmd.type in (CommandType.START, CommandType.STOP, CommandType.RESTART):
-            verb = cmd.type.name.lower()
-            chat.add_message(
-                time.time(),
-                "",
-                "system",
-                f"[yellow]Agent management ({verb}) requires the CLI: [bold]culture {verb} <agent>[/][/]",
-            )
-
-        elif cmd.type == CommandType.SERVER:
-            target = cmd.args[0] if cmd.args else ""
-            chat.add_message(
-                time.time(),
-                "",
-                "system",
-                f"[yellow]To switch servers, restart the console: [bold]culture console {target}[/][/]",
-            )
-
-        elif cmd.type == CommandType.QUIT:
-            await self.action_quit_app()
-
+            await self._handle_agent_management(cmd)
         elif cmd.type == CommandType.UNKNOWN:
+            chat: ChatPanel = self.query_one(ChatPanel)
             chat.add_message(time.time(), "", "system", f"[red]Unknown command: {cmd.text}[/]")
+
+    # ------------------------------------------------------------------
+    # Command handlers
+    # ------------------------------------------------------------------
+
+    async def _handle_chat(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if not cmd.text:
+            return
+        if not self._current_channel:
+            chat.add_message(
+                time.time(), "", "system", "[red]Not in a channel — use /join #channel[/]"
+            )
+            return
+        await self._client.send_privmsg(self._current_channel, cmd.text)
+        chat.add_message(time.time(), "", self._client.nick, cmd.text)
+
+    async def _handle_join(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if not cmd.args:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /join #channel[/]")
+            return
+        channel = cmd.args[0]
+        await self._client.join(channel)
+        self._current_channel = channel
+        self._sync_sidebar()
+        chat.set_channel(channel)
+        chat.add_message(time.time(), "", "system", f"Joined [bold]{channel}[/]")
+
+    async def _handle_part(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        channel = cmd.args[0] if cmd.args else self._current_channel
+        if not channel:
+            chat.add_message(time.time(), "", "system", "[red]Not in a channel[/]")
+            return
+        await self._client.part(channel)
+        self._sync_sidebar()
+        if self._current_channel == channel:
+            remaining = sorted(self._client.joined_channels)
+            self._current_channel = remaining[0] if remaining else ""
+            chat.set_channel(self._current_channel)
+        chat.add_message(time.time(), "", "system", f"Parted [bold]{channel}[/]")
+
+    async def _handle_channels(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        channels = await self._client.list_channels()
+        lines = ["[bold $warning]CHANNELS ON SERVER[/]", ""]
+        for ch in channels:
+            lines.append(f"  {ch}")
+        if not channels:
+            lines.append("  [dim](none)[/]")
+        chat.set_content("Channel List", lines)
+
+    async def _handle_who(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        target = cmd.args[0] if cmd.args else self._current_channel
+        if not target:
+            chat.add_message(
+                time.time(), "", "system", "[red]Usage: /who #channel or /who <nick>[/]"
+            )
+            return
+        entries = await self._client.who(target)
+        lines = [f"[bold $warning]WHO {target}[/]", ""]
+        for e in entries:
+            flags = e.get("flags", "")
+            nick = e.get("nick", "")
+            realname = e.get("realname", "")
+            lines.append(f"  [bold]{nick}[/] {flags}  [dim]{realname}[/]")
+        if not entries:
+            lines.append("  [dim](no results)[/]")
+        chat.set_content(f"WHO {target}", lines)
+
+    async def _handle_read(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        channel = cmd.args[0] if cmd.args else self._current_channel
+        if not channel:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /read #channel[/]")
+            return
+        limit = 50
+        for i, arg in enumerate(cmd.args[1:], start=1):
+            if arg == "-n" and i + 1 <= len(cmd.args) - 1:
+                try:
+                    limit = int(cmd.args[i + 1])
+                except ValueError:
+                    pass
+                break
+        entries = await self._client.history(channel, limit=limit)
+        chat.clear_log()
+        for e in entries:
+            try:
+                ts = float(e.get("timestamp", 0))
+            except (ValueError, TypeError):
+                ts = time.time()
+            chat.add_message(ts, "", e.get("nick", ""), e.get("text", ""))
+        if not entries:
+            chat.add_message(time.time(), "", "system", f"[dim]No history for {channel}[/]")
+
+    async def _handle_send(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if len(cmd.args) < 1:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /send <target> <text>[/]")
+            return
+        target = cmd.args[0]
+        text = cmd.text
+        if not text:
+            chat.add_message(time.time(), "", "system", "[red]No message text provided[/]")
+            return
+        await self._client.send_privmsg(target, text)
+        chat.add_message(time.time(), "", self._client.nick, f"→ {target}: {text}")
+
+    async def _handle_overview(self, cmd) -> None:  # noqa: ANN001
+        await self.action_show_overview()
+
+    async def _handle_status(self, cmd) -> None:  # noqa: ANN001
+        agent = cmd.args[0] if cmd.args else None
+        await self._show_status(agent=agent)
+
+    async def _handle_agents(self, cmd) -> None:  # noqa: ANN001
+        await self._show_agents()
+
+    async def _handle_icon(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if not cmd.args:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /icon <emoji>[/]")
+            return
+        icon = cmd.args[-1]
+        await self._client.send_raw(f"ICON {icon}")
+        chat.add_message(time.time(), "", "system", f"Icon set to {icon}")
+
+    async def _handle_topic(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        channel = cmd.args[0] if cmd.args else self._current_channel
+        if not channel or not cmd.text:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /topic #channel <text>[/]")
+            return
+        await self._client.send_raw(f"TOPIC {channel} :{cmd.text}")
+
+    async def _handle_kick(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if len(cmd.args) < 2:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /kick #channel <nick>[/]")
+            return
+        await self._client.send_raw(f"KICK {cmd.args[0]} {cmd.args[1]}")
+
+    async def _handle_invite(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        if len(cmd.args) < 2:
+            chat.add_message(time.time(), "", "system", "[red]Usage: /invite <nick> #channel[/]")
+            return
+        await self._client.send_raw(f"INVITE {cmd.args[0]} {cmd.args[1]}")
+
+    async def _handle_agent_management(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        verb = cmd.type.name.lower()
+        chat.add_message(
+            time.time(),
+            "",
+            "system",
+            f"[yellow]Agent management ({verb}) requires the CLI: "
+            f"[bold]culture {verb} <agent>[/][/]",
+        )
+
+    async def _handle_server(self, cmd) -> None:  # noqa: ANN001
+        chat: ChatPanel = self.query_one(ChatPanel)
+        target = cmd.args[0] if cmd.args else ""
+        chat.add_message(
+            time.time(),
+            "",
+            "system",
+            f"[yellow]To switch servers, restart the console: "
+            f"[bold]culture console {target}[/][/]",
+        )
+
+    async def _handle_quit(self, cmd) -> None:  # noqa: ANN001
+        await self.action_quit_app()
 
     # ------------------------------------------------------------------
     # View actions
@@ -335,7 +377,7 @@ class ConsoleApp(App):
 
         # Hide input — not meaningful in overview mode
         try:
-            input_widget = self.query_one("#chat-input")
+            input_widget = self.query_one(self._CHAT_INPUT_ID)
             input_widget.display = False
         except Exception:
             pass
@@ -440,7 +482,7 @@ class ConsoleApp(App):
 
         # Re-show input
         try:
-            input_widget = self.query_one("#chat-input")
+            input_widget = self.query_one(self._CHAT_INPUT_ID)
             input_widget.display = True
         except Exception:
             pass
@@ -508,14 +550,16 @@ class ConsoleApp(App):
 
         # Re-show input if hidden
         try:
-            input_widget = self.query_one("#chat-input")
+            input_widget = self.query_one(self._CHAT_INPUT_ID)
             input_widget.display = True
         except Exception:
             pass
 
     def on_sidebar_entity_selected(self, event: Sidebar.EntitySelected) -> None:
         """Show agent detail when user clicks an entity in the sidebar."""
-        asyncio.create_task(self._show_status(agent=event.nick))
+        task = asyncio.create_task(self._show_status(agent=event.nick))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     # ------------------------------------------------------------------
     # Internal helpers
