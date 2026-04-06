@@ -126,36 +126,6 @@ def list_servers() -> list[dict]:
     return servers
 
 
-def list_agents(server_name: str | None = None) -> list[dict]:
-    """List running culture agents, optionally filtered by server name.
-
-    Returns list of dicts with keys: full_nick, nick, pid.
-    When *server_name* is given, only agents whose full_nick starts with
-    ``{server_name}-`` are returned, and *nick* is the suffix after the
-    prefix.  Otherwise *nick* equals *full_nick*.
-    """
-    pid_dir = Path(PID_DIR)
-    if not pid_dir.exists():
-        return []
-    agents: list[dict] = []
-    prefix = "agent-"
-    for pid_path in sorted(pid_dir.glob(f"{prefix}*.pid")):
-        pid_name = pid_path.stem  # e.g. "agent-spark-culture"
-        full_nick = pid_name[len(prefix) :]  # e.g. "spark-culture"
-        pid = read_pid(pid_name)
-        if pid is None or not is_process_alive(pid) or not is_culture_process(pid):
-            continue
-        if server_name is not None:
-            srv_prefix = f"{server_name}-"
-            if not full_nick.startswith(srv_prefix):
-                continue
-            nick = full_nick[len(srv_prefix) :]
-        else:
-            nick = full_nick
-        agents.append({"full_nick": full_nick, "nick": nick, "pid": pid})
-    return agents
-
-
 def read_default_server() -> str | None:
     """Read the default server name. Returns None if unset."""
     default_path = Path(PID_DIR) / "default_server"

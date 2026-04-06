@@ -557,9 +557,9 @@ def _resolve_mesh_for_server(server_name: str, config_path: str):
 
     Resolution order:
     1. mesh.yaml — use directly if its server.name matches.
-    2. agents.yaml — build via from_daemon_config(), merge links from the
-       old mesh.yaml, and save the updated mesh.yaml so future runs are
-       consistent.
+    2. agents.yaml — build via from_daemon_config(), preserving host, port,
+       and links from the old mesh.yaml. Saves the updated mesh.yaml so
+       future runs are consistent.
     """
     from culture.mesh_config import (
         from_daemon_config,
@@ -568,12 +568,12 @@ def _resolve_mesh_for_server(server_name: str, config_path: str):
         save_mesh_config,
     )
 
-    old_links: list = []
+    old_server = None
     try:
-        mesh = load_mesh_config(config_path)
-        if mesh.server.name == server_name:
-            return mesh
-        old_links = list(mesh.server.links)
+        old_mesh = load_mesh_config(config_path)
+        if old_mesh.server.name == server_name:
+            return old_mesh
+        old_server = old_mesh.server
     except FileNotFoundError:
         pass
 
@@ -581,8 +581,10 @@ def _resolve_mesh_for_server(server_name: str, config_path: str):
         daemon_config = load_config(DEFAULT_CONFIG)
         if daemon_config.server.name == server_name:
             mesh = from_daemon_config(daemon_config)
-            if old_links:
-                merge_links(mesh, old_links)
+            if old_server is not None:
+                mesh.server.host = old_server.host
+                mesh.server.port = old_server.port
+                merge_links(mesh, old_server.links)
             save_mesh_config(mesh, config_path)
             return mesh
 

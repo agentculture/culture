@@ -288,8 +288,11 @@ walkthrough.
 
 ### `culture update`
 
-Upgrade the `culture` package and restart all mesh services defined in
-`mesh.yaml`.
+Upgrade the `culture` package and restart all running servers. The command
+discovers running servers from PID files rather than relying solely on
+`mesh.yaml`, so it restarts every server on the machine even if `mesh.yaml`
+is stale or names a different server. When no servers are running, it falls
+back to `mesh.yaml`.
 
 ```bash
 culture update                          # upgrade package + restart everything

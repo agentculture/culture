@@ -114,6 +114,7 @@ def merge_links(target: MeshConfig, source_links: list[MeshLinkConfig]) -> None:
     for link in source_links:
         if link.name not in existing:
             target.server.links.append(link)
+            existing.add(link.name)
 
 
 def save_mesh_config(config: MeshConfig, path: str | Path = DEFAULT_MESH_PATH) -> None:

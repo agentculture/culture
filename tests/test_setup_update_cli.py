@@ -1,7 +1,7 @@
 # tests/test_setup_update_cli.py
 """Lightweight parser tests for setup and update subcommands."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -153,7 +153,10 @@ def test_resolve_rebuilds_from_agents_yaml_preserving_links(tmp_path):
     # mesh.yaml says "culture" but running server is "spark"
     old_mesh = MeshConfig(
         server=MeshServerConfig(
-            name="culture", links=[MeshLinkConfig(name="thor", host="1.2.3.4")]
+            name="culture",
+            host="127.0.0.1",
+            port=7000,
+            links=[MeshLinkConfig(name="thor", host="1.2.3.4")],
         ),
     )
     config_path = str(tmp_path / "mesh.yaml")
@@ -175,6 +178,8 @@ def test_resolve_rebuilds_from_agents_yaml_preserving_links(tmp_path):
     assert result.server.name == "spark"
     assert len(result.agents) == 1
     assert result.agents[0].nick == "claude"
-    # Links from old mesh.yaml are preserved
+    # Server settings from old mesh.yaml are preserved
+    assert result.server.host == "127.0.0.1"
+    assert result.server.port == 7000
     assert len(result.server.links) == 1
     assert result.server.links[0].name == "thor"
