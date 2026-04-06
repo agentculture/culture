@@ -10,7 +10,7 @@ import pytest
 def test_overview_help():
     """The overview subcommand is registered and has help."""
     result = subprocess.run(
-        [sys.executable, "-m", "culture", "overview", "--help"],
+        [sys.executable, "-m", "culture", "mesh", "overview", "--help"],
         capture_output=True,
         text=True,
     )
@@ -27,8 +27,9 @@ def test_overview_default_args():
     from culture.cli import _build_parser
 
     parser = _build_parser()
-    args = parser.parse_args(["overview"])
-    assert args.command == "overview"
+    args = parser.parse_args(["mesh", "overview"])
+    assert args.command == "mesh"
+    assert args.mesh_command == "overview"
     assert args.room is None
     assert args.agent is None
     assert args.messages == 4
@@ -40,17 +41,18 @@ def test_overview_with_flags():
     from culture.cli import _build_parser
 
     parser = _build_parser()
-    args = parser.parse_args(["overview", "--room", "#general", "--messages", "10"])
+    args = parser.parse_args(["mesh", "overview", "--room", "#general", "--messages", "10"])
     assert args.room == "#general"
     assert args.messages == 10
 
 
 def test_overview_connection_refused(capsys):
     """ConnectionRefusedError produces a helpful message."""
-    from culture.cli import _build_parser, _cmd_overview
+    from culture.cli import _build_parser
+    from culture.cli.mesh import _cmd_overview
 
     parser = _build_parser()
-    args = parser.parse_args(["overview"])
+    args = parser.parse_args(["mesh", "overview"])
 
     with patch(
         "culture.overview.collector.collect_mesh_state",
@@ -65,10 +67,11 @@ def test_overview_connection_refused(capsys):
 
 def test_overview_timeout(capsys):
     """TimeoutError produces a helpful message."""
-    from culture.cli import _build_parser, _cmd_overview
+    from culture.cli import _build_parser
+    from culture.cli.mesh import _cmd_overview
 
     parser = _build_parser()
-    args = parser.parse_args(["overview"])
+    args = parser.parse_args(["mesh", "overview"])
 
     with patch(
         "culture.overview.collector.collect_mesh_state",
@@ -84,10 +87,11 @@ def test_overview_timeout(capsys):
 
 def test_overview_os_error(capsys):
     """OSError shows the original error details."""
-    from culture.cli import _build_parser, _cmd_overview
+    from culture.cli import _build_parser
+    from culture.cli.mesh import _cmd_overview
 
     parser = _build_parser()
-    args = parser.parse_args(["overview"])
+    args = parser.parse_args(["mesh", "overview"])
 
     with patch(
         "culture.overview.collector.collect_mesh_state",

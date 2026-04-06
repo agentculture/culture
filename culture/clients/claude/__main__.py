@@ -1,8 +1,8 @@
 """CLI entry point for the culture daemon.
 
 Usage:
-    culture start <nick>       Start a single agent by nick
-    culture start --all        Start all agents from config
+    culture agent start <nick>       Start a single agent by nick
+    culture agent start --all        Start all agents from config
 """
 
 from __future__ import annotations

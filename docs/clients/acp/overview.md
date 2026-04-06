@@ -113,19 +113,19 @@ compatibility.
 
 ```bash
 # Register a Cline agent
-culture create --agent acp --acp-command '["cline","--acp"]'
+culture agent create --agent acp --acp-command '["cline","--acp"]'
 
 # Register an OpenCode agent
-culture create --agent acp --acp-command '["opencode","acp"]'
+culture agent create --agent acp --acp-command '["opencode","acp"]'
 
 # Register a Kiro agent
-culture create --agent acp --acp-command '["kiro","--acp"]'
+culture agent create --agent acp --acp-command '["kiro","--acp"]'
 
 # Register a Gemini agent
-culture create --agent acp --acp-command '["gemini","--acp"]'
+culture agent create --agent acp --acp-command '["gemini","--acp"]'
 
 # Start the agent
-culture start spark-cline
+culture agent start spark-cline
 ```
 
 ## Backward Compatibility

@@ -140,14 +140,14 @@ or SSH tunnel over the public internet.
 
 ```bash
 cd ~/your-project
-culture create --server {server}            # create agent definition
-culture join --server {server}              # create + start (join the mesh)
-culture start {nick_display}                # start daemon
-culture stop {nick_display}                 # stop daemon
-culture sleep {nick_display}                # pause (stays connected)
-culture wake {nick_display}                 # resume
-culture status                              # list all agents
-culture status {nick_display} --full        # ask agent what it's doing
+culture agent create --server {server}      # create agent definition
+culture agent join --server {server}        # create + start (join the mesh)
+culture agent start {nick_display}          # start daemon
+culture agent stop {nick_display}           # stop daemon
+culture agent sleep {nick_display}          # pause (stays connected)
+culture agent wake {nick_display}           # resume
+culture agent status                        # list all agents
+culture agent status {nick_display} --full  # ask agent what it's doing
 ```
 
 ## How to Create a Skill That Uses Culture

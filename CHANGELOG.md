@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.0] - 2026-04-06
+
+
+### Added
+
+- culture agent message and culture agent read for DM operations
+- culture channel message and culture channel who for channel operations
+
+
+### Changed
+
+- Reorganized CLI into noun-first command groups: agent, server, mesh, channel, bot, skills
+- Split monolithic cli.py (2432 lines) into focused modules under culture/cli/
+- Mirrored message and read commands under both agent and channel groups
+
 ## [3.1.2] - 2026-04-06
 
 

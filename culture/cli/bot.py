@@ -1,0 +1,203 @@
+"""Bot subcommands: culture bot {create,start,stop,list,inspect}."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+
+from culture.clients.claude.config import load_config_or_default
+
+from ._helpers import _CONFIG_HELP, DEFAULT_CONFIG
+
+NAME = "bot"
+
+
+def register(subparsers: argparse._SubParsersAction) -> None:
+    bot_parser = subparsers.add_parser("bot", help="Manage bots and webhooks")
+    bot_sub = bot_parser.add_subparsers(dest="bot_command")
+
+    bot_create = bot_sub.add_parser("create", help="Create a new bot")
+    bot_create.add_argument("name", help="Bot name (e.g. ghci)")
+    bot_create.add_argument("--owner", required=True, help="Owner nick (e.g. spark-ori)")
+    bot_create.add_argument("--channels", nargs="+", default=[], help="Channels to join")
+    bot_create.add_argument(
+        "--trigger", default="webhook", choices=["webhook"], help="Trigger type"
+    )
+    bot_create.add_argument("--mention", default=None, help="Agent to @mention on trigger")
+    bot_create.add_argument("--template", default=None, help="Message template")
+    bot_create.add_argument("--dm-owner", action="store_true", help="DM the owner on trigger")
+    bot_create.add_argument("--description", default="", help="Bot description")
+    bot_create.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
+    bot_start = bot_sub.add_parser("start", help="Start a bot")
+    bot_start.add_argument("name", help="Bot name")
+    bot_start.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
+    bot_stop = bot_sub.add_parser("stop", help="Stop a bot")
+    bot_stop.add_argument("name", help="Bot name")
+    bot_stop.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
+    bot_list = bot_sub.add_parser("list", help="List bots")
+    bot_list.add_argument("owner", nargs="?", default=None, help="Filter by owner nick")
+
+    bot_inspect = bot_sub.add_parser("inspect", help="Show bot details")
+    bot_inspect.add_argument("name", help="Bot name")
+    bot_inspect.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+
+
+def dispatch(args: argparse.Namespace) -> None:
+    if not args.bot_command:
+        print("Usage: culture bot {create|start|stop|list|inspect}", file=sys.stderr)
+        sys.exit(1)
+
+    handlers = {
+        "create": _bot_create,
+        "start": _bot_start,
+        "stop": _bot_stop,
+        "list": _bot_list,
+        "inspect": _bot_inspect,
+    }
+    handler = handlers.get(args.bot_command)
+    if handler:
+        handler(args)
+    else:
+        print(f"Unknown bot command: {args.bot_command}", file=sys.stderr)
+        sys.exit(1)
+
+
+# -----------------------------------------------------------------------
+# Handlers
+# -----------------------------------------------------------------------
+
+
+def _bot_create(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR, BotConfig, save_bot_config
+
+    name = args.name
+    config = load_config_or_default(args.config)
+    server_name = config.server.name
+
+    if not name.startswith(f"{server_name}-"):
+        owner = args.owner
+        if owner.startswith(f"{server_name}-"):
+            owner_suffix = owner[len(server_name) + 1 :]
+        else:
+            owner_suffix = owner
+        name = f"{server_name}-{owner_suffix}-{name}"
+
+    bot_config = BotConfig(
+        name=name,
+        owner=args.owner,
+        description=args.description,
+        created=time.strftime("%Y-%m-%d"),
+        trigger_type=args.trigger,
+        channels=args.channels,
+        dm_owner=args.dm_owner,
+        mention=args.mention,
+        template=args.template,
+        fallback="json",
+    )
+
+    bot_dir = BOTS_DIR / name
+    if (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{name}' already exists at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    save_bot_config(bot_dir / "bot.yaml", bot_config)
+    print(f"Bot '{name}' created at {bot_dir}")
+    print(f"  Owner:    {args.owner}")
+    print(f"  Trigger:  {args.trigger}")
+    if args.channels:
+        print(f"  Channels: {', '.join(args.channels)}")
+    if args.mention:
+        print(f"  Mentions: {args.mention}")
+    print(f"\nTo activate, restart the server or run: culture bot start {name}")
+
+
+def _bot_start(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR
+
+    bot_dir = BOTS_DIR / args.name
+    if not (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Bot '{args.name}' will be loaded on next server restart.")
+    print("(Live reload via IPC will be available in a future release.)")
+
+
+def _bot_stop(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR
+
+    bot_dir = BOTS_DIR / args.name
+    if not (bot_dir / "bot.yaml").exists():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Bot '{args.name}' will be unloaded on next server restart.")
+    print("(Live reload via IPC will be available in a future release.)")
+
+
+def _bot_list(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR, load_bot_config
+
+    if not BOTS_DIR.is_dir():
+        print("No bots configured.")
+        return
+
+    bots = []
+    for bot_dir in sorted(BOTS_DIR.iterdir()):
+        yaml_path = bot_dir / "bot.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            config = load_bot_config(yaml_path)
+            if args.owner and config.owner != args.owner:
+                continue
+            bots.append(config)
+        except Exception:
+            continue
+
+    if not bots:
+        if args.owner:
+            print(f"No bots found for owner '{args.owner}'.")
+        else:
+            print("No bots configured.")
+        return
+
+    print(f"{'NAME':<35} {'TRIGGER':<10} {'CHANNELS':<20} {'OWNER':<20}")
+    for config in bots:
+        channels = ", ".join(config.channels) if config.channels else "-"
+        print(f"{config.name:<35} {config.trigger_type:<10} {channels:<20} {config.owner:<20}")
+
+
+def _bot_inspect(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR, load_bot_config
+
+    bot_dir = BOTS_DIR / args.name
+    yaml_path = bot_dir / "bot.yaml"
+    if not yaml_path.is_file():
+        print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_bot_config(yaml_path)
+
+    webhook_port = 7680
+    webhook_url = f"http://localhost:{webhook_port}/{config.name}"
+
+    print(f"Bot:         {config.name}")
+    print(f"Owner:       {config.owner}")
+    print(f"Description: {config.description or '-'}")
+    print(f"Created:     {config.created or '-'}")
+    print(f"Trigger:     {config.trigger_type}")
+    print(f"Webhook URL: {webhook_url} (default port)")
+    print(f"Channels:    {', '.join(config.channels) if config.channels else '-'}")
+    print(f"DM Owner:    {'yes' if config.dm_owner else 'no'}")
+    print(f"Mentions:    {config.mention or '-'}")
+    if config.template:
+        first_line = config.template.strip().split("\n")[0]
+        if len(first_line) > 60:
+            first_line = first_line[:57] + "..."
+        print(f"Template:    {first_line}")
+    print(f"Handler:     {'custom (handler.py)' if config.has_handler else 'template'}")
