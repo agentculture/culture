@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.0.2] - 2026-04-06
+
+
+### Fixed
+
+- Server startup readiness — culture server start now waits for port to accept connections before returning
+- Added startup phase logging to server log for diagnosing slow starts
+
 ## [3.0.1] - 2026-04-06
 
 

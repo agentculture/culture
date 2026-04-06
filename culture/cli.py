@@ -29,6 +29,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -493,6 +494,39 @@ def _cmd_server(args: argparse.Namespace) -> None:
         print(f"Default server set to '{args.name}'")
 
 
+def _wait_for_port(
+    host: str,
+    port: int,
+    pid: int,
+    timeout: float = 30,
+) -> tuple[bool, str]:
+    """Poll *host*:*port* until a TCP connect succeeds or *timeout* expires.
+
+    Returns ``(True, "")`` on success, or ``(False, reason)`` on failure.
+    Checks that *pid* is still alive on every iteration so we fail fast if
+    the child crashes (e.g. because the port was already in use).
+    """
+    check_host = "127.0.0.1" if host == "0.0.0.0" else host
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not is_process_alive(pid):
+            return False, "failed to start"
+        try:
+            s = socket.create_connection((check_host, port), timeout=0.5)
+            s.close()
+        except OSError:
+            time.sleep(0.2)
+            continue
+        # Port responded — give the child a moment, then confirm it's
+        # still alive (guards against connecting to a *stale* listener
+        # on the same port while our child crashes).
+        time.sleep(0.1)
+        if not is_process_alive(pid):
+            return False, "failed to start"
+        return True, ""
+    return False, "started but not yet accepting connections"
+
+
 def _server_start(args: argparse.Namespace) -> None:
     pid_name = f"server-{args.name}"
 
@@ -532,19 +566,33 @@ def _server_start(args: argparse.Namespace) -> None:
     # Fork to daemonize
     pid = os.fork()
     if pid > 0:
-        time.sleep(0.2)
-        if is_process_alive(pid):
-            print(f"Server '{args.name}' started (PID {pid})")
-            print(f"  Listening on {args.host}:{args.port}")
-            print(f"  Logs: {LOG_DIR}/server-{args.name}.log")
-            # Auto-set default server if none is set
-            from culture.pidfile import read_default_server, write_default_server
+        log_hint = f"{LOG_DIR}/server-{args.name}.log"
 
-            if read_default_server() is None:
-                write_default_server(args.name)
+        if args.port == 0:
+            # Ephemeral port — can't probe; fall back to process-alive check
+            time.sleep(0.5)
+            if not is_process_alive(pid):
+                print(f"Server '{args.name}' failed to start", file=sys.stderr)
+                print(f"  Check logs: {log_hint}", file=sys.stderr)
+                sys.exit(1)
         else:
-            print(f"Server '{args.name}' failed to start", file=sys.stderr)
-            sys.exit(1)
+            ok, err = _wait_for_port(args.host, args.port, pid, timeout=30)
+            if not ok:
+                print(
+                    f"Server '{args.name}' {err}",
+                    file=sys.stderr,
+                )
+                print(f"  Check logs: {log_hint}", file=sys.stderr)
+                sys.exit(1)
+
+        print(f"Server '{args.name}' started (PID {pid})")
+        print(f"  Listening on {args.host}:{args.port}")
+        print(f"  Logs: {log_hint}")
+        # Auto-set default server if none is set
+        from culture.pidfile import read_default_server, write_default_server
+
+        if read_default_server() is None:
+            write_default_server(args.name)
         return
 
     # Child: detach from parent session
@@ -561,6 +609,13 @@ def _server_start(args: argparse.Namespace) -> None:
     devnull = os.open(os.devnull, os.O_RDONLY)
     os.dup2(devnull, 0)
     os.close(devnull)
+
+    # Reconfigure logging so handlers write to the redirected stderr (log file)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        force=True,
+    )
 
     write_pid(pid_name, os.getpid())
 

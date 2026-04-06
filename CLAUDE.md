@@ -42,7 +42,7 @@ When implementing features, write a corresponding markdown doc in `docs/` descri
 
 ## Testing
 
-- `pytest` + `pytest-asyncio`
+- `pytest` + `pytest-asyncio`, always run with `-n auto` for parallel execution
 - No mocks for the server — tests spin up real server instances on random ports with real TCP connections
 - Validate each layer with real IRC clients (weechat/irssi)
 

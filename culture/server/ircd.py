@@ -10,6 +10,8 @@ from culture.server.channel import Channel
 from culture.server.config import ServerConfig
 from culture.server.skill import Event, Skill
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from culture.bots.virtual_client import VirtualClient
     from culture.server.client import Client
@@ -41,16 +43,25 @@ class IRCd:
         self.bot_manager = None  # set in start() if webhook_port configured
 
     async def start(self) -> None:
+        logger.info("Registering default skills...")
         await self._register_default_skills()
+
+        logger.info("Restoring persistent rooms...")
         self._restore_persistent_rooms()
 
         # Initialize bot manager and webhook HTTP listener
         from culture.bots.bot_manager import BotManager
         from culture.bots.http_listener import HttpListener
 
+        logger.info("Loading bots...")
         self.bot_manager = BotManager(self)
         await self.bot_manager.load_bots()
 
+        logger.info(
+            "Binding IRC socket on %s:%d...",
+            self.config.host,
+            self.config.port,
+        )
         self._server = await asyncio.start_server(
             self._handle_connection,
             self.config.host,
@@ -63,15 +74,21 @@ class IRCd:
             self.config.webhook_port,
         )
         try:
+            logger.info(
+                "Starting webhook listener on port %d...",
+                self.config.webhook_port,
+            )
             await self._http_listener.start()
         except OSError:
             # Port unavailable (e.g. in tests using port 0 that got
             # assigned an in-use ephemeral port). Non-fatal — bots
             # still work, just without the HTTP endpoint.
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Could not start webhook listener on port %d",
                 self.config.webhook_port,
             )
+
+        logger.info("Server ready")
 
     async def _register_default_skills(self) -> None:
         from culture.server.skills.history import HistorySkill
@@ -101,9 +118,7 @@ class IRCd:
             try:
                 await skill.on_event(event)
             except Exception:
-                logging.getLogger(__name__).exception(
-                    "Skill %s failed on event %s", skill.name, event.type
-                )
+                logger.exception("Skill %s failed on event %s", skill.name, event.type)
 
         # Relay to linked peers — only relay locally-originated events
         # (no mesh routing; scope is direct peers only)
@@ -112,7 +127,7 @@ class IRCd:
                 try:
                     await link.relay_event(event)
                 except Exception:
-                    logging.getLogger(__name__).exception("Failed to relay event to %s", peer_name)
+                    logger.exception("Failed to relay event to %s", peer_name)
 
     def get_skill_for_command(self, command: str) -> Skill | None:
         for skill in self.skills:
@@ -190,7 +205,6 @@ class IRCd:
 
     async def _retry_link_loop(self, peer_name: str, link_config, state: dict) -> None:
         """Retry connecting to a peer with exponential backoff."""
-        logger = logging.getLogger(__name__)
         try:
             while True:
                 await asyncio.sleep(state["delay"])
