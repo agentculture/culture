@@ -58,7 +58,7 @@ class HistorySkill(Skill):
     async def on_command(self, client: Client, msg: Message) -> None:
         if len(msg.params) < 1:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "HISTORY", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "HISTORY", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -79,7 +79,7 @@ class HistorySkill(Skill):
     async def _handle_recent(self, client: Client, msg: Message) -> None:
         if len(msg.params) < 3:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "HISTORY", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "HISTORY", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -126,7 +126,7 @@ class HistorySkill(Skill):
     async def _handle_search(self, client: Client, msg: Message) -> None:
         if len(msg.params) < 3:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "HISTORY", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "HISTORY", replies.MSG_NEEDMOREPARAMS
             )
             return
 

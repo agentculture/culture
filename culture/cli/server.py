@@ -19,7 +19,14 @@ from culture.pidfile import (
     write_pid,
 )
 
-from ._helpers import LOG_DIR, parse_link, resolve_links_from_mesh
+from .shared.constants import (
+    _CONFIG_HELP,
+    _SERVER_NAME_HELP,
+    BOT_CONFIG_FILE,
+    DEFAULT_CONFIG,
+    LOG_DIR,
+)
+from .shared.mesh import parse_link, resolve_links_from_mesh
 
 logger = logging.getLogger("culture")
 
@@ -31,7 +38,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     server_sub = server_parser.add_subparsers(dest="server_command")
 
     srv_start = server_sub.add_parser("start", help="Start the IRC server daemon")
-    srv_start.add_argument("--name", default="culture", help="Server name")
+    srv_start.add_argument("--name", default="culture", help=_SERVER_NAME_HELP)
     srv_start.add_argument("--host", default="0.0.0.0", help="Listen address")
     srv_start.add_argument("--port", type=int, default=6667, help="Listen port")
     srv_start.add_argument(
@@ -59,10 +66,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
 
     srv_stop = server_sub.add_parser("stop", help="Stop the IRC server daemon")
-    srv_stop.add_argument("--name", default="culture", help="Server name")
+    srv_stop.add_argument("--name", default="culture", help=_SERVER_NAME_HELP)
 
     srv_status = server_sub.add_parser("status", help="Check server daemon status")
-    srv_status.add_argument("--name", default="culture", help="Server name")
+    srv_status.add_argument("--name", default="culture", help=_SERVER_NAME_HELP)
 
     srv_default = server_sub.add_parser("default", help="Set default server")
     srv_default.add_argument("name", help="Server name to set as default")
@@ -73,29 +80,29 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     srv_rename.add_argument("new_name", help="New server name")
     srv_rename.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/agents.yaml"),
-        help="Config file path",
+        default=DEFAULT_CONFIG,
+        help=_CONFIG_HELP,
     )
 
     srv_archive = server_sub.add_parser(
         "archive", help="Archive the server and all its agents/bots"
     )
-    srv_archive.add_argument("--name", default="culture", help="Server name")
+    srv_archive.add_argument("--name", default="culture", help=_SERVER_NAME_HELP)
     srv_archive.add_argument("--reason", default="", help="Reason for archiving")
     srv_archive.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/agents.yaml"),
-        help="Config file path",
+        default=DEFAULT_CONFIG,
+        help=_CONFIG_HELP,
     )
 
     srv_unarchive = server_sub.add_parser(
         "unarchive", help="Restore an archived server and all its agents/bots"
     )
-    srv_unarchive.add_argument("--name", default="culture", help="Server name")
+    srv_unarchive.add_argument("--name", default="culture", help=_SERVER_NAME_HELP)
     srv_unarchive.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/agents.yaml"),
-        help="Config file path",
+        default=DEFAULT_CONFIG,
+        help=_CONFIG_HELP,
     )
 
 
@@ -256,7 +263,7 @@ def _server_start(args: argparse.Namespace) -> None:
     # Check if server is archived
     from culture.clients.claude.config import load_config_or_default
 
-    config_path = getattr(args, "config", os.path.expanduser("~/.culture/agents.yaml"))
+    config_path = getattr(args, "config", DEFAULT_CONFIG)
     config = load_config_or_default(config_path)
     if config.server.name == args.name and config.server.archived:
         print(
@@ -439,7 +446,7 @@ def _set_bots_archive_state(agent_nicks: set, *, archive: bool, reason: str = ""
         return changed
     today = time.strftime("%Y-%m-%d")
     for bot_dir in BOTS_DIR.iterdir():
-        yaml_path = bot_dir / "bot.yaml"
+        yaml_path = bot_dir / BOT_CONFIG_FILE
         if not yaml_path.is_file():
             continue
         try:
@@ -486,7 +493,7 @@ def _server_archive(args: argparse.Namespace) -> None:
         _server_stop(args)
 
     # Stop all running agents
-    from culture.cli._helpers import stop_agent
+    from culture.cli.shared.process import stop_agent
 
     for agent in config.agents:
         agent_pid = read_pid(f"agent-{agent.nick}")

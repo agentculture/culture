@@ -9,6 +9,8 @@ import sys
 
 NAME = "skills"
 
+_SKILL_FILENAME = "SKILL.md"
+
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser("skills", help="Install IRC skills")
@@ -54,21 +56,23 @@ def _get_bundled_admin_skill_path() -> str:
     """Return the path to the bundled admin SKILL.md in the installed package."""
     import culture
 
-    return os.path.join(os.path.dirname(culture.__file__), "skills", "culture", "SKILL.md")
+    return os.path.join(os.path.dirname(culture.__file__), "skills", "culture", _SKILL_FILENAME)
 
 
 def _get_bundled_skill_path() -> str:
     """Return the path to the bundled SKILL.md in the installed package."""
     import culture
 
-    return os.path.join(os.path.dirname(culture.__file__), "clients", "claude", "skill", "SKILL.md")
+    return os.path.join(
+        os.path.dirname(culture.__file__), "clients", "claude", "skill", _SKILL_FILENAME
+    )
 
 
 def _install_admin_skill(root_dir: str, label: str) -> None:
     """Install the admin/ops skill to the given root skills directory."""
     src = _get_bundled_admin_skill_path()
     dest_dir = os.path.join(os.path.expanduser(root_dir), "culture")
-    dest = os.path.join(dest_dir, "SKILL.md")
+    dest = os.path.join(dest_dir, _SKILL_FILENAME)
 
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest)
@@ -79,7 +83,7 @@ def _install_skill_claude() -> None:
     """Install IRC skill for Claude Code."""
     src = _get_bundled_skill_path()
     dest_dir = os.path.expanduser("~/.claude/skills/irc")
-    dest = os.path.join(dest_dir, "SKILL.md")
+    dest = os.path.join(dest_dir, _SKILL_FILENAME)
 
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest)
@@ -90,14 +94,16 @@ def _install_skill_claude() -> None:
 def _get_bundled_codex_skill_path() -> str:
     import culture
 
-    return os.path.join(os.path.dirname(culture.__file__), "clients", "codex", "skill", "SKILL.md")
+    return os.path.join(
+        os.path.dirname(culture.__file__), "clients", "codex", "skill", _SKILL_FILENAME
+    )
 
 
 def _install_skill_codex() -> None:
     """Install IRC skill for Codex."""
     src = _get_bundled_codex_skill_path()
     dest_dir = os.path.expanduser("~/.agents/skills/culture-irc")
-    dest = os.path.join(dest_dir, "SKILL.md")
+    dest = os.path.join(dest_dir, _SKILL_FILENAME)
 
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest)
@@ -109,7 +115,7 @@ def _get_bundled_copilot_skill_path() -> str:
     import culture
 
     return os.path.join(
-        os.path.dirname(culture.__file__), "clients", "copilot", "skill", "SKILL.md"
+        os.path.dirname(culture.__file__), "clients", "copilot", "skill", _SKILL_FILENAME
     )
 
 
@@ -117,7 +123,7 @@ def _install_skill_copilot() -> None:
     """Install IRC skill for GitHub Copilot."""
     src = _get_bundled_copilot_skill_path()
     dest_dir = os.path.expanduser("~/.copilot_skills/culture-irc")
-    dest = os.path.join(dest_dir, "SKILL.md")
+    dest = os.path.join(dest_dir, _SKILL_FILENAME)
 
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest)
@@ -128,14 +134,16 @@ def _install_skill_copilot() -> None:
 def _get_bundled_acp_skill_path() -> str:
     import culture
 
-    return os.path.join(os.path.dirname(culture.__file__), "clients", "acp", "skill", "SKILL.md")
+    return os.path.join(
+        os.path.dirname(culture.__file__), "clients", "acp", "skill", _SKILL_FILENAME
+    )
 
 
 def _install_skill_acp() -> None:
     """Install IRC skill for ACP agents (Cline, OpenCode, etc.)."""
     src = _get_bundled_acp_skill_path()
     dest_dir = os.path.expanduser("~/.acp/skills/culture-irc")
-    dest = os.path.join(dest_dir, "SKILL.md")
+    dest = os.path.join(dest_dir, _SKILL_FILENAME)
 
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest)

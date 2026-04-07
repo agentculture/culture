@@ -156,7 +156,7 @@ class Client:
             await self.send_numeric(replies.ERR_ALREADYREGISTRED, "You may not reregister")
             return
         if len(msg.params) < 4:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "USER", "Not enough parameters")
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "USER", replies.MSG_NEEDMOREPARAMS)
             return
 
         self.user = msg.params[0]
@@ -196,7 +196,7 @@ class Client:
         if not self._registered:
             return
         if not msg.params:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "JOIN", "Not enough parameters")
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "JOIN", replies.MSG_NEEDMOREPARAMS)
             return
 
         channel_name = msg.params[0]
@@ -240,7 +240,7 @@ class Client:
 
     async def _handle_part(self, msg: Message) -> None:
         if not msg.params:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "PART", "Not enough parameters")
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "PART", replies.MSG_NEEDMOREPARAMS)
             return
 
         channel_name = msg.params[0]
@@ -251,7 +251,7 @@ class Client:
             await self.send_numeric(
                 replies.ERR_NOTONCHANNEL,
                 channel_name,
-                "You're not on that channel",
+                replies.MSG_NOTONCHANNEL,
             )
             return
 
@@ -277,7 +277,7 @@ class Client:
 
     async def _handle_topic(self, msg: Message) -> None:
         if not msg.params:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "TOPIC", "Not enough parameters")
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "TOPIC", replies.MSG_NEEDMOREPARAMS)
             return
 
         channel_name = msg.params[0]
@@ -286,7 +286,7 @@ class Client:
             await self.send_numeric(
                 replies.ERR_NOTONCHANNEL,
                 channel_name,
-                "You're not on that channel",
+                replies.MSG_NOTONCHANNEL,
             )
             return
 
@@ -336,7 +336,7 @@ class Client:
 
     async def _handle_mode(self, msg: Message) -> None:
         if not msg.params:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "MODE", "Not enough parameters")
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "MODE", replies.MSG_NEEDMOREPARAMS)
             return
 
         target = msg.params[0]
@@ -390,7 +390,9 @@ class Client:
         channel_name = msg.params[0]
         channel = self.server.channels.get(channel_name)
         if not channel:
-            await self.send_numeric(replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel")
+            await self.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, replies.MSG_NOSUCHCHANNEL
+            )
             return
 
         if len(msg.params) == 1:
@@ -517,7 +519,9 @@ class Client:
 
     async def _handle_privmsg(self, msg: Message) -> None:
         if len(msg.params) < 2:
-            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "PRIVMSG", "Not enough parameters")
+            await self.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "PRIVMSG", replies.MSG_NEEDMOREPARAMS
+            )
             return
 
         target = msg.params[0]
@@ -527,7 +531,9 @@ class Client:
         if target.startswith("#"):
             channel = self.server.channels.get(target)
             if not channel:
-                await self.send_numeric(replies.ERR_NOSUCHCHANNEL, target, "No such channel")
+                await self.send_numeric(
+                    replies.ERR_NOSUCHCHANNEL, target, replies.MSG_NOSUCHCHANNEL
+                )
                 return
             if self not in channel.members:
                 await self.send_numeric(
@@ -539,7 +545,7 @@ class Client:
         else:
             found = await self._send_to_client(target, relay, text, False)
             if not found:
-                await self.send_numeric(replies.ERR_NOSUCHNICK, target, "No such nick")
+                await self.send_numeric(replies.ERR_NOSUCHNICK, target, replies.MSG_NOSUCHNICK)
                 return
             await self._notify_mentions(None, text)
 
@@ -631,7 +637,7 @@ class Client:
 
     async def _handle_who(self, msg: Message) -> None:
         if not msg.params:
-            await self.send_numeric(replies.RPL_ENDOFWHO, "*", "End of WHO list")
+            await self.send_numeric(replies.RPL_ENDOFWHO, "*", replies.MSG_ENDOFWHO)
             return
 
         target = msg.params[0]
@@ -640,7 +646,7 @@ class Client:
             if channel:
                 for member in list(channel.members):
                     await self._send_who_reply(member, target, channel)
-            await self.send_numeric(replies.RPL_ENDOFWHO, target, "End of WHO list")
+            await self.send_numeric(replies.RPL_ENDOFWHO, target, replies.MSG_ENDOFWHO)
         else:
             client = self.server.get_client(target)
             if client:
@@ -651,7 +657,7 @@ class Client:
                     chan_context = ch
                     break
                 await self._send_who_reply(client, chan_name, chan_context)
-            await self.send_numeric(replies.RPL_ENDOFWHO, target, "End of WHO list")
+            await self.send_numeric(replies.RPL_ENDOFWHO, target, replies.MSG_ENDOFWHO)
 
     async def _handle_whois(self, msg: Message) -> None:
         from culture.server.remote_client import RemoteClient

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.3.4] - 2026-04-07
+
+
+### Changed
+
+- Extract duplicated string literals into named constants (SonarCloud S1192)
+- Refactor cli/_helpers.py into modular cli/shared/ package (constants, ipc, process, mesh, display)
+
 ## [4.3.3] - 2026-04-07
 
 

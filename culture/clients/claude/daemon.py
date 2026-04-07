@@ -23,6 +23,9 @@ MAX_CRASH_COUNT = 3
 CRASH_WINDOW_SECONDS = 300
 CRASH_RESTART_DELAY = 5
 
+# IPC validation error messages
+_ERR_MISSING_CHANNEL = "Missing 'channel'"
+
 
 class AgentDaemon:
     """Central orchestrator that ties together the IRC transport, socket server,
@@ -607,7 +610,7 @@ class AgentDaemon:
         channel = msg.get("channel", "")
         text = msg.get("message", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         if not text:
             return make_response(req_id, ok=False, error="Missing 'message'")
         assert self._transport is not None
@@ -618,7 +621,7 @@ class AgentDaemon:
         channel = msg.get("channel", "")
         limit = int(msg.get("limit", 50))
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._buffer is not None
         messages = self._buffer.read(channel, limit=limit)
         return make_response(
@@ -634,7 +637,7 @@ class AgentDaemon:
     async def _ipc_irc_join(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.join_channel(channel)
         return make_response(req_id, ok=True)
@@ -642,7 +645,7 @@ class AgentDaemon:
     async def _ipc_irc_part(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.part_channel(channel)
         return make_response(req_id, ok=True)
@@ -674,7 +677,7 @@ class AgentDaemon:
     async def _ipc_irc_threads(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.send_threads_list(channel)
         return make_response(req_id, ok=True)
@@ -725,7 +728,7 @@ class AgentDaemon:
         channel = msg.get("channel", "")
         question = msg.get("message", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         if not question:
             return make_response(req_id, ok=False, error="Missing 'message'")
         assert self._transport is not None

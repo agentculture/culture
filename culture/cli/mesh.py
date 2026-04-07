@@ -17,13 +17,9 @@ from culture.clients.claude.config import (
 )
 from culture.pidfile import is_process_alive, read_pid
 
-from ._helpers import (
-    DEFAULT_CONFIG,
-    build_server_start_cmd,
-    generate_mesh_from_agents,
-    server_stop_by_name,
-    stop_agent,
-)
+from .shared.constants import AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
+from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
+from .shared.process import server_stop_by_name, stop_agent
 
 logger = logging.getLogger("culture")
 
@@ -313,7 +309,7 @@ def _generate_agent_configs(mesh, server_name: str) -> None:
 
     for workdir, agents in workdir_agents.items():
         os.makedirs(workdir, exist_ok=True)
-        config_path = os.path.join(workdir, ".culture", "agents.yaml")
+        config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
         agent_configs = []
@@ -348,7 +344,7 @@ def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         workdir = os.path.expanduser(agent.workdir)
-        agent_config_path = os.path.join(workdir, ".culture", "agents.yaml")
+        agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
         agent_cmd = [
             culture_bin,
             "agent",
@@ -502,7 +498,7 @@ def _restart_mesh_services(
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         workdir = os.path.expanduser(agent.workdir)
-        agent_config_path = os.path.join(workdir, ".culture", "agents.yaml")
+        agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
         agent_cmd = [
             culture_bin,
             "agent",
@@ -549,7 +545,7 @@ def _restart_mesh_services(
         print(f"  Restarting {agent_svc}...")
         if not restart_service(agent_svc):
             workdir = os.path.expanduser(agent.workdir)
-            agent_config_path = os.path.join(workdir, ".culture", "agents.yaml")
+            agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
             subprocess.run(
                 [culture_bin, "agent", "start", full_nick, "--config", agent_config_path],
                 check=False,

@@ -117,7 +117,9 @@ class ThreadsSkill(Skill):
 
     async def _handle_thread(self, client: Client, msg: Message) -> None:
         if not msg.params:
-            await client.send_numeric(replies.ERR_NEEDMOREPARAMS, "THREAD", "Not enough parameters")
+            await client.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "THREAD", replies.MSG_NEEDMOREPARAMS
+            )
             return
 
         subcmd = msg.params[0].upper()
@@ -138,7 +140,7 @@ class ThreadsSkill(Skill):
         # THREAD CREATE #channel thread-name :initial message
         if len(msg.params) < 4:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREAD CREATE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREAD CREATE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -150,7 +152,7 @@ class ThreadsSkill(Skill):
         channel = self.server.channels.get(channel_name)
         if not channel or client not in channel.members:
             await client.send_numeric(
-                replies.ERR_NOTONCHANNEL, channel_name, "You're not on that channel"
+                replies.ERR_NOTONCHANNEL, channel_name, replies.MSG_NOTONCHANNEL
             )
             return
 
@@ -219,7 +221,7 @@ class ThreadsSkill(Skill):
         # THREAD REPLY #channel thread-name :reply text
         if len(msg.params) < 4:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREAD REPLY", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREAD REPLY", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -231,7 +233,7 @@ class ThreadsSkill(Skill):
         channel = self.server.channels.get(channel_name)
         if not channel or client not in channel.members:
             await client.send_numeric(
-                replies.ERR_NOTONCHANNEL, channel_name, "You're not on that channel"
+                replies.ERR_NOTONCHANNEL, channel_name, replies.MSG_NOTONCHANNEL
             )
             return
 
@@ -243,7 +245,7 @@ class ThreadsSkill(Skill):
                 Message(
                     prefix=self.server.config.name,
                     command="404",
-                    params=[client.nick or "*", thread_name, "No such thread"],
+                    params=[client.nick or "*", thread_name, replies.MSG_NOSUCHTHREAD],
                 )
             )
             return
@@ -360,7 +362,7 @@ class ThreadsSkill(Skill):
         # THREADS #channel
         if not msg.params:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREADS", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREADS", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -368,7 +370,7 @@ class ThreadsSkill(Skill):
         channel = self.server.channels.get(channel_name)
         if not channel or client not in channel.members:
             await client.send_numeric(
-                replies.ERR_NOTONCHANNEL, channel_name, "You're not on that channel"
+                replies.ERR_NOTONCHANNEL, channel_name, replies.MSG_NOTONCHANNEL
             )
             return
 
@@ -402,7 +404,7 @@ class ThreadsSkill(Skill):
         # THREADCLOSE PROMOTE #channel thread-name [#breakout-name]
         if not msg.params:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -413,7 +415,7 @@ class ThreadsSkill(Skill):
 
         if len(msg.params) < 2:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -485,7 +487,7 @@ class ThreadsSkill(Skill):
         channel = self.server.channels.get(channel_name)
         if not channel or client not in channel.members:
             await client.send_numeric(
-                replies.ERR_NOTONCHANNEL, channel_name, "You're not on that channel"
+                replies.ERR_NOTONCHANNEL, channel_name, replies.MSG_NOTONCHANNEL
             )
             return None
 
@@ -496,7 +498,7 @@ class ThreadsSkill(Skill):
                 Message(
                     prefix=self.server.config.name,
                     command="404",
-                    params=[client.nick or "*", thread_name, "No such thread"],
+                    params=[client.nick or "*", thread_name, replies.MSG_NOSUCHTHREAD],
                 )
             )
             return None
@@ -535,7 +537,7 @@ class ThreadsSkill(Skill):
         # THREADCLOSE PROMOTE #channel thread-name [#breakout-name]
         if len(msg.params) < 3:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE PROMOTE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "THREADCLOSE PROMOTE", replies.MSG_NEEDMOREPARAMS
             )
             return
 

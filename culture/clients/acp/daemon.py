@@ -29,6 +29,9 @@ from culture.pidfile import remove_pid, write_pid
 
 logger = logging.getLogger(__name__)
 
+# IPC validation error messages
+_ERR_MISSING_CHANNEL = "Missing 'channel'"
+
 MAX_CRASH_COUNT = 3
 CRASH_WINDOW_SECONDS = 300
 CRASH_RESTART_DELAY = 5
@@ -689,7 +692,7 @@ class ACPDaemon:
         channel = msg.get("channel", "")
         text = msg.get("message", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         if not text:
             return make_response(req_id, ok=False, error="Missing 'message'")
         assert self._transport is not None
@@ -700,7 +703,7 @@ class ACPDaemon:
         channel = msg.get("channel", "")
         limit = int(msg.get("limit", 50))
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._buffer is not None
         messages = self._buffer.read(channel, limit=limit)
         return make_response(
@@ -716,7 +719,7 @@ class ACPDaemon:
     async def _ipc_irc_join(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.join_channel(channel)
         return make_response(req_id, ok=True)
@@ -724,7 +727,7 @@ class ACPDaemon:
     async def _ipc_irc_part(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.part_channel(channel)
         return make_response(req_id, ok=True)
@@ -756,7 +759,7 @@ class ACPDaemon:
     async def _ipc_irc_threads(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         assert self._transport is not None
         await self._transport.send_threads_list(channel)
         return make_response(req_id, ok=True)
@@ -807,7 +810,7 @@ class ACPDaemon:
         channel = msg.get("channel", "")
         question = msg.get("message", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         if not question:
             return make_response(req_id, ok=False, error="Missing 'message'")
         assert self._transport is not None

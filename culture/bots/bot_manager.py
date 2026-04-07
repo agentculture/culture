@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+BOT_CONFIG_FILE = "bot.yaml"
+
 
 class BotManager:
     """Loads, starts, stops, and dispatches webhooks to bots."""
@@ -27,7 +29,7 @@ class BotManager:
             return
 
         for bot_dir in sorted(BOTS_DIR.iterdir()):
-            yaml_path = bot_dir / "bot.yaml"
+            yaml_path = bot_dir / BOT_CONFIG_FILE
             if not yaml_path.is_file():
                 continue
             try:
@@ -45,7 +47,7 @@ class BotManager:
     async def create_bot(self, config: BotConfig) -> Bot:
         """Create a new bot: write config to disk and start it."""
         bot_dir = BOTS_DIR / config.name
-        save_bot_config(bot_dir / "bot.yaml", config)
+        save_bot_config(bot_dir / BOT_CONFIG_FILE, config)
 
         bot = Bot(config, self.server)
         self.bots[config.name] = bot
@@ -57,7 +59,7 @@ class BotManager:
         bot = self.bots.get(name)
         if not bot:
             # Try loading from disk
-            yaml_path = BOTS_DIR / name / "bot.yaml"
+            yaml_path = BOTS_DIR / name / BOT_CONFIG_FILE
             if not yaml_path.is_file():
                 raise ValueError(f"Bot {name!r} not found")
             config = load_bot_config(yaml_path)

@@ -42,3 +42,11 @@ ERR_NEEDMOREPARAMS = "461"
 ERR_ALREADYREGISTRED = "462"
 ERR_CHANOPRIVSNEEDED = "482"
 ERR_USERSDONTMATCH = "502"
+
+# Error/reply message texts
+MSG_NEEDMOREPARAMS = "Not enough parameters"
+MSG_NOSUCHCHANNEL = "No such channel"
+MSG_NOSUCHNICK = "No such nick"
+MSG_NOTONCHANNEL = "You're not on that channel"
+MSG_ENDOFWHO = "End of WHO list"
+MSG_NOSUCHTHREAD = "No such thread"

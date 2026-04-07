@@ -34,7 +34,7 @@ class RoomsSkill(Skill):
     async def _handle_roomcreate(self, client: Client, msg: Message) -> None:
         if len(msg.params) < 2:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "ROOMCREATE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "ROOMCREATE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -131,7 +131,7 @@ class RoomsSkill(Skill):
     async def _handle_roommeta(self, client: Client, msg: Message) -> None:
         if not msg.params:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "ROOMMETA", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "ROOMMETA", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -139,7 +139,9 @@ class RoomsSkill(Skill):
         channel = self.server.channels.get(channel_name)
 
         if not channel:
-            await client.send_numeric(replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel")
+            await client.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, replies.MSG_NOSUCHCHANNEL
+            )
             return
 
         if not channel.is_managed:
@@ -341,7 +343,9 @@ class RoomsSkill(Skill):
 
     async def _handle_tags(self, client: Client, msg: Message) -> None:
         if not msg.params:
-            await client.send_numeric(replies.ERR_NEEDMOREPARAMS, "TAGS", "Not enough parameters")
+            await client.send_numeric(
+                replies.ERR_NEEDMOREPARAMS, "TAGS", replies.MSG_NEEDMOREPARAMS
+            )
             return
 
         nick = msg.params[0]
@@ -350,7 +354,7 @@ class RoomsSkill(Skill):
             # Query tags for nick
             target = self.server.clients.get(nick)
             if not target:
-                await client.send_numeric(replies.ERR_NOSUCHNICK, nick, "No such nick")
+                await client.send_numeric(replies.ERR_NOSUCHNICK, nick, replies.MSG_NOSUCHNICK)
                 return
 
             tags_str = ",".join(target.tags)
@@ -388,7 +392,7 @@ class RoomsSkill(Skill):
 
             target = self.server.clients.get(nick)
             if not target:
-                await client.send_numeric(replies.ERR_NOSUCHNICK, nick, "No such nick")
+                await client.send_numeric(replies.ERR_NOSUCHNICK, nick, replies.MSG_NOSUCHNICK)
                 return
 
             old_tags = set(target.tags)
@@ -465,7 +469,7 @@ class RoomsSkill(Skill):
 
         if len(msg.params) < 2:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "ROOMINVITE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "ROOMINVITE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -474,12 +478,14 @@ class RoomsSkill(Skill):
 
         channel = self.server.channels.get(channel_name)
         if not channel:
-            await client.send_numeric(replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel")
+            await client.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, replies.MSG_NOSUCHCHANNEL
+            )
             return
 
         target = self.server.clients.get(target_nick)
         if not target:
-            await client.send_numeric(replies.ERR_NOSUCHNICK, target_nick, "No such nick")
+            await client.send_numeric(replies.ERR_NOSUCHNICK, target_nick, replies.MSG_NOSUCHNICK)
             return
 
         # Don't send to RemoteClients
@@ -524,7 +530,7 @@ class RoomsSkill(Skill):
     async def _handle_roomkick(self, client: Client, msg: Message) -> None:
         if len(msg.params) < 2:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "ROOMKICK", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "ROOMKICK", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -533,7 +539,9 @@ class RoomsSkill(Skill):
 
         channel = self.server.channels.get(channel_name)
         if not channel:
-            await client.send_numeric(replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel")
+            await client.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, replies.MSG_NOSUCHCHANNEL
+            )
             return
 
         if not channel.is_managed:
@@ -604,7 +612,7 @@ class RoomsSkill(Skill):
     async def _handle_roomarchive(self, client: Client, msg: Message) -> None:
         if not msg.params:
             await client.send_numeric(
-                replies.ERR_NEEDMOREPARAMS, "ROOMARCHIVE", "Not enough parameters"
+                replies.ERR_NEEDMOREPARAMS, "ROOMARCHIVE", replies.MSG_NEEDMOREPARAMS
             )
             return
 
@@ -612,7 +620,9 @@ class RoomsSkill(Skill):
         channel = self.server.channels.get(channel_name)
 
         if not channel:
-            await client.send_numeric(replies.ERR_NOSUCHCHANNEL, channel_name, "No such channel")
+            await client.send_numeric(
+                replies.ERR_NOSUCHCHANNEL, channel_name, replies.MSG_NOSUCHCHANNEL
+            )
             return
 
         if not channel.is_managed:

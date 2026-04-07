@@ -6,7 +6,8 @@ import argparse
 import asyncio
 import sys
 
-from ._helpers import _CONFIG_HELP, DEFAULT_CONFIG, get_observer
+from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
+from .shared.ipc import get_observer
 
 NAME = "channel"
 

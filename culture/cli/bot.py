@@ -8,7 +8,7 @@ import time
 
 from culture.clients.claude.config import load_config_or_default
 
-from ._helpers import _CONFIG_HELP, DEFAULT_CONFIG
+from .shared.constants import _BOT_NAME_HELP, _CONFIG_HELP, BOT_CONFIG_FILE, DEFAULT_CONFIG
 
 NAME = "bot"
 
@@ -31,11 +31,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     bot_create.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
     bot_start = bot_sub.add_parser("start", help="Start a bot")
-    bot_start.add_argument("name", help="Bot name")
+    bot_start.add_argument("name", help=_BOT_NAME_HELP)
     bot_start.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
     bot_stop = bot_sub.add_parser("stop", help="Stop a bot")
-    bot_stop.add_argument("name", help="Bot name")
+    bot_stop.add_argument("name", help=_BOT_NAME_HELP)
     bot_stop.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
     bot_list = bot_sub.add_parser("list", help="List bots")
@@ -43,7 +43,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     bot_list.add_argument("--all", action="store_true", help="Include archived bots")
 
     bot_inspect = bot_sub.add_parser("inspect", help="Show bot details")
-    bot_inspect.add_argument("name", help="Bot name")
+    bot_inspect.add_argument("name", help=_BOT_NAME_HELP)
     bot_inspect.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
     bot_archive = bot_sub.add_parser("archive", help="Archive a bot")
@@ -113,11 +113,11 @@ def _bot_create(args: argparse.Namespace) -> None:
     )
 
     bot_dir = BOTS_DIR / name
-    if (bot_dir / "bot.yaml").exists():
+    if (bot_dir / BOT_CONFIG_FILE).exists():
         print(f"Bot '{name}' already exists at {bot_dir}", file=sys.stderr)
         sys.exit(1)
 
-    save_bot_config(bot_dir / "bot.yaml", bot_config)
+    save_bot_config(bot_dir / BOT_CONFIG_FILE, bot_config)
     print(f"Bot '{name}' created at {bot_dir}")
     print(f"  Owner:    {args.owner}")
     print(f"  Trigger:  {args.trigger}")
@@ -132,7 +132,7 @@ def _bot_start(args: argparse.Namespace) -> None:
     from culture.bots.config import BOTS_DIR
 
     bot_dir = BOTS_DIR / args.name
-    if not (bot_dir / "bot.yaml").exists():
+    if not (bot_dir / BOT_CONFIG_FILE).exists():
         print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
         sys.exit(1)
 
@@ -144,7 +144,7 @@ def _bot_stop(args: argparse.Namespace) -> None:
     from culture.bots.config import BOTS_DIR
 
     bot_dir = BOTS_DIR / args.name
-    if not (bot_dir / "bot.yaml").exists():
+    if not (bot_dir / BOT_CONFIG_FILE).exists():
         print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
         sys.exit(1)
 
@@ -161,7 +161,7 @@ def _load_and_filter_bots(args) -> list:
     show_all = getattr(args, "all", False)
     bots = []
     for bot_dir in sorted(BOTS_DIR.iterdir()):
-        yaml_path = bot_dir / "bot.yaml"
+        yaml_path = bot_dir / BOT_CONFIG_FILE
         if not yaml_path.is_file():
             continue
         try:
@@ -203,7 +203,7 @@ def _bot_inspect(args: argparse.Namespace) -> None:
     from culture.bots.config import BOTS_DIR, load_bot_config
 
     bot_dir = BOTS_DIR / args.name
-    yaml_path = bot_dir / "bot.yaml"
+    yaml_path = bot_dir / BOT_CONFIG_FILE
     if not yaml_path.is_file():
         print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
         sys.exit(1)
@@ -245,7 +245,7 @@ def _bot_archive(args: argparse.Namespace) -> None:
     from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
 
     bot_dir = BOTS_DIR / args.name
-    yaml_path = bot_dir / "bot.yaml"
+    yaml_path = bot_dir / BOT_CONFIG_FILE
     if not yaml_path.is_file():
         print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
         sys.exit(1)
@@ -270,7 +270,7 @@ def _bot_unarchive(args: argparse.Namespace) -> None:
     from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
 
     bot_dir = BOTS_DIR / args.name
-    yaml_path = bot_dir / "bot.yaml"
+    yaml_path = bot_dir / BOT_CONFIG_FILE
     if not yaml_path.is_file():
         print(f"Bot '{args.name}' not found at {bot_dir}", file=sys.stderr)
         sys.exit(1)

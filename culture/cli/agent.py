@@ -27,18 +27,16 @@ from culture.pidfile import (
     write_pid,
 )
 
-from ._helpers import (
+from .shared.constants import (
     _CONFIG_HELP,
+    DEFAULT_CHANNEL,
     DEFAULT_CONFIG,
     LOG_DIR,
-    agent_socket_path,
-    get_observer,
-    ipc_request,
-    print_agent_detail,
-    print_agents_overview,
-    print_bot_listing,
-    stop_agent,
+    NO_AGENTS_MSG,
 )
+from .shared.display import print_agent_detail, print_agents_overview, print_bot_listing
+from .shared.ipc import agent_socket_path, get_observer, ipc_request
+from .shared.process import stop_agent
 
 logger = logging.getLogger("culture")
 
@@ -212,7 +210,7 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
             nick=full_nick,
             agent="codex",
             directory=os.getcwd(),
-            channels=["#general"],
+            channels=[DEFAULT_CHANNEL],
         )
     if args.agent == "copilot":
         from culture.clients.copilot.config import AgentConfig as CopilotAgentConfig
@@ -221,7 +219,7 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
             nick=full_nick,
             agent="copilot",
             directory=os.getcwd(),
-            channels=["#general"],
+            channels=[DEFAULT_CHANNEL],
         )
     if args.agent == "acp":
         import json as _json
@@ -246,13 +244,13 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
             agent="acp",
             acp_command=acp_cmd,
             directory=os.getcwd(),
-            channels=["#general"],
+            channels=[DEFAULT_CHANNEL],
         )
     return AgentConfig(
         nick=full_nick,
         agent=args.agent,
         directory=os.getcwd(),
-        channels=["#general"],
+        channels=[DEFAULT_CHANNEL],
     )
 
 
@@ -365,7 +363,7 @@ def _resolve_agents_to_start(config, args) -> list:
         agents = _resolve_auto(config)
 
     if not agents:
-        print("No agents configured", file=sys.stderr)
+        print(NO_AGENTS_MSG, file=sys.stderr)
         sys.exit(1)
     return agents
 
@@ -541,7 +539,7 @@ def _cmd_stop(args: argparse.Namespace) -> None:
         if len(config.agents) == 1:
             agents = config.agents
         elif len(config.agents) == 0:
-            print("No agents configured", file=sys.stderr)
+            print(NO_AGENTS_MSG, file=sys.stderr)
             sys.exit(1)
         else:
             print(
@@ -574,14 +572,14 @@ def _no_agents_message(config, show_all: bool) -> str:
         archived_count = sum(1 for a in config.agents if a.archived)
         if archived_count:
             return f"No active agents ({archived_count} archived, use --all to show)"
-    return "No agents configured"
+    return NO_AGENTS_MSG
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
 
     if not config.agents:
-        print("No agents configured")
+        print(NO_AGENTS_MSG)
         return
 
     if args.nick:
