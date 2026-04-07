@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.3.2] - 2026-04-07
+
+
+### Changed
+
+- Reduced cognitive complexity in 13 functions across 6 files by extracting helpers and flattening control flow (SonarCloud S3776)
+
 ## [4.3.1] - 2026-04-07
 
 

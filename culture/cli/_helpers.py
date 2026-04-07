@@ -381,6 +381,25 @@ def print_agent_detail(agent, config_path: str, args: argparse.Namespace) -> Non
     print(f"  Config:     {config_path}")
 
 
+def _format_agent_status(base_status: str, archived: bool, show_archived_marker: bool) -> str:
+    """Format the display status string for an agent."""
+    if not archived:
+        return base_status
+    if show_archived_marker:
+        return f"{base_status} (archived)"
+    if base_status == "stopped":
+        return "archived"
+    return base_status
+
+
+def _fetch_agent_activity(agent) -> str:
+    """Fetch activity description from a running agent via IPC."""
+    resp = asyncio.run(ipc_request(agent_socket_path(agent.nick), "status"))
+    if resp and resp.get("ok"):
+        return resp.get("data", {}).get("description", "nothing")
+    return "-"
+
+
 def print_agents_overview(
     agents: list, show_activity: bool, show_archived_marker: bool = False
 ) -> None:
@@ -393,44 +412,45 @@ def print_agents_overview(
         print("-" * 52)
 
     for agent in agents:
-        archived = getattr(agent, "archived", False)
         base_status, pid = agent_process_status(agent)
-        status = base_status
-        if archived:
-            if show_archived_marker:
-                status = f"{base_status} (archived)"
-            elif base_status == "stopped":
-                status = "archived"
-        activity = "-"
-
-        if show_activity and base_status == "running":
-            resp = asyncio.run(ipc_request(agent_socket_path(agent.nick), "status"))
-            if resp and resp.get("ok"):
-                activity = resp.get("data", {}).get("description", "nothing")
-
+        status = _format_agent_status(
+            base_status, getattr(agent, "archived", False), show_archived_marker
+        )
+        activity = (
+            _fetch_agent_activity(agent) if show_activity and base_status == "running" else "-"
+        )
         if show_activity:
             print(f"{agent.nick:<30} {status:<12} {str(pid or '-'):<10} {activity}")
         else:
             print(f"{agent.nick:<30} {status:<12} {str(pid or '-'):<10}")
 
 
-def print_bot_listing() -> None:
-    """Print a table of configured bots (if any exist)."""
+def _load_bot_configs() -> list:
+    """Load all valid bot configs from the bots directory."""
     from culture.bots.config import BOTS_DIR, load_bot_config
 
-    if BOTS_DIR.is_dir():
-        bot_configs = []
-        for bot_dir in sorted(BOTS_DIR.iterdir()):
-            yaml_path = bot_dir / "bot.yaml"
-            if yaml_path.is_file():
-                try:
-                    bot_configs.append(load_bot_config(yaml_path))
-                except Exception:
-                    pass
-        if bot_configs:
-            print()
-            print(f"{'BOT':<30} {'TRIGGER':<12} {'CHANNELS'}")
-            print("-" * 60)
-            for bc in bot_configs:
-                channels = ", ".join(bc.channels) if bc.channels else "-"
-                print(f"{bc.name:<30} {bc.trigger_type:<12} {channels}")
+    if not BOTS_DIR.is_dir():
+        return []
+    configs = []
+    for bot_dir in sorted(BOTS_DIR.iterdir()):
+        yaml_path = bot_dir / "bot.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            configs.append(load_bot_config(yaml_path))
+        except Exception:
+            pass
+    return configs
+
+
+def print_bot_listing() -> None:
+    """Print a table of configured bots (if any exist)."""
+    bot_configs = _load_bot_configs()
+    if not bot_configs:
+        return
+    print()
+    print(f"{'BOT':<30} {'TRIGGER':<12} {'CHANNELS'}")
+    print("-" * 60)
+    for bc in bot_configs:
+        channels = ", ".join(bc.channels) if bc.channels else "-"
+        print(f"{bc.name:<30} {bc.trigger_type:<12} {channels}")

@@ -315,52 +315,58 @@ def _cmd_join(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
+def _get_active_agents(config) -> list:
+    """Return non-archived agents."""
+    return [a for a in config.agents if not a.archived]
+
+
+def _resolve_by_nick(config, nick: str):
+    """Look up a single agent by nick, exit on error."""
+    agent = config.get_agent(nick)
+    if not agent:
+        print(f"Agent '{nick}' not found in config", file=sys.stderr)
+        sys.exit(1)
+    if agent.archived:
+        print(f"Agent '{nick}' is archived. Unarchive first:", file=sys.stderr)
+        print(f"  culture agent unarchive {nick}", file=sys.stderr)
+        sys.exit(1)
+    return agent
+
+
+def _resolve_auto(config) -> list:
+    """Auto-resolve agents when no nick or --all given, exit if ambiguous."""
+    active = _get_active_agents(config)
+    if len(active) == 1:
+        return active
+    if len(active) == 0:
+        archived_count = sum(1 for a in config.agents if a.archived)
+        if archived_count:
+            print(
+                f"No active agents ({archived_count} archived). "
+                "Unarchive an agent or create a new one.",
+                file=sys.stderr,
+            )
+        else:
+            print("No agents configured. Run 'culture agent create' first.", file=sys.stderr)
+        sys.exit(1)
+    print("Multiple agents configured. Specify a nick or use --all.", file=sys.stderr)
+    for a in active:
+        print(f"  {a.nick}", file=sys.stderr)
+    sys.exit(1)
+
+
 def _resolve_agents_to_start(config, args) -> list:
     """Return the list of agents to start, or exit with an error message."""
     if args.all:
-        # Skip archived agents when starting --all
-        agents = [a for a in config.agents if not a.archived]
+        agents = _get_active_agents(config)
     elif args.nick:
-        agent = config.get_agent(args.nick)
-        if not agent:
-            print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
-            sys.exit(1)
-        if agent.archived:
-            print(
-                f"Agent '{args.nick}' is archived. Unarchive first:",
-                file=sys.stderr,
-            )
-            print(f"  culture agent unarchive {args.nick}", file=sys.stderr)
-            sys.exit(1)
-        agents = [agent]
+        agents = [_resolve_by_nick(config, args.nick)]
     else:
-        active = [a for a in config.agents if not a.archived]
-        if len(active) == 1:
-            agents = active
-        elif len(active) == 0:
-            archived_count = sum(1 for a in config.agents if a.archived)
-            if archived_count:
-                print(
-                    f"No active agents ({archived_count} archived). "
-                    "Unarchive an agent or create a new one.",
-                    file=sys.stderr,
-                )
-            else:
-                print("No agents configured. Run 'culture agent create' first.", file=sys.stderr)
-            sys.exit(1)
-        else:
-            print(
-                "Multiple agents configured. Specify a nick or use --all.",
-                file=sys.stderr,
-            )
-            for a in active:
-                print(f"  {a.nick}", file=sys.stderr)
-            sys.exit(1)
+        agents = _resolve_auto(config)
 
     if not agents:
         print("No agents configured", file=sys.stderr)
         sys.exit(1)
-
     return agents
 
 
@@ -553,6 +559,24 @@ def _cmd_stop(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
+def _print_archived_info(agent) -> None:
+    """Print archive details for an agent."""
+    if not agent.archived:
+        return
+    print(f"\n  [archived since {agent.archived_at}]")
+    if agent.archived_reason:
+        print(f"  Reason: {agent.archived_reason}")
+
+
+def _no_agents_message(config, show_all: bool) -> str:
+    """Return appropriate message when no agents to display."""
+    if not show_all:
+        archived_count = sum(1 for a in config.agents if a.archived)
+        if archived_count:
+            return f"No active agents ({archived_count} archived, use --all to show)"
+    return "No agents configured"
+
+
 def _cmd_status(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
 
@@ -561,34 +585,19 @@ def _cmd_status(args: argparse.Namespace) -> None:
         return
 
     if args.nick:
-        agent = None
-        for a in config.agents:
-            if a.nick == args.nick:
-                agent = a
-                break
+        agent = config.get_agent(args.nick)
         if not agent:
             print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
             sys.exit(1)
-
         print_agent_detail(agent, args.config, args)
-        if agent.archived:
-            print(f"\n  [archived since {agent.archived_at}]")
-            if agent.archived_reason:
-                print(f"  Reason: {agent.archived_reason}")
+        _print_archived_info(agent)
         return
 
     show_all = getattr(args, "all", False)
-    if show_all:
-        agents = config.agents
-    else:
-        agents = [a for a in config.agents if not a.archived]
+    agents = config.agents if show_all else _get_active_agents(config)
 
-    if not agents and not show_all:
-        archived_count = sum(1 for a in config.agents if a.archived)
-        if archived_count:
-            print(f"No active agents ({archived_count} archived, use --all to show)")
-        else:
-            print("No agents configured")
+    if not agents:
+        print(_no_agents_message(config, show_all))
         return
 
     print_agents_overview(agents, args.full, show_archived_marker=show_all)
@@ -703,35 +712,39 @@ def _cmd_assign(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
-def _ipc_to_agents(args: argparse.Namespace, msg_type: str, action_verb: str) -> None:
-    """Send an IPC message (pause/resume) to one or all agents."""
-    config = load_config_or_default(args.config)
-
+def _resolve_ipc_targets(config, args, action_verb: str) -> list:
+    """Resolve which agents to send IPC messages to."""
     if args.nick and args.all:
         print("Cannot specify both nick and --all", file=sys.stderr)
         sys.exit(1)
-
     if not args.nick and not args.all:
         print(f"Usage: culture agent {action_verb} <nick> or --all", file=sys.stderr)
         sys.exit(1)
+    if args.all:
+        return config.agents
+    for a in config.agents:
+        if a.nick == args.nick:
+            return [a]
+    print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
+    sys.exit(1)
 
-    targets = config.agents if args.all else []
-    if args.nick:
-        for a in config.agents:
-            if a.nick == args.nick:
-                targets = [a]
-                break
-        else:
-            print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
-            sys.exit(1)
 
+def _send_ipc(agent, msg_type: str, action_verb: str) -> None:
+    """Send a single IPC message to an agent and print result."""
+    socket_path = agent_socket_path(agent.nick)
+    resp = asyncio.run(ipc_request(socket_path, msg_type))
+    if resp and resp.get("ok"):
+        print(f"{agent.nick}: {action_verb}")
+    else:
+        print(f"{agent.nick}: failed (not running?)", file=sys.stderr)
+
+
+def _ipc_to_agents(args: argparse.Namespace, msg_type: str, action_verb: str) -> None:
+    """Send an IPC message (pause/resume) to one or all agents."""
+    config = load_config_or_default(args.config)
+    targets = _resolve_ipc_targets(config, args, action_verb)
     for agent in targets:
-        socket_path = agent_socket_path(agent.nick)
-        resp = asyncio.run(ipc_request(socket_path, msg_type))
-        if resp and resp.get("ok"):
-            print(f"{agent.nick}: {action_verb}")
-        else:
-            print(f"{agent.nick}: failed (not running?)", file=sys.stderr)
+        _send_ipc(agent, msg_type, action_verb)
 
 
 def _cmd_sleep(args: argparse.Namespace) -> None:
@@ -748,38 +761,24 @@ def _cmd_learn(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
     cwd = os.getcwd()
 
-    agent = None
     if args.nick:
-        for a in config.agents:
-            if a.nick == args.nick:
-                agent = a
-                break
+        agent = config.get_agent(args.nick)
         if not agent:
             print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
             sys.exit(1)
     else:
-        for a in config.agents:
-            if os.path.realpath(a.directory) == os.path.realpath(cwd):
-                agent = a
-                break
+        cwd_real = os.path.realpath(cwd)
+        agent = next(
+            (a for a in config.agents if os.path.realpath(a.directory) == cwd_real),
+            None,
+        )
 
+    kwargs = {"server": config.server.name, "directory": cwd}
     if agent:
-        print(
-            generate_learn_prompt(
-                nick=agent.nick,
-                server=config.server.name,
-                directory=agent.directory,
-                backend=agent.agent,
-                channels=agent.channels,
-            )
+        kwargs.update(
+            nick=agent.nick, directory=agent.directory, backend=agent.agent, channels=agent.channels
         )
-    else:
-        print(
-            generate_learn_prompt(
-                server=config.server.name,
-                directory=cwd,
-            )
-        )
+    print(generate_learn_prompt(**kwargs))
 
 
 # -----------------------------------------------------------------------

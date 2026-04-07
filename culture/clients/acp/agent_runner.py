@@ -347,6 +347,39 @@ class ACPAgentRunner:
                 self._process.stdin.write(line.encode())
                 await self._process.stdin.drain()
 
+    async def _send_prompt_with_retry(self, text: str) -> dict:
+        """Send a session/prompt request, retrying once on TimeoutError."""
+        prompt_params = {
+            "sessionId": self._session_id,
+            "prompt": [{"type": "text", "text": text}],
+        }
+        try:
+            return await self._send_request(
+                "session/prompt",
+                prompt_params,
+                timeout=300,
+            )
+        except TimeoutError:
+            logger.warning(
+                "ACP prompt timed out, retrying once: %s",
+                text[:80],
+            )
+            return await self._send_request(
+                "session/prompt",
+                prompt_params,
+                timeout=300,
+            )
+
+    async def _handle_prompt_result(self, resp: dict) -> None:
+        """Process the prompt response and wait for the busy flag to clear."""
+        result = resp.get("result", {})
+        if "stopReason" in result:
+            await self._flush_accumulated_text()
+            self._busy = False
+
+        while self._busy and self._running:
+            await asyncio.sleep(0.1)
+
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""
         try:
@@ -357,35 +390,8 @@ class ACPAgentRunner:
 
                 try:
                     self._busy = True
-                    prompt_params = {
-                        "sessionId": self._session_id,
-                        "prompt": [{"type": "text", "text": text}],
-                    }
-                    try:
-                        resp = await self._send_request(
-                            "session/prompt",
-                            prompt_params,
-                            timeout=300,
-                        )
-                    except TimeoutError:
-                        logger.warning(
-                            "ACP prompt timed out, retrying once: %s",
-                            text[:80],
-                        )
-                        resp = await self._send_request(
-                            "session/prompt",
-                            prompt_params,
-                            timeout=300,
-                        )
-
-                    result = resp.get("result", {})
-                    if "stopReason" in result:
-                        await self._flush_accumulated_text()
-                        self._busy = False
-
-                    while self._busy and self._running:
-                        await asyncio.sleep(0.1)
-
+                    resp = await self._send_prompt_with_retry(text)
+                    await self._handle_prompt_result(resp)
                 except Exception:
                     logger.exception("ACP turn error")
                     if self.on_turn_error:

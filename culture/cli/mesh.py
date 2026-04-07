@@ -408,6 +408,30 @@ def _cmd_setup(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
+def _find_upgrade_tool() -> tuple[str, list[str]] | None:
+    """Return (tool_name, command_args) for the first available upgrade tool, or None."""
+    uv = shutil.which("uv")
+    if uv:
+        return "uv", [uv, "tool", "upgrade", "culture"]
+
+    pip = shutil.which("pip") or shutil.which("pip3")
+    if pip:
+        return "pip", [pip, "install", "--upgrade", "culture"]
+
+    return None
+
+
+def _run_upgrade(tool_name: str, cmd: list[str]) -> None:
+    """Run the upgrade subprocess and exit on failure."""
+    print(f"Upgrading via {tool_name}...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if tool_name == "uv":
+        print(result.stdout.strip() if result.stdout else "")
+    if result.returncode != 0:
+        print(f"{tool_name} upgrade failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+
 def _upgrade_culture_package(args: argparse.Namespace) -> bool:
     """Upgrade the culture package via uv or pip, then re-exec with --skip-upgrade."""
     if args.skip_upgrade:
@@ -418,33 +442,12 @@ def _upgrade_culture_package(args: argparse.Namespace) -> bool:
         print("[dry-run] Would re-exec with --skip-upgrade")
         return False
 
-    uv = shutil.which("uv")
-    if uv:
-        print("Upgrading via uv...")
-        result = subprocess.run(
-            [uv, "tool", "upgrade", "culture"],
-            capture_output=True,
-            text=True,
-        )
-        print(result.stdout.strip() if result.stdout else "")
-        if result.returncode != 0:
-            print(f"uv upgrade failed: {result.stderr}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        pip = shutil.which("pip") or shutil.which("pip3")
-        if pip:
-            print("Upgrading via pip...")
-            result = subprocess.run(
-                [pip, "install", "--upgrade", "culture"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                print(f"pip upgrade failed: {result.stderr}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            print("Neither uv nor pip found", file=sys.stderr)
-            sys.exit(1)
+    tool = _find_upgrade_tool()
+    if tool is None:
+        print("Neither uv nor pip found", file=sys.stderr)
+        sys.exit(1)
+
+    _run_upgrade(*tool)
 
     culture_bin = shutil.which("culture") or "culture"
     reexec_args = [culture_bin, "mesh", "update", "--skip-upgrade", "--config", args.config]
@@ -453,6 +456,18 @@ def _upgrade_culture_package(args: argparse.Namespace) -> bool:
         sys.exit(subprocess.run(reexec_args).returncode)
     else:
         os.execvp(culture_bin, reexec_args)
+
+
+def _wait_for_server_port(port: int, retries: int = 50, interval: float = 0.1) -> None:
+    """Poll until *port* accepts a TCP connection."""
+    import socket as _socket
+
+    for _ in range(retries):
+        try:
+            with _socket.create_connection(("localhost", port), timeout=1):
+                return
+        except (ConnectionRefusedError, OSError):
+            time.sleep(interval)
 
 
 def _restart_mesh_services(
@@ -479,7 +494,7 @@ def _restart_mesh_services(
     print(f"  Stopping server {server_name}...")
     server_stop_by_name(server_name)
 
-    from culture.persistence import install_service
+    from culture.persistence import install_service, restart_service
 
     server_cmd = build_server_start_cmd(mesh, culture_bin, config_path)
     install_service(f"culture-server-{server_name}", server_cmd, f"culture server {server_name}")
@@ -498,8 +513,6 @@ def _restart_mesh_services(
             agent_config_path,
         ]
         install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture agent {full_nick}")
-
-    from culture.persistence import restart_service
 
     server_svc = f"culture-server-{server_name}"
     print(f"  Restarting {server_svc}...")
@@ -528,14 +541,7 @@ def _restart_mesh_services(
                 check=False,
             )
 
-    import socket as _socket
-
-    for _ in range(50):
-        try:
-            with _socket.create_connection(("localhost", mesh.server.port), timeout=1):
-                break
-        except (ConnectionRefusedError, OSError):
-            time.sleep(0.1)
+    _wait_for_server_port(mesh.server.port)
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"

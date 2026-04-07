@@ -209,6 +209,49 @@ def _wait_for_port(
     return False, "started but not yet accepting connections"
 
 
+def _maybe_set_default_server(name: str) -> None:
+    """Set this server as default if none is configured."""
+    from culture.pidfile import read_default_server, write_default_server
+
+    if read_default_server() is None:
+        write_default_server(name)
+
+
+def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> None:
+    """Run the server in the foreground (blocking)."""
+    write_pid(pid_name, os.getpid())
+    os.makedirs(LOG_DIR, exist_ok=True)
+    print(f"Server '{args.name}' starting in foreground (PID {os.getpid()})")
+    print(f"  Listening on {args.host}:{args.port}")
+    print(f"  Webhook port: {args.webhook_port}")
+    _maybe_set_default_server(args.name)
+    try:
+        asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
+    finally:
+        remove_pid(pid_name)
+
+
+def _verify_daemon_started(args: argparse.Namespace, pid: int) -> None:
+    """Wait for the daemon child to be ready, exit on failure."""
+    log_hint = f"{LOG_DIR}/server-{args.name}.log"
+    if args.port == 0:
+        time.sleep(0.5)
+        if not is_process_alive(pid):
+            print(f"Server '{args.name}' failed to start", file=sys.stderr)
+            print(f"  Check logs: {log_hint}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        ok, err = _wait_for_port(args.host, args.port, pid, timeout=30)
+        if not ok:
+            print(f"Server '{args.name}' {err}", file=sys.stderr)
+            print(f"  Check logs: {log_hint}", file=sys.stderr)
+            sys.exit(1)
+    print(f"Server '{args.name}' started (PID {pid})")
+    print(f"  Listening on {args.host}:{args.port}")
+    print(f"  Logs: {log_hint}")
+    _maybe_set_default_server(args.name)
+
+
 def _server_start(args: argparse.Namespace) -> None:
     # Check if server is archived
     from culture.clients.claude.config import load_config_or_default
@@ -235,19 +278,7 @@ def _server_start(args: argparse.Namespace) -> None:
         links = resolve_links_from_mesh(args.mesh_config)
 
     if getattr(args, "foreground", False):
-        write_pid(pid_name, os.getpid())
-        os.makedirs(LOG_DIR, exist_ok=True)
-        print(f"Server '{args.name}' starting in foreground (PID {os.getpid()})")
-        print(f"  Listening on {args.host}:{args.port}")
-        print(f"  Webhook port: {args.webhook_port}")
-        from culture.pidfile import read_default_server, write_default_server
-
-        if read_default_server() is None:
-            write_default_server(args.name)
-        try:
-            asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
-        finally:
-            remove_pid(pid_name)
+        _run_foreground(args, pid_name, links)
         return
 
     if sys.platform == "win32":
@@ -256,31 +287,7 @@ def _server_start(args: argparse.Namespace) -> None:
 
     pid = os.fork()
     if pid > 0:
-        log_hint = f"{LOG_DIR}/server-{args.name}.log"
-
-        if args.port == 0:
-            time.sleep(0.5)
-            if not is_process_alive(pid):
-                print(f"Server '{args.name}' failed to start", file=sys.stderr)
-                print(f"  Check logs: {log_hint}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            ok, err = _wait_for_port(args.host, args.port, pid, timeout=30)
-            if not ok:
-                print(
-                    f"Server '{args.name}' {err}",
-                    file=sys.stderr,
-                )
-                print(f"  Check logs: {log_hint}", file=sys.stderr)
-                sys.exit(1)
-
-        print(f"Server '{args.name}' started (PID {pid})")
-        print(f"  Listening on {args.host}:{args.port}")
-        print(f"  Logs: {log_hint}")
-        from culture.pidfile import read_default_server, write_default_server
-
-        if read_default_server() is None:
-            write_default_server(args.name)
+        _verify_daemon_started(args, pid)
         return
 
     # Child: detach from parent session
@@ -411,23 +418,61 @@ def _server_status(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
+def _validate_config_name(config, name: str) -> str:
+    """Verify config server name matches the requested name, exit on mismatch."""
+    server_name = config.server.name
+    if server_name != name:
+        print(
+            f"Server name mismatch: --name '{name}' but config has '{server_name}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return server_name
+
+
+def _set_bots_archive_state(agent_nicks: set, *, archive: bool, reason: str = "") -> list[str]:
+    """Archive or unarchive bots owned by any of the given agent nicks."""
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+
+    changed = []
+    if not BOTS_DIR.is_dir():
+        return changed
+    today = time.strftime("%Y-%m-%d")
+    for bot_dir in BOTS_DIR.iterdir():
+        yaml_path = bot_dir / "bot.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            bot_config = load_bot_config(yaml_path)
+        except (OSError, ValueError) as exc:
+            print(f"  Warning: skipping bot '{bot_dir.name}': {exc}", file=sys.stderr)
+            continue
+        if bot_config.owner not in agent_nicks:
+            continue
+        if archive and not bot_config.archived:
+            bot_config.archived = True
+            bot_config.archived_at = today
+            bot_config.archived_reason = reason
+            save_bot_config(yaml_path, bot_config)
+            changed.append(bot_config.name)
+        elif not archive and bot_config.archived:
+            bot_config.archived = False
+            bot_config.archived_at = ""
+            bot_config.archived_reason = ""
+            save_bot_config(yaml_path, bot_config)
+            changed.append(bot_config.name)
+    return changed
+
+
 def _server_archive(args: argparse.Namespace) -> None:
     """Archive the server and cascade to all agents and bots."""
-    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
     from culture.clients.claude.config import (
         archive_server,
         load_config_or_default,
     )
 
     config = load_config_or_default(args.config)
-    server_name = config.server.name
-
-    if server_name != args.name:
-        print(
-            f"Server name mismatch: --name '{args.name}' but config has '{server_name}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    server_name = _validate_config_name(config, args.name)
 
     if config.server.archived:
         print(f"Server '{server_name}' is already archived")
@@ -452,27 +497,8 @@ def _server_archive(args: argparse.Namespace) -> None:
     archived_nicks = archive_server(args.config, reason=args.reason)
 
     # Archive bots whose owner matches any agent on this server
-    import time as _time
-
-    today = _time.strftime("%Y-%m-%d")
     agent_nicks = {a.nick for a in config.agents}
-    archived_bots = []
-    if BOTS_DIR.is_dir():
-        for bot_dir in BOTS_DIR.iterdir():
-            yaml_path = bot_dir / "bot.yaml"
-            if not yaml_path.is_file():
-                continue
-            try:
-                bot_config = load_bot_config(yaml_path)
-                if bot_config.owner in agent_nicks and not bot_config.archived:
-                    bot_config.archived = True
-                    bot_config.archived_at = today
-                    bot_config.archived_reason = args.reason
-                    save_bot_config(yaml_path, bot_config)
-                    archived_bots.append(bot_config.name)
-            except (OSError, ValueError) as exc:
-                print(f"  Warning: skipping bot '{bot_dir.name}': {exc}", file=sys.stderr)
-                continue
+    archived_bots = _set_bots_archive_state(agent_nicks, archive=True, reason=args.reason)
 
     print(f"Server archived: {server_name}")
     if args.reason:
@@ -486,21 +512,13 @@ def _server_archive(args: argparse.Namespace) -> None:
 
 def _server_unarchive(args: argparse.Namespace) -> None:
     """Restore an archived server and cascade to agents and bots."""
-    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
     from culture.clients.claude.config import (
         load_config_or_default,
         unarchive_server,
     )
 
     config = load_config_or_default(args.config)
-    server_name = config.server.name
-
-    if server_name != args.name:
-        print(
-            f"Server name mismatch: --name '{args.name}' but config has '{server_name}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    server_name = _validate_config_name(config, args.name)
 
     if not config.server.archived:
         print(f"Server '{server_name}' is not archived", file=sys.stderr)
@@ -511,23 +529,7 @@ def _server_unarchive(args: argparse.Namespace) -> None:
 
     # Unarchive bots whose owner matches any agent on this server
     agent_nicks = {a.nick for a in config.agents}
-    unarchived_bots = []
-    if BOTS_DIR.is_dir():
-        for bot_dir in BOTS_DIR.iterdir():
-            yaml_path = bot_dir / "bot.yaml"
-            if not yaml_path.is_file():
-                continue
-            try:
-                bot_config = load_bot_config(yaml_path)
-                if bot_config.owner in agent_nicks and bot_config.archived:
-                    bot_config.archived = False
-                    bot_config.archived_at = ""
-                    bot_config.archived_reason = ""
-                    save_bot_config(yaml_path, bot_config)
-                    unarchived_bots.append(bot_config.name)
-            except (OSError, ValueError) as exc:
-                print(f"  Warning: skipping bot '{bot_dir.name}': {exc}", file=sys.stderr)
-                continue
+    unarchived_bots = _set_bots_archive_state(agent_nicks, archive=False)
 
     print(f"Server unarchived: {server_name}")
     if unarchived_nicks:

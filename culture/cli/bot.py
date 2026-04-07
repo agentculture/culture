@@ -152,13 +152,12 @@ def _bot_stop(args: argparse.Namespace) -> None:
     print("(Live reload via IPC will be available in a future release.)")
 
 
-def _bot_list(args: argparse.Namespace) -> None:
+def _load_and_filter_bots(args) -> list:
+    """Load bot configs, filtering by owner and archived status."""
     from culture.bots.config import BOTS_DIR, load_bot_config
 
     if not BOTS_DIR.is_dir():
-        print("No bots configured.")
-        return
-
+        return []
     show_all = getattr(args, "all", False)
     bots = []
     for bot_dir in sorted(BOTS_DIR.iterdir()):
@@ -167,14 +166,24 @@ def _bot_list(args: argparse.Namespace) -> None:
             continue
         try:
             config = load_bot_config(yaml_path)
-            if args.owner and config.owner != args.owner:
-                continue
-            if not show_all and config.archived:
-                continue
-            bots.append(config)
         except Exception:
             continue
+        if args.owner and config.owner != args.owner:
+            continue
+        if not show_all and config.archived:
+            continue
+        bots.append(config)
+    return bots
 
+
+def _bot_list(args: argparse.Namespace) -> None:
+    from culture.bots.config import BOTS_DIR
+
+    if not BOTS_DIR.is_dir():
+        print("No bots configured.")
+        return
+
+    bots = _load_and_filter_bots(args)
     if not bots:
         if args.owner:
             print(f"No bots found for owner '{args.owner}'.")
@@ -182,12 +191,11 @@ def _bot_list(args: argparse.Namespace) -> None:
             print("No bots configured.")
         return
 
+    show_all = getattr(args, "all", False)
     print(f"{'NAME':<35} {'TRIGGER':<10} {'CHANNELS':<20} {'OWNER':<20}")
     for config in bots:
         channels = ", ".join(config.channels) if config.channels else "-"
-        name = config.name
-        if show_all and config.archived:
-            name = f"{name} [archived]"
+        name = f"{config.name} [archived]" if show_all and config.archived else config.name
         print(f"{name:<35} {config.trigger_type:<10} {channels:<20} {config.owner:<20}")
 
 
