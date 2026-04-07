@@ -324,7 +324,7 @@ def _generate_agent_configs(mesh, server_name: str) -> None:
                     nick=full_nick,
                     agent=a.type,
                     directory=workdir,
-                    channels=list(a.channels),
+                    channels=a.channels,
                 )
             )
 

@@ -86,7 +86,7 @@ class BotManager:
 
     def list_bots(self, owner: str | None = None) -> list[Bot]:
         """List bots, optionally filtered by owner."""
-        bots = list(self.bots.values())
+        bots = self.bots.values()
         if owner:
             bots = [b for b in bots if b.config.owner == owner]
         return sorted(bots, key=lambda b: b.name)

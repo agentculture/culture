@@ -448,10 +448,10 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
                 agent="acp",
                 acp_command=getattr(agent, "acp_command", None) or ["opencode", "acp"],
                 directory=agent.directory,
-                channels=list(agent.channels),
+                channels=agent.channels,
                 model=agent.model,
                 system_prompt=agent.system_prompt,
-                tags=list(agent.tags),
+                tags=agent.tags,
             )
         else:
             acp_agent = agent

@@ -230,7 +230,7 @@ def _server_start(args: argparse.Namespace) -> None:
         print(f"Server '{args.name}' is already running (PID {existing})")
         sys.exit(1)
 
-    links = list(args.link)
+    links = args.link
     if getattr(args, "mesh_config", None):
         links = resolve_links_from_mesh(args.mesh_config)
 

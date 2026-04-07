@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.3.1] - 2026-04-07
+
+
+### Fixed
+
+- Remove unnecessary list() wrapping on already-iterable values (SonarCloud S7504/S7494)
+
 ## [4.3.0] - 2026-04-07
 
 

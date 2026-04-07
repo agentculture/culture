@@ -199,7 +199,7 @@ class ConsoleIRCClient:
         finally:
             self._pending.pop("323", None)
 
-        channels = list(self._collect_buffers.pop(key, []))
+        channels = self._collect_buffers.pop(key, [])
         return sorted(channels)
 
     async def who(self, target: str) -> list[dict]:
@@ -221,7 +221,7 @@ class ConsoleIRCClient:
         finally:
             self._pending.pop(f"315:{target}", None)
 
-        entries = list(self._collect_buffers.pop(key, []))
+        entries = self._collect_buffers.pop(key, [])
         return entries
 
     async def history(self, channel: str, limit: int = 50) -> list[dict]:
@@ -243,7 +243,7 @@ class ConsoleIRCClient:
         finally:
             self._pending.pop(f"HISTORYEND:{channel}", None)
 
-        entries = list(self._collect_buffers.pop(key, []))
+        entries = self._collect_buffers.pop(key, [])
         return entries
 
     # ------------------------------------------------------------------
