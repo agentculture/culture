@@ -138,10 +138,8 @@ class ACPAgentRunner:
                 error = resp.get("error", {})
                 error_msg = error.get("message", "unknown error")
                 if auth_methods:
-                    error_msg += f". Auth may be required: " f"{', '.join(descriptions)}"
-                raise RuntimeError(
-                    f"ACP agent ({cmd_label}) session creation failed: " f"{error_msg}"
-                )
+                    error_msg += f". Auth may be required: {', '.join(descriptions)}"
+                raise RuntimeError(f"ACP agent ({cmd_label}) session creation failed: {error_msg}")
             self._running = True
             logger.info("ACP session started (%s): %s", cmd_label, self._session_id)
 

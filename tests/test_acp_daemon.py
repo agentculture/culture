@@ -223,7 +223,7 @@ async def test_acp_runner_auth_session_failure_raises():
         "error": {"code": -1, "message": "authentication required"},
     }
 
-    async def fake_send_request(method, params=None, timeout=None):
+    async def fake_send_request(method, params=None, **kwargs):
         if method == "initialize":
             return init_response
         if method == "session/new":

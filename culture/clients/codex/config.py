@@ -220,7 +220,7 @@ def rename_server(
     """
     raw = _load_raw_yaml(path)
     server = raw.get("server", {})
-    old_name = server.get("name", "")
+    old_name = server.get("name", ServerConnConfig().name)
 
     if old_name == new_name:
         return old_name, []
