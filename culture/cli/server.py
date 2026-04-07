@@ -74,6 +74,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run in foreground (for service managers)",
     )
+    srv_start.add_argument(
+        "--data-dir",
+        default=os.path.expanduser("~/.culture/data"),
+        help="Data directory for persistent storage (default: ~/.culture/data)",
+    )
 
     srv_stop = server_sub.add_parser("stop", help="Stop the IRC server daemon")
     srv_stop.add_argument("--name", default=None, help=_SERVER_NAME_HELP)
@@ -279,7 +284,9 @@ def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> Non
     print(f"  Webhook port: {args.webhook_port}")
     _maybe_set_default_server(args.name)
     try:
-        asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
+        asyncio.run(
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+        )
     finally:
         remove_pid(pid_name)
 
@@ -369,7 +376,9 @@ def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> N
     write_pid(pid_name, os.getpid())
 
     try:
-        asyncio.run(_run_server(args.name, args.host, args.port, links, args.webhook_port))
+        asyncio.run(
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+        )
     finally:
         remove_pid(pid_name)
         os._exit(0)
@@ -391,14 +400,24 @@ def _server_start(args: argparse.Namespace) -> None:
 
 
 async def _run_server(
-    name: str, host: str, port: int, links: list | None = None, webhook_port: int = 7680
+    name: str,
+    host: str,
+    port: int,
+    links: list | None = None,
+    webhook_port: int = 7680,
+    data_dir: str = "",
 ) -> None:
     """Run the IRC server (called in the daemon child process)."""
     from culture.server.config import ServerConfig
     from culture.server.ircd import IRCd
 
     config = ServerConfig(
-        name=name, host=host, port=port, webhook_port=webhook_port, links=links or []
+        name=name,
+        host=host,
+        port=port,
+        webhook_port=webhook_port,
+        links=links or [],
+        data_dir=data_dir,
     )
     ircd = IRCd(config)
     await ircd.start()

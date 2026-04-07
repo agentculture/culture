@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.4.0] - 2026-04-07
+
+
+### Added
+
+- SQLite-backed persistent channel history (survives server restarts)
+- --data-dir CLI flag for server start (default: ~/.culture/data)
+
+
+### Fixed
+
+- Multi-line messages truncated to first line in send_privmsg and thread methods
+- data_dir never wired to ServerConfig, silently disabling room/thread persistence
+
 ## [4.3.7] - 2026-04-07
 
 

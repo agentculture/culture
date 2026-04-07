@@ -107,6 +107,11 @@ An empty result set returns only the HISTORYEND line.
 
 - History is stored in memory with a configurable maximum per channel
   (default: 10,000 entries per channel)
-- History does not persist across server restarts
+- When `data_dir` is configured (default: `~/.culture/data/`), history is
+  persisted to SQLite and survives server restarts
+- Entries older than 30 days (configurable via `retention_days`) are
+  automatically pruned on startup
+- The in-memory buffer remains the primary read cache; SQLite provides
+  durability
 - Both PRIVMSG and NOTICE to channels are recorded
 - Direct messages are never recorded

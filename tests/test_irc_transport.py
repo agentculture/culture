@@ -167,3 +167,58 @@ async def test_reconnect_retries_after_connection_error(server):
     assert call_count >= 2
     assert transport.connected or not transport._reconnecting
     await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_multiline_privmsg_splits_into_separate_messages(server, make_client):
+    """Multi-line text should be split into separate PRIVMSG lines."""
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    await transport.connect()
+    await asyncio.sleep(0.3)
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.send("JOIN #general")
+    await human.recv_all(timeout=0.3)
+
+    await transport.send_privmsg("#general", "line one\nline two\nline three")
+    lines = await human.recv_all(timeout=2.0)
+    privmsgs = [l for l in lines if "PRIVMSG" in l]
+    assert len(privmsgs) == 3
+    assert "line one" in privmsgs[0]
+    assert "line two" in privmsgs[1]
+    assert "line three" in privmsgs[2]
+    await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_multiline_privmsg_skips_empty_lines(server, make_client):
+    """Empty lines in multi-line text should be skipped."""
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    await transport.connect()
+    await asyncio.sleep(0.3)
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.send("JOIN #general")
+    await human.recv_all(timeout=0.3)
+
+    await transport.send_privmsg("#general", "first\n\n\nsecond")
+    lines = await human.recv_all(timeout=2.0)
+    privmsgs = [l for l in lines if "PRIVMSG" in l]
+    assert len(privmsgs) == 2
+    assert "first" in privmsgs[0]
+    assert "second" in privmsgs[1]
+    await transport.disconnect()
