@@ -85,6 +85,17 @@ class CodexSupervisor:
         if self._turn_count % self.eval_interval == 0:
             await self._evaluate()
 
+    @staticmethod
+    async def _kill_process(proc: asyncio.subprocess.Process | None) -> None:
+        """Terminate a subprocess safely, ignoring races."""
+        if proc is None:
+            return
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            return
+        await proc.wait()
+
     async def _run_supervisor_process(self, prompt: str) -> SupervisorVerdict | None:
         """Run codex exec and return the parsed verdict, or None on failure."""
         isolated_home = tempfile.mkdtemp(prefix="culture-codex-sv-")
@@ -113,21 +124,12 @@ class CodexSupervisor:
             return SupervisorVerdict.parse(stdout.decode())
         except asyncio.TimeoutError:
             logger.warning("Codex supervisor timed out, killing process")
-            if proc:
-                try:
-                    proc.kill()
-                except ProcessLookupError:
-                    pass
-                await proc.wait()
+            await self._kill_process(proc)
             return None
         except Exception:
             logger.exception("Codex supervisor evaluation failed")
             if proc and proc.returncode is None:
-                try:
-                    proc.kill()
-                except ProcessLookupError:
-                    pass
-                await proc.wait()
+                await self._kill_process(proc)
             return None
         finally:
             shutil.rmtree(isolated_home, ignore_errors=True)

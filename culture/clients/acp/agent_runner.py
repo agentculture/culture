@@ -138,38 +138,43 @@ class ACPAgentRunner:
             await self.stop()
             raise
 
+    async def _cancel_task(self, task: asyncio.Task | None) -> None:
+        """Cancel a task and await its completion."""
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    async def _terminate_process(self) -> None:
+        """Terminate the subprocess, escalating to kill on timeout."""
+        if not self._process:
+            return
+        try:
+            self._process.terminate()
+            await asyncio.wait_for(self._process.wait(), timeout=5)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            try:
+                self._process.kill()
+            except ProcessLookupError:
+                pass
+
+    def _fail_pending_requests(self, reason: str) -> None:
+        """Fail all pending futures with a ConnectionError and clear them."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(ConnectionError(reason))
+        self._pending.clear()
+
     async def stop(self) -> None:
         """Stop the ACP agent process."""
         self._stopping = True
         self._running = False
 
-        if self._task:
-            self._task.cancel()
-            await asyncio.gather(self._task, return_exceptions=True)
-
-        if self._reader_task:
-            self._reader_task.cancel()
-            await asyncio.gather(self._reader_task, return_exceptions=True)
-
-        if self._stderr_task:
-            self._stderr_task.cancel()
-            await asyncio.gather(self._stderr_task, return_exceptions=True)
-
-        if self._process:
-            try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except (asyncio.TimeoutError, ProcessLookupError):
-                try:
-                    self._process.kill()
-                except ProcessLookupError:
-                    pass
-
-        # Fail any pending requests
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(ConnectionError("Runner stopped"))
-        self._pending.clear()
+        await self._cancel_task(self._task)
+        await self._cancel_task(self._reader_task)
+        await self._cancel_task(self._stderr_task)
+        await self._terminate_process()
+        self._fail_pending_requests("Runner stopped")
 
         if self._isolated_home:
             shutil.rmtree(self._isolated_home, ignore_errors=True)
@@ -234,24 +239,23 @@ class ACPAgentRunner:
             return True
         return False
 
+    async def _await_process_exit(self) -> int:
+        """Wait for the process to exit, killing if it takes too long."""
+        if not self._process:
+            return -1
+        try:
+            return await asyncio.wait_for(self._process.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            try:
+                self._process.kill()
+            except ProcessLookupError:
+                pass
+            return -1
+
     async def _cleanup_process(self) -> None:
         """Wait for process exit, fail pending futures, cancel companion tasks, fire on_exit."""
-        returncode = -1
-        if self._process:
-            try:
-                returncode = await asyncio.wait_for(self._process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                try:
-                    self._process.kill()
-                except ProcessLookupError:
-                    pass
-
-        # Fail any still-pending requests
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(ConnectionError("Process exited"))
-        self._pending.clear()
-
+        returncode = await self._await_process_exit()
+        self._fail_pending_requests("Process exited")
         self._running = False
 
         # Cancel companion tasks so they don't outlive the process
@@ -262,24 +266,27 @@ class ACPAgentRunner:
         if not self._stopping and self.on_exit:
             await self.on_exit(returncode)
 
+    async def _process_stdout_lines(self) -> None:
+        """Read and dispatch JSON-RPC messages from stdout until EOF."""
+        assert self._process and self._process.stdout
+        while True:
+            line = await self._process.stdout.readline()
+            if not line:
+                break
+            try:
+                msg = json.loads(line.decode())
+            except json.JSONDecodeError:
+                continue
+
+            if not self._dispatch_jsonrpc_message(msg) and "method" in msg:
+                await self._handle_notification(msg)
+
     async def _read_loop(self) -> None:
         """Read JSON-RPC messages from stdout."""
         if not self._process or not self._process.stdout:
             return
         try:
-            while True:
-                line = await self._process.stdout.readline()
-                if not line:
-                    break
-                try:
-                    msg = json.loads(line.decode())
-                except json.JSONDecodeError:
-                    continue
-
-                if not self._dispatch_jsonrpc_message(msg):
-                    if "method" in msg:
-                        await self._handle_notification(msg)
-
+            await self._process_stdout_lines()
         except asyncio.CancelledError:
             raise
         except ConnectionError:
@@ -390,6 +397,19 @@ class ACPAgentRunner:
         while self._busy and self._running:
             await asyncio.sleep(0.1)
 
+    async def _execute_single_prompt(self, text: str) -> None:
+        """Send one prompt and handle its result, managing the busy flag."""
+        try:
+            self._busy = True
+            resp = await self._send_prompt_with_retry(text)
+            await self._handle_prompt_result(resp)
+        except Exception:
+            logger.exception("ACP turn error")
+            if self.on_turn_error:
+                await maybe_await(self.on_turn_error())
+        finally:
+            self._busy = False
+
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""
         try:
@@ -397,17 +417,6 @@ class ACPAgentRunner:
                 text = await self._prompt_queue.get()
                 if not self._running or not self._session_id:
                     break
-
-                try:
-                    self._busy = True
-                    resp = await self._send_prompt_with_retry(text)
-                    await self._handle_prompt_result(resp)
-                except Exception:
-                    logger.exception("ACP turn error")
-                    if self.on_turn_error:
-                        await maybe_await(self.on_turn_error())
-                finally:
-                    self._busy = False
-
+                await self._execute_single_prompt(text)
         except asyncio.CancelledError:
             raise

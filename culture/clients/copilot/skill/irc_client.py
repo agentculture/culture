@@ -71,6 +71,13 @@ class SkillClient:
     # Background reader
     # ------------------------------------------------------------------
 
+    def _fail_pending(self, reason: str) -> None:
+        """Fail all pending futures with a ConnectionError and clear them."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(ConnectionError(reason))
+        self._pending.clear()
+
     async def _read_loop(self) -> None:
         """Read lines from the socket; route responses to waiting futures
         and whispers to pending_whispers."""
@@ -87,11 +94,7 @@ class SkillClient:
         except (asyncio.IncompleteReadError, ConnectionError, OSError):
             pass
         finally:
-            # Resolve any still-pending futures with an error
-            for future in self._pending.values():
-                if not future.done():
-                    future.set_exception(ConnectionError("Connection lost"))
-            self._pending.clear()
+            self._fail_pending("Connection lost")
 
     def _dispatch_message(self, msg: dict[str, Any]) -> None:
         """Route a decoded message to the appropriate handler."""

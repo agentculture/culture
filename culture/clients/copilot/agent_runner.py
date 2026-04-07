@@ -164,6 +164,18 @@ class CopilotAgentRunner:
             await self.on_exit(1)
         return True
 
+    async def _execute_single_turn(self, text: str) -> bool:
+        """Send one prompt and handle the response.
+
+        Returns True if the loop should exit due to a fatal error.
+        """
+        try:
+            response = await self._session.send_and_wait(text, timeout=120.0)
+            await self._handle_turn_response(response)
+        except Exception:
+            return await self._handle_turn_error()
+        return False
+
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time using send_and_wait."""
         try:
@@ -171,14 +183,8 @@ class CopilotAgentRunner:
                 text = await self._prompt_queue.get()
                 if not self._running or self._session is None:
                     break
-
-                try:
-                    response = await self._session.send_and_wait(text, timeout=120.0)
-                    await self._handle_turn_response(response)
-                except Exception:
-                    if await self._handle_turn_error():
-                        return
-
+                if await self._execute_single_turn(text):
+                    return
         except asyncio.CancelledError:
             raise
 
