@@ -108,8 +108,9 @@ async def test_on_exit_crash(monkeypatch):
         exit_codes.append(code)
 
     async def fake_query(*, prompt, options=None, transport=None):
+        if False:
+            yield  # make this an async generator
         raise RuntimeError("SDK error")
-        yield  # make it an async generator  # noqa: F841
 
     monkeypatch.setattr("culture.clients.claude.agent_runner.query", fake_query)
     monkeypatch.setattr("culture.clients.claude.agent_runner.ResultMessage", FakeResultMessage)

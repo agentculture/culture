@@ -40,7 +40,7 @@ async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
             msg = decode_message(data)
             if msg and msg.get("type") == "response":
                 return msg
-    except (asyncio.TimeoutError, OSError):
+    except OSError:
         return None
     finally:
         writer.close()
