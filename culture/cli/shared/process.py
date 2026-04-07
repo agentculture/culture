@@ -15,15 +15,12 @@ from culture.pidfile import (
     remove_pid,
 )
 
-from .ipc import ipc_shutdown
+from .ipc import agent_socket_path, ipc_shutdown
 
 
 def stop_agent(nick: str) -> None:
     """Stop a single agent by trying IPC shutdown first, then PID file."""
-    socket_path = os.path.join(
-        os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
-        f"culture-{nick}.sock",
-    )
+    socket_path = agent_socket_path(nick)
 
     if _try_ipc_shutdown(nick, socket_path):
         return

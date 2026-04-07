@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 
 from culture.pidfile import is_process_alive, read_pid, remove_pid
 
 from .constants import BOT_CONFIG_FILE
 from .ipc import agent_socket_path, ipc_request
+
+logger = logging.getLogger("culture")
 
 
 def agent_process_status(agent) -> tuple[str, int | None]:
@@ -110,8 +113,8 @@ def _load_bot_configs() -> list:
             continue
         try:
             configs.append(load_bot_config(yaml_path))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to load bot config %s: %s", yaml_path, exc)
     return configs
 
 

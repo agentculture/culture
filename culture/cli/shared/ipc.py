@@ -30,9 +30,10 @@ async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
         req = make_request(msg_type, **kwargs)
         writer.write(encode_message(req))
         await writer.drain()
-        deadline = asyncio.get_event_loop().time() + 3.0
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 3.0
         while True:
-            remaining = deadline - asyncio.get_event_loop().time()
+            remaining = deadline - loop.time()
             if remaining <= 0:
                 return None
             data = await asyncio.wait_for(reader.readline(), timeout=remaining)
