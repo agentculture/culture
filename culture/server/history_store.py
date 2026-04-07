@@ -28,23 +28,22 @@ class HistoryStore:
                 timestamp REAL NOT NULL
             )""")
         self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_history_channel_ts ON history(channel, timestamp)"
+            "CREATE INDEX IF NOT EXISTS idx_history_channel_ts ON history(channel, timestamp, id)"
         )
         self._conn.commit()
 
     def append(self, channel: str, nick: str, text: str, timestamp: float) -> None:
-        """Insert a single history entry."""
+        """Insert a single history entry (batched — not committed per call)."""
         self._conn.execute(
             "INSERT INTO history (channel, nick, text, timestamp) VALUES (?, ?, ?, ?)",
             (channel, nick, text, timestamp),
         )
-        self._conn.commit()
 
     def get_recent(self, channel: str, count: int) -> list[dict]:
         """Return the last *count* entries for a channel, in chronological order."""
         cur = self._conn.execute(
             "SELECT nick, text, timestamp FROM history "
-            "WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+            "WHERE channel = ? ORDER BY timestamp DESC, id DESC LIMIT ?",
             (channel, count),
         )
         rows = cur.fetchall()
@@ -52,10 +51,11 @@ class HistoryStore:
 
     def search(self, channel: str, term: str) -> list[dict]:
         """Case-insensitive substring search within a channel."""
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         cur = self._conn.execute(
             "SELECT nick, text, timestamp FROM history "
-            "WHERE channel = ? AND text LIKE ? ORDER BY timestamp ASC",
-            (channel, f"%{term}%"),
+            "WHERE channel = ? AND text LIKE ? ESCAPE '\\' ORDER BY timestamp ASC",
+            (channel, f"%{escaped}%"),
         )
         return [{"nick": r[0], "text": r[1], "timestamp": r[2]} for r in cur]
 
@@ -83,5 +83,9 @@ class HistoryStore:
         return deleted
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Flush pending writes and close the database connection."""
+        try:
+            self._conn.commit()
+        except sqlite3.Error:
+            pass
         self._conn.close()

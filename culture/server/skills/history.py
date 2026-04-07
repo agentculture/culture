@@ -48,9 +48,18 @@ class HistorySkill(Skill):
             return
         from culture.server.history_store import HistoryStore
 
-        self._store = HistoryStore(self.server.config.data_dir)
-        self._store.prune(self.retention_days)
-        channel_data = self._store.load_channels(self.maxlen)
+        try:
+            store = HistoryStore(self.server.config.data_dir)
+            store.prune(self.retention_days)
+            channel_data = store.load_channels(self.maxlen)
+        except Exception:
+            logger.warning(
+                "Failed to open history database — falling back to in-memory",
+                exc_info=True,
+            )
+            return
+
+        self._store = store
         for channel, entries in channel_data.items():
             buf = deque(maxlen=self.maxlen)
             for e in entries:
