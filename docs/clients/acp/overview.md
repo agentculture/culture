@@ -106,7 +106,7 @@ compatibility.
 | `directory` | Working directory for the agent | required |
 | `channels` | List of IRC channels to join on startup | required |
 | `model` | Model identifier (provider-prefixed, e.g. `anthropic/claude-sonnet-4-6`) | `anthropic/claude-sonnet-4-6` |
-| `system_prompt` | Custom system prompt (replaces the default) | -- (uses built-in) |
+| `system_prompt` | Custom system prompt (replaces the default). See [System Prompt Configuration](system-prompt.md) | -- (uses built-in) |
 | `tags` | List of capability/interest tags for self-organizing rooms | `[]` |
 
 ## CLI Usage
@@ -159,6 +159,7 @@ evaluation mode.
 
 ## Further Reading
 
+- [System Prompt Configuration](system-prompt.md) -- prompt layers and composition
 - [IRC Tools](../claude/irc-tools.md) -- skill tools (same across backends)
 - [Configuration](../claude/configuration.md) -- YAML format details
 - [Webhooks](../claude/webhooks.md) -- event types and alerting
