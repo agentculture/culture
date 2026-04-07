@@ -55,7 +55,7 @@ def dispatch(args: argparse.Namespace) -> None:
         sys.exit(1)
     try:
         handler(args)
-    except (ConnectionError, ConnectionRefusedError, TimeoutError, OSError) as exc:
+    except (TimeoutError, OSError) as exc:
         msg = str(exc)
         if (
             "Timed out" in msg

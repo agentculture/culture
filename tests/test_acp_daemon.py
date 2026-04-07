@@ -143,12 +143,6 @@ async def test_acp_relay_target_fifo(server, make_client):
     # Verify alice received the channel message in #general
     lines = await human.recv_all(timeout=1.0)
     channel_msgs = [l for l in lines if "#general" in l and "channel response" in l]
-    dm_msgs = [
-        l
-        for l in lines
-        if "dm response" in l and "testserv-alice" in l.split()[0].lower()
-        if "PRIVMSG" in l
-    ]
     assert len(channel_msgs) >= 1, f"Expected 'channel response' in #general, got: {lines}"
     # DM goes to testserv-alice directly, so alice sees it as a PRIVMSG to their nick
     assert any("dm response" in l for l in lines), f"Expected 'dm response', got: {lines}"

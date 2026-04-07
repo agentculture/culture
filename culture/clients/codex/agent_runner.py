@@ -128,7 +128,8 @@ class CodexAgentRunner:
             return
         try:
             self._process.terminate()
-            await asyncio.wait_for(self._process.wait(), timeout=5)
+            async with asyncio.timeout(5):
+                await self._process.wait()
         except (asyncio.TimeoutError, ProcessLookupError):
             try:
                 self._process.kill()
@@ -185,7 +186,8 @@ class CodexAgentRunner:
         await self._process.stdin.drain()
 
         try:
-            return await asyncio.wait_for(future, timeout=30)
+            async with asyncio.timeout(30):
+                return await future
         except (asyncio.TimeoutError, asyncio.CancelledError):
             self._pending.pop(req_id, None)
             if not future.done():
@@ -220,14 +222,16 @@ class CodexAgentRunner:
         if not self._process:
             return -1
         try:
-            return await asyncio.wait_for(self._process.wait(), timeout=5)
+            async with asyncio.timeout(5):
+                return await self._process.wait()
         except asyncio.TimeoutError:
             try:
                 self._process.kill()
             except ProcessLookupError:
                 pass
             try:
-                return await asyncio.wait_for(self._process.wait(), timeout=1)
+                async with asyncio.timeout(1):
+                    return await self._process.wait()
             except asyncio.TimeoutError:
                 return -1
 

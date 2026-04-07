@@ -28,6 +28,11 @@ from culture.clients.BACKEND.message_buffer import MessageBuffer
 from culture.clients.BACKEND.socket_server import SocketServer
 from culture.clients.BACKEND.webhook import AlertEvent, WebhookClient
 
+# IPC validation error messages
+_ERR_MISSING_CHANNEL = "Missing 'channel'"
+_ERR_MISSING_CHANNEL_THREAD = "Missing 'channel' or 'thread'"
+_ERR_MISSING_CHANNEL_THREAD_MSG = "Missing 'channel', 'thread', or 'message'"
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,7 +253,7 @@ class AgentDaemon:
                     prompt = (
                         f"[IRC Channel Poll: {channel}] Recent unread messages:\n"
                         f"{lines}\n\n"
-                        f"Respond naturally if any messages need your attention."
+                        "Respond naturally if any messages need your attention."
                     )
                     self._mention_targets.append(channel)
                     task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
@@ -424,9 +429,7 @@ class AgentDaemon:
         thread_name = msg.get("thread", "")
         text = msg.get("message", "")
         if not channel or not thread_name or not text:
-            return make_response(
-                req_id, ok=False, error="Missing 'channel', 'thread', or 'message'"
-            )
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD_MSG)
         if self._transport:
             await self._transport.send_thread_create(channel, thread_name, text)
         return make_response(req_id, ok=True)
@@ -436,9 +439,7 @@ class AgentDaemon:
         thread_name = msg.get("thread", "")
         text = msg.get("message", "")
         if not channel or not thread_name or not text:
-            return make_response(
-                req_id, ok=False, error="Missing 'channel', 'thread', or 'message'"
-            )
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD_MSG)
         if self._transport:
             await self._transport.send_thread_reply(channel, thread_name, text)
         return make_response(req_id, ok=True)
@@ -446,7 +447,7 @@ class AgentDaemon:
     async def _ipc_irc_threads(self, req_id: str, msg: dict) -> dict:
         channel = msg.get("channel", "")
         if not channel:
-            return make_response(req_id, ok=False, error="Missing 'channel'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
         if self._transport:
             await self._transport.send_threads_list(channel)
         return make_response(req_id, ok=True)
@@ -456,7 +457,7 @@ class AgentDaemon:
         thread_name = msg.get("thread", "")
         summary = msg.get("summary", "")
         if not channel or not thread_name:
-            return make_response(req_id, ok=False, error="Missing 'channel' or 'thread'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD)
         if self._transport:
             await self._transport.send_thread_close(channel, thread_name, summary)
         return make_response(req_id, ok=True)
@@ -466,7 +467,7 @@ class AgentDaemon:
         thread_name = msg.get("thread", "")
         limit = int(msg.get("limit", 50))
         if not channel or not thread_name:
-            return make_response(req_id, ok=False, error="Missing 'channel' or 'thread'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD)
         if self._buffer:
             messages = self._buffer.read_thread(channel, thread_name, limit=limit)
             return make_response(

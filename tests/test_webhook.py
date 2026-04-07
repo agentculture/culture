@@ -19,7 +19,7 @@ class WebhookCapture(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, *args):
-        pass
+        """Suppress HTTP server log output during tests."""
 
 
 @pytest.mark.asyncio

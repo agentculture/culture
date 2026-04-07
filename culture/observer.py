@@ -46,7 +46,7 @@ class IRCObserver:
 
         nick = self._temp_nick()
         writer.write(f"NICK {nick}\r\n".encode())
-        writer.write(f"USER _peek 0 * :culture observer\r\n".encode())
+        writer.write("USER _peek 0 * :culture observer\r\n".encode())
         await writer.drain()
 
         # Wait for RPL_WELCOME (001) to confirm registration
@@ -76,12 +76,12 @@ class IRCObserver:
         try:
             writer.write(b"QUIT :observer done\r\n")
             await writer.drain()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass
         writer.close()
         try:
             await writer.wait_closed()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass
 
     async def _recv_lines(

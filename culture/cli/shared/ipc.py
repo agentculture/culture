@@ -24,7 +24,7 @@ async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
             asyncio.open_unix_connection(socket_path),
             timeout=3.0,
         )
-    except (ConnectionRefusedError, FileNotFoundError, OSError):
+    except OSError:
         return None
     try:
         req = make_request(msg_type, **kwargs)
@@ -40,13 +40,13 @@ async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
             msg = decode_message(data)
             if msg and msg.get("type") == "response":
                 return msg
-    except (asyncio.TimeoutError, ConnectionError, BrokenPipeError, OSError):
+    except (asyncio.TimeoutError, OSError):
         return None
     finally:
         writer.close()
         try:
             await writer.wait_closed()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass
 
 

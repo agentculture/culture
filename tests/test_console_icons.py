@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -204,7 +203,7 @@ async def test_transport_sends_icon_on_welcome(backend):
     welcome_msg = Message.parse(f":spark 001 spark-{backend} :Welcome")
     await transport._on_welcome(welcome_msg)
 
-    assert f"ICON ★" in sent_lines
+    assert "ICON ★" in sent_lines
 
 
 @pytest.mark.asyncio

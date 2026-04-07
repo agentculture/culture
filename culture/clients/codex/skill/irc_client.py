@@ -56,7 +56,7 @@ class SkillClient:
             self._writer.close()
             try:
                 await self._writer.wait_closed()
-            except (ConnectionError, BrokenPipeError, OSError):
+            except OSError:
                 pass
             self._writer = None
         self._reader = None
@@ -84,7 +84,7 @@ class SkillClient:
                 if msg is None:
                     continue
                 self._dispatch_message(msg)
-        except (asyncio.IncompleteReadError, ConnectionError, OSError):
+        except (asyncio.IncompleteReadError, OSError):
             pass
         finally:
             # Resolve any still-pending futures with an error

@@ -42,10 +42,10 @@ class Skill:
         self.server = server
 
     async def stop(self) -> None:
-        pass
+        """Stop the skill. Subclasses override to release resources."""
 
     async def on_event(self, event: Event) -> None:
-        pass
+        """Handle an IRC event. Subclasses override to react to events."""
 
     async def on_command(self, client: Client, msg: Message) -> None:
-        pass
+        """Handle an IRC command. Subclasses override to process commands."""

@@ -60,7 +60,7 @@ class IRCTransport:
     async def _do_connect(self) -> None:
         try:
             self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
-        except (ConnectionRefusedError, OSError) as exc:
+        except OSError as exc:
             raise ConnectionError(
                 f"Cannot connect to IRC server at {self.host}:{self.port} "
                 f"- is the server running?"
@@ -77,12 +77,12 @@ class IRCTransport:
         if self._writer:
             try:
                 await self._send_raw("QUIT :daemon shutdown")
-            except (ConnectionError, OSError):
+            except OSError:
                 pass
             self._writer.close()
             try:
                 await self._writer.wait_closed()
-            except (ConnectionError, BrokenPipeError):
+            except ConnectionError:
                 pass
         self.connected = False
 
@@ -139,7 +139,7 @@ class IRCTransport:
                         await self._handle(msg)
         except asyncio.CancelledError:
             raise
-        except (ConnectionError, OSError):
+        except OSError:
             logger.warning("IRC connection lost")
         finally:
             self.connected = False
@@ -159,7 +159,7 @@ class IRCTransport:
                 logger.info("Reconnected to IRC")
                 self._reconnecting = False
                 return
-            except (ConnectionError, OSError):
+            except OSError:
                 delay = min(delay * 2, 60)
 
     async def _handle(self, msg: Message) -> None:

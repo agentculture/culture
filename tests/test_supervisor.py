@@ -249,7 +249,7 @@ async def test_sdk_evaluate_fn_error_handling(monkeypatch):
 
     async def fake_query(*, prompt, options=None, transport=None):
         raise RuntimeError("API error")
-        yield  # noqa: F841
+        yield  # yield makes this an async generator  # noqa: F841
 
     monkeypatch.setattr("culture.clients.claude.supervisor.query", fake_query)
 

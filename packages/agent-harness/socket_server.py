@@ -33,7 +33,7 @@ class SocketServer:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except (ConnectionError, BrokenPipeError, OSError):
+            except OSError:
                 pass
         self._clients.clear()
         if self._server:
@@ -56,7 +56,7 @@ class SocketServer:
                 try:
                     writer.write(data)
                     await writer.drain()
-                except (ConnectionError, BrokenPipeError, OSError):
+                except OSError:
                     self._clients.remove(writer)
         else:
             # No clients yet — queue for delivery when one connects.
@@ -81,7 +81,7 @@ class SocketServer:
                 await writer.drain()
             except asyncio.QueueEmpty:
                 break
-            except (ConnectionError, BrokenPipeError, OSError):
+            except OSError:
                 break
 
     async def _process_client_messages(
@@ -117,7 +117,7 @@ class SocketServer:
             writer.write(encode_message(err_resp))
             await writer.drain()
             return True
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             return False
 
     def _cleanup_client(self, writer: asyncio.StreamWriter) -> None:

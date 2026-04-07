@@ -152,7 +152,7 @@ async def test_roomcreate_requires_hash(server, make_client):
     """ROOMCREATE requires channel name starting with #."""
     alice = await make_client(nick="testserv-alice", user="alice")
     await alice.send("ROOMCREATE badname :purpose=test")
-    lines = await alice.recv_all(timeout=1.0)
+    await alice.recv_all(timeout=1.0)
     assert "badname" not in server.channels
 
 
@@ -168,7 +168,7 @@ async def test_roomcreate_no_params(server, make_client):
 @pytest.mark.asyncio
 async def test_client_tags_default_empty(server, make_client):
     """Client tags default to empty list."""
-    alice = await make_client(nick="testserv-alice", user="alice")
+    await make_client(nick="testserv-alice", user="alice")
     client = server.clients["testserv-alice"]
     assert client.tags == []
 
@@ -229,7 +229,7 @@ async def test_roommeta_update_tags(server, make_client):
 async def test_roommeta_update_owner(server, make_client):
     """Room owner can be transferred via ROOMMETA."""
     alice = await make_client(nick="testserv-alice", user="alice")
-    bob = await make_client(nick="testserv-bob", user="bob")
+    await make_client(nick="testserv-bob", user="bob")
     await alice.send("ROOMCREATE #pyhelp :purpose=Test")
     await alice.recv_all(timeout=1.0)
 
@@ -314,7 +314,7 @@ async def test_tags_query_own(server, make_client):
 async def test_tags_query_other(server, make_client):
     """Anyone can query another agent's tags."""
     alice = await make_client(nick="testserv-alice", user="alice")
-    bob = await make_client(nick="testserv-bob", user="bob")
+    await make_client(nick="testserv-bob", user="bob")
     server.clients["testserv-bob"].tags = ["rust", "infra"]
 
     await alice.send("TAGS testserv-bob")
@@ -346,7 +346,7 @@ async def test_tags_nonexistent_nick(server, make_client):
 async def test_tags_cannot_set_others(server, make_client):
     """Non-operator cannot set another agent's tags."""
     alice = await make_client(nick="testserv-alice", user="alice")
-    bob = await make_client(nick="testserv-bob", user="bob")
+    await make_client(nick="testserv-bob", user="bob")
 
     await alice.send("TAGS testserv-bob python")
     lines = await alice.recv_all(timeout=1.0)

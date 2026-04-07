@@ -15,7 +15,6 @@ from culture.clients.claude.config import (
     load_config,
     load_config_or_default,
 )
-from culture.pidfile import is_process_alive, read_pid
 
 from .shared.constants import AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
@@ -469,7 +468,7 @@ def _wait_for_server_port(port: int, retries: int = 50, interval: float = 0.1) -
         try:
             with _socket.create_connection(("localhost", port), timeout=1):
                 return
-        except (ConnectionRefusedError, OSError):
+        except OSError:
             time.sleep(interval)
 
 

@@ -88,7 +88,7 @@ def is_culture_process(pid: int) -> bool:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()
         tokens = [t for t in raw.decode(errors="replace").split("\x00") if t]
         return any(os.path.basename(t) == "culture" or t == "culture" for t in tokens)
-    except (OSError, PermissionError):
+    except OSError:
         # On Linux /proc exists but we can't read this PID — fail closed
         return False
 

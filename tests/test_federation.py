@@ -4,11 +4,11 @@
 import asyncio
 
 import pytest
-import pytest_asyncio
+import pytest_asyncio  # noqa: F401
 
 from culture.server.config import LinkConfig, ServerConfig
 from culture.server.ircd import IRCd
-from tests.conftest import IRCTestClient
+from tests.conftest import TEST_LINK_PASSWORD, IRCTestClient
 
 # =============================================================================
 # Phase 1: Handshake
@@ -56,18 +56,18 @@ async def test_server_link_bad_password():
 @pytest.mark.asyncio
 async def test_server_link_duplicate_name_rejected():
     """Same server name trying to link twice -> rejected."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -79,7 +79,7 @@ async def test_server_link_duplicate_name_rejected():
 
     try:
         # First link
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -87,7 +87,7 @@ async def test_server_link_duplicate_name_rejected():
         assert "beta" in server_a.links
 
         # Second link attempt should fail
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         await asyncio.sleep(0.5)
         # Should still only have one link
         assert len(server_a.links) <= 1
@@ -120,7 +120,7 @@ async def test_burst_sends_local_clients(linked_servers, make_client_a):
     server_a, server_b = linked_servers
 
     # Create a client on server A
-    client_a = await make_client_a(nick="alpha-alice", user="alice")
+    await make_client_a(nick="alpha-alice", user="alice")
     await asyncio.sleep(0.3)
 
     # Server B should have alice as a remote client
@@ -210,7 +210,7 @@ async def test_remote_client_appears_in_whois(linked_servers, make_client_a, mak
     """WHOIS works for remote clients, shows remote server name."""
     server_a, server_b = linked_servers
 
-    client_a = await make_client_a(nick="alpha-alice", user="alice")
+    await make_client_a(nick="alpha-alice", user="alice")
     await asyncio.sleep(0.3)
 
     client_b = await make_client_b(nick="beta-bob", user="bob")
@@ -482,19 +482,19 @@ async def test_link_loss_cleans_empty_channels(linked_servers, make_client_a):
 @pytest.mark.asyncio
 async def test_reconnect_resyncs_state():
     """Drop + reconnect = remote clients reappear."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -515,7 +515,7 @@ async def test_reconnect_resyncs_state():
         await tc.recv_all(timeout=0.5)
 
         # Link
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -532,7 +532,7 @@ async def test_reconnect_resyncs_state():
         assert "alpha-alice" not in server_b.remote_clients
 
         # Reconnect
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -559,19 +559,19 @@ async def test_reconnect_resyncs_state():
 @pytest.mark.asyncio
 async def test_backfill_replays_missed_messages():
     """Send messages during disconnect, reconnect, B has them."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -600,7 +600,7 @@ async def test_backfill_replays_missed_messages():
         await tc_b.recv_all(timeout=0.5)
 
         # Link
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -609,7 +609,7 @@ async def test_backfill_replays_missed_messages():
 
         # Record B's last_seen_seq from A's link
         link_b = server_b.links.get("alpha")
-        last_seq = link_b.last_seen_seq if link_b else 0
+        _last_seq = link_b.last_seen_seq if link_b else 0
 
         # Drop link
         link_a = server_a.links.get("beta")
@@ -623,7 +623,7 @@ async def test_backfill_replays_missed_messages():
         await asyncio.sleep(0.3)
 
         # Reconnect -- server_a reconnects to server_b
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -650,19 +650,19 @@ async def test_backfill_replays_missed_messages():
 @pytest.mark.asyncio
 async def test_backfill_does_not_duplicate():
     """Pre-disconnect messages not re-sent."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -690,7 +690,7 @@ async def test_backfill_does_not_duplicate():
         await tc_b.recv_all(timeout=0.5)
 
         # Link
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -701,7 +701,7 @@ async def test_backfill_does_not_duplicate():
         await tc_a.send("PRIVMSG #test :pre-disconnect msg")
         await asyncio.sleep(0.3)
         resp = await tc_b.recv_all(timeout=0.5)
-        pre_count = len([l for l in resp if "pre-disconnect msg" in l])
+        _pre_count = len([l for l in resp if "pre-disconnect msg" in l])
 
         # Drop and reconnect
         link_a = server_a.links.get("beta")
@@ -709,7 +709,7 @@ async def test_backfill_does_not_duplicate():
             link_a.writer.close()
         await asyncio.sleep(0.5)
 
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -746,19 +746,19 @@ async def test_backfill_empty_when_nothing_missed(linked_servers, make_client_a,
 @pytest.mark.asyncio
 async def test_history_includes_backfilled_messages():
     """HISTORY RECENT shows backfilled messages."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -786,7 +786,7 @@ async def test_history_includes_backfilled_messages():
         await tc_b.recv_all(timeout=0.5)
 
         # Link
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
         for _ in range(50):
             if "beta" in server_a.links:
                 break
@@ -887,19 +887,23 @@ async def _make_linked_pair(*, trust: str = "full"):
     Returns (server_a, server_b) after the link handshake completes.
     Both link configs carry the specified trust value.
     """
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password, trust=trust)],
+        links=[
+            LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password, trust=trust)
+        ],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password, trust=trust)],
+        links=[
+            LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password, trust=trust)
+        ],
     )
 
     server_a = IRCd(config_a)
@@ -916,7 +920,9 @@ async def _make_linked_pair(*, trust: str = "full"):
 
     # Server A connects to Server B (pass trust level)
     try:
-        await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password, trust=trust)
+        await server_a.connect_to_peer(
+            "127.0.0.1", server_b.config.port, link_password, trust=trust
+        )
         for _ in range(50):
             if "beta" in server_a.links and "alpha" in server_b.links:
                 break

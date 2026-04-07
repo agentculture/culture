@@ -274,7 +274,7 @@ class ConsoleIRCClient:
                         await self._handle(msg)
         except asyncio.CancelledError:
             raise
-        except (ConnectionError, OSError):
+        except OSError:
             logger.warning("ConsoleIRCClient: connection lost")
         finally:
             self.connected = False

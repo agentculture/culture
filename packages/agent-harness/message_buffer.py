@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 _THREAD_PREFIX_RE = re.compile(r"^\[thread:([a-zA-Z0-9\-]+)\] ")
 
@@ -33,8 +33,7 @@ class MessageBuffer:
         if m:
             thread = m.group(1)
         self._buffers[channel].append(
-            BufferedMessage(nick=nick, text=text, timestamp=time.time(),
-                           thread=thread)
+            BufferedMessage(nick=nick, text=text, timestamp=time.time(), thread=thread)
         )
         self._totals[channel] += 1
 
@@ -54,8 +53,7 @@ class MessageBuffer:
         self._cursors[channel] = total
         return new_messages
 
-    def read_thread(self, channel: str, thread_name: str,
-                    limit: int = 50) -> list[BufferedMessage]:
+    def read_thread(self, channel: str, thread_name: str, limit: int = 50) -> list[BufferedMessage]:
         buf = self._buffers.get(channel)
         if not buf:
             return []

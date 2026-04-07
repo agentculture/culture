@@ -297,7 +297,7 @@ class IRCd:
             writer.close()
             try:
                 await writer.wait_closed()
-            except (ConnectionError, BrokenPipeError):
+            except ConnectionError:
                 pass
             return
 
@@ -328,7 +328,7 @@ class IRCd:
             writer.close()
             try:
                 await writer.wait_closed()
-            except (ConnectionError, BrokenPipeError):
+            except ConnectionError:
                 pass
 
     def _remove_client(self, client: Client) -> None:

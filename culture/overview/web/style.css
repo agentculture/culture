@@ -68,7 +68,7 @@ code {
     padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
 }
 .status-idle {
-    background: #fff8e1; color: #f57f17;
+    background: #fff8e1; color: #e65100;
     padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;
 }
 .status-paused {

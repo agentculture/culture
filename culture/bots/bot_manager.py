@@ -6,14 +6,18 @@ import logging
 from typing import TYPE_CHECKING
 
 from culture.bots.bot import Bot
-from culture.bots.config import BOTS_DIR, BotConfig, load_bot_config, save_bot_config
+from culture.bots.config import (
+    BOT_CONFIG_FILE,
+    BOTS_DIR,
+    BotConfig,
+    load_bot_config,
+    save_bot_config,
+)
 
 if TYPE_CHECKING:
     from culture.server.ircd import IRCd
 
 logger = logging.getLogger(__name__)
-
-BOT_CONFIG_FILE = "bot.yaml"
 
 
 class BotManager:

@@ -6,6 +6,7 @@ import asyncio
 import glob
 import os
 
+from culture.bots.config import BOT_CONFIG_FILE
 from culture.protocol.message import Message as IRCMessage
 
 from .model import Agent, BotInfo, MeshState, Message, Room
@@ -159,10 +160,8 @@ async def _connect(
     server_name: str,
 ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, str]:
     """Connect and register as an ephemeral observer."""
-    reader, writer = await asyncio.wait_for(
-        asyncio.open_connection(host, port),
-        timeout=REGISTER_TIMEOUT,
-    )
+    async with asyncio.timeout(REGISTER_TIMEOUT):
+        reader, writer = await asyncio.open_connection(host, port)
     nick = _temp_nick(server_name)
     try:
         writer.write(f"NICK {nick}\r\nUSER overview 0 * :overview\r\n".encode())
@@ -174,7 +173,8 @@ async def _connect(
             if remaining <= 0:
                 raise TimeoutError("Registration timed out")
             try:
-                data = await asyncio.wait_for(reader.readline(), timeout=remaining)
+                async with asyncio.timeout(remaining):
+                    data = await reader.readline()
             except asyncio.TimeoutError:
                 raise TimeoutError("Registration timed out") from None
             line = data.decode().strip()
@@ -213,7 +213,8 @@ async def _recv_until(
         if remaining <= 0:
             break
         try:
-            data = await asyncio.wait_for(reader.readline(), timeout=remaining)
+            async with asyncio.timeout(remaining):
+                data = await reader.readline()
         except asyncio.TimeoutError:
             break
         line = data.decode().strip()
@@ -233,7 +234,7 @@ async def _recv_until(
 async def _query_list(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
 ) -> list[tuple[str, str]]:
     """Query LIST and return [(channel_name, topic)]."""
     writer.write(b"LIST\r\n")
@@ -251,7 +252,7 @@ async def _query_list(
 async def _query_names(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
     channel: str,
 ) -> tuple[list[tuple[str, bool]], list[str]]:
     """Query NAMES and return [(nick, is_operator)] and [operator_nicks]."""
@@ -275,7 +276,7 @@ async def _query_names(
 async def _query_who(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
     channel: str,
 ) -> dict[str, str]:
     """Query WHO and return {nick: server_name}."""
@@ -294,7 +295,7 @@ async def _query_who(
 async def _query_history(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
     channel: str,
     limit: int,
 ) -> list[Message]:
@@ -319,7 +320,7 @@ async def _query_history(
 async def _query_roommeta(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
     channel: str,
 ) -> dict:
     """Query ROOMMETA and return a dict with room metadata fields."""
@@ -350,7 +351,7 @@ async def _query_roommeta(
 async def _query_tags(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    nick: str,
+    _nick: str,
     target_nick: str,
 ) -> list[str]:
     """Query TAGS for an agent and return a list of tag strings."""
@@ -376,7 +377,7 @@ def _collect_bots() -> list[BotInfo]:
         return bots
 
     for bot_dir in sorted(BOTS_DIR.iterdir()):
-        yaml_path = bot_dir / "bot.yaml"
+        yaml_path = bot_dir / BOT_CONFIG_FILE
         if not yaml_path.is_file():
             continue
         try:
@@ -417,15 +418,14 @@ async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
             continue
 
         try:
-            r, w = await asyncio.wait_for(
-                asyncio.open_unix_connection(sock_path),
-                timeout=3.0,
-            )
+            async with asyncio.timeout(3.0):
+                r, w = await asyncio.open_unix_connection(sock_path)
             req = make_request("status")
             w.write(encode_message(req))
             await w.drain()
 
-            data = await asyncio.wait_for(r.readline(), timeout=3.0)
+            async with asyncio.timeout(3.0):
+                data = await r.readline()
             resp = decode_message(data)
 
             if resp and resp.get("type") == "response" and resp.get("ok"):

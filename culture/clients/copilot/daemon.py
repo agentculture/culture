@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 # IPC validation error messages
 _ERR_MISSING_CHANNEL = "Missing 'channel'"
+_ERR_MISSING_CHANNEL_THREAD = "Missing 'channel' or 'thread'"
+_ERR_MISSING_CHANNEL_THREAD_MSG = "Missing 'channel', 'thread', or 'message'"
 
 MAX_CRASH_COUNT = 3
 CRASH_WINDOW_SECONDS = 300
@@ -279,7 +281,7 @@ class CopilotDaemon:
         prompt = (
             f"[IRC Channel Poll: {channel}] Recent unread messages:\n"
             f"{lines}\n\n"
-            f"Respond naturally if any messages need your attention."
+            "Respond naturally if any messages need your attention."
         )
         self._mention_targets.append(channel)
         task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
@@ -460,10 +462,10 @@ class CopilotDaemon:
             return self.agent.system_prompt
         return (
             f"You are {self.agent.nick}, an AI agent on the culture IRC network.\n"
-            f"You have IRC tools available via the irc skill. Use them to communicate.\n"
+            "You have IRC tools available via the irc skill. Use them to communicate.\n"
             f"Your working directory is {self.agent.directory}.\n"
-            f"Check IRC channels periodically with irc_read() for new messages.\n"
-            f"When you finish a task, share results in the appropriate channel with irc_send()."
+            "Check IRC channels periodically with irc_read() for new messages.\n"
+            "When you finish a task, share results in the appropriate channel with irc_send()."
         )
 
     async def _record_crash_time(self, exit_code: int) -> None:
@@ -609,6 +611,13 @@ class CopilotDaemon:
         if query and running and not self._paused:
             description = await self._query_agent_status()
 
+        if self._paused:
+            activity = "paused"
+        elif running:
+            activity = "working"
+        else:
+            activity = "idle"
+
         return make_response(
             req_id,
             ok=True,
@@ -617,7 +626,7 @@ class CopilotDaemon:
                 "paused": self._paused,
                 "turn_count": turn_count,
                 "last_activation": self._last_activation,
-                "activity": "paused" if self._paused else ("working" if running else "idle"),
+                "activity": activity,
                 "description": description,
             },
         )
@@ -654,7 +663,8 @@ class CopilotDaemon:
                 "[SYSTEM] Briefly describe what you are currently working on "
                 "in one sentence. Reply with just the description, no preamble."
             )
-            await asyncio.wait_for(self._status_query_event.wait(), timeout=10.0)
+            async with asyncio.timeout(10.0):
+                await self._status_query_event.wait()
             return self._truncate_first_line(self._status_query_response) or "nothing"
         except asyncio.TimeoutError:
             return "busy (no response)"
@@ -711,9 +721,7 @@ class CopilotDaemon:
         thread_name = msg.get("thread", "")
         text = msg.get("message", "")
         if not channel or not thread_name or not text:
-            return make_response(
-                req_id, ok=False, error="Missing 'channel', 'thread', or 'message'"
-            )
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD_MSG)
         assert self._transport is not None
         await self._transport.send_thread_create(channel, thread_name, text)
         return make_response(req_id, ok=True)
@@ -723,9 +731,7 @@ class CopilotDaemon:
         thread_name = msg.get("thread", "")
         text = msg.get("message", "")
         if not channel or not thread_name or not text:
-            return make_response(
-                req_id, ok=False, error="Missing 'channel', 'thread', or 'message'"
-            )
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD_MSG)
         assert self._transport is not None
         await self._transport.send_thread_reply(channel, thread_name, text)
         return make_response(req_id, ok=True)
@@ -743,7 +749,7 @@ class CopilotDaemon:
         thread_name = msg.get("thread", "")
         summary = msg.get("summary", "")
         if not channel or not thread_name:
-            return make_response(req_id, ok=False, error="Missing 'channel' or 'thread'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD)
         assert self._transport is not None
         await self._transport.send_thread_close(channel, thread_name, summary)
         return make_response(req_id, ok=True)
@@ -753,7 +759,7 @@ class CopilotDaemon:
         thread_name = msg.get("thread", "")
         limit = int(msg.get("limit", 50))
         if not channel or not thread_name:
-            return make_response(req_id, ok=False, error="Missing 'channel' or 'thread'")
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL_THREAD)
         assert self._buffer is not None
         messages = self._buffer.read_thread(channel, thread_name, limit=limit)
         return make_response(

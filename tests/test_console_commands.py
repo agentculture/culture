@@ -1,7 +1,5 @@
 """Tests for console command parser."""
 
-import pytest
-
 from culture.console.commands import CommandType, parse_command
 
 

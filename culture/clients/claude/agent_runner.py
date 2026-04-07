@@ -81,7 +81,8 @@ class AgentRunner:
         self._prompt_queue.put_nowait("")
         if self._task and not self._task.done():
             try:
-                await asyncio.wait_for(asyncio.shield(self._task), timeout=5.0)
+                async with asyncio.timeout(5.0):
+                    await asyncio.shield(self._task)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._task.cancel()
                 await asyncio.gather(self._task, return_exceptions=True)

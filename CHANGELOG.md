@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.3.7] - 2026-04-07
+
+
+### Fixed
+
+- Extract duplicate string constants (S1192, #85)
+- Remove redundant exception classes in except clauses (S5713, #86)
+- Clean up unused variables and function parameters (S1481/S1172, #88)
+- Remove f-strings without replacement fields (S3457, #89)
+- Address hardcoded credential warnings with test constants (S2068, #90)
+- Fix miscellaneous code quality issues: asyncio.timeout, nested ternaries, empty methods, CSS contrast (S7483/S3358/S1186/S7924, #91)
+
 ## [4.3.6] - 2026-04-07
 
 

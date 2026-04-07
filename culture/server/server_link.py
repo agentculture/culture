@@ -61,14 +61,14 @@ class ServerLink:
         try:
             self.writer.write(f"{line}\r\n".encode("utf-8"))
             await self.writer.drain()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass
 
     async def send(self, message: Message) -> None:
         try:
             self.writer.write(message.format().encode("utf-8"))
             await self.writer.drain()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass
 
     async def _process_buffer(self, buffer: str) -> str:
@@ -106,7 +106,7 @@ class ServerLink:
             self.writer.close()
             try:
                 await self.writer.wait_closed()
-            except (ConnectionError, BrokenPipeError):
+            except ConnectionError:
                 pass
 
     async def _send_handshake(self) -> None:
@@ -160,7 +160,7 @@ class ServerLink:
         """
         if self._peer_pass != self.password:
             logger.warning("Bad password from peer %s", self.peer_name)
-            await self.send_raw(f"ERROR :Bad password")
+            await self.send_raw("ERROR :Bad password")
             raise ConnectionError("Bad S2S password")
 
         # Check for duplicate server name
@@ -171,7 +171,7 @@ class ServerLink:
 
         if self.peer_name == self.server.config.name:
             logger.warning("Peer has same name as us: %s", self.peer_name)
-            await self.send_raw(f"ERROR :Cannot link to self")
+            await self.send_raw("ERROR :Cannot link to self")
             raise ConnectionError("Cannot link to self")
 
     async def _try_complete_handshake(self) -> None:
@@ -325,7 +325,7 @@ class ServerLink:
         if len(msg.params) < 3:
             return
         channel_name = msg.params[0]
-        nick = msg.params[1]
+        _nick = msg.params[1]
         topic = msg.params[2]
 
         channel = self.server.channels.get(channel_name)

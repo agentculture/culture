@@ -82,9 +82,7 @@ async def test_multiple_mentions(server, make_client):
     await client3.recv_all(timeout=0.5)
     await client1.recv_all(timeout=0.5)
 
-    await client1.send(
-        "PRIVMSG #general :hey @testserv-claude and @testserv-bob check this"
-    )
+    await client1.send("PRIVMSG #general :hey @testserv-claude and @testserv-bob check this")
     lines2 = await client2.recv_all(timeout=1.0)
     lines3 = await client3.recv_all(timeout=1.0)
     assert any("mentioned you" in l for l in lines2)
@@ -111,7 +109,7 @@ async def test_trailing_punctuation_stripped(server, make_client):
 async def test_mention_in_dm(server, make_client):
     """Mention in a DM sends NOTICE to mentioned user."""
     client1 = await make_client(nick="testserv-ori", user="ori")
-    client2 = await make_client(nick="testserv-claude", user="claude")
+    await make_client(nick="testserv-claude", user="claude")
     client3 = await make_client(nick="testserv-bob", user="bob")
 
     await client1.send("PRIVMSG testserv-claude :tell @testserv-bob hi")
@@ -151,9 +149,7 @@ async def test_duplicate_mention_only_notifies_once(server, make_client):
     await client2.recv_all(timeout=0.5)
     await client1.recv_all(timeout=0.5)
 
-    await client1.send(
-        "PRIVMSG #general :@testserv-claude @testserv-claude hello"
-    )
+    await client1.send("PRIVMSG #general :@testserv-claude @testserv-claude hello")
     lines = await client2.recv_all(timeout=1.0)
     notice_lines = [l for l in lines if "mentioned you" in l]
     assert len(notice_lines) == 1

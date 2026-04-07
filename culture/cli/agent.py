@@ -399,7 +399,7 @@ def _probe_server_connection(host: str, port: int, server_name: str) -> None:
     try:
         with _socket.create_connection((host, port), timeout=2):
             pass
-    except (ConnectionRefusedError, OSError):
+    except OSError:
         hint = ""
         server_pid = read_pid(f"server-{server_name}")
         if not server_pid or not is_process_alive(server_pid):

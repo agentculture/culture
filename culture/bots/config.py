@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 BOTS_DIR = Path(os.path.expanduser("~/.culture/bots"))
+BOT_CONFIG_FILE = "bot.yaml"
 
 
 @dataclass

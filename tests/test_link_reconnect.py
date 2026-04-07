@@ -7,24 +7,25 @@ import pytest
 
 from culture.server.config import LinkConfig, ServerConfig
 from culture.server.ircd import IRCd
+from tests.conftest import TEST_LINK_PASSWORD
 
 
 @pytest.mark.asyncio
 async def test_link_drop_triggers_retry():
     """When a linked peer drops (non-SQUIT), the server schedules retry."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -41,7 +42,7 @@ async def test_link_drop_triggers_retry():
     config_b.links[0].port = server_a.config.port
 
     # Link the servers
-    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
     for _ in range(50):
         if "beta" in server_a.links and "alpha" in server_b.links:
             break
@@ -67,19 +68,19 @@ async def test_link_drop_triggers_retry():
 @pytest.mark.asyncio
 async def test_squit_does_not_trigger_retry():
     """When a peer sends SQUIT, no retry should be scheduled."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -94,7 +95,7 @@ async def test_squit_does_not_trigger_retry():
     config_a.links[0].port = server_b.config.port
     config_b.links[0].port = server_a.config.port
 
-    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
     for _ in range(50):
         if "beta" in server_a.links and "alpha" in server_b.links:
             break
@@ -123,19 +124,19 @@ async def test_squit_does_not_trigger_retry():
 @pytest.mark.asyncio
 async def test_incoming_connection_cancels_retry():
     """When a peer reconnects inbound while retry is pending, retry is cancelled."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
 
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -151,7 +152,7 @@ async def test_incoming_connection_cancels_retry():
     config_b.links[0].port = server_a.config.port
 
     # Link the servers (A -> B)
-    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
     for _ in range(50):
         if "beta" in server_a.links and "alpha" in server_b.links:
             break
@@ -176,7 +177,7 @@ async def test_incoming_connection_cancels_retry():
     config_a.links[0].port = server_b2.config.port
 
     # B2 connects to A (inbound connection to A)
-    await server_b2.connect_to_peer("127.0.0.1", server_a.config.port, password)
+    await server_b2.connect_to_peer("127.0.0.1", server_a.config.port, link_password)
     for _ in range(50):
         if "beta" in server_a.links:
             break
@@ -194,12 +195,12 @@ async def test_incoming_connection_cancels_retry():
 @pytest.mark.asyncio
 async def test_reconnect_after_initial_failure():
     """If initial connect_to_peer fails, server schedules retry."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
     config_a = ServerConfig(
         name="alpha",
         host="127.0.0.1",
         port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=16999, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=16999, password=link_password)],
     )
 
     server_a = IRCd(config_a)

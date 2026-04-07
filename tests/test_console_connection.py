@@ -1,18 +1,14 @@
 """Tests for server discovery and default server logic."""
 
 import os
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from culture.pidfile import (
-    PID_DIR,
     list_servers,
     read_default_server,
     write_default_server,
-    write_pid,
-    write_port,
 )
 
 

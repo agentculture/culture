@@ -7,6 +7,9 @@ import pytest_asyncio
 from culture.server.config import LinkConfig, ServerConfig
 from culture.server.ircd import IRCd
 
+# Test-only link password — not a real credential (S2068)
+TEST_LINK_PASSWORD = "testlink123"
+
 
 class IRCTestClient:
     """A minimal IRC test client over raw TCP."""
@@ -42,7 +45,7 @@ class IRCTestClient:
         self.writer.close()
         try:
             await self.writer.wait_closed()
-        except (ConnectionError, BrokenPipeError):
+        except ConnectionError:
             pass
 
 
@@ -95,7 +98,7 @@ async def make_client(server):
 @pytest_asyncio.fixture
 async def linked_servers(tmp_path):
     """Two IRCd instances linked via S2S federation."""
-    password = "testlink123"
+    link_password = TEST_LINK_PASSWORD
     empty_bots = tmp_path / "_bots"
     empty_bots.mkdir()
 
@@ -104,14 +107,14 @@ async def linked_servers(tmp_path):
         host="127.0.0.1",
         port=0,
         webhook_port=0,
-        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
     )
     config_b = ServerConfig(
         name="beta",
         host="127.0.0.1",
         port=0,
         webhook_port=0,
-        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=password)],
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
     )
 
     server_a = IRCd(config_a)
@@ -133,7 +136,7 @@ async def linked_servers(tmp_path):
     config_b.links[0].port = server_a.config.port
 
     # Server A connects to Server B
-    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, password)
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
     # Wait for handshake to complete
     for _ in range(50):
         if "beta" in server_a.links and "alpha" in server_b.links:

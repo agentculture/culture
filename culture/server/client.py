@@ -46,7 +46,7 @@ class Client:
         try:
             self.writer.write(message.format().encode("utf-8"))
             await self.writer.drain()
-        except (ConnectionError, BrokenPipeError, OSError):
+        except OSError:
             pass  # Client disconnected; cleanup happens in ircd._handle_connection
 
     async def send_numeric(self, code: str, *params: str) -> None:
