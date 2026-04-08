@@ -6,6 +6,7 @@ and culture.yaml (per-directory agent definitions).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import tempfile
@@ -13,6 +14,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger("culture")
 
 
 @dataclass
@@ -184,3 +187,154 @@ def sanitize_agent_name(dirname: str) -> str:
     if not name:
         raise ValueError(f"sanitized name is empty for input: {dirname!r}")
     return name
+
+
+def load_server_config(path: str | Path) -> ServerConfig:
+    """Load server configuration from server.yaml."""
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    server = ServerConnConfig(**raw.get("server", {}))
+    supervisor = SupervisorConfig(**raw.get("supervisor", {}))
+    webhooks = WebhookConfig(**raw.get("webhooks", {}))
+
+    manifest = raw.get("agents", {})
+    if isinstance(manifest, list):
+        manifest = {}
+
+    return ServerConfig(
+        server=server,
+        supervisor=supervisor,
+        webhooks=webhooks,
+        buffer_size=raw.get("buffer_size", 500),
+        poll_interval=raw.get("poll_interval", 60),
+        sleep_start=raw.get("sleep_start", "23:00"),
+        sleep_end=raw.get("sleep_end", "08:00"),
+        manifest=manifest,
+    )
+
+
+def resolve_agents(config: ServerConfig) -> None:
+    """Resolve agent configs from manifest paths."""
+    config.agents = []
+    server_name = config.server.name
+
+    for suffix, directory in config.manifest.items():
+        try:
+            agents = load_culture_yaml(directory, suffix=suffix)
+        except FileNotFoundError:
+            logger.warning(
+                "culture.yaml missing for %s-%s at %s — skipping",
+                server_name,
+                suffix,
+                directory,
+            )
+            continue
+        except ValueError as e:
+            logger.warning(
+                "Error loading %s-%s from %s: %s — skipping",
+                server_name,
+                suffix,
+                directory,
+                e,
+            )
+            continue
+
+        for agent in agents:
+            agent.nick = f"{server_name}-{agent.suffix}"
+            config.agents.append(agent)
+
+
+def _load_legacy_config(path: str | Path) -> ServerConfig:
+    """Load legacy agents.yaml format into ServerConfig."""
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    server = ServerConnConfig(**raw.get("server", {}))
+    supervisor = SupervisorConfig(**raw.get("supervisor", {}))
+    webhooks = WebhookConfig(**raw.get("webhooks", {}))
+
+    agents = []
+    known = _KNOWN_AGENT_FIELDS | {"nick", "directory"}
+    for agent_raw in raw.get("agents", []):
+        known_fields = {}
+        extras = {}
+        for k, v in agent_raw.items():
+            if k == "agent":
+                # Legacy field name -> new field name
+                known_fields["backend"] = v
+            elif k in known:
+                known_fields[k] = v
+            else:
+                extras[k] = v
+        agents.append(AgentConfig(**known_fields, extras=extras))
+
+    return ServerConfig(
+        server=server,
+        supervisor=supervisor,
+        webhooks=webhooks,
+        buffer_size=raw.get("buffer_size", 500),
+        poll_interval=raw.get("poll_interval", 60),
+        sleep_start=raw.get("sleep_start", "23:00"),
+        sleep_end=raw.get("sleep_end", "08:00"),
+        agents=agents,
+    )
+
+
+def load_config(path: str | Path) -> ServerConfig:
+    """Load config, auto-detecting format (server.yaml vs legacy agents.yaml)."""
+    path = Path(path)
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    agents_val = raw.get("agents")
+    is_legacy = (
+        isinstance(agents_val, list)
+        and agents_val
+        and isinstance(agents_val[0], dict)
+        and "nick" in agents_val[0]
+    )
+
+    if is_legacy:
+        return _load_legacy_config(path)
+
+    config = load_server_config(path)
+    resolve_agents(config)
+    return config
+
+
+def load_config_or_default(path: str | Path) -> ServerConfig:
+    """Load config from path, returning default ServerConfig if missing."""
+    path = Path(path)
+    if not path.exists():
+        return ServerConfig()
+    return load_config(path)
+
+
+def save_server_config(path: str | Path, config: ServerConfig) -> None:
+    """Write server.yaml atomically."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "server": asdict(config.server),
+        "supervisor": asdict(config.supervisor),
+        "webhooks": asdict(config.webhooks),
+        "buffer_size": config.buffer_size,
+        "poll_interval": config.poll_interval,
+        "sleep_start": config.sleep_start,
+        "sleep_end": config.sleep_end,
+        "agents": config.manifest,
+    }
+
+    fd, tmp_path_str = tempfile.mkstemp(dir=str(path.parent), suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        os.replace(tmp_path_str, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path_str)
+        except OSError:
+            pass
+        raise

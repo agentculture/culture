@@ -174,3 +174,201 @@ def test_load_culture_yaml_suffix_not_found(tmp_path):
 
     with pytest.raises(ValueError, match="not found"):
         load_culture_yaml(str(tmp_path), suffix="nonexistent")
+
+
+def test_load_server_config(tmp_path):
+    """Load server.yaml with manifest."""
+    from culture.config import load_server_config
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text("""\
+server:
+  name: spark
+  host: 127.0.0.1
+  port: 6667
+
+supervisor:
+  model: claude-sonnet-4-6
+  thinking: medium
+
+webhooks:
+  url: https://example.com/hook
+  irc_channel: "#alerts"
+  events: [agent_error]
+
+buffer_size: 300
+poll_interval: 30
+
+agents:
+  culture: /tmp/proj-a
+  daria: /tmp/proj-b
+""")
+    config = load_server_config(str(server_yaml))
+    assert config.server.name == "spark"
+    assert config.server.host == "127.0.0.1"
+    assert config.supervisor.model == "claude-sonnet-4-6"
+    assert config.webhooks.url == "https://example.com/hook"
+    assert config.buffer_size == 300
+    assert config.poll_interval == 30
+    assert config.manifest == {"culture": "/tmp/proj-a", "daria": "/tmp/proj-b"}
+    assert config.agents == []
+
+
+def test_load_server_config_defaults(tmp_path):
+    """Minimal server.yaml gets defaults."""
+    from culture.config import load_server_config
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text("server:\n  name: spark\n")
+    config = load_server_config(str(server_yaml))
+    assert config.server.name == "spark"
+    assert config.server.host == "localhost"
+    assert config.buffer_size == 500
+    assert config.manifest == {}
+
+
+def test_resolve_agents(tmp_path):
+    """resolve_agents reads culture.yaml from manifest paths."""
+    from culture.config import ServerConfig, ServerConnConfig, resolve_agents
+
+    proj_a = tmp_path / "proj-a"
+    proj_a.mkdir()
+    (proj_a / "culture.yaml").write_text("suffix: culture\nbackend: claude\n")
+
+    proj_b = tmp_path / "proj-b"
+    proj_b.mkdir()
+    (proj_b / "culture.yaml").write_text(
+        "suffix: daria\nbackend: acp\nacp_command: ['opencode', 'acp']\n"
+    )
+
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"culture": str(proj_a), "daria": str(proj_b)},
+    )
+    resolve_agents(config)
+
+    assert len(config.agents) == 2
+    culture = config.get_agent("spark-culture")
+    assert culture is not None
+    assert culture.backend == "claude"
+    assert culture.directory == str(proj_a.resolve())
+
+    daria = config.get_agent("spark-daria")
+    assert daria is not None
+    assert daria.backend == "acp"
+    assert daria.directory == str(proj_b.resolve())
+
+
+def test_resolve_agents_missing_culture_yaml(tmp_path):
+    """Missing culture.yaml logs warning, agent skipped."""
+    from culture.config import ServerConfig, ServerConnConfig, resolve_agents
+
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"ghost": str(tmp_path / "nonexistent")},
+    )
+    resolve_agents(config)
+    assert len(config.agents) == 0
+
+
+def test_resolve_agents_multi_agent_directory(tmp_path):
+    """Two manifest entries pointing to same multi-agent directory."""
+    from culture.config import ServerConfig, ServerConnConfig, resolve_agents
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "culture.yaml").write_text("""\
+agents:
+  - suffix: culture
+    backend: claude
+  - suffix: codex
+    backend: codex
+    model: gpt-5.4
+""")
+
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"culture": str(proj), "codex": str(proj)},
+    )
+    resolve_agents(config)
+
+    assert len(config.agents) == 2
+    assert config.get_agent("spark-culture").backend == "claude"
+    assert config.get_agent("spark-codex").backend == "codex"
+    assert config.get_agent("spark-codex").model == "gpt-5.4"
+
+
+def test_load_config_server_yaml(tmp_path):
+    """load_config auto-detects server.yaml format."""
+    from culture.config import load_config
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "culture.yaml").write_text("suffix: culture\nbackend: claude\n")
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text(f"""\
+server:
+  name: spark
+  host: localhost
+  port: 6667
+agents:
+  culture: {proj}
+""")
+    config = load_config(str(server_yaml))
+    assert config.server.name == "spark"
+    assert len(config.agents) == 1
+    assert config.agents[0].nick == "spark-culture"
+
+
+def test_load_config_legacy_agents_yaml(tmp_path):
+    """load_config falls back to legacy agents.yaml parsing."""
+    from culture.config import load_config
+
+    agents_yaml = tmp_path / "agents.yaml"
+    agents_yaml.write_text("""\
+server:
+  name: spark
+  host: localhost
+  port: 6667
+agents:
+  - nick: spark-culture
+    directory: /tmp/work
+    channels: ["#general"]
+    model: claude-opus-4-6
+""")
+    config = load_config(str(agents_yaml))
+    assert config.server.name == "spark"
+    assert len(config.agents) == 1
+    assert config.agents[0].nick == "spark-culture"
+
+
+def test_load_config_or_default_missing(tmp_path):
+    """Missing file returns default config."""
+    from culture.config import load_config_or_default
+
+    config = load_config_or_default(str(tmp_path / "missing.yaml"))
+    assert config.server.name == "culture"
+    assert config.agents == []
+
+
+def test_save_server_config(tmp_path):
+    """save_server_config writes server.yaml atomically."""
+    from culture.config import (
+        ServerConfig,
+        ServerConnConfig,
+        load_server_config,
+        save_server_config,
+    )
+
+    path = tmp_path / "server.yaml"
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark", host="10.0.0.1", port=6668),
+        manifest={"culture": "/tmp/proj"},
+    )
+    save_server_config(str(path), config)
+
+    loaded = load_server_config(str(path))
+    assert loaded.server.name == "spark"
+    assert loaded.server.host == "10.0.0.1"
+    assert loaded.manifest == {"culture": "/tmp/proj"}
