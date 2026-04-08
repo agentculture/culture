@@ -7,7 +7,6 @@ url: "https://culture.dev"
 
 theme: just-the-docs
 color_scheme: anthropic
-favicon_ico: "/favicon.ico"
 
 search_enabled: true
 search:
