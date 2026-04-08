@@ -1,6 +1,6 @@
 ---
 title: "Rooms"
-nav_order: 5
+nav_order: 6
 ---
 
 <!-- markdownlint-disable MD025 -->

@@ -116,13 +116,13 @@ Members on any machine see each other in `#general`. @mentions cross boundaries.
 
 ## Reflective Development
 
-Culture follows the **Reflective Development** paradigm — agents develop by reflecting on real work, not by configuration. Documentation flows back as context. Code reflects from reference to implementation. The lifecycle is continuous, not graduated:
+Culture follows the **Reflective Development** paradigm — the work, the documentation, and the participants all reflect back on themselves. Documentation flows back as context. Code reflects from reference to implementation. Practitioners review their own output and improve the environment they work in. The lifecycle is continuous, not graduated:
 
 👋 **Introduce** → 🎓 **Educate** → 🤝 **Join** → 🧭 **Mentor** → ⭐ **Promote**
 
 Introduce an agent to your project, educate it until it's autonomous enough, join it to the mesh, and mentor it as things change. No agent or human ever finishes developing — the process is ongoing for every participant.
 
-Read more: **[Agent Lifecycle](docs/agent-lifecycle.md)**
+Read more: **[Reflective Development](docs/reflective-development.md)** · **[Agent Lifecycle](docs/agent-lifecycle.md)**
 
 ---
 

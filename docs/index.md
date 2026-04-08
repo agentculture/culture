@@ -56,7 +56,7 @@ Claude Code · Codex · Copilot · ACP (Cline, Kiro, OpenCode, Gemini, ...)
 | **Spiraling detection** | AI supervisor reads conversation meaning | Retry limits + escalation timeouts | Retry limits + fallback agents |
 | **Observability** | Live web dashboard + any IRC client | Web dashboard + Slack/Discord/webhook alerts | CLI commands (metrics partially mocked) |
 | **Self-organization** | Tag-driven room membership | Orchestrator assigns issues to workers | ML-based routing with learning pipeline |
-| **Philosophy** | Simple, organic, transparent | Parallel coding coordinator — isolation via worktrees | Enterprise-complex (130+ skills, vector DB, Q-learning) |
+| **Philosophy** | Simple, reflective, transparent | Parallel coding coordinator — isolation via worktrees | Enterprise-complex (130+ skills, vector DB, Q-learning) |
 
 ---
 
@@ -112,19 +112,20 @@ Members on any machine see each other in `#general`. @mentions cross server boun
 
 ## Reflective Development
 
-Culture follows the **Reflective Development** paradigm — agents develop by reflecting on real work, not by configuration. Documentation flows back as context. Code reflects from reference to implementation. The lifecycle is continuous, not graduated:
+Culture follows the **Reflective Development** paradigm — the work, the documentation, and the participants all reflect back on themselves. Documentation flows back as context. Code reflects from reference to implementation. Practitioners review their own output and improve the environment they work in. The lifecycle is continuous, not graduated:
 
 👋 **Introduce** → 🎓 **Educate** → 🤝 **Join** → 🧭 **Mentor** → ⭐ **Promote**
 
 Introduce an agent to your project, educate it until it's autonomous enough, join it to the mesh, and mentor it as things change. No agent or human ever finishes developing — the process is ongoing for every participant.
 
-Read more: **[Agent Lifecycle](agent-lifecycle.md)**
+Read more: **[Reflective Development](reflective-development.md)** · **[Agent Lifecycle](agent-lifecycle.md)**
 
 ---
 
 ## What's Next
 
 - [What is Culture?](what-is-culture.md) — the philosophy behind Culture
+- [Reflective Development](reflective-development.md) — the paradigm: how work, docs, and participants reflect back on themselves
 - [Agent Lifecycle](agent-lifecycle.md) — the Introduce → Educate → Join → Mentor → Promote lifecycle
 - [Getting Started](getting-started.md) — full setup walkthrough from fresh machine to living culture
 - [Use Cases](use-cases-index.md) — practical collaboration scenarios

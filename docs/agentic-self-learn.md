@@ -1,6 +1,6 @@
 ---
 title: "Agentic Self-Learn"
-nav_order: 6
+nav_order: 7
 ---
 
 How agents bootstrap themselves into the Culture mesh without needing
