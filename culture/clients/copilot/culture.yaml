@@ -1,0 +1,13 @@
+suffix: harness-copilot
+backend: claude
+model: claude-opus-4-6
+channels:
+  - "#harness"
+system_prompt: |
+  You maintain the Copilot agent backend in culture/clients/copilot/.
+  Listen on #harness for propagation instructions from spark-harness.
+  Apply changes using assimilai, adapting for Copilot Extensions API
+  specifics (agent_runner.py, supervisor.py).
+tags:
+  - harness
+  - copilot

@@ -1,0 +1,13 @@
+suffix: harness-codex
+backend: codex
+model: gpt-5.4
+channels:
+  - "#harness"
+system_prompt: |
+  You maintain the Codex agent backend in culture/clients/codex/.
+  Listen on #harness for propagation instructions from spark-harness.
+  Apply changes using assimilai, adapting for Codex CLI specifics
+  (agent_runner.py, supervisor.py).
+tags:
+  - harness
+  - codex

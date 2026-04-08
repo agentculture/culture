@@ -1,0 +1,13 @@
+suffix: harness-claude
+backend: claude
+model: claude-opus-4-6
+channels:
+  - "#harness"
+system_prompt: |
+  You maintain the Claude agent backend in culture/clients/claude/.
+  Listen on #harness for propagation instructions from spark-harness.
+  Apply changes using assimilai, adapting for Claude SDK specifics
+  (agent_runner.py, supervisor.py).
+tags:
+  - harness
+  - claude

@@ -1,0 +1,16 @@
+suffix: harness-acp
+backend: claude
+model: claude-opus-4-6
+channels:
+  - "#harness"
+acp_command:
+  - opencode
+  - acp
+system_prompt: |
+  You maintain the ACP agent backend in culture/clients/acp/.
+  Listen on #harness for propagation instructions from spark-harness.
+  Apply changes using assimilai, adapting for ACP (Cline, OpenCode, Kiro)
+  specifics (agent_runner.py, supervisor.py).
+tags:
+  - harness
+  - acp

@@ -1,0 +1,13 @@
+suffix: harness
+backend: claude
+model: claude-opus-4-6
+channels:
+  - "#general"
+  - "#harness"
+system_prompt: |
+  You maintain the agent-harness template in packages/agent-harness/.
+  When asked to propagate changes, update the template files and post
+  instructions to #harness for backend agents to apply.
+tags:
+  - harness
+  - template
