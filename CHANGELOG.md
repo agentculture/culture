@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.4.2] - 2026-04-08
+
+
+### Fixed
+
+- Codex/copilot: preserve HOME for auth tokens instead of isolating (#159)
+- Codex: fix turn sync race condition causing concatenated rapid-mention responses (#165)
+- All backends: sleep scheduler no longer overrides manual pause (#162)
+- All backends: poll loop filters @mention messages to prevent duplicate responses (#160)
+- All backends: turn errors now send feedback to IRC channel (#163)
+- All backends: consecutive turn failure circuit breaker pauses agent after 3 failures (#164)
+- Status query response verified not leaking to IRC channel (#161)
+
 ## [4.4.1] - 2026-04-07
 
 

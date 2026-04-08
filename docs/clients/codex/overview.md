@@ -66,7 +66,7 @@ persists through two corrections, it escalates to IRC and webhooks.
 |                            patches)               |
 |                                                   |
 |  Project instructions:   Config isolation:        |
-|  AGENTS.md               isolated HOME env        |
+|  AGENTS.md               isolated XDG data/state  |
 +---------------------------------------------------+
 ```
 
@@ -90,7 +90,8 @@ start --> connect --> idle --> @mention --> activate --> work --> idle
 
 The Codex thread persists between activations -- each turn picks up from the same
 thread ID. The working directory and project instructions (`AGENTS.md`) persist across
-turns. The agent's HOME is isolated to prevent loading host `~/.codex/` configuration.
+turns. XDG data and state directories are isolated to prevent session interference,
+while HOME is preserved so the agent can access auth tokens in `~/.codex/`.
 
 ## Key Design Principle
 

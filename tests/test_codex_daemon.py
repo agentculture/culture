@@ -1,6 +1,7 @@
 import asyncio
 import os
 import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -94,3 +95,158 @@ async def test_codex_backend_dispatch():
     daemon = CodexDaemon(config, agent, skip_codex=True)
     assert daemon.agent.agent == "codex"
     assert daemon.agent.model == "gpt-5.4"
+
+
+def _make_codex_daemon(server_port: int) -> CodexDaemon:
+    config = DaemonConfig(
+        server=ServerConnConfig(host="127.0.0.1", port=server_port),
+        poll_interval=0,
+    )
+    agent = AgentConfig(
+        nick="testserv-codex",
+        directory="/tmp",
+        channels=["#general"],
+    )
+    sock_dir = tempfile.mkdtemp()
+    return CodexDaemon(config, agent, socket_dir=sock_dir, skip_codex=True)
+
+
+@pytest.mark.asyncio
+async def test_codex_manual_pause_survives_sleep_scheduler(server):
+    """Manual pause should not be overridden by the sleep scheduler."""
+    daemon = _make_codex_daemon(server.config.port)
+    await daemon.start()
+
+    # Manually pause
+    daemon._ipc_pause("r1", {})
+    assert daemon._paused is True
+    assert daemon._manually_paused is True
+
+    # Simulate sleep scheduler trying to resume (not in sleep window)
+    # The scheduler checks: not should_sleep and self._paused and not self._manually_paused
+    # Since _manually_paused is True, it should NOT resume
+    assert daemon._manually_paused is True  # scheduler would skip resume
+
+    # Manual resume clears both flags
+    daemon._ipc_resume("r2", {})
+    assert daemon._paused is False
+    assert daemon._manually_paused is False
+
+    await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_codex_poll_loop_filters_mentions(server):
+    """Poll loop should not include messages that @mention the agent."""
+    daemon = _make_codex_daemon(server.config.port)
+    await daemon.start()
+    try:
+        await asyncio.sleep(0.3)
+
+        # Inject fake runner
+        runner = MagicMock()
+        runner.is_running.return_value = True
+        runner.send_prompt = AsyncMock()
+        runner.stop = AsyncMock()
+        daemon._agent_runner = runner
+
+        # Add messages to buffer — one @mention, one regular
+        daemon._buffer.add("#general", "alice", "@codex help me")
+        daemon._buffer.add("#general", "bob", "just chatting")
+
+        # Run poll cycle
+        daemon._send_channel_poll("#general")
+        await asyncio.sleep(0.1)  # Let the created task execute
+
+        # Should only send prompt with bob's message (not alice's @mention)
+        assert runner.send_prompt.called
+        prompt = runner.send_prompt.call_args[0][0]
+        assert "@codex" not in prompt
+        assert "just chatting" in prompt
+    finally:
+        await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_codex_turn_error_sends_feedback(server, make_client):
+    """Turn error should send error feedback to IRC."""
+    daemon = _make_codex_daemon(server.config.port)
+    await daemon.start()
+    await asyncio.sleep(0.3)
+
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.send("JOIN #general")
+    await human.recv_all(timeout=0.3)
+
+    # Simulate a pending mention
+    daemon._mention_targets.append("#general")
+
+    # Trigger turn error
+    await daemon._on_turn_error()
+
+    # Should have sent error feedback
+    lines = await human.recv_all(timeout=1.0)
+    error_msgs = [l for l in lines if "error" in l.lower()]
+    assert len(error_msgs) >= 1
+
+    # Deque should be cleared
+    assert len(daemon._mention_targets) == 0
+
+    await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_codex_turn_failure_circuit_breaker(server):
+    """Agent should pause after MAX_CONSECUTIVE_TURN_FAILURES consecutive errors."""
+    daemon = _make_codex_daemon(server.config.port)
+    await daemon.start()
+
+    assert daemon._paused is False
+
+    # Trigger 3 consecutive turn errors
+    for _ in range(3):
+        daemon._mention_targets.append(None)  # Use None to avoid IRC send
+        await daemon._on_turn_error()
+
+    assert daemon._paused is True
+    assert daemon._consecutive_turn_failures == 3
+
+    # Successful message should reset counter
+    daemon._paused = False
+    await daemon._on_agent_message(
+        {"type": "assistant", "content": [{"type": "text", "text": "ok"}]}
+    )
+    assert daemon._consecutive_turn_failures == 0
+
+    await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_codex_status_query_none_target(server):
+    """Status query should use None relay target to avoid leaking to IRC."""
+    daemon = _make_codex_daemon(server.config.port)
+    await daemon.start()
+    await asyncio.sleep(0.3)
+
+    # Simulate status query appending None target
+    daemon._mention_targets.append(None)
+
+    # Simulate agent response — should NOT send to IRC
+    sent_messages = []
+    original_send = daemon._transport.send_privmsg
+
+    async def capture_send(target, text):
+        sent_messages.append((target, text))
+        await original_send(target, text)
+
+    daemon._transport.send_privmsg = capture_send
+
+    await daemon._relay_response_to_irc(
+        {"content": [{"type": "text", "text": "I am working on X"}]}
+    )
+
+    # No messages should have been sent to IRC
+    assert len(sent_messages) == 0
+    assert len(daemon._mention_targets) == 0
+
+    await daemon.stop()

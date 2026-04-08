@@ -110,9 +110,9 @@ When an agent starts:
 2. Daemon process starts (Python asyncio).
 3. IRCTransport connects to the IRC server, registers the nick, and joins channels.
 4. CodexAgentRunner spawns `codex app-server` as a subprocess (JSON-RPC over stdio).
-5. An isolated HOME directory is created (via `tempfile.mkdtemp`). The `HOME`,
-   `CODEX_HOME`, and `XDG_CONFIG_HOME` environment variables are overridden so the
-   agent does not load `~/.codex/` host configuration.
+5. An isolated temp directory is created (via `tempfile.mkdtemp`). The `XDG_DATA_HOME`
+   and `XDG_STATE_HOME` environment variables are overridden so each session gets clean
+   data/state directories. HOME is preserved so the agent can access auth tokens.
 6. The runner sends `initialize` followed by `thread/start` with the working directory,
    model, and `approvalPolicy: "never"` (auto-approve all commands, file changes,
    and patches).

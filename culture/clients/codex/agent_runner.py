@@ -46,6 +46,8 @@ class CodexAgentRunner:
         self._request_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._accumulated_text = ""
+        self._turn_done: asyncio.Event = asyncio.Event()
+        self._turn_done.set()  # Initially not busy
 
     def is_running(self) -> bool:
         return self._running
@@ -58,12 +60,12 @@ class CodexAgentRunner:
         """Start codex app-server as a subprocess and initialize a thread."""
         self._stopping = False
 
-        # Isolate from host config (~/.codex/, XDG, etc.)
+        # Isolate data/state dirs to prevent session interference, but
+        # preserve HOME and XDG_CONFIG_HOME so codex finds auth tokens.
         self._isolated_home = tempfile.mkdtemp(prefix="culture-codex-")
         isolated_env = dict(os.environ)
-        isolated_env["HOME"] = self._isolated_home
-        isolated_env.pop("CODEX_HOME", None)
-        isolated_env.pop("XDG_CONFIG_HOME", None)
+        isolated_env["XDG_DATA_HOME"] = os.path.join(self._isolated_home, ".local", "share")
+        isolated_env["XDG_STATE_HOME"] = os.path.join(self._isolated_home, ".local", "state")
 
         try:
             # Spawn codex app-server in stdio mode
@@ -298,6 +300,7 @@ class CodexAgentRunner:
         elif method == "turn/completed":
             self._busy = False
             await self._flush_accumulated_text()
+            self._turn_done.set()
 
         elif method in self._APPROVAL_METHODS:
             await self._auto_approve(msg)
@@ -328,6 +331,7 @@ class CodexAgentRunner:
 
     async def _execute_single_turn(self, text: str) -> None:
         """Send one turn request and wait for completion."""
+        self._turn_done.clear()
         try:
             await self._send_request(
                 "turn/start",
@@ -336,11 +340,17 @@ class CodexAgentRunner:
                     "input": [{"type": "text", "text": text}],
                 },
             )
-            # Wait for turn to complete
-            while self._busy:
-                await asyncio.sleep(0.1)
+            # Wait for turn/completed notification via the event
+            async with asyncio.timeout(300):
+                await self._turn_done.wait()
+        except asyncio.TimeoutError:
+            logger.warning("Codex turn timed out after 300s")
+            self._turn_done.set()
+            if self.on_turn_error:
+                await maybe_await(self.on_turn_error())
         except Exception:
             logger.exception("Codex turn error")
+            self._turn_done.set()
             if self.on_turn_error:
                 await maybe_await(self.on_turn_error())
 

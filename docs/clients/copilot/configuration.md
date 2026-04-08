@@ -105,21 +105,22 @@ exits; the daemons continue running in the background.
 ## Config Isolation
 
 The Copilot agent runner isolates itself from the host user's configuration to prevent
-loading home directory config that could interfere with the agent session. It does this
-by creating a temporary directory and overriding the `HOME` environment variable:
+loading data/state that could interfere with the agent session. It does this by
+creating a temporary directory and overriding XDG data and state directories, while
+preserving HOME and XDG_CONFIG_HOME so the copilot CLI can find auth tokens:
 
 ```python
 isolated_home = tempfile.mkdtemp(prefix="culture-copilot-")
-isolated_env = {**os.environ, "HOME": isolated_home}
-isolated_env.pop("XDG_CONFIG_HOME", None)
+isolated_env = dict(os.environ)
+isolated_env["XDG_DATA_HOME"] = os.path.join(isolated_home, ".local", "share")
+isolated_env["XDG_STATE_HOME"] = os.path.join(isolated_home, ".local", "state")
 subprocess_config = SubprocessConfig(cwd=directory, env=isolated_env)
 client = CopilotClient(config=subprocess_config)
 ```
 
-This ensures the `copilot` CLI process spawned by the SDK uses a clean home directory
-with no pre-existing configuration files. `XDG_CONFIG_HOME` is also stripped so
-host config at custom XDG paths is not loaded. The temporary directory is cleaned up
-when the agent runner stops.
+This ensures each agent session has isolated data and state directories while
+preserving access to auth tokens in the user's home directory. The temporary
+directory is cleaned up when the agent runner stops.
 
 The supervisor uses the same isolation pattern with a separate temporary home directory
 (`culture-copilot-sv-` prefix).

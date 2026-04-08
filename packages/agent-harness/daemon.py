@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import time
 from typing import Any
 
@@ -77,6 +78,7 @@ class AgentDaemon:
 
         # Pause/sleep state
         self._paused: bool = False
+        self._manually_paused: bool = False
         self._last_activation: float | None = None
 
         # Background tasks — prevent fire-and-forget create_task GC
@@ -227,7 +229,7 @@ class AgentDaemon:
                 if should_sleep and not self._paused:
                     self._paused = True
                     logger.info("Sleep schedule: pausing %s", self.agent.nick)
-                elif not should_sleep and self._paused:
+                elif not should_sleep and self._paused and not self._manually_paused:
                     self._paused = False
                     logger.info("Sleep schedule: resuming %s", self.agent.nick)
             except asyncio.CancelledError:
@@ -249,6 +251,17 @@ class AgentDaemon:
                     msgs = self._buffer.read(channel)
                     if not msgs:
                         continue
+                    # Filter out @mention messages (already handled by _on_mention)
+                    nick = self.agent.nick
+                    short = nick.split("-", 1)[1] if "-" in nick else None
+                    msgs = [
+                        m
+                        for m in msgs
+                        if not re.search(rf"@{re.escape(nick)}\b", m.text)
+                        and not (short and re.search(rf"@{re.escape(short)}\b", m.text))
+                    ]
+                    if not msgs:
+                        continue
                     lines = "\n".join(f"  <{m.nick}> {m.text}" for m in msgs)
                     prompt = (
                         f"[IRC Channel Poll: {channel}] Recent unread messages:\n"
@@ -264,14 +277,19 @@ class AgentDaemon:
             except Exception:
                 logger.exception("Poll loop error")
 
-    def _on_turn_error(self) -> None:
-        """Clean up stale relay target when a prompt fails.
+    async def _on_turn_error(self) -> None:
+        """Send error feedback to IRC and clean up stale relay target.
 
         Wire this as the ``on_turn_error`` callback on your agent runner so
         the ``_mention_targets`` deque stays in sync with the prompt queue.
         """
         if self._mention_targets:
-            self._mention_targets.popleft()
+            relay_target = self._mention_targets.popleft()
+            if self._transport and relay_target:
+                await self._transport.send_privmsg(
+                    relay_target,
+                    "Sorry, I encountered an error processing your request.",
+                )
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called when the agent is @mentioned. Sends prompt to runner.
@@ -416,11 +434,13 @@ class AgentDaemon:
 
     def _ipc_pause(self, req_id: str, msg: dict) -> dict:
         self._paused = True
-        logger.info("Agent %s paused", self.agent.nick)
+        self._manually_paused = True
+        logger.info("Agent %s paused (manual)", self.agent.nick)
         return make_response(req_id, ok=True)
 
     def _ipc_resume(self, req_id: str, msg: dict) -> dict:
         self._paused = False
+        self._manually_paused = False
         logger.info("Agent %s resumed", self.agent.nick)
         return make_response(req_id, ok=True)
 

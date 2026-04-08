@@ -54,7 +54,7 @@ async def test_on_turn_error_pops_stale_target(server):
     daemon._mention_targets.append("#code-review")
     assert len(daemon._mention_targets) == 2
 
-    daemon._on_turn_error()
+    await daemon._on_turn_error()
     assert len(daemon._mention_targets) == 1
     assert daemon._mention_targets[0] == "#code-review"
 
@@ -68,7 +68,7 @@ async def test_on_turn_error_empty_deque_is_safe(server):
     await daemon.start()
 
     assert len(daemon._mention_targets) == 0
-    daemon._on_turn_error()  # should not raise
+    await daemon._on_turn_error()  # should not raise
     assert len(daemon._mention_targets) == 0
 
     await daemon.stop()
@@ -84,7 +84,7 @@ async def test_relay_routes_correctly_after_error_cleanup(server, make_client):
 
     # Simulate: system prompt enqueued None, then timed out and was cleaned up
     daemon._mention_targets.append(None)
-    daemon._on_turn_error()  # cleans up None
+    await daemon._on_turn_error()  # cleans up None
 
     # Now simulate a real mention that succeeds
     daemon._mention_targets.append("#general")
@@ -124,12 +124,12 @@ async def test_multiple_errors_drain_deque_correctly(server):
     daemon._mention_targets.append("#general")  # poll 1
     daemon._mention_targets.append("#general")  # poll 2
 
-    daemon._on_turn_error()  # pops None
-    daemon._on_turn_error()  # pops #general
+    await daemon._on_turn_error()  # pops None
+    await daemon._on_turn_error()  # pops #general
     assert len(daemon._mention_targets) == 1
     assert daemon._mention_targets[0] == "#general"
 
-    daemon._on_turn_error()  # pops last #general
+    await daemon._on_turn_error()  # pops last #general
     assert len(daemon._mention_targets) == 0
 
     await daemon.stop()

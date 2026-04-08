@@ -58,10 +58,12 @@ class CopilotAgentRunner:
         # Lazy import — github-copilot-sdk is only needed at runtime
         from copilot import CopilotClient, PermissionHandler, SubprocessConfig
 
-        # Isolate from host config
+        # Isolate data/state dirs to prevent session interference, but
+        # preserve HOME and XDG_CONFIG_HOME so copilot finds auth tokens.
         self._isolated_home = tempfile.mkdtemp(prefix="culture-copilot-")
-        isolated_env = {**os.environ, "HOME": self._isolated_home}
-        isolated_env.pop("XDG_CONFIG_HOME", None)
+        isolated_env = dict(os.environ)
+        isolated_env["XDG_DATA_HOME"] = os.path.join(self._isolated_home, ".local", "share")
+        isolated_env["XDG_STATE_HOME"] = os.path.join(self._isolated_home, ".local", "state")
 
         try:
             # Create and start the CopilotClient (spawns copilot CLI process)

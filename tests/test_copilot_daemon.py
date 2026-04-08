@@ -1,6 +1,7 @@
 import asyncio
 import os
 import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -143,5 +144,110 @@ async def test_copilot_relay_target_fifo(server, make_client):
     assert len(channel_msgs) >= 1, f"Expected 'channel response' in #general, got: {lines}"
     # DM goes to testserv-alice directly, so alice sees it as a PRIVMSG to their nick
     assert any("dm response" in l for l in lines), f"Expected 'dm response', got: {lines}"
+
+    await daemon.stop()
+
+
+def _make_copilot_daemon(server_port: int) -> CopilotDaemon:
+    config = DaemonConfig(
+        server=ServerConnConfig(host="127.0.0.1", port=server_port),
+        poll_interval=0,
+    )
+    agent = AgentConfig(
+        nick="testserv-copilot",
+        directory="/tmp",
+        channels=["#general"],
+    )
+    sock_dir = tempfile.mkdtemp()
+    return CopilotDaemon(config, agent, socket_dir=sock_dir, skip_copilot=True)
+
+
+@pytest.mark.asyncio
+async def test_copilot_manual_pause_survives_sleep_scheduler(server):
+    """Manual pause should not be overridden by the sleep scheduler."""
+    daemon = _make_copilot_daemon(server.config.port)
+    await daemon.start()
+
+    daemon._ipc_pause("r1", {})
+    assert daemon._paused is True
+    assert daemon._manually_paused is True
+
+    daemon._ipc_resume("r2", {})
+    assert daemon._paused is False
+    assert daemon._manually_paused is False
+
+    await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_copilot_poll_loop_filters_mentions(server):
+    """Poll loop should not include messages that @mention the agent."""
+    daemon = _make_copilot_daemon(server.config.port)
+    await daemon.start()
+    try:
+        await asyncio.sleep(0.3)
+
+        runner = MagicMock()
+        runner.is_running.return_value = True
+        runner.send_prompt = AsyncMock()
+        runner.stop = AsyncMock()
+        daemon._agent_runner = runner
+
+        daemon._buffer.add("#general", "alice", "@copilot help me")
+        daemon._buffer.add("#general", "bob", "just chatting")
+
+        daemon._send_channel_poll("#general")
+        await asyncio.sleep(0.1)  # Let the created task execute
+
+        assert runner.send_prompt.called
+        prompt = runner.send_prompt.call_args[0][0]
+        assert "@copilot" not in prompt
+        assert "just chatting" in prompt
+    finally:
+        await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_copilot_turn_error_sends_feedback(server, make_client):
+    """Turn error should send error feedback to IRC."""
+    daemon = _make_copilot_daemon(server.config.port)
+    await daemon.start()
+    await asyncio.sleep(0.3)
+
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.send("JOIN #general")
+    await human.recv_all(timeout=0.3)
+
+    daemon._mention_targets.append("#general")
+    await daemon._on_turn_error()
+
+    lines = await human.recv_all(timeout=1.0)
+    error_msgs = [l for l in lines if "error" in l.lower()]
+    assert len(error_msgs) >= 1
+    assert len(daemon._mention_targets) == 0
+
+    await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_copilot_turn_failure_circuit_breaker(server):
+    """Agent should pause after MAX_CONSECUTIVE_TURN_FAILURES consecutive errors."""
+    daemon = _make_copilot_daemon(server.config.port)
+    await daemon.start()
+
+    assert daemon._paused is False
+
+    for _ in range(3):
+        daemon._mention_targets.append(None)
+        await daemon._on_turn_error()
+
+    assert daemon._paused is True
+    assert daemon._consecutive_turn_failures == 3
+
+    daemon._paused = False
+    await daemon._on_agent_message(
+        {"type": "assistant", "content": [{"type": "text", "text": "ok"}]}
+    )
+    assert daemon._consecutive_turn_failures == 0
 
     await daemon.stop()

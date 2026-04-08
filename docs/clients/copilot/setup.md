@@ -87,7 +87,7 @@ The daemon will:
 
 1. Connect to the IRC server and register the nick
 2. Join configured channels
-3. Create a `CopilotClient` with config isolation (`SubprocessConfig(env=...)` with isolated HOME)
+3. Create a `CopilotClient` with config isolation (`SubprocessConfig(env=...)` with isolated XDG data/state dirs)
 4. Start the copilot CLI process via `client.start()`
 5. Create a session with the configured model and `PermissionHandler.approve_all`
 6. Open a Unix socket at `$XDG_RUNTIME_DIR/culture-spark-copilot.sock`

@@ -13,6 +13,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import time
 from collections import deque
 
@@ -37,6 +38,7 @@ _ERR_MISSING_CHANNEL_THREAD_MSG = "Missing 'channel', 'thread', or 'message'"
 MAX_CRASH_COUNT = 3
 CRASH_WINDOW_SECONDS = 300
 CRASH_RESTART_DELAY = 5
+MAX_CONSECUTIVE_TURN_FAILURES = 3
 
 
 class ACPDaemon:
@@ -74,9 +76,11 @@ class ACPDaemon:
         # Crash-recovery state
         self._crash_times: list[float] = []
         self._circuit_open = False
+        self._consecutive_turn_failures: int = 0
 
         # Pause/sleep state
         self._paused: bool = False
+        self._manually_paused: bool = False
         self._last_activation: float | None = None
 
         # Status query state — for asking the agent what it's doing
@@ -270,7 +274,7 @@ class ACPDaemon:
                 if should_sleep and not self._paused:
                     self._paused = True
                     logger.info("Sleep schedule: pausing %s", self.agent.nick)
-                elif not should_sleep and self._paused:
+                elif not should_sleep and self._paused and not self._manually_paused:
                     self._paused = False
                     logger.info("Sleep schedule: resuming %s", self.agent.nick)
             except asyncio.CancelledError:
@@ -302,6 +306,17 @@ class ACPDaemon:
         msgs = self._buffer.read(channel)
         if not msgs:
             return
+        # Filter out messages that @mention this agent (already handled by _on_mention)
+        nick = self.agent.nick
+        short = nick.split("-", 1)[1] if "-" in nick else None
+        msgs = [
+            m
+            for m in msgs
+            if not re.search(rf"@{re.escape(nick)}\b", m.text)
+            and not (short and re.search(rf"@{re.escape(short)}\b", m.text))
+        ]
+        if not msgs:
+            return
         lines = "\n".join(f"  <{m.nick}> {m.text}" for m in msgs)
         prompt = (
             f"[IRC Channel Poll: {channel}] Recent unread messages:\n"
@@ -330,10 +345,34 @@ class ACPDaemon:
     # Agent runner helpers
     # ------------------------------------------------------------------
 
-    def _on_turn_error(self) -> None:
-        """Clean up stale relay target when a prompt fails."""
+    async def _on_turn_error(self) -> None:
+        """Send error feedback to IRC and clean up stale relay target."""
         if self._mention_targets:
-            self._mention_targets.popleft()
+            relay_target = self._mention_targets.popleft()
+            if self._transport and relay_target:
+                await self._transport.send_privmsg(
+                    relay_target,
+                    "Sorry, I encountered an error processing your request.",
+                )
+        self._consecutive_turn_failures += 1
+        if self._consecutive_turn_failures >= MAX_CONSECUTIVE_TURN_FAILURES:
+            self._paused = True
+            logger.error(
+                "Agent %s paused after %d consecutive turn failures",
+                self.agent.nick,
+                self._consecutive_turn_failures,
+            )
+            if self._webhook:
+                await self._webhook.fire(
+                    AlertEvent(
+                        event_type="agent_spiraling",
+                        nick=self.agent.nick,
+                        message=(
+                            f"Agent {self.agent.nick} paused after "
+                            f"{self._consecutive_turn_failures} consecutive turn failures."
+                        ),
+                    )
+                )
 
     async def _start_agent_runner(self) -> None:
         self._agent_runner = ACPAgentRunner(
@@ -475,6 +514,7 @@ class ACPDaemon:
 
     async def _on_agent_message(self, msg: dict) -> None:
         """Relay agent text to IRC and feed to supervisor."""
+        self._consecutive_turn_failures = 0
         await self._relay_response_to_irc(msg)
 
         if self._supervisor:
@@ -621,11 +661,13 @@ class ACPDaemon:
 
     def _ipc_pause(self, req_id: str, msg: dict) -> dict:
         self._paused = True
-        logger.info("Agent %s paused", self.agent.nick)
+        self._manually_paused = True
+        logger.info("Agent %s paused (manual)", self.agent.nick)
         return make_response(req_id, ok=True)
 
     def _ipc_resume(self, req_id: str, msg: dict) -> dict:
         self._paused = False
+        self._manually_paused = False
         logger.info("Agent %s resumed", self.agent.nick)
         # NOTE: Catch-up on missed messages is not yet implemented.
         # IRCTransport does not process HISTORY responses into the buffer.

@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import time
 
 from culture.aio import maybe_await
@@ -62,6 +63,7 @@ class AgentDaemon:
 
         # Pause/sleep state
         self._paused: bool = False
+        self._manually_paused: bool = False
         self._last_activation: float | None = None
 
         # Status query state — for asking the agent what it's doing
@@ -236,7 +238,7 @@ class AgentDaemon:
                 if should_sleep and not self._paused:
                     self._paused = True
                     logger.info("Sleep schedule: pausing %s", self.agent.nick)
-                elif not should_sleep and self._paused:
+                elif not should_sleep and self._paused and not self._manually_paused:
                     self._paused = False
                     logger.info("Sleep schedule: resuming %s", self.agent.nick)
             except asyncio.CancelledError:
@@ -256,6 +258,17 @@ class AgentDaemon:
                     continue
                 for channel in self.agent.channels:
                     msgs = self._buffer.read(channel)
+                    if not msgs:
+                        continue
+                    # Filter out messages that @mention this agent (already handled)
+                    nick = self.agent.nick
+                    short = nick.split("-", 1)[1] if "-" in nick else None
+                    msgs = [
+                        m
+                        for m in msgs
+                        if not re.search(rf"@{re.escape(nick)}\b", m.text)
+                        and not (short and re.search(rf"@{re.escape(short)}\b", m.text))
+                    ]
                     if not msgs:
                         continue
                     lines = "\n".join(f"  <{m.nick}> {m.text}" for m in msgs)
@@ -542,11 +555,13 @@ class AgentDaemon:
 
     def _ipc_pause(self, req_id: str, msg: dict) -> dict:
         self._paused = True
-        logger.info("Agent %s paused", self.agent.nick)
+        self._manually_paused = True
+        logger.info("Agent %s paused (manual)", self.agent.nick)
         return make_response(req_id, ok=True)
 
     def _ipc_resume(self, req_id: str, msg: dict) -> dict:
         self._paused = False
+        self._manually_paused = False
         logger.info("Agent %s resumed", self.agent.nick)
         # NOTE: Catch-up on missed messages is not yet implemented.
         # IRCTransport does not process HISTORY responses into the buffer.

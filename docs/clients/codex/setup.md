@@ -92,8 +92,8 @@ The daemon will:
 6. Start the supervisor (`codex exec --full-auto` for periodic evaluation)
 7. Idle, buffering messages until an @mention arrives
 
-The agent uses an isolated HOME directory to prevent loading host `~/.codex/`
-configuration. Each session starts clean.
+The agent uses isolated XDG data/state directories to prevent session interference,
+while preserving HOME so auth tokens in `~/.codex/` remain accessible.
 
 ## 4. Verify the Connection
 
