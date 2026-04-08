@@ -10,6 +10,8 @@ import signal
 import sys
 from pathlib import Path
 
+import yaml
+
 from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
@@ -21,13 +23,20 @@ from culture.clients.claude.config import (
     sanitize_agent_name,
     unarchive_agent,
 )
+from culture.config import AgentConfig as NewAgentConfig
 from culture.config import (
+    ServerConfig,
+    ServerConnConfig,
+    SupervisorConfig,
+    WebhookConfig,
     add_to_manifest,
 )
 from culture.config import load_config_or_default as load_server_config_or_default
 from culture.config import (
     load_culture_yaml,
     remove_from_manifest,
+    save_culture_yaml,
+    save_server_config,
 )
 from culture.pidfile import (
     is_process_alive,
@@ -40,6 +49,8 @@ from .shared.constants import (
     _CONFIG_HELP,
     DEFAULT_CHANNEL,
     DEFAULT_CONFIG,
+    DEFAULT_SERVER_CONFIG,
+    LEGACY_CONFIG,
     LOG_DIR,
     NO_AGENTS_MSG,
 )
@@ -186,11 +197,20 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     unregister_parser.add_argument("target", help="Agent suffix or full nick")
     unregister_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
+    # -- migrate --------------------------------------------------------------
+    migrate_parser = agent_sub.add_parser(
+        "migrate", help="Migrate agents.yaml to server.yaml + culture.yaml"
+    )
+    migrate_parser.add_argument("--config", default=LEGACY_CONFIG, help="Legacy agents.yaml path")
+    migrate_parser.add_argument(
+        "--output", default=DEFAULT_SERVER_CONFIG, help="Output server.yaml path"
+    )
+
 
 def dispatch(args: argparse.Namespace) -> None:
     if not args.agent_command:
         print(
-            "Usage: culture agent {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister}",
+            "Usage: culture agent {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|migrate}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -213,6 +233,7 @@ def dispatch(args: argparse.Namespace) -> None:
         "delete": _cmd_delete,
         "register": _cmd_register,
         "unregister": _cmd_unregister,
+        "migrate": _cmd_migrate,
     }
     handler = handlers.get(args.agent_command)
     if handler:
@@ -1018,3 +1039,84 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     print(f"Unregistered: {prefix}{suffix}")
+
+
+# -----------------------------------------------------------------------
+# Migrate
+# -----------------------------------------------------------------------
+
+
+def _cmd_migrate(args: argparse.Namespace) -> None:
+    """Migrate from agents.yaml to server.yaml + per-directory culture.yaml."""
+    legacy_path = Path(args.config)
+    if not legacy_path.exists():
+        print(f"No agents.yaml found at {legacy_path}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(legacy_path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    server_name = raw.get("server", {}).get("name", "culture")
+    prefix = f"{server_name}-"
+
+    # Group agents by directory
+    by_dir: dict[str, list[tuple[str, dict]]] = {}
+    for agent_raw in raw.get("agents", []):
+        nick = agent_raw.get("nick", "")
+        suffix = nick.removeprefix(prefix) if nick.startswith(prefix) else nick
+        directory = str(Path(agent_raw.get("directory", ".")).resolve())
+        by_dir.setdefault(directory, []).append((suffix, agent_raw))
+
+    # Create culture.yaml in each directory
+    manifest: dict[str, str] = {}
+    for directory, entries in by_dir.items():
+        agents = []
+        for suffix, agent_raw in entries:
+            backend = agent_raw.get("agent", "claude")
+            known_fields = {
+                "suffix": suffix,
+                "backend": backend,
+                "channels": agent_raw.get("channels", ["#general"]),
+                "model": agent_raw.get("model", "claude-opus-4-6"),
+                "thinking": agent_raw.get("thinking", "medium"),
+                "system_prompt": agent_raw.get("system_prompt", ""),
+                "tags": agent_raw.get("tags", []),
+                "icon": agent_raw.get("icon"),
+                "archived": agent_raw.get("archived", False),
+                "archived_at": agent_raw.get("archived_at", ""),
+                "archived_reason": agent_raw.get("archived_reason", ""),
+            }
+            skip_keys = set(known_fields.keys()) | {"nick", "directory", "agent"}
+            extras = {k: v for k, v in agent_raw.items() if k not in skip_keys}
+            agents.append(NewAgentConfig(**known_fields, extras=extras))
+            manifest[suffix] = directory
+
+        dir_path = Path(directory)
+        dir_path.mkdir(parents=True, exist_ok=True)
+        save_culture_yaml(directory, agents)
+        print(f"  Created {directory}/culture.yaml ({len(agents)} agent(s))")
+
+    # Create server.yaml
+    server = ServerConnConfig(**raw.get("server", {}))
+    supervisor = SupervisorConfig(**raw.get("supervisor", {}))
+    webhooks = WebhookConfig(**raw.get("webhooks", {}))
+    server_config = ServerConfig(
+        server=server,
+        supervisor=supervisor,
+        webhooks=webhooks,
+        buffer_size=raw.get("buffer_size", 500),
+        poll_interval=raw.get("poll_interval", 60),
+        sleep_start=raw.get("sleep_start", "23:00"),
+        sleep_end=raw.get("sleep_end", "08:00"),
+        manifest=manifest,
+    )
+
+    output_path = Path(args.output)
+    save_server_config(str(output_path), server_config)
+    print(f"  Created {output_path}")
+
+    # Back up agents.yaml
+    backup = legacy_path.with_suffix(".yaml.bak")
+    legacy_path.rename(backup)
+    print(f"  Backed up {legacy_path} -> {backup}")
+    print(f"\nMigration complete: {len(manifest)} agent(s) across {len(by_dir)} directory(ies)")
