@@ -80,6 +80,7 @@ class AgentDaemon:
 
         # Crash-recovery state
         self._consecutive_turn_failures: int = 0
+        self._circuit_open: bool = False
 
         # Pause/sleep state
         self._paused: bool = False

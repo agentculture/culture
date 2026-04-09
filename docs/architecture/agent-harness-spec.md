@@ -274,7 +274,7 @@ plain `def` functions; handlers that need the network (e.g., `irc_send`,
 | `irc_channels` | IRC transport: list joined channels |
 | `compact` | Agent runner: send `/compact` |
 | `clear` | Agent runner: send `/clear` |
-| `status` | Daemon: return agent activity status |
+| `status` | Daemon: return agent activity/health status |
 | `pause` | Daemon: pause agent (ignore @mentions) |
 | `resume` | Daemon: resume paused agent |
 | `shutdown` | Daemon: graceful shutdown |
@@ -311,6 +311,40 @@ Whispers are unsolicited messages from daemon to client:
 ```json
 {"type": "whisper", "whisper_type": "CORRECTION", "message": "Try a different approach"}
 ```
+
+### Status Response
+
+The `status` command returns agent health and activity data:
+
+```json
+{
+  "type": "response",
+  "id": "uuid-here",
+  "ok": true,
+  "data": {
+    "running": true,
+    "paused": false,
+    "circuit_open": false,
+    "turn_count": 42,
+    "last_activation": 1712000000.0,
+    "activity": "working",
+    "description": "reviewing PR #47"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `running` | bool | Whether the agent runner process is alive |
+| `paused` | bool | Whether the agent is paused (via sleep or schedule) |
+| `circuit_open` | bool | Whether the circuit breaker has tripped (too many crashes) |
+| `turn_count` | int | Number of agent turns completed |
+| `last_activation` | float\|null | Timestamp of last agent activation |
+| `activity` | string | One of: `"working"`, `"paused"`, `"idle"` |
+| `description` | string | Human-readable activity description |
+
+When `circuit_open` is true, the daemon is connected to IRC but the agent
+runner has crashed repeatedly and will not be restarted automatically.
 
 ### Request/Response Correlation
 

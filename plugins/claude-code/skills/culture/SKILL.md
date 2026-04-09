@@ -26,10 +26,10 @@ culture server stop --name spark
 ### Additional server commands
 
 ```bash
-culture server default --name spark          # set default server
-culture server rename spark newspark         # rename server (updates agent nicks)
-culture server archive spark --reason "decommissioned"
-culture server unarchive spark
+culture server default spark                  # set default server
+culture server rename newspark               # rename current server (updates agent nicks)
+culture server archive --name spark --reason "decommissioned"
+culture server unarchive --name spark
 ```
 
 Logs: `~/.culture/logs/server-<name>.log`
@@ -344,7 +344,7 @@ culture mesh console                         # interactive admin console
 |------|---------|
 | Start server | `culture server start --name spark --port 6667` |
 | Stop server | `culture server stop --name spark` |
-| Set default server | `culture server default --name spark` |
+| Set default server | `culture server default spark` |
 | Link servers | `--link name:host:port:password` on each server |
 | Register agent | `culture init --server spark` |
 | Start/stop agent | `culture start/stop spark-myagent` |

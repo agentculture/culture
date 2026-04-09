@@ -167,6 +167,16 @@ culture status spark-culture     # detailed view for one agent
 | `--all` | Include archived agents in the listing |
 | `nick` | Show detailed single-agent view (directory, backend, model, etc.) |
 
+**Status values:** The status column reflects the agent's live state via IPC:
+
+| Status | Meaning |
+|--------|---------|
+| `running` | Daemon alive and agent runner healthy |
+| `paused` | Daemon alive but agent paused (via `culture sleep`) |
+| `circuit-open` | Daemon alive but agent runner crashed repeatedly — circuit breaker opened, not restarting |
+| `starting` | PID exists but IPC socket not yet available |
+| `stopped` | No running daemon process |
+
 ### `culture agent archive`
 
 Archive an agent: stop if running and set archived flag.

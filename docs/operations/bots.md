@@ -103,8 +103,14 @@ becomes `spark-ori-ghci`, which starts with the server prefix `spark-`.
 | `culture bot create <name>` | Create a new bot |
 | `culture bot start <name>` | Start a bot |
 | `culture bot stop <name>` | Stop a bot |
-| `culture bot list [owner]` | List bots |
+| `culture bot list [owner]` | List bots (active only) |
+| `culture bot list --all` | List bots including archived |
 | `culture bot inspect <name>` | Show bot details |
+| `culture bot archive <name>` | Archive a bot (stops it and marks archived) |
+| `culture bot unarchive <name>` | Restore an archived bot |
+
+Archived bots are hidden from `culture bot list` and `culture mesh overview`
+shows them with an `[archived]` marker.
 
 ## Server Configuration
 
