@@ -103,6 +103,7 @@ class AgentDaemon:
             "irc_join": self._ipc_irc_join,
             "irc_part": self._ipc_irc_part,
             "irc_who": self._ipc_irc_who,
+            "irc_topic": self._ipc_irc_topic,
             "irc_channels": self._ipc_irc_channels,
             "compact": self._ipc_compact,
             "clear": self._ipc_clear,
@@ -432,6 +433,15 @@ class AgentDaemon:
         target = msg.get("target", "")
         if self._transport:
             await self._transport.send_who(target)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_topic(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        if not channel:
+            return make_response(req_id, ok=False, error="Missing 'channel'")
+        if self._transport:
+            topic = msg.get("topic")  # None means query, string means set
+            await self._transport.send_topic(channel, topic)
         return make_response(req_id, ok=True)
 
     def _ipc_irc_channels(self, req_id: str, msg: dict) -> dict:

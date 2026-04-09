@@ -100,6 +100,7 @@ class CopilotDaemon:
             "irc_part": self._ipc_irc_part,
             "irc_channels": self._ipc_irc_channels,
             "irc_who": self._ipc_irc_who,
+            "irc_topic": self._ipc_irc_topic,
             "irc_ask": self._ipc_irc_ask,
             "compact": self._ipc_compact,
             "clear": self._ipc_clear,
@@ -833,6 +834,15 @@ class CopilotDaemon:
             return make_response(req_id, ok=False, error="Missing 'target'")
         assert self._transport is not None
         await self._transport.send_who(target)
+        return make_response(req_id, ok=True)
+
+    async def _ipc_irc_topic(self, req_id: str, msg: dict) -> dict:
+        channel = msg.get("channel", "")
+        if not channel:
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
+        assert self._transport is not None
+        topic = msg.get("topic")  # None means query, string means set
+        await self._transport.send_topic(channel, topic)
         return make_response(req_id, ok=True)
 
     async def _ipc_irc_ask(self, req_id: str, msg: dict) -> dict:

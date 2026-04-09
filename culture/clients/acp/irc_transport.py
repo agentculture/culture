@@ -129,6 +129,12 @@ class IRCTransport:
     async def send_who(self, target: str) -> None:
         await self._send_raw(f"WHO {target}")
 
+    async def send_topic(self, channel: str, topic: str | None = None) -> None:
+        if topic is not None:
+            await self._send_raw(f"TOPIC {channel} :{topic}")
+        else:
+            await self._send_raw(f"TOPIC {channel}")
+
     async def send_raw(self, line: str) -> None:
         """Send a raw IRC line. Public for commands like HISTORY."""
         if self._writer:

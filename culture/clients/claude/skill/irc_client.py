@@ -162,6 +162,13 @@ class SkillClient:
         """Send a WHO query for a channel or nick."""
         return await self._request("irc_who", target=target)
 
+    async def irc_topic(self, channel: str, topic: str | None = None) -> dict[str, Any]:
+        """Get or set a channel topic."""
+        params: dict[str, Any] = {"channel": channel}
+        if topic is not None:
+            params["topic"] = topic
+        return await self._request("irc_topic", **params)
+
     async def compact(self) -> dict[str, Any]:
         """Send /compact to the Claude agent runner."""
         return await self._request("compact")
@@ -245,6 +252,12 @@ async def _cmd_who(client: SkillClient, args: list[str]) -> dict[str, Any]:
     return await client.irc_who(args[1])
 
 
+async def _cmd_topic(client: SkillClient, args: list[str]) -> dict[str, Any]:
+    channel = args[1]
+    topic = " ".join(args[2:]) if len(args) > 2 else None
+    return await client.irc_topic(channel, topic)
+
+
 async def _cmd_compact(client: SkillClient, args: list[str]) -> dict[str, Any]:
     return await client.compact()
 
@@ -261,6 +274,7 @@ _SUBCOMMANDS: dict[str, Any] = {
     "part": _cmd_part,
     "channels": _cmd_channels,
     "who": _cmd_who,
+    "topic": _cmd_topic,
     "compact": _cmd_compact,
     "clear": _cmd_clear,
 }
@@ -271,7 +285,7 @@ async def _main(args: list[str]) -> None:
     if not args:
         print(
             "Usage: irc_client.py <subcommand> [args...]\n"
-            "Subcommands: send, read, ask, join, part, channels, who, compact, clear",
+            "Subcommands: send, read, ask, join, part, channels, who, topic, compact, clear",
             file=sys.stderr,
         )
         sys.exit(1)

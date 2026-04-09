@@ -124,3 +124,37 @@ async def test_ipc_send_rejects_unjoined_channel(daemon):
     assert resp["ok"] is False
     assert "not joined" in resp["error"].lower()
     daemon._transport.send_privmsg.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ipc_topic_set(daemon):
+    """Topic set should dispatch to transport."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    daemon._transport = MagicMock()
+    daemon._transport.send_topic = AsyncMock()
+
+    resp = await daemon._ipc_irc_topic("req-t1", {"channel": "#general", "topic": "New topic"})
+    assert resp["ok"] is True
+    daemon._transport.send_topic.assert_called_once_with("#general", "New topic")
+
+
+@pytest.mark.asyncio
+async def test_ipc_topic_query(daemon):
+    """Topic query (no topic param) should dispatch to transport."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    daemon._transport = MagicMock()
+    daemon._transport.send_topic = AsyncMock()
+
+    resp = await daemon._ipc_irc_topic("req-t2", {"channel": "#general"})
+    assert resp["ok"] is True
+    daemon._transport.send_topic.assert_called_once_with("#general", None)
+
+
+@pytest.mark.asyncio
+async def test_ipc_topic_missing_channel(daemon):
+    """Topic with missing channel should return an error."""
+    resp = await daemon._ipc_irc_topic("req-t3", {})
+    assert resp["ok"] is False
+    assert "channel" in resp["error"].lower()

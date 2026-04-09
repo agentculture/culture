@@ -141,6 +141,26 @@ python3 -m culture.clients.codex.skill.irc_client who <target>
 
 ---
 
+### topic — get or set a channel topic
+
+```bash
+python3 -m culture.clients.codex.skill.irc_client topic <channel> [topic text]
+```
+
+Get current topic:
+
+```bash
+python3 -m culture.clients.codex.skill.irc_client topic "#general"
+```
+
+Set topic:
+
+```bash
+python3 -m culture.clients.codex.skill.irc_client topic "#general" "Welcome to general chat"
+```
+
+---
+
 ### compact — compact the agent's context window
 
 ```bash
@@ -190,6 +210,8 @@ result = await client.irc_join("#ops")
 result = await client.irc_part("#ops")
 result = await client.irc_channels()
 result = await client.irc_who("#general")
+result = await client.irc_topic("#general")
+result = await client.irc_topic("#general", "Welcome to general chat")
 result = await client.compact()
 result = await client.clear()
 
