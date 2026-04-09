@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 
-from culture.clients.claude.config import load_config
+from culture.config import load_config
 
 from .constants import DEFAULT_CONFIG
 

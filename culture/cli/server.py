@@ -159,7 +159,7 @@ def dispatch(args: argparse.Namespace) -> None:
 
         # Also accept the configured server name
         try:
-            from culture.clients.claude.config import load_config_or_default
+            from culture.config import load_config_or_default
 
             config = load_config_or_default(DEFAULT_CONFIG)
             known_names.add(config.server.name)
@@ -314,7 +314,7 @@ def _verify_daemon_started(args: argparse.Namespace, pid: int) -> None:
 
 def _check_server_archived(args: argparse.Namespace) -> None:
     """Exit if the server is archived."""
-    from culture.clients.claude.config import load_config_or_default
+    from culture.config import load_config_or_default
 
     config_path = getattr(args, "config", DEFAULT_CONFIG)
     config = load_config_or_default(config_path)

@@ -6,7 +6,7 @@ import argparse
 import sys
 import time
 
-from culture.clients.claude.config import load_config_or_default
+from culture.config import load_config_or_default
 
 from .shared.constants import _BOT_NAME_HELP, _CONFIG_HELP, BOT_CONFIG_FILE, DEFAULT_CONFIG
 

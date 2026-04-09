@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 
-from culture.clients.claude.config import load_config_or_default
+from culture.config import load_config_or_default
 
 
 def agent_socket_path(nick: str) -> str:

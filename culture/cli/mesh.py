@@ -11,10 +11,7 @@ import subprocess
 import sys
 import time
 
-from culture.clients.claude.config import (
-    load_config,
-    load_config_or_default,
-)
+from culture.config import ServerConfig, load_config, load_config_or_default
 
 from .shared.constants import AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
