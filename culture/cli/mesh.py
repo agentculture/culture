@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-from culture.config import ServerConfig, load_server_config
+from culture.config import ServerConfig, load_config, load_config_or_default
 
 from .shared.constants import AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
@@ -154,10 +154,7 @@ def _cmd_overview(args: argparse.Namespace) -> None:
     """Show mesh overview."""
     from culture.overview.renderer_text import render_text
 
-    try:
-        config = load_server_config(args.config)
-    except FileNotFoundError:
-        config = ServerConfig()
+    config = load_config_or_default(args.config)
     message_limit = max(1, min(args.messages, 20))
     refresh_interval = max(1, args.refresh)
 
@@ -598,7 +595,7 @@ def _resolve_mesh_for_server(server_name: str, config_path: str):
         pass
 
     if os.path.isfile(DEFAULT_CONFIG):
-        daemon_config = load_server_config(DEFAULT_CONFIG)
+        daemon_config = load_config(DEFAULT_CONFIG)
         if daemon_config.server.name == server_name:
             mesh = from_daemon_config(daemon_config)
             if old_server is not None:

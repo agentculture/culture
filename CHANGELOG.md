@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.5.1] - 2026-04-09
+
+
+### Fixed
+
+- Fix mesh overview crash after agent config migration (str has no attribute items)
+
 ## [4.5.0] - 2026-04-09
 
 
