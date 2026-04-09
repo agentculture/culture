@@ -101,7 +101,8 @@ def _render_default(mesh: MeshState, message_limit: int) -> str:
         parts.append("|-----|---------|----------|-------|")
         for bot in mesh.bots:
             channels = ", ".join(bot.channels) if bot.channels else "-"
-            parts.append(f"| {bot.name} | {bot.trigger_type} | {channels} | {bot.owner} |")
+            name = f"{bot.name} [archived]" if bot.archived else bot.name
+            parts.append(f"| {name} | {bot.trigger_type} | {channels} | {bot.owner} |")
 
     return "\n".join(parts) + "\n"
 
@@ -207,7 +208,8 @@ def _render_agent_bots(nick: str, mesh: MeshState) -> list[str]:
     parts.append("")
     for bot in owned_bots:
         channels = ", ".join(bot.channels) if bot.channels else "-"
-        parts.append(f"- {bot.name} ({bot.trigger_type}, {channels}, {bot.status})")
+        status_str = f"{bot.status}, archived" if bot.archived else bot.status
+        parts.append(f"- {bot.name} ({bot.trigger_type}, {channels}, {status_str})")
     return parts
 
 

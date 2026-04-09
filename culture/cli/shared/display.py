@@ -33,20 +33,31 @@ def print_agent_detail(agent, config_path: str, args: argparse.Namespace) -> Non
     """Print detailed status for a single agent, including live IPC activity query."""
     status, pid = agent_process_status(agent)
     print(agent.nick)
-    print(f"  Status:     {status}")
-    print(f"  PID:        {pid or '-'}")
 
     if status == "running":
         query = getattr(args, "full", False)
         resp = asyncio.run(ipc_request(agent_socket_path(agent.nick), "status", query=query))
         if resp and resp.get("ok"):
             data = resp.get("data", {})
+            if data.get("circuit_open"):
+                status = "circuit-open"
+            elif data.get("paused"):
+                status = "paused"
+            print(f"  Status:     {status}")
+            print(f"  PID:        {pid or '-'}")
             print(f"  Activity:   {data.get('description', 'nothing')}")
             print(f"  Turns:      {data.get('turn_count', 0)}")
             print(f"  Paused:     {'yes' if data.get('paused') else 'no'}")
+            print(
+                f"  Circuit:    {'OPEN (not restarting)' if data.get('circuit_open') else 'closed'}"
+            )
         else:
+            print(f"  Status:     {status}")
+            print(f"  PID:        {pid or '-'}")
             print("  Activity:   unknown (daemon may need restart)")
     else:
+        print(f"  Status:     {status}")
+        print(f"  PID:        {pid or '-'}")
         print("  Activity:   -")
 
     channels = agent.channels if isinstance(agent.channels, list) else []
@@ -68,12 +79,12 @@ def _format_agent_status(base_status: str, archived: bool, show_archived_marker:
     return base_status
 
 
-def _fetch_agent_activity(agent) -> str:
-    """Fetch activity description from a running agent via IPC."""
+def _fetch_ipc_data(agent) -> dict | None:
+    """Fetch full IPC status data from a running agent."""
     resp = asyncio.run(ipc_request(agent_socket_path(agent.nick), "status"))
     if resp and resp.get("ok"):
-        return resp.get("data", {}).get("description", "nothing")
-    return "-"
+        return resp.get("data", {})
+    return None
 
 
 def print_agents_overview(
@@ -89,11 +100,19 @@ def print_agents_overview(
 
     for agent in agents:
         base_status, pid = agent_process_status(agent)
+        activity = "-"
+        # Enrich status from IPC for running agents
+        if base_status == "running":
+            ipc_data = _fetch_ipc_data(agent)
+            if ipc_data:
+                if ipc_data.get("circuit_open"):
+                    base_status = "circuit-open"
+                elif ipc_data.get("paused"):
+                    base_status = "paused"
+                if show_activity:
+                    activity = ipc_data.get("description", "nothing")
         status = _format_agent_status(
             base_status, getattr(agent, "archived", False), show_archived_marker
-        )
-        activity = (
-            _fetch_agent_activity(agent) if show_activity and base_status == "running" else "-"
         )
         if show_activity:
             print(f"{agent.nick:<30} {status:<12} {str(pid or '-'):<10} {activity}")

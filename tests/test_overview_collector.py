@@ -1,10 +1,12 @@
 """Tests for overview collector against a real IRC server."""
 
 import asyncio
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from culture.overview.collector import collect_mesh_state
+from culture.overview.collector import _collect_bots, collect_mesh_state
 from culture.overview.model import MeshState
 
 
@@ -101,3 +103,46 @@ async def test_collect_multiple_rooms(server, make_client):
     room_names = sorted(r.name for r in mesh.rooms)
     assert "#room1" in room_names
     assert "#room2" in room_names
+
+
+def test_collect_bots_passes_archived_flag(tmp_path):
+    """Issue #184: _collect_bots should populate BotInfo.archived from config."""
+    # Create a bot directory with an archived bot config (nested YAML format)
+    bot_dir = tmp_path / "test-bot"
+    bot_dir.mkdir()
+    (bot_dir / "bot.yaml").write_text(
+        "bot:\n"
+        "  name: test-bot\n"
+        "  owner: spark\n"
+        "  archived: true\n"
+        "  archived_at: '2026-01-01'\n"
+        "  archived_reason: testing\n"
+        "trigger:\n"
+        "  type: webhook\n"
+        "output:\n"
+        "  channels:\n"
+        "    - '#general'\n"
+    )
+
+    # Create a non-archived bot
+    active_dir = tmp_path / "active-bot"
+    active_dir.mkdir()
+    (active_dir / "bot.yaml").write_text(
+        "bot:\n"
+        "  name: active-bot\n"
+        "  owner: spark\n"
+        "trigger:\n"
+        "  type: mention\n"
+        "output:\n"
+        "  channels:\n"
+        "    - '#general'\n"
+    )
+
+    with patch("culture.bots.config.BOTS_DIR", tmp_path):
+        bots = _collect_bots()
+
+    assert len(bots) == 2
+    archived_bot = next(b for b in bots if b.name == "test-bot")
+    active_bot = next(b for b in bots if b.name == "active-bot")
+    assert archived_bot.archived is True
+    assert active_bot.archived is False

@@ -66,6 +66,7 @@ class BotInfo:
     description: str = ""
     webhook_url: str | None = None
     mention: str | None = None
+    archived: bool = False
 
 
 @dataclass

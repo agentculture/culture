@@ -593,6 +593,7 @@ class AgentDaemon:
             data={
                 "running": running,
                 "paused": self._paused,
+                "circuit_open": self._circuit_open,
                 "turn_count": turn_count,
                 "last_activation": self._last_activation,
                 "activity": activity,

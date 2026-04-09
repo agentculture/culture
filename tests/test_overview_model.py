@@ -111,6 +111,35 @@ def test_agent_has_tags():
     assert agent.tags == ["python", "code-review"]
 
 
+def test_botinfo_archived_field():
+    """Issue #184: BotInfo should accept archived=True."""
+    from culture.overview.model import BotInfo
+
+    bot = BotInfo(
+        name="test-bot",
+        owner="spark",
+        trigger_type="webhook",
+        channels=["#general"],
+        status="configured",
+        archived=True,
+    )
+    assert bot.archived is True
+
+
+def test_botinfo_archived_defaults_false():
+    """Issue #184: BotInfo archived should default to False."""
+    from culture.overview.model import BotInfo
+
+    bot = BotInfo(
+        name="test-bot",
+        owner="spark",
+        trigger_type="webhook",
+        channels=["#general"],
+        status="configured",
+    )
+    assert bot.archived is False
+
+
 def test_room_defaults_no_metadata():
     """Room with only required fields defaults metadata to None/empty."""
     from culture.overview.model import Room

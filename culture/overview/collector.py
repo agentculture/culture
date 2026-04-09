@@ -391,6 +391,7 @@ def _collect_bots() -> list[BotInfo]:
                     status="configured",  # disk-only; live status requires IPC
                     description=config.description,
                     mention=config.mention,
+                    archived=config.archived,
                 )
             )
         except Exception:
@@ -432,7 +433,9 @@ async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
                 info = resp.get("data", {})
                 agent.activity = info.get("description", "")
                 agent.turns = info.get("turn_count")
-                if info.get("paused"):
+                if info.get("circuit_open"):
+                    agent.status = "circuit-open"
+                elif info.get("paused"):
                     agent.status = "paused"
 
             w.close()

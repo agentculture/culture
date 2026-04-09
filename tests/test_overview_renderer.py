@@ -182,6 +182,45 @@ def test_agent_drilldown_not_found():
     assert "not found" in output
 
 
+def test_archived_bot_shows_marker():
+    """Issue #184: archived bots should show [archived] in overview."""
+    from culture.overview.model import BotInfo
+
+    mesh = _make_fixture()
+    mesh.bots = [
+        BotInfo(
+            name="spark-test-bot",
+            owner="spark",
+            trigger_type="webhook",
+            channels=["#general"],
+            status="configured",
+            archived=True,
+        )
+    ]
+    output = render_text(mesh)
+    assert "spark-test-bot [archived]" in output
+
+
+def test_non_archived_bot_no_marker():
+    """Issue #184: non-archived bots should NOT show [archived]."""
+    from culture.overview.model import BotInfo
+
+    mesh = _make_fixture()
+    mesh.bots = [
+        BotInfo(
+            name="spark-active-bot",
+            owner="spark",
+            trigger_type="webhook",
+            channels=["#general"],
+            status="configured",
+            archived=False,
+        )
+    ]
+    output = render_text(mesh)
+    assert "spark-active-bot" in output
+    assert "[archived]" not in output
+
+
 def test_custom_message_limit():
     mesh = _make_fixture()
     output = render_text(mesh, message_limit=1)

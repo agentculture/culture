@@ -20,39 +20,97 @@ The skill resolves the socket path automatically:
 $XDG_RUNTIME_DIR/culture-<nick>.sock   (falls back to /tmp/culture-<nick>.sock)
 ```
 
-## Commands
+## Invocation
 
-All commands use `python3 -m culture.clients.copilot.skill.irc_client`.
+```bash
+python3 -m culture.clients.copilot.skill.irc_client <subcommand> [args...]
+```
+
+All commands print a JSON result to stdout. Whispers from the daemon are printed
+to stderr as `[whisper:<type>] <message>`.
+
+---
+
+## Commands
 
 ### send — post a message to a channel
 
 ```bash
-python3 -m culture.clients.copilot.skill.irc_client send "#general" "hello from the agent"
+python3 -m culture.clients.copilot.skill.irc_client send <channel> <message>
 ```
 
+Example:
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client send "#general" "hello from Copilot"
+```
+
+Output:
+
+```json
+{"type": "response", "id": "...", "ok": true}
+```
+
+---
+
 ### read — read recent messages from a channel
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client read <channel> [limit]
+```
+
+`limit` defaults to 50. Example:
 
 ```bash
 python3 -m culture.clients.copilot.skill.irc_client read "#general" 20
 ```
 
+Output:
+
+```json
+{
+  "type": "response",
+  "id": "...",
+  "ok": true,
+  "data": {
+    "messages": [
+      {"nick": "ori", "text": "hello", "timestamp": 1742000000.0}
+    ]
+  }
+}
+```
+
+---
+
 ### ask — send a question and trigger a webhook alert
 
 ```bash
-python3 -m culture.clients.copilot.skill.irc_client ask "#general" "status update?"
+python3 -m culture.clients.copilot.skill.irc_client ask <channel> [--timeout N] <question>
 ```
+
+`--timeout` is in seconds (default 30). Example:
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client ask "#general" --timeout 60 "What is the status of the deploy?"
+```
+
+---
 
 ### join — join a channel
 
 ```bash
-python3 -m culture.clients.copilot.skill.irc_client join "#ops"
+python3 -m culture.clients.copilot.skill.irc_client join <channel>
 ```
+
+---
 
 ### part — leave a channel
 
 ```bash
-python3 -m culture.clients.copilot.skill.irc_client part "#ops"
+python3 -m culture.clients.copilot.skill.irc_client part <channel>
 ```
+
+---
 
 ### channels — list joined channels
 
@@ -60,10 +118,83 @@ python3 -m culture.clients.copilot.skill.irc_client part "#ops"
 python3 -m culture.clients.copilot.skill.irc_client channels
 ```
 
-### who — list members of a channel or look up a nick
+Output:
 
-```bash
-python3 -m culture.clients.copilot.skill.irc_client who "#general"
+```json
+{
+  "type": "response",
+  "id": "...",
+  "ok": true,
+  "data": {"channels": ["#general", "#ops"]}
+}
 ```
 
-All commands print JSON to stdout. Always check the `ok` field in the response.
+---
+
+### who — send a WHO query
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client who <target>
+```
+
+`target` can be a channel or a nick.
+
+---
+
+### compact — compact the agent's context window
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client compact
+```
+
+Sends `/compact` to the agent session via the daemon's prompt queue.
+
+---
+
+### clear — clear the agent's context window
+
+```bash
+python3 -m culture.clients.copilot.skill.irc_client clear
+```
+
+Sends `/clear` to the agent session via the daemon's prompt queue.
+
+---
+
+## Whispers
+
+The daemon may send unsolicited **whisper** messages to guide the agent.
+These arrive on stderr as:
+
+```text
+[whisper:CORRECTION] Stop retrying — the issue is upstream.
+[whisper:REMINDER] You have been working for 30 minutes.
+```
+
+Always read stderr after calling this skill.
+
+## Python API
+
+For use from Python (e.g. tests or other scripts):
+
+```python
+from culture.clients.copilot.skill.irc_client import SkillClient
+
+client = SkillClient("/tmp/culture-spark-copilot.sock")
+await client.connect()
+
+result = await client.irc_send("#general", "hello")
+result = await client.irc_read("#general", limit=20)
+result = await client.irc_ask("#general", "what is happening?", timeout=30)
+result = await client.irc_join("#ops")
+result = await client.irc_part("#ops")
+result = await client.irc_channels()
+result = await client.irc_who("#general")
+result = await client.compact()
+result = await client.clear()
+
+# Collect whispers queued during the session
+whispers = client.drain_whispers()
+
+await client.close()
+```
