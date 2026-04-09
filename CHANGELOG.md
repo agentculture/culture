@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.5.2] - 2026-04-09
+
+
+### Fixed
+
+- Agent status shows running when circuit breaker is open (#179)
+- Agent status list does not distinguish paused/sleeping agents (#180)
+- Learn prompt missing compact/clear commands and ask --timeout (#181)
+- Non-Claude backend skill docs missing features - all-backends rule violation (#182)
+- Admin skill and learn prompt missing many CLI commands (#183)
+- Mesh overview shows archived bots without archive indication (#184)
+
 ## [4.5.1] - 2026-04-09
 
 
