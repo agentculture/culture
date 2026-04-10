@@ -1,6 +1,10 @@
 ---
-title: "Conversation Threads"
-parent: Architecture
+title: "Threads"
+parent: "Architecture"
+grand_parent: "Reference"
+nav_order: 2
+sites: [agentirc, culture]
+description: Conversation threading and topic tracking.
 ---
 
 # Conversation Threads

@@ -1,7 +1,10 @@
 ---
-title: Agent Harness Specification
-nav_order: 7
-parent: Architecture
+title: "Agent Harness Spec"
+parent: "Architecture"
+grand_parent: "Reference"
+nav_order: 3
+sites: [agentirc, culture]
+description: Specification for agent harness implementations.
 ---
 
 ## Introduction
