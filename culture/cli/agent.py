@@ -316,44 +316,34 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
     return _create_default_config(full_nick, args.agent)
 
 
-def _cmd_create(args: argparse.Namespace) -> None:
-    config = load_config_or_default(args.config)
-
-    server_name = args.server or config.server.name or "culture"
-
-    if args.nick:
-        suffix = args.nick
-    else:
-        dirname = os.path.basename(os.getcwd())
-        suffix = sanitize_agent_name(dirname)
-
-    full_nick = f"{server_name}-{suffix}"
-
+def _check_existing_agent(config, full_nick: str, config_path: str) -> None:
+    """Check for duplicate agent nick.  Removes archived duplicates; exits on active ones."""
     for existing in config.agents:
-        if existing.nick == full_nick:
-            if existing.archived:
-                print(f"Replacing archived agent '{full_nick}'")
-                remove_manifest_agent(args.config, full_nick)
-                break
-            channels = existing.channels if isinstance(existing.channels, list) else []
-            print(f"Agent '{full_nick}' already exists in config", file=sys.stderr)
-            print(f"  Directory: {existing.directory}", file=sys.stderr)
-            print(f"  Backend:   {existing.agent}", file=sys.stderr)
-            print(f"  Channels:  {', '.join(channels)}", file=sys.stderr)
-            print(f"  Model:     {existing.model}", file=sys.stderr)
-            print(f"  Config:    {args.config}", file=sys.stderr)
-            print(file=sys.stderr)
-            print(f"Start with: culture agent start {full_nick}", file=sys.stderr)
-            sys.exit(1)
+        if existing.nick != full_nick:
+            continue
+        if existing.archived:
+            print(f"Replacing archived agent '{full_nick}'")
+            remove_manifest_agent(config_path, full_nick)
+            return
+        channels = existing.channels if isinstance(existing.channels, list) else []
+        print(f"Agent '{full_nick}' already exists in config", file=sys.stderr)
+        print(f"  Directory: {existing.directory}", file=sys.stderr)
+        print(f"  Backend:   {existing.agent}", file=sys.stderr)
+        print(f"  Channels:  {', '.join(channels)}", file=sys.stderr)
+        print(f"  Model:     {existing.model}", file=sys.stderr)
+        print(f"  Config:    {config_path}", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"Start with: culture agent start {full_nick}", file=sys.stderr)
+        sys.exit(1)
 
-    raw_agent = _create_agent_config(args, full_nick)
 
-    # Convert backend-specific AgentConfig to manifest-format AgentConfig
+def _to_manifest_agent(raw_agent, suffix: str) -> AgentConfig:
+    """Convert a backend-specific AgentConfig to a manifest-format AgentConfig."""
     backend = getattr(raw_agent, "backend", None) or getattr(raw_agent, "agent", "claude")
     extras = {}
     if hasattr(raw_agent, "acp_command") and backend == "acp":
         extras["acp_command"] = raw_agent.acp_command
-    agent = AgentConfig(
+    return AgentConfig(
         suffix=suffix,
         backend=backend,
         channels=raw_agent.channels,
@@ -362,18 +352,34 @@ def _cmd_create(args: argparse.Namespace) -> None:
         extras=extras,
     )
 
-    # Merge with existing culture.yaml to preserve other agents in the directory
+
+def _save_agent_to_directory(agent: AgentConfig) -> None:
+    """Save agent to culture.yaml, merging with existing agents in the directory."""
     culture_yaml_path = Path(agent.directory) / "culture.yaml"
     if culture_yaml_path.exists():
         existing = load_culture_yaml(agent.directory)
-        agents_to_save = [a for a in existing if a.suffix != suffix]
+        agents_to_save = [a for a in existing if a.suffix != agent.suffix]
         agents_to_save.append(agent)
     else:
         agents_to_save = [agent]
     save_culture_yaml(agent.directory, agents_to_save)
+
+
+def _cmd_create(args: argparse.Namespace) -> None:
+    config = load_config_or_default(args.config)
+
+    server_name = args.server or config.server.name or "culture"
+    suffix = args.nick or sanitize_agent_name(os.path.basename(os.getcwd()))
+    full_nick = f"{server_name}-{suffix}"
+
+    _check_existing_agent(config, full_nick, args.config)
+
+    raw_agent = _create_agent_config(args, full_nick)
+    agent = _to_manifest_agent(raw_agent, suffix)
+
+    _save_agent_to_directory(agent)
     add_to_manifest(args.config, suffix, agent.directory)
 
-    # Persist --server into server.yaml if explicitly provided
     if args.server and args.server != config.server.name:
         config.server.name = args.server
         save_server_config(str(args.config), config)
