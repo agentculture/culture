@@ -362,7 +362,15 @@ def _cmd_create(args: argparse.Namespace) -> None:
         extras=extras,
     )
 
-    save_culture_yaml(agent.directory, [agent])
+    # Merge with existing culture.yaml to preserve other agents in the directory
+    culture_yaml_path = Path(agent.directory) / "culture.yaml"
+    if culture_yaml_path.exists():
+        existing = load_culture_yaml(agent.directory)
+        agents_to_save = [a for a in existing if a.suffix != suffix]
+        agents_to_save.append(agent)
+    else:
+        agents_to_save = [agent]
+    save_culture_yaml(agent.directory, agents_to_save)
     add_to_manifest(args.config, suffix, agent.directory)
 
     print(f"Agent created: {full_nick}")
@@ -1057,8 +1065,6 @@ def _cmd_migrate(args: argparse.Namespace) -> None:
 
     config = migrate_legacy_to_manifest(legacy_path)
 
-    # Back up the original (now overwritten with manifest format)
-    # The file has already been converted in-place by migrate_legacy_to_manifest
     agent_count = len(config.manifest)
     dir_count = len(set(config.manifest.values()))
     print(f"\nMigration complete: {agent_count} agent(s) across {dir_count} directory(ies)")

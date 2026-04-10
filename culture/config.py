@@ -303,14 +303,13 @@ def _is_legacy_format(path: str | Path) -> bool:
 
 
 def migrate_legacy_to_manifest(path: str | Path) -> ServerConfig:
-    """Auto-migrate legacy agents.yaml format to server.yaml + culture.yaml files.
+    """Auto-migrate legacy agents.yaml format to manifest format in place.
 
-    Reads the legacy YAML, groups agents by directory, writes culture.yaml in
-    each directory, converts the agents list to a manifest dict, and saves the
-    config as manifest format.  Returns the loaded ServerConfig.
+    Reads the legacy YAML from *path*, groups agents by directory, writes a
+    ``culture.yaml`` file in each directory, converts the ``agents`` list to a
+    manifest dict, and overwrites *path* with the manifest-format server
+    config.  Returns the loaded ``ServerConfig``.
     """
-    import time as _time
-
     path = Path(path)
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
@@ -612,8 +611,11 @@ def rename_manifest_agent(config_path: str | Path, old_nick: str, new_nick: str)
         raise ValueError(f"Nick {old_nick!r} does not match server {server_name!r}")
     old_suffix = old_nick[len(old_prefix) :]
 
-    # new_nick may have a different server prefix (for assign)
-    if "-" in new_nick:
+    # Strip the known server prefix to get the new suffix, handling
+    # hyphenated server names correctly (e.g. "my-server-bot" → "bot").
+    if new_nick.startswith(old_prefix):
+        new_suffix = new_nick[len(old_prefix) :]
+    elif "-" in new_nick:
         new_suffix = new_nick.split("-", 1)[1]
     else:
         new_suffix = new_nick
@@ -624,9 +626,12 @@ def rename_manifest_agent(config_path: str | Path, old_nick: str, new_nick: str)
     if old_suffix != new_suffix and new_suffix in config.manifest:
         raise ValueError(f"Agent with suffix {new_suffix!r} already exists in manifest")
 
-    # Update manifest
-    remove_from_manifest(config_path, old_suffix)
-    add_to_manifest(config_path, new_suffix, directory)
+    # Update manifest atomically (single write instead of remove + add)
+    if old_suffix != new_suffix:
+        config.manifest = {
+            (new_suffix if s == old_suffix else s): d for s, d in config.manifest.items()
+        }
+        save_server_config(str(config_path), config)
 
     # Update suffix in culture.yaml
     agents = load_culture_yaml(directory)
