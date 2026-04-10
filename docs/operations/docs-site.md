@@ -18,10 +18,14 @@ The project documentation is published at [culture.dev](https://culture.dev) usi
 
 ```bash
 bundle install
+cp -r culture/agentirc/docs docs/agentirc   # gather sub-project docs
 bundle exec jekyll serve
 ```
 
 Open `http://localhost:4000` to preview the site locally.
+
+The copy step mirrors what CI does in `pages.yml`. The `docs/agentirc/`
+folder is gitignored — the source of truth is `culture/agentirc/docs/`.
 
 ## Adding Documentation
 

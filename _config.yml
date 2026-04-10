@@ -45,6 +45,7 @@ exclude:
   - .gitignore
   - .github/
   - .claude/
+  - culture/
   - server/
   - clients/
   - protocol/commands.py
