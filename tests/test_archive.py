@@ -610,9 +610,9 @@ def test_cli_create_replaces_archived_agent():
         DaemonConfig,
         ServerConnConfig,
         archive_agent,
-        load_config,
         save_config,
     )
+    from culture.config import load_config
 
     tmpdir = tempfile.mkdtemp()
     try:
@@ -625,7 +625,7 @@ def test_cli_create_replaces_archived_agent():
                     AgentConfig(
                         nick="spark-daria",
                         agent="claude",
-                        directory="/tmp/daria",
+                        directory=os.path.join(tmpdir, "daria"),
                         channels=["#general"],
                     ),
                 ],
@@ -654,7 +654,7 @@ def test_cli_create_replaces_archived_agent():
         assert len(loaded.agents) == 1
         agent = loaded.agents[0]
         assert agent.nick == "spark-daria"
-        assert agent.agent == "acp"
+        assert agent.backend == "acp"
         assert agent.archived is False
     finally:
         shutil.rmtree(tmpdir)
@@ -682,7 +682,7 @@ def test_cli_create_blocks_active_agent():
                     AgentConfig(
                         nick="spark-daria",
                         agent="claude",
-                        directory="/tmp/daria",
+                        directory=os.path.join(tmpdir, "daria"),
                         channels=["#general"],
                     ),
                 ],
@@ -719,9 +719,9 @@ def test_cli_delete_removes_agent():
         AgentConfig,
         DaemonConfig,
         ServerConnConfig,
-        load_config,
         save_config,
     )
+    from culture.config import load_config
 
     tmpdir = tempfile.mkdtemp()
     try:
@@ -734,13 +734,13 @@ def test_cli_delete_removes_agent():
                     AgentConfig(
                         nick="spark-daria",
                         agent="claude",
-                        directory="/tmp/daria",
+                        directory=os.path.join(tmpdir, "daria"),
                         channels=["#general"],
                     ),
                     AgentConfig(
                         nick="spark-ori",
                         agent="claude",
-                        directory="/tmp/ori",
+                        directory=os.path.join(tmpdir, "ori"),
                         channels=["#dev"],
                     ),
                 ],

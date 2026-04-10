@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.0.1] - 2026-04-10
+
+
+### Fixed
+
+- agent create/join/delete/archive/unarchive/rename crash with manifest-format server.yaml (#208)
+- Auto-migrate legacy agents.yaml to manifest format on first load
+- Server rename/archive/unarchive now work with manifest format
+
 ## [6.0.0] - 2026-04-10
 
 

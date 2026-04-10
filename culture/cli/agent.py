@@ -12,12 +12,6 @@ from pathlib import Path
 
 import yaml
 
-from culture.clients.claude.config import (
-    add_agent_to_config,
-    archive_agent,
-    remove_agent,
-    unarchive_agent,
-)
 from culture.config import (
     AgentConfig,
     DaemonConfig,
@@ -26,13 +20,17 @@ from culture.config import (
     SupervisorConfig,
     WebhookConfig,
     add_to_manifest,
+    archive_manifest_agent,
     load_config,
     load_config_or_default,
     load_culture_yaml,
     remove_from_manifest,
+    remove_manifest_agent,
+    rename_manifest_agent,
     sanitize_agent_name,
     save_culture_yaml,
     save_server_config,
+    unarchive_manifest_agent,
 )
 from culture.pidfile import (
     is_process_alive,
@@ -198,9 +196,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "migrate", help="Migrate agents.yaml to server.yaml + culture.yaml"
     )
     migrate_parser.add_argument("--config", default=LEGACY_CONFIG, help="Legacy agents.yaml path")
-    migrate_parser.add_argument(
-        "--output", default=DEFAULT_SERVER_CONFIG, help="Output server.yaml path"
-    )
 
 
 def dispatch(args: argparse.Namespace) -> None:
@@ -321,39 +316,73 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
     return _create_default_config(full_nick, args.agent)
 
 
+def _check_existing_agent(config, full_nick: str, config_path: str) -> None:
+    """Check for duplicate agent nick.  Removes archived duplicates; exits on active ones."""
+    for existing in config.agents:
+        if existing.nick != full_nick:
+            continue
+        if existing.archived:
+            print(f"Replacing archived agent '{full_nick}'")
+            remove_manifest_agent(config_path, full_nick)
+            return
+        channels = existing.channels if isinstance(existing.channels, list) else []
+        print(f"Agent '{full_nick}' already exists in config", file=sys.stderr)
+        print(f"  Directory: {existing.directory}", file=sys.stderr)
+        print(f"  Backend:   {existing.agent}", file=sys.stderr)
+        print(f"  Channels:  {', '.join(channels)}", file=sys.stderr)
+        print(f"  Model:     {existing.model}", file=sys.stderr)
+        print(f"  Config:    {config_path}", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"Start with: culture agent start {full_nick}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _to_manifest_agent(raw_agent, suffix: str) -> AgentConfig:
+    """Convert a backend-specific AgentConfig to a manifest-format AgentConfig."""
+    backend = getattr(raw_agent, "backend", None) or getattr(raw_agent, "agent", "claude")
+    extras = {}
+    if hasattr(raw_agent, "acp_command") and backend == "acp":
+        extras["acp_command"] = raw_agent.acp_command
+    return AgentConfig(
+        suffix=suffix,
+        backend=backend,
+        channels=raw_agent.channels,
+        model=raw_agent.model,
+        directory=raw_agent.directory,
+        extras=extras,
+    )
+
+
+def _save_agent_to_directory(agent: AgentConfig) -> None:
+    """Save agent to culture.yaml, merging with existing agents in the directory."""
+    culture_yaml_path = Path(agent.directory) / "culture.yaml"
+    if culture_yaml_path.exists():
+        existing = load_culture_yaml(agent.directory)
+        agents_to_save = [a for a in existing if a.suffix != agent.suffix]
+        agents_to_save.append(agent)
+    else:
+        agents_to_save = [agent]
+    save_culture_yaml(agent.directory, agents_to_save)
+
+
 def _cmd_create(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
 
     server_name = args.server or config.server.name or "culture"
-
-    if args.nick:
-        suffix = args.nick
-    else:
-        dirname = os.path.basename(os.getcwd())
-        suffix = sanitize_agent_name(dirname)
-
+    suffix = args.nick or sanitize_agent_name(os.path.basename(os.getcwd()))
     full_nick = f"{server_name}-{suffix}"
 
-    for existing in config.agents:
-        if existing.nick == full_nick:
-            if existing.archived:
-                print(f"Replacing archived agent '{full_nick}'")
-                remove_agent(args.config, full_nick)
-                break
-            channels = existing.channels if isinstance(existing.channels, list) else []
-            print(f"Agent '{full_nick}' already exists in config", file=sys.stderr)
-            print(f"  Directory: {existing.directory}", file=sys.stderr)
-            print(f"  Backend:   {existing.agent}", file=sys.stderr)
-            print(f"  Channels:  {', '.join(channels)}", file=sys.stderr)
-            print(f"  Model:     {existing.model}", file=sys.stderr)
-            print(f"  Config:    {args.config}", file=sys.stderr)
-            print(file=sys.stderr)
-            print(f"Start with: culture agent start {full_nick}", file=sys.stderr)
-            sys.exit(1)
+    _check_existing_agent(config, full_nick, args.config)
 
-    agent = _create_agent_config(args, full_nick)
+    raw_agent = _create_agent_config(args, full_nick)
+    agent = _to_manifest_agent(raw_agent, suffix)
 
-    add_agent_to_config(args.config, agent, server_name=server_name)
+    _save_agent_to_directory(agent)
+    add_to_manifest(args.config, suffix, agent.directory)
+
+    if args.server and args.server != config.server.name:
+        config.server.name = args.server
+        save_server_config(str(args.config), config)
 
     print(f"Agent created: {full_nick}")
     print(f"  Directory: {agent.directory}")
@@ -717,11 +746,6 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 def _cmd_rename(args: argparse.Namespace) -> None:
     """Rename an agent's suffix within the same server."""
-    from culture.clients.claude.config import (
-        load_config_or_default,
-        rename_agent,
-        sanitize_agent_name,
-    )
     from culture.pidfile import rename_pid
 
     config = load_config_or_default(args.config)
@@ -749,7 +773,7 @@ def _cmd_rename(args: argparse.Namespace) -> None:
         return
 
     try:
-        rename_agent(args.config, old_nick, new_nick)
+        rename_manifest_agent(args.config, old_nick, new_nick)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
@@ -765,11 +789,6 @@ def _cmd_rename(args: argparse.Namespace) -> None:
 
 def _cmd_assign(args: argparse.Namespace) -> None:
     """Move an agent to a different server (change nick prefix)."""
-    from culture.clients.claude.config import (
-        load_config_or_default,
-        rename_agent,
-        sanitize_agent_name,
-    )
     from culture.pidfile import rename_pid
 
     config = load_config_or_default(args.config)
@@ -799,7 +818,7 @@ def _cmd_assign(args: argparse.Namespace) -> None:
         return
 
     try:
-        rename_agent(args.config, old_nick, new_nick)
+        rename_manifest_agent(args.config, old_nick, new_nick)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
@@ -941,7 +960,7 @@ def _cmd_archive(args: argparse.Namespace) -> None:
     if pid and is_process_alive(pid):
         stop_agent(args.nick)
 
-    archive_agent(args.config, args.nick, reason=args.reason)
+    archive_manifest_agent(args.config, args.nick, reason=args.reason)
 
     print(f"Agent archived: {args.nick}")
     if args.reason:
@@ -952,7 +971,7 @@ def _cmd_archive(args: argparse.Namespace) -> None:
 def _cmd_unarchive(args: argparse.Namespace) -> None:
     """Restore an archived agent."""
     try:
-        unarchive_agent(args.config, args.nick)
+        unarchive_manifest_agent(args.config, args.nick)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
@@ -974,7 +993,7 @@ def _cmd_delete(args: argparse.Namespace) -> None:
     if pid and is_process_alive(pid):
         stop_agent(args.nick)
 
-    remove_agent(args.config, args.nick)
+    remove_manifest_agent(args.config, args.nick)
     print(f"Agent deleted: {args.nick}")
 
 
@@ -1044,77 +1063,21 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
 
 def _cmd_migrate(args: argparse.Namespace) -> None:
     """Migrate from agents.yaml to server.yaml + per-directory culture.yaml."""
+    from culture.config import _is_legacy_format, migrate_legacy_to_manifest
+
     legacy_path = Path(args.config)
     if not legacy_path.exists():
         print(f"No agents.yaml found at {legacy_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(legacy_path) as f:
-        raw = yaml.safe_load(f) or {}
+    if not _is_legacy_format(legacy_path):
+        print(f"{legacy_path} is already in manifest format", file=sys.stderr)
+        sys.exit(1)
 
-    server_name = raw.get("server", {}).get("name", "culture")
-    prefix = f"{server_name}-"
+    config = migrate_legacy_to_manifest(legacy_path)
 
-    # Group agents by directory
-    by_dir: dict[str, list[tuple[str, dict]]] = {}
-    for agent_raw in raw.get("agents", []):
-        nick = agent_raw.get("nick", "")
-        suffix = nick.removeprefix(prefix) if nick.startswith(prefix) else nick
-        directory = str(Path(agent_raw.get("directory", ".")).resolve())
-        by_dir.setdefault(directory, []).append((suffix, agent_raw))
-
-    # Create culture.yaml in each directory
-    manifest: dict[str, str] = {}
-    for directory, entries in by_dir.items():
-        agents = []
-        for suffix, agent_raw in entries:
-            backend = agent_raw.get("agent", "claude")
-            known_fields = {
-                "suffix": suffix,
-                "backend": backend,
-                "channels": agent_raw.get("channels", ["#general"]),
-                "model": agent_raw.get("model", "claude-opus-4-6"),
-                "thinking": agent_raw.get("thinking", "medium"),
-                "system_prompt": agent_raw.get("system_prompt", ""),
-                "tags": agent_raw.get("tags", []),
-                "icon": agent_raw.get("icon"),
-                "archived": agent_raw.get("archived", False),
-                "archived_at": agent_raw.get("archived_at", ""),
-                "archived_reason": agent_raw.get("archived_reason", ""),
-            }
-            skip_keys = set(known_fields.keys()) | {"nick", "directory", "agent"}
-            extras = {k: v for k, v in agent_raw.items() if k not in skip_keys}
-            agents.append(AgentConfig(**known_fields, extras=extras))
-            manifest[suffix] = directory
-
-        dir_path = Path(directory)
-        dir_path.mkdir(parents=True, exist_ok=True)
-        save_culture_yaml(directory, agents)
-        print(f"  Created {directory}/culture.yaml ({len(agents)} agent(s))")
-
-    # Create server.yaml
-    server = ServerConnConfig(**raw.get("server", {}))
-    supervisor = SupervisorConfig(**raw.get("supervisor", {}))
-    webhooks = WebhookConfig(**raw.get("webhooks", {}))
-    server_config = ServerConfig(
-        server=server,
-        supervisor=supervisor,
-        webhooks=webhooks,
-        buffer_size=raw.get("buffer_size", 500),
-        poll_interval=raw.get("poll_interval", 60),
-        sleep_start=raw.get("sleep_start", "23:00"),
-        sleep_end=raw.get("sleep_end", "08:00"),
-        manifest=manifest,
-    )
-
-    output_path = Path(args.output)
-    save_server_config(str(output_path), server_config)
-    print(f"  Created {output_path}")
-
-    # Back up agents.yaml
-    backup = legacy_path.with_suffix(".yaml.bak")
-    legacy_path.rename(backup)
-    print(f"  Backed up {legacy_path} -> {backup}")
-    print(f"\nMigration complete: {len(manifest)} agent(s) across {len(by_dir)} directory(ies)")
-    print(f"\nAgent commands now use {output_path} by default.")
-    print(f"Verify with: culture agent status")
+    agent_count = len(config.manifest)
+    dir_count = len(set(config.manifest.values()))
+    print(f"\nMigration complete: {agent_count} agent(s) across {dir_count} directory(ies)")
+    print(f"\nAgent commands now use {legacy_path} by default.")
+    print("Verify with: culture agent status")

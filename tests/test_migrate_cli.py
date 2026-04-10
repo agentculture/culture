@@ -4,7 +4,7 @@ import pytest
 
 
 def test_migrate_creates_server_yaml_and_culture_yamls(tmp_path):
-    """migrate splits agents.yaml into server.yaml + per-dir culture.yaml."""
+    """migrate converts agents.yaml in-place to manifest + per-dir culture.yaml."""
     from culture.config import load_culture_yaml, load_server_config
 
     proj_a = tmp_path / "proj-a"
@@ -53,13 +53,11 @@ agents:
 
     from culture.cli.agent import _cmd_migrate
 
-    server_yaml = tmp_path / "server.yaml"
-    args = argparse.Namespace(config=str(agents_yaml), output=str(server_yaml))
+    args = argparse.Namespace(config=str(agents_yaml))
     _cmd_migrate(args)
 
-    # server.yaml exists with manifest
-    assert server_yaml.exists()
-    config = load_server_config(str(server_yaml))
+    # agents.yaml is now in manifest format (converted in-place)
+    config = load_server_config(str(agents_yaml))
     assert config.server.name == "spark"
     assert config.supervisor.model == "claude-sonnet-4-6"
     assert config.webhooks.url == "https://hooks.example.com"
@@ -82,13 +80,9 @@ agents:
     assert agents_b[0].backend == "acp"
     assert agents_b[0].acp_command == ["opencode", "acp"]
 
-    # agents.yaml backed up
-    assert (tmp_path / "agents.yaml.bak").exists()
-    assert not agents_yaml.exists()
-
 
 def test_migrate_roundtrip_starts(tmp_path):
-    """After migration, load_config on server.yaml resolves all agents."""
+    """After migration, load_config on the converted file resolves all agents."""
     from culture.config import load_config
 
     proj = tmp_path / "proj"
@@ -107,11 +101,28 @@ agents:
 
     from culture.cli.agent import _cmd_migrate
 
-    server_yaml = tmp_path / "server.yaml"
-    args = argparse.Namespace(config=str(agents_yaml), output=str(server_yaml))
+    args = argparse.Namespace(config=str(agents_yaml))
     _cmd_migrate(args)
 
-    config = load_config(str(server_yaml))
+    config = load_config(str(agents_yaml))
     assert len(config.agents) == 1
     assert config.agents[0].nick == "spark-culture"
     assert config.agents[0].backend == "claude"
+
+
+def test_migrate_already_manifest(tmp_path):
+    """Migrating a file already in manifest format exits with error."""
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text("""\
+server:
+  name: spark
+agents:
+  culture: /tmp/project
+""")
+
+    from culture.cli.agent import _cmd_migrate
+
+    args = argparse.Namespace(config=str(server_yaml))
+    with pytest.raises(SystemExit) as exc_info:
+        _cmd_migrate(args)
+    assert exc_info.value.code == 1

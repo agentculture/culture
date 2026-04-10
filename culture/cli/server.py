@@ -191,7 +191,7 @@ def dispatch(args: argparse.Namespace) -> None:
 
 def _server_rename(args: argparse.Namespace) -> None:
     """Rename the server: update config, agent nicks, and PID files."""
-    from culture.clients.claude.config import rename_server, sanitize_agent_name
+    from culture.config import rename_manifest_server, sanitize_agent_name
     from culture.pidfile import (
         is_process_alive,
         read_default_server,
@@ -207,7 +207,7 @@ def _server_rename(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        old_name, renamed = rename_server(args.config, new_name)
+        old_name, renamed = rename_manifest_server(args.config, new_name)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
@@ -578,10 +578,7 @@ def _set_bots_archive_state(agent_nicks: set, *, archive: bool, reason: str = ""
 
 def _server_archive(args: argparse.Namespace) -> None:
     """Archive the server and cascade to all agents and bots."""
-    from culture.clients.claude.config import (
-        archive_server,
-        load_config_or_default,
-    )
+    from culture.config import archive_manifest_server, load_config_or_default
 
     config = load_config_or_default(args.config)
     server_name = _validate_config_name(config, args.name)
@@ -606,7 +603,7 @@ def _server_archive(args: argparse.Namespace) -> None:
             stop_agent(agent.nick)
 
     # Archive server + agents in config
-    archived_nicks = archive_server(args.config, reason=args.reason)
+    archived_nicks = archive_manifest_server(args.config, reason=args.reason)
 
     # Archive bots whose owner matches any agent on this server
     agent_nicks = {a.nick for a in config.agents}
@@ -624,10 +621,7 @@ def _server_archive(args: argparse.Namespace) -> None:
 
 def _server_unarchive(args: argparse.Namespace) -> None:
     """Restore an archived server and cascade to agents and bots."""
-    from culture.clients.claude.config import (
-        load_config_or_default,
-        unarchive_server,
-    )
+    from culture.config import load_config_or_default, unarchive_manifest_server
 
     config = load_config_or_default(args.config)
     server_name = _validate_config_name(config, args.name)
@@ -637,7 +631,7 @@ def _server_unarchive(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Unarchive server + agents
-    unarchived_nicks = unarchive_server(args.config)
+    unarchived_nicks = unarchive_manifest_server(args.config)
 
     # Unarchive bots whose owner matches any agent on this server
     agent_nicks = {a.nick for a in config.agents}
