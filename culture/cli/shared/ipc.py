@@ -9,8 +9,10 @@ from culture.config import load_config_or_default
 
 
 def agent_socket_path(nick: str) -> str:
+    from culture.cli.shared.constants import culture_runtime_dir
+
     return os.path.join(
-        os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+        culture_runtime_dir(),
         f"culture-{nick}.sock",
     )
 

@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def discover_agent_sockets() -> list[tuple[str, Path]]:
-    """List culture daemon sockets in $XDG_RUNTIME_DIR.
+    """List culture daemon sockets in the culture runtime directory.
 
     Returns a list of ``(nick, socket_path)`` tuples.
     """
-    runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+    from culture.cli.shared.constants import culture_runtime_dir
+
+    runtime_dir = Path(culture_runtime_dir())
     results: list[tuple[str, Path]] = []
     if not runtime_dir.is_dir():
         return results
