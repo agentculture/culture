@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from culture.agentirc.channel import Channel
 from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
+from culture.constants import RESERVED_NICK_RE
 from culture.protocol import replies
 from culture.protocol.message import Message
 
@@ -166,6 +167,15 @@ class Client:
             return
 
         nick = msg.params[0]
+
+        # Reject reserved system-* nick prefix
+        if RESERVED_NICK_RE.match(nick):
+            await self.send_numeric(
+                replies.ERR_ERRONEUSNICKNAME,
+                nick,
+                "Nick reserved for system messages",
+            )
+            return
 
         # Enforce server name prefix
         expected_prefix = f"{self.server.config.name}-"
