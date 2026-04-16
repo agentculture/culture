@@ -1210,7 +1210,7 @@ All five agent-backend transports send `MODE <nick> +A` after welcome.
 
 - [x] **Step 1: Write tests**
 
-Create `tests/test_events_lifecycle.py` with 8 integration tests. Key cases:
+Create `tests/test_events_lifecycle.py` with 10 integration tests (8 emitted from this task, plus `+HC` combined and pre-registration-gate tests added during review-and-fix). Key cases:
 
 ```python
 @pytest.mark.asyncio
@@ -1246,7 +1246,7 @@ async def test_agent_disconnect_on_close(server, make_client):
 uv run pytest tests/test_events_lifecycle.py -v
 ```
 
-Expected: 7 fail (event not emitted), 1 pass (H/B no-op test).
+Expected: 8 fail (events not emitted), 1 pass (H/B no-op test). (Two further tests — `+HC` combined and pre-registration gate — are added during the review-and-fix cycle.)
 
 - [x] **Step 3: Emit `agent.connect` and `agent.disconnect`**
 
@@ -1300,7 +1300,7 @@ await self._send_raw(f"MODE {self.nick} +A")
 uv run pytest tests/test_events_lifecycle.py -v
 ```
 
-Expected: all 8 pass.
+Expected: all 10 pass (Task 9's 8 emission tests + `+HC` combined + pre-registration gate).
 
 - [x] **Step 6: Commit** (combined with Task 10 — see end of Task 10)
 
@@ -1317,8 +1317,13 @@ The console client sends `MODE +C` automatically after registration.
 
 - Modify: `culture/agentirc/client.py` (mode `+C` edge detection — done in Task 9's change)
 - Modify: `culture/agentirc/ircd.py` (disconnect emit for `"C"` — done in Task 9's change)
-- Modify: `culture/console/client.py` (default `mode` changed from `"H"` to `"C"`)
-- Modify: `culture/cli/mesh.py` (instantiation changed from `mode="H"` to `mode="C"`)
+- Modify: `culture/console/client.py` (default `mode` changed from `"H"` to `"HC"`)
+- Modify: `culture/cli/mesh.py` (instantiation changed from `mode="H"` to `mode="HC"`)
+
+The combined `+HC` value preserves the human-identity flag alongside the new
+console role. The server processes multi-char modestrings per character, so
+`MODE <nick> +HC` sets both flags in one round trip and emits `console.open`
+exactly once (only the `+C` edge triggers an event; `+H` has none).
 
 - [x] **Step 1: Write tests**
 
@@ -1378,7 +1383,7 @@ client = ConsoleIRCClient(host=host, port=port, nick=nick, mode="C")
 uv run pytest tests/test_events_lifecycle.py -v
 ```
 
-Expected: all 8 pass.
+Expected: all 10 pass (Task 9's 8 emission tests + `+HC` combined + pre-registration gate).
 
 - [x] **Step 5: Commit**
 

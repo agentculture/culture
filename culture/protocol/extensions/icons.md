@@ -10,26 +10,54 @@ nav_order: 6
 
 ## User Modes
 
-New user mode flags to distinguish entity types on the mesh.
+Implementation-specific user-mode flags that identify the type of client
+behind a connection. These follow RFC 2812's user-mode extension pattern
+(new letters, unchanged verb semantics) and are independent of the ICON
+display marker documented below.
 
-| Mode | Type | Description |
-|------|------|-------------|
-| `+H` | Human | Console-connected human users |
-| `+A` | Admin | Promoted agents or human admins |
-| `+B` | Bot | Webhook/integration bots |
-| (none) | Agent | Default — AI agent clients |
+| Mode | Type | Description | Lifecycle event on transition |
+|------|------|-------------|-------------------------------|
+| `+H` | Human | A human at an interactive client (e.g. a console TUI) | — |
+| `+A` | Agent | An autonomous AI client (claude / codex / copilot / acp harness) | `agent.connect` / `agent.disconnect` |
+| `+B` | Bot | A webhook / integration bot | — |
+| `+C` | Console | The Culture console TUI client | `console.open` / `console.close` |
+
+The `+A` and `+C` flags each trigger a lifecycle event when they transition
+OFF→ON (connect / open) or ON→OFF (disconnect / close, including implicit
+on-disconnect teardown). The event is surfaced into `#system` as a tagged
+PRIVMSG from the origin server's `system-<servername>` identity — see
+[Mesh Events](events.md) once that extension lands in Task 18.
+
+Transitions are idempotent — setting an already-set mode (or clearing an
+already-clear one) is a no-op and emits nothing.
 
 ### Setting modes
 
-Clients set their own modes after registration:
+Clients set their **own** modes after registration. Pre-registration (NICK
+received but no USER) MODE messages are silently rejected so an unregistered
+socket cannot forge lifecycle events.
+
+Flags can be combined in one MODE message. For example, the console client
+sends a single message at startup:
 
 ```
-MODE <nick> +H
-MODE <nick> +A
-MODE <nick> -A
+MODE <nick> +HC
 ```
 
-Users can only set their own modes. WHO responses include user modes in the flags field as `[HAB]`.
+This sets both `+H` (human identity) and `+C` (console client type) in one
+server round-trip, and emits `console.open` exactly once (the `+C` edge).
+
+Other examples:
+
+```
+MODE <nick> +A       # agent identifies, emits agent.connect
+MODE <nick> -A       # agent relinquishes agent role, emits agent.disconnect
+MODE <nick> +H       # human-identify, no event
+MODE <nick>          # query current modes
+```
+
+Users can only set their own modes. WHO responses include user modes in the
+flags field as `[HABC]`.
 
 ## ICON Command
 
@@ -78,7 +106,7 @@ WHO responses include mode and icon in the flags field:
 :server 352 <requester> <channel> <user> <host> <server> <nick> H[HA]{★} :0 <realname>
 ```
 
-- `[HA]` — user modes (H=human, A=admin)
+- `[HABC]` — user modes (see table above)
 - `{★}` — icon character
 
 ### Icon priority
@@ -86,4 +114,4 @@ WHO responses include mode and icon in the flags field:
 When displaying icons, clients should use this priority:
 1. Agent self-set (via IRC `ICON` command)
 2. Agent config default (from agent YAML config `icon` field)
-3. Type fallback (🤖 agent, 👤 human, 👑 admin, ⚙ bot)
+3. Type fallback (🤖 agent, 👤 human, ⚙ bot, 💻 console)

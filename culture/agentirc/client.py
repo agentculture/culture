@@ -509,7 +509,37 @@ class Client:
             for member in list(channel.members):
                 await member.send(mode_msg)
 
+    _VALID_USER_MODE_CHARS = frozenset("HABC")
+    _USER_MODE_EDGE_EVENTS: dict[tuple[str, bool], EventType] = {
+        ("A", True): EventType.AGENT_CONNECT,
+        ("A", False): EventType.AGENT_DISCONNECT,
+        ("C", True): EventType.CONSOLE_OPEN,
+        ("C", False): EventType.CONSOLE_CLOSE,
+    }
+
+    def _apply_user_mode_char(self, ch: str, adding: bool) -> EventType | None:
+        """Mutate ``self.modes`` for a single mode char and return the edge event, if any.
+
+        Returns None if the char is unknown or the transition was a no-op
+        (setting an already-set mode or clearing an already-clear one).
+        """
+        if ch not in self._VALID_USER_MODE_CHARS:
+            return None
+        had = ch in self.modes
+        if adding:
+            self.modes.add(ch)
+        else:
+            self.modes.discard(ch)
+        if had == adding:
+            return None
+        return self._USER_MODE_EDGE_EVENTS.get((ch, adding))
+
     async def _handle_user_mode(self, msg: Message) -> None:
+        # Reject pre-registration so an unregistered socket cannot inject
+        # agent.connect / console.open into #system by sending MODE after NICK
+        # but before USER.
+        if not self._registered:
+            return
         target_nick = msg.params[0]
         if target_nick != self.nick:
             await self.send_numeric(
@@ -518,36 +548,19 @@ class Client:
             )
             return
 
-        # Collect lifecycle emissions to fire after all mode mutations are applied.
-        # Each entry is an EventType to emit once self.modes has been updated.
         pending_events: list[EventType] = []
-
         if len(msg.params) > 1:
-            modestring = msg.params[1]
             adding = True
-            for ch in modestring:
+            for ch in msg.params[1]:
                 if ch == "+":
                     adding = True
                 elif ch == "-":
                     adding = False
-                elif ch in ("H", "A", "B", "C"):
-                    had = ch in self.modes
-                    if adding:
-                        self.modes.add(ch)
-                    else:
-                        self.modes.discard(ch)
-                    now = ch in self.modes
-                    # Detect edge: OFF→ON or ON→OFF
-                    if ch == "A" and not had and now:
-                        pending_events.append(EventType.AGENT_CONNECT)
-                    elif ch == "A" and had and not now:
-                        pending_events.append(EventType.AGENT_DISCONNECT)
-                    elif ch == "C" and not had and now:
-                        pending_events.append(EventType.CONSOLE_OPEN)
-                    elif ch == "C" and had and not now:
-                        pending_events.append(EventType.CONSOLE_CLOSE)
+                else:
+                    event = self._apply_user_mode_char(ch, adding)
+                    if event is not None:
+                        pending_events.append(event)
 
-        # Emit lifecycle events before sending the mode reply.
         for event_type in pending_events:
             await self.server.emit_event(
                 Event(

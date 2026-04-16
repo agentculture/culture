@@ -224,3 +224,35 @@ async def test_console_mode_hc_combined_emits_console_open_only(server, make_cli
     tail = await alice.recv_all(timeout=0.2)
     tail_joined = " ".join(tail)
     assert "event=" not in tail_joined, f"Unexpected trailing event after +HC: {tail_joined!r}"
+
+
+@pytest.mark.asyncio
+async def test_mode_before_registration_does_not_emit_events(server, make_client):
+    """Pre-registration MODE +A must not inject agent.connect.
+
+    A socket that has sent NICK but not USER is not yet registered. The server
+    must not emit lifecycle events on its behalf — otherwise any client that
+    opens a TCP connection and sends NICK+MODE can forge agent.connect /
+    console.open into #system.
+    """
+    alice = await _setup_observer(make_client)
+
+    # Half-open client: NICK only, no USER -> not registered.
+    import asyncio as _asyncio
+
+    reader, writer = await _asyncio.open_connection("127.0.0.1", server.config.port)
+    bob_raw = IRCTestClient(reader, writer)
+    await bob_raw.send("NICK testserv-bob")
+    await bob_raw.send("MODE testserv-bob +A")
+    # Give the server time to process (and, if buggy, emit).
+    await _asyncio.sleep(0.2)
+    await bob_raw.recv_all(timeout=0.2)
+
+    # Alice should see nothing.
+    tail = await alice.recv_all(timeout=0.3)
+    tail_joined = " ".join(tail)
+    assert (
+        "event=agent.connect" not in tail_joined
+    ), f"agent.connect fired pre-registration (security bug). Got: {tail_joined!r}"
+
+    await bob_raw.close()
