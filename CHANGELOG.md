@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.5.0] - 2026-04-16
+
+
+### Added
+
+- events: emit room.create on ROOMCREATE, before the existing room.meta emission. room.create signals room birth as a distinct lifecycle event; downstream consumers can distinguish creation from subsequent metadata updates.
+
 ## [6.4.0] - 2026-04-16
 
 

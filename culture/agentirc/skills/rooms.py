@@ -120,6 +120,21 @@ class RoomsSkill(Skill):
             )
         )
         self._persist_room(channel)
+        # Emit room.create (new room lifecycle event) BEFORE room.meta so
+        # downstream consumers see creation as a distinct signal, then the
+        # initial metadata snapshot as a follow-up.
+        await self.server.emit_event(
+            Event(
+                type=EventType.ROOM_CREATE,
+                channel=channel_name,
+                nick=client.nick,
+                data={
+                    "nick": client.nick,
+                    "room_id": channel.room_id,
+                    "purpose": channel.purpose,
+                },
+            )
+        )
         await self.server.emit_event(
             Event(
                 type=EventType.ROOMMETA,

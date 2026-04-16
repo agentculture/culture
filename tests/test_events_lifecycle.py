@@ -13,10 +13,32 @@ Event emission contract:
 """
 
 import asyncio
+import base64
+import json
 
 import pytest
 
 from tests.conftest import IRCTestClient
+
+
+def _decode_event_payload(lines: str) -> dict:
+    """Extract and decode the IRCv3 `event-data=<b64-json>` tag.
+
+    ``lines`` is multi-line text as returned by ``recv_until``; scan each
+    line for the ``@event=...`` tag blob and decode the matching
+    ``event-data=`` value. Only tagged PRIVMSG-style lines start with ``@``.
+    """
+    for raw in lines.split("\r\n"):
+        if not raw.startswith("@"):
+            continue
+        space_idx = raw.find(" ")
+        if space_idx == -1:
+            continue
+        tag_blob = raw[1:space_idx]
+        for piece in tag_blob.split(";"):
+            if piece.startswith("event-data="):
+                return json.loads(base64.b64decode(piece.split("=", 1)[1]))
+    raise AssertionError(f"No event-data tag found in lines: {lines!r}")
 
 
 async def _setup_observer(make_client) -> IRCTestClient:
@@ -256,3 +278,57 @@ async def test_mode_before_registration_does_not_emit_events(server, make_client
     ), f"agent.connect fired pre-registration (security bug). Got: {tail_joined!r}"
 
     await bob_raw.close()
+
+
+@pytest.mark.asyncio
+async def test_room_create_emitted_on_roomcreate(server, make_client):
+    """ROOMCREATE emits a distinct `room.create` event, separate from room.meta.
+
+    room.create signals the room's birth (a lifecycle moment); the follow-up
+    room.meta carries the initial metadata snapshot. Downstream consumers
+    (bots, history, federation peers) see both and can pick whichever semantic
+    fits their logic.
+    """
+    creator = await make_client("testserv-creator", "creator")
+    await creator.send("CAP REQ :message-tags")
+    await creator.recv_until("ACK")
+
+    # Create a managed room. The channel-scoped room.create surfaces on the
+    # new channel itself — creator is auto-joined, so they receive it.
+    await creator.send("ROOMCREATE #research :purpose=AI research;tags=ai;persistent=true")
+
+    line = await creator.recv_until("event=room.create")
+    assert "event=room.create" in line, f"Expected room.create tag, got: {line!r}"
+    assert "testserv-creator created room #research" in line
+
+    # Lock the structured payload fields downstream consumers rely on.
+    payload = _decode_event_payload(line)
+    assert payload["nick"] == "testserv-creator"
+    assert payload["purpose"] == "AI research"
+    # room_id is generated server-side — shape check only (starts with "R").
+    assert payload["room_id"].startswith(
+        "R"
+    ), f"Expected room_id to start with R, got: {payload['room_id']!r}"
+    # The server enriches the payload with the channel when the event is
+    # channel-scoped (see IRCd._build_event_payload).
+    assert payload["channel"] == "#research"
+
+
+@pytest.mark.asyncio
+async def test_room_create_precedes_room_meta(server, make_client):
+    """room.create must precede room.meta on the wire so downstream consumers
+    can distinguish creation from subsequent metadata updates."""
+    creator = await make_client("testserv-creator", "creator")
+    await creator.send("CAP REQ :message-tags")
+    await creator.recv_until("ACK")
+
+    await creator.send("ROOMCREATE #ordering :purpose=Test;persistent=true")
+    collected = await creator.recv_until("event=room.meta")
+    create_idx = collected.find("event=room.create")
+    meta_idx = collected.find("event=room.meta")
+    assert create_idx != -1, f"room.create not found in: {collected!r}"
+    assert meta_idx != -1, f"room.meta not found in: {collected!r}"
+    assert create_idx < meta_idx, (
+        f"room.create must precede room.meta (create@{create_idx}, meta@{meta_idx}) "
+        f"in: {collected!r}"
+    )
