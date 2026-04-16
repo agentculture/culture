@@ -24,7 +24,7 @@ async def test_reserved_nick_rejected_for_any_server(server, make_client):
 @pytest.mark.asyncio
 async def test_normal_nick_still_accepted(server, make_client):
     c = await make_client("testserv-alice")
-    # Already registered; NICK change to a valid name must work (no error response).
+    # Valid culture nick must still be accepted post-connect.
     await c.send("NICK testserv-alice2")
     # Successful nick change doesn't generate a response in this implementation.
     # Verify no error by trying to receive with a short timeout.
@@ -33,3 +33,13 @@ async def test_normal_nick_still_accepted(server, make_client):
     for line in lines:
         assert "432" not in line
         assert "433" not in line
+
+
+@pytest.mark.asyncio
+async def test_reserved_nick_rejected_after_registration(server, make_client):
+    c = await make_client("testserv-alice", "alice")
+    # Client is now registered (make_client with both nick and user drains welcome messages)
+    await c.send("NICK system-testserv")
+    line = await c.recv()
+    assert "432" in line
+    assert "system-testserv" in line

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from culture.agentirc.remote_client import RemoteClient
 from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
+from culture.constants import RESERVED_NICK_RE
 from culture.protocol.message import Message
 
 if TYPE_CHECKING:
@@ -259,6 +260,11 @@ class ServerLink:
             return
         nick, user, host = msg.params[0], msg.params[1], msg.params[2]
         realname = msg.params[3]
+
+        # Reject reserved nick prefix
+        if RESERVED_NICK_RE.match(nick):
+            logger.warning("Rejecting reserved nick %r from peer %s", nick, self.peer_name)
+            return
 
         # Validate nick conforms to <peer_name>-<agent> format
         expected_prefix = f"{self.peer_name}-"

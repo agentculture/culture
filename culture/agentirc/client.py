@@ -173,7 +173,7 @@ class Client:
             await self.send_numeric(
                 replies.ERR_ERRONEUSNICKNAME,
                 nick,
-                "Nick reserved for system messages",
+                "Nickname prefix 'system-' is reserved",
             )
             return
 
