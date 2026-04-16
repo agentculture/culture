@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.8.0] - 2026-04-17
+
+
+### Added
+
+- Safe filter DSL for bot event triggers — recursive-descent parser with ==, !=, in, and, or, not operators and dotted field access
+
 ## [6.7.0] - 2026-04-17
 
 
