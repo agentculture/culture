@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.3.0] - 2026-04-16
+
+
+### Added
+
+- events: emit server.wake on IRCd start (after system identity bootstrap) and server.sleep at the top of IRCd stop, surfaced as IRCv3-tagged PRIVMSG into #system from system-<server>
+
 ## [6.2.3] - 2026-04-15
 
 
