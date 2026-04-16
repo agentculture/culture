@@ -231,7 +231,7 @@ async def test_server_sleep_emitted_on_stop(tmp_path):
     """
     empty_bots = tmp_path / "_bots"
     empty_bots.mkdir()
-    config = ServerConfig(name="sleepserv", host="127.0.0.1", port=0, webhook_port=0)
+    config = ServerConfig(name="testserv", host="127.0.0.1", port=0, webhook_port=0)
 
     with (
         patch("culture.bots.bot_manager.BOTS_DIR", empty_bots),
@@ -247,7 +247,7 @@ async def test_server_sleep_emitted_on_stop(tmp_path):
         client = IRCTestClient(reader, writer)
         await client.send("CAP REQ :message-tags")
         await client.recv_until("CAP")
-        await client.send("NICK sleepserv-alice")
+        await client.send("NICK testserv-alice")
         await client.send("USER alice 0 * :alice")
         await client.recv_all(timeout=0.5)
         await client.send("JOIN #system")
@@ -285,4 +285,4 @@ async def test_server_sleep_emitted_on_stop(tmp_path):
         assert (
             "event=server.sleep" in line
         ), f"Expected server.sleep PRIVMSG before socket closed; got: {line!r}"
-        assert "sleepserv is shutting down" in line
+        assert "testserv is shutting down" in line

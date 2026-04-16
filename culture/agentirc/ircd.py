@@ -48,6 +48,7 @@ class IRCd:
             {}
         )  # peer_name -> {"delay": float, "task": asyncio.Task}
         self._stopping = False
+        self._stopped = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
         # Bots
         self.bot_manager = None  # set in start() if webhook_port configured
@@ -71,6 +72,7 @@ class IRCd:
                 data={"server": self.config.name},
             )
         )
+        logger.info("Server awake on %s", self.config.name)
 
         # Initialize bot manager and webhook HTTP listener
         from culture.bots.bot_manager import BotManager
@@ -309,40 +311,52 @@ class IRCd:
         return None
 
     async def stop(self) -> None:
+        """Shut down the server. Concurrent callers await the same teardown.
+
+        The first caller runs the teardown path; subsequent callers block on
+        ``_stopped`` until teardown finishes (success *or* failure) so they
+        never return while shutdown is still in flight. The event is set in a
+        ``finally`` so an exception during teardown still unblocks waiters.
+        """
         if self._stopping:
+            await self._stopped.wait()
             return
         self._stopping = True
         try:
-            await self.emit_event(
-                Event(
-                    type=EventType.SERVER_SLEEP,
-                    channel=None,
-                    nick=f"{SYSTEM_USER_PREFIX}{self.config.name}",
-                    data={"server": self.config.name},
-                )
-            )
-        except Exception:
-            logger.exception("failed to emit server.sleep")
-        # Stop bots and HTTP listener
-        if self.bot_manager:
-            await self.bot_manager.stop_all()
-        if hasattr(self, "_http_listener") and self._http_listener:
-            await self._http_listener.stop()
-        for skill in self.skills:
-            await skill.stop()
-        # Cancel all pending retry tasks
-        for peer_name in list(self._link_retry_state):
-            self.cancel_link_retry(peer_name)
-        # Close all S2S links
-        for link in list(self.links.values()):
+            logger.info("Server going to sleep on %s", self.config.name)
             try:
-                link.writer.close()
+                await self.emit_event(
+                    Event(
+                        type=EventType.SERVER_SLEEP,
+                        channel=None,
+                        nick=f"{SYSTEM_USER_PREFIX}{self.config.name}",
+                        data={"server": self.config.name},
+                    )
+                )
             except Exception:
-                pass
-        self.links.clear()
-        if self._server:
-            self._server.close()
-            await self._server.wait_closed()
+                logger.exception("failed to emit server.sleep")
+            # Stop bots and HTTP listener
+            if self.bot_manager:
+                await self.bot_manager.stop_all()
+            if hasattr(self, "_http_listener") and self._http_listener:
+                await self._http_listener.stop()
+            for skill in self.skills:
+                await skill.stop()
+            # Cancel all pending retry tasks
+            for peer_name in list(self._link_retry_state):
+                self.cancel_link_retry(peer_name)
+            # Close all S2S links
+            for link in list(self.links.values()):
+                try:
+                    link.writer.close()
+                except Exception:
+                    pass
+            self.links.clear()
+            if self._server:
+                self._server.close()
+                await self._server.wait_closed()
+        finally:
+            self._stopped.set()
 
     async def connect_to_peer(
         self, host: str, port: int, password: str, trust: str = "full"
