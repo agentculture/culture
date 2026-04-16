@@ -10,6 +10,11 @@ from culture.agentirc.ircd import IRCd
 # Test-only link password — not a real credential (S2068)
 TEST_LINK_PASSWORD = "testlink123"
 
+# Default total wait for recv_until / recv. Callers needing a different
+# bound should wrap their own `async with asyncio.timeout(...)` around the
+# call rather than passing a parameter (per python:S7483).
+RECV_TIMEOUT_SECONDS = 2.0
+
 
 class IRCTestClient:
     """A minimal IRC test client over raw TCP."""
@@ -41,13 +46,17 @@ class IRCTestClient:
             pass
         return lines
 
-    async def recv_until(self, marker: str, timeout: float = 2.0) -> str:
-        """Read lines until one contains marker (or timeout)."""
+    async def recv_until(self, marker: str) -> str:
+        """Read lines until one contains marker.
+
+        Bounded by `RECV_TIMEOUT_SECONDS` (module constant). For a
+        different bound, wrap the call in `async with asyncio.timeout(...)`.
+        """
         collected = []
         try:
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout(RECV_TIMEOUT_SECONDS):
                 while True:
-                    line = await self.recv(timeout=timeout)
+                    line = await self.recv()
                     collected.append(line)
                     if marker in line:
                         return "\r\n".join(collected)

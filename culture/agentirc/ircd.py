@@ -191,6 +191,51 @@ class IRCd:
         }
     )
 
+    @staticmethod
+    def _build_event_payload(event: Event) -> dict:
+        """Build the public event payload, enriched with canonical actor/channel."""
+        payload = {k: v for k, v in event.data.items() if not k.startswith("_")}
+        # Emitters that only set Event.nick (not data['nick']) still get a
+        # correct render + payload thanks to setdefault.
+        if event.nick:
+            payload.setdefault("nick", event.nick)
+        if event.channel:
+            payload.setdefault("channel", event.channel)
+        return payload
+
+    @staticmethod
+    def _encode_event_data(payload: dict, type_wire: str) -> str:
+        """Base64-encode the payload as JSON; fall back to '{}' on TypeError."""
+        try:
+            return base64.b64encode(
+                json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            ).decode("ascii")
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Event %s payload not JSON-serializable, surfacing with empty payload: %s",
+                type_wire,
+                exc,
+            )
+            return base64.b64encode(b"{}").decode("ascii")
+
+    async def _deliver_to_members(self, channel, msg: Message, type_wire: str) -> None:
+        """Send the surfaced PRIVMSG to channel members (skipping VirtualClients)."""
+        for member in channel.members:
+            # VirtualClients (system user, bots) receive events via subscription,
+            # not by re-broadcasting the PRIVMSG.
+            if isinstance(member, VirtualClient):
+                continue
+            # RemoteClients lack send_tagged; federation will deliver via SEVENT
+            # (Task 12) instead. Skip silently here.
+            if not hasattr(member, "send_tagged"):
+                continue
+            try:
+                await member.send_tagged(msg)
+            except Exception:
+                logger.exception(
+                    "Failed to surface %s to %s", type_wire, getattr(member, "nick", "?")
+                )
+
     async def _surface_event_privmsg(self, event: Event) -> None:
         """Render the event as a tagged PRIVMSG into the appropriate channel.
 
@@ -213,35 +258,19 @@ class IRCd:
         re-surfaced; HistorySkill should follow the same rule.
         """
         type_wire = event.type.value if hasattr(event.type, "value") else str(event.type)
-
         if type_wire in self._NO_SURFACE_TYPES:
             return
 
         target = event.channel or SYSTEM_CHANNEL
+        channel = self.channels.get(target)
+        if channel is None:
+            return
 
         origin_server = event.data.get("_origin") or self.config.name
         system_nick = f"{SYSTEM_USER_PREFIX}{origin_server}"
 
-        # Encode payload (exclude internal _-prefixed keys).
-        payload = {k: v for k, v in event.data.items() if not k.startswith("_")}
-        # Canonical actor + channel from Event fields, so emitters that only set
-        # Event.nick (not data['nick']) still produce correct templates and payloads.
-        if event.nick:
-            payload.setdefault("nick", event.nick)
-        if event.channel:
-            payload.setdefault("channel", event.channel)
-        try:
-            encoded = base64.b64encode(
-                json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-            ).decode("ascii")
-        except (TypeError, ValueError) as e:
-            logger.warning(
-                "Event %s payload not JSON-serializable, surfacing with empty payload: %s",
-                type_wire,
-                e,
-            )
-            encoded = base64.b64encode(b"{}").decode("ascii")
-
+        payload = self._build_event_payload(event)
+        encoded = self._encode_event_data(payload, type_wire)
         body = event.data.get("_render") or render_event(type_wire, payload, event.channel)
 
         msg = Message(
@@ -251,25 +280,7 @@ class IRCd:
             params=[target, body],
         )
 
-        channel = self.channels.get(target)
-        if channel is None:
-            return
-
-        for member in channel.members:
-            # Skip VirtualClients (system user, bots) — they receive events via
-            # subscription, not by re-broadcasting the PRIVMSG.
-            if isinstance(member, VirtualClient):
-                continue
-            # Use the tag-aware send_tagged path so non-cap clients see plain bodies.
-            try:
-                if hasattr(member, "send_tagged"):
-                    await member.send_tagged(msg)
-                else:
-                    # RemoteClient or anything without send_tagged: skip
-                    # (federation will deliver via the SEVENT path in Task 12).
-                    continue
-            except Exception:
-                logger.exception("Failed to surface event to %s", getattr(member, "nick", "?"))
+        await self._deliver_to_members(channel, msg, type_wire)
 
     def get_skill_for_command(self, command: str) -> Skill | None:
         for skill in self.skills:
