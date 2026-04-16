@@ -54,7 +54,7 @@ class ConsoleIRCClient:
         host: str,
         port: int,
         nick: str,
-        mode: str = "C",
+        mode: str = "HC",
         icon: str | None = None,
     ) -> None:
         self.host = host

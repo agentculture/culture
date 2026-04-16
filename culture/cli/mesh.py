@@ -267,7 +267,7 @@ def _cmd_console(args: argparse.Namespace) -> None:
     from culture.console.app import ConsoleApp
     from culture.console.client import ConsoleIRCClient
 
-    client = ConsoleIRCClient(host=host, port=port, nick=nick, mode="C")
+    client = ConsoleIRCClient(host=host, port=port, nick=nick, mode="HC")
 
     async def run():
         await client.connect()

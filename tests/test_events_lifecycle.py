@@ -196,3 +196,31 @@ async def test_agent_mode_idempotent(server, make_client):
     assert (
         "event=agent.connect" not in result
     ), f"agent.connect fired on second +A (should be idempotent). Got: {result!r}"
+
+
+@pytest.mark.asyncio
+async def test_console_mode_hc_combined_emits_console_open_only(server, make_client):
+    """Console clients send `MODE <nick> +HC` in one message (human + console).
+
+    The combined mode string must:
+    - Set both +H and +C on the client.
+    - Emit `console.open` exactly once (the +C edge).
+    - NOT emit any event for +H (no such event type).
+
+    Mirrors the exact wire format produced by `culture.console.client`.
+    """
+    alice = await _setup_observer(make_client)
+    bob = await make_client("testserv-bob", "bob")
+
+    await bob.send("MODE testserv-bob +HC")
+
+    line = await alice.recv_until("event=console.open")
+    assert "event=console.open" in line, f"Expected console.open from +HC, got: {line!r}"
+    assert "testserv-bob opened a console" in line
+    # No agent.connect leaked into the same batch.
+    assert "event=agent.connect" not in line
+    # Give the server a moment; no further events should fire for +H.
+    await asyncio.sleep(0.1)
+    tail = await alice.recv_all(timeout=0.2)
+    tail_joined = " ".join(tail)
+    assert "event=" not in tail_joined, f"Unexpected trailing event after +HC: {tail_joined!r}"
