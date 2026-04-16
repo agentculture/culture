@@ -7,6 +7,7 @@ import re
 # System pseudo-user and channel
 SYSTEM_USER_PREFIX = "system-"
 SYSTEM_CHANNEL = "#system"
+SYSTEM_USER_REALNAME = "Culture system messages"
 
 # IRCv3 message-tag keys we emit/consume
 EVENT_TAG_TYPE = "event"

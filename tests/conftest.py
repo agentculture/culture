@@ -50,7 +50,7 @@ class IRCTestClient:
             if remaining <= 0:
                 break
             try:
-                line = await self.recv(timeout=min(remaining, 0.5))
+                line = await self.recv(timeout=remaining)
                 collected.append(line)
                 if marker in line:
                     break

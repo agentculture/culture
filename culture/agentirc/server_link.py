@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from culture.agentirc.remote_client import RemoteClient
 from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
+from culture.bots.virtual_client import VirtualClient
 from culture.constants import RESERVED_NICK_RE
 from culture.protocol.message import Message
 
@@ -233,8 +234,10 @@ class ServerLink:
 
     async def send_burst(self) -> None:
         """Send our local state to the peer."""
-        # Send all local clients
+        # Send all local clients (skip pseudo-users — they are server-local)
         for client in self.server.clients.values():
+            if isinstance(client, VirtualClient):
+                continue
             await self.send_raw(
                 f"SNICK {client.nick} {client.user} {client.host} :{client.realname}"
             )

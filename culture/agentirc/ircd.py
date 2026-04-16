@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from culture.agentirc.channel import Channel
 from culture.agentirc.config import ServerConfig
 from culture.agentirc.skill import Event, Skill
+from culture.bots.virtual_client import VirtualClient
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from culture.agentirc.client import Client
     from culture.agentirc.remote_client import RemoteClient
     from culture.agentirc.server_link import ServerLink
-    from culture.bots.virtual_client import VirtualClient
 
 
 class IRCd:
@@ -24,7 +24,7 @@ class IRCd:
 
     def __init__(self, config: ServerConfig):
         self.config = config
-        self.clients: dict[str, Client] = {}  # nick -> Client
+        self.clients: dict[str, Client | VirtualClient] = {}  # nick -> Client
         self.channels: dict[str, Channel] = {}  # name -> Channel
         self.skills: list[Skill] = []
         self._server: asyncio.Server | None = None
@@ -41,6 +41,7 @@ class IRCd:
         self._background_tasks: set[asyncio.Task] = set()
         # Bots
         self.bot_manager = None  # set in start() if webhook_port configured
+        self.system_client: VirtualClient | None = None
 
     async def start(self) -> None:
         logger.info("Registering default skills...")
@@ -95,19 +96,20 @@ class IRCd:
 
     async def _bootstrap_system_identity(self) -> None:
         """Create the system pseudo-user and #system channel at server start."""
-        from culture.bots.virtual_client import VirtualClient
-        from culture.constants import SYSTEM_CHANNEL, SYSTEM_USER_PREFIX
+        from culture.constants import SYSTEM_CHANNEL, SYSTEM_USER_PREFIX, SYSTEM_USER_REALNAME
 
         system_nick = f"{SYSTEM_USER_PREFIX}{self.config.name}"
         system_client = VirtualClient(system_nick, "system", self)
-        system_client.realname = "IRC Server System"
-        self.clients[system_nick] = system_client  # type: ignore[assignment]
+        system_client.realname = SYSTEM_USER_REALNAME
+        self.clients[system_nick] = system_client
+        self.system_client = system_client
 
         channel = self.get_or_create_channel(SYSTEM_CHANNEL)
         channel.persistent = True
-        channel.members.add(system_client)
+        channel.add(system_client)
         system_client.channels.add(channel)
-        # System user is never an operator
+        # Defensive: VirtualClients are excluded from auto-op by Channel._local_members(),
+        # but channel.add() may still grant op when the channel is empty on first join.
         channel.operators.discard(system_client)
 
         logger.info("System identity %s joined %s", system_nick, SYSTEM_CHANNEL)
