@@ -1,4 +1,4 @@
-# ASSIMILAI: Replace BACKEND with your backend name (e.g., codex, opencode)
+# CITATION: Replace BACKEND with your backend name (e.g., codex, opencode)
 # pylint: skip-file  # Template uses stub BACKEND imports; pylint cannot resolve them
 """Generic agent daemon — template for new backends.
 

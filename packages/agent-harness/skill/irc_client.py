@@ -1,4 +1,6 @@
-# ASSIMILAI: Replace BACKEND with your backend name (e.g., codex, opencode)
+# CITATION: Replace BACKEND with your backend name (e.g., codex, opencode)
+# After replacing BACKEND, remove the import-error/no-name-in-module disable below.
+# pylint: disable=import-error,no-name-in-module  # BACKEND placeholder imports
 """IRC Skill Client — connects an AI agent to the culture daemon via Unix socket.
 
 This module provides:

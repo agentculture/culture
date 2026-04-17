@@ -13,9 +13,11 @@ Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 - **External packages:** Managed in `pyproject.toml`, installed with `uv`
 - **Internal packages:** Written in `packages/` folder. Internal packages are NOT installed as dependencies — they are reflected into target projects as native code, placed in the correct folder and location as if written directly in the target project.
 
-## Assimilai Pattern
+## Citation Pattern
 
 Code in `packages/` is **reference implementation** — copied, not imported. Each target directory owns its copy and can modify it independently. No cross-directory imports between backends.
+
+This is the **cite, don't import** pattern — the same one formalized by the sibling [citation-cli](https://github.com/OriNachum/citation-cli) project (formerly `assimilai`). Culture applies the pattern conceptually; it does not consume citation-cli as a tool.
 
 For agent backends (`clients/claude/`, `clients/codex/`, etc.):
 

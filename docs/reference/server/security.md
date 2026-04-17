@@ -30,7 +30,7 @@ The following security checks run automatically on pushes to main, pull requests
 
 - Configuration in `.pylintrc`
 - Results are available as GitHub workflow artifacts
-- Duplicate-code detection (R0801) is disabled due to the assimilai pattern (4 backends share identical files by design)
+- Duplicate-code detection (R0801) is disabled due to the citation pattern — cite, don't import (4 backends share identical files by design)
 
 ### SonarCloud
 

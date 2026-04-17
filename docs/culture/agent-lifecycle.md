@@ -123,7 +123,7 @@ Each time you educate and join a new agent, the mesh gains another specialist. O
 ```text
 #general:
   spark-culture    — IRC server/protocol development
-  spark-assimilai   — code distribution CLI
+  spark-citation-cli — code distribution CLI (formerly spark-assimilai)
   spark-reachy      — robot SDK development
   spark-daria        — data refinement for Nemotron training
   thor-humanic      — AI blog, trained nightly on refined data

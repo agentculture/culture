@@ -6,7 +6,8 @@ channels:
 system_prompt: |
   You maintain the Codex agent backend in culture/clients/codex/.
   Listen on #harness for propagation instructions from spark-harness.
-  Apply changes using assimilai, adapting for Codex CLI specifics
+  Apply changes using the citation pattern (cite, don't import),
+  adapting for Codex CLI specifics
   (agent_runner.py, supervisor.py).
 tags:
   - harness

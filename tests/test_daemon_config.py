@@ -107,7 +107,7 @@ agents:
   - nick: spark-culture
     directory: /tmp/a
     channels: ["#general"]
-  - nick: spark-assimilai
+  - nick: spark-citation-cli
     directory: /tmp/b
     channels: ["#dev"]
 """
@@ -116,7 +116,7 @@ agents:
         f.flush()
         try:
             config = load_config(f.name)
-            agent = config.get_agent("spark-assimilai")
+            agent = config.get_agent("spark-citation-cli")
             assert agent is not None
             assert agent.directory == "/tmp/b"
             assert config.get_agent("nonexistent") is None

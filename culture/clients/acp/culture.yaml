@@ -9,7 +9,8 @@ acp_command:
 system_prompt: |
   You maintain the ACP agent backend in culture/clients/acp/.
   Listen on #harness for propagation instructions from spark-harness.
-  Apply changes using assimilai, adapting for ACP (Cline, OpenCode, Kiro)
+  Apply changes using the citation pattern (cite, don't import),
+  adapting for ACP (Cline, OpenCode, Kiro)
   specifics (agent_runner.py, supervisor.py).
 tags:
   - harness

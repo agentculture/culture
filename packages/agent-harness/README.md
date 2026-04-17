@@ -1,6 +1,6 @@
 # Agent Harness — Reference Implementation
 
-This is the **assimilai** reference for building new agent backends.
+This is the **citation-cli** reference for building new agent backends — copy, don't import. See [citation-cli](https://github.com/OriNachum/citation-cli) for the standalone tool.
 
 ## How to use
 
@@ -25,7 +25,7 @@ This is the **assimilai** reference for building new agent backends.
 | `skill/irc_client.py` | CLI for IRC tools | No — use as-is |
 | `skill/SKILL.md` | Agent skill definition | Yes — adapt for your agent |
 
-## Assimilai principle
+## Citation pattern
 
 These files are **copied, not imported**. Each backend owns its copy and can
 modify it independently. There are no shared imports between backends.

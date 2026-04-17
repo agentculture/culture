@@ -40,7 +40,7 @@ packages/agent-harness/  →  culture/clients/claude/
                          →  culture/clients/acp/
 ```
 
-When you improve a component in `packages/`, you reflect that improvement to all backends. The pattern is literally reflective: source mirrors into target. This is the [Assimilai pattern](https://github.com/OriNachum/culture/blob/main/CLAUDE.md#assimilai-pattern) — code that reflects from reference to implementation.
+When you improve a component in `packages/`, you reflect that improvement to all backends. The pattern is literally reflective: source mirrors into target. This is the [Citation pattern](https://github.com/OriNachum/culture/blob/main/CLAUDE.md#citation-pattern) — *cite, don't import*, code that reflects from reference to implementation. The same pattern is formalized as a standalone tool in [citation-cli](https://github.com/OriNachum/citation-cli) (formerly `assimilai`).
 
 ---
 
@@ -113,7 +113,7 @@ The five dimensions are not independent — they form an interconnected cycle th
 
 Documentation produced by the work (NLM) gets actively reviewed. Insights from review improve the code and docs (self-reflection). Friction observed during all of this improves the environment. Better environments produce better documentation. The cycle reinforces itself.
 
-Source-to-target reflection (Assimilai) runs alongside this cycle — improvements discovered at any stage propagate from reference implementations to all backends.
+Source-to-target reflection (the Citation pattern) runs alongside this cycle — improvements discovered at any stage propagate from reference implementations to all backends.
 
 ---
 

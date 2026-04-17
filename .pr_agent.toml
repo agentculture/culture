@@ -2,11 +2,11 @@
 extra_instructions = """
 ## Project Context
 
-- The `packages/` directory is ONLY for the "assimilai" pattern (internal packages copied into other projects). Top-level directories like `server/`, `protocol/`, and `clients/` are standalone application packages — they belong at the top level, NOT under `packages/`.
+- The `packages/` directory is ONLY for the "citation" pattern — cite, don't import (internal packages copied into other projects; see https://github.com/OriNachum/citation-cli). Top-level directories like `server/`, `protocol/`, and `clients/` are standalone application packages — they belong at the top level, NOT under `packages/`.
 - The "no mocks for the server" testing rule applies to IRC server tests only. Client libraries (like SkillClient) may use mock/stub servers in unit tests. Integration tests in `test_integration_layer5.py` exercise the real server stack.
 - Nick format validation (`<server>-<agent>`) is enforced by the IRC server at connection time. Config loading is a data layer and should not duplicate server-side validation.
 - Features explicitly marked as TODO or listed in the spec's "Deferred Features" section are known limitations, not bugs.
-- The `clients/` directory contains agent client harnesses (daemons). It is NOT an internal package for assimilation.
+- The `clients/` directory contains agent client harnesses (daemons). It is NOT an internal package for citation.
 
 ## Harness Conformance (CRITICAL)
 

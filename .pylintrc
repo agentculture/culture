@@ -14,7 +14,7 @@ disable=
     C0303,  # trailing-whitespace
     C0415,  # import-outside-toplevel (lazy imports for circular deps)
     C1803,  # use-implicit-booleaness-not-comparison
-    R0801,  # duplicate-code (assimilai pattern: backends share identical files)
+    R0801,  # duplicate-code (citation pattern: backends share identical files)
     R0903,  # too-few-public-methods
     R0912,  # too-many-branches
     R0913,  # too-many-arguments

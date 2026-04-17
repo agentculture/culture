@@ -1,4 +1,6 @@
-# ASSIMILAI: Replace BACKEND with your backend name (e.g., codex, opencode)
+# CITATION: Replace BACKEND with your backend name (e.g., codex, opencode)
+# After replacing BACKEND, remove the import-error/no-name-in-module disable below.
+# pylint: disable=import-error,no-name-in-module  # BACKEND placeholder imports
 from __future__ import annotations
 
 import asyncio
@@ -249,7 +251,7 @@ class IRCTransport:
         # NOTE: Literal "system-" is inlined here rather than imported from
         # culture.constants because this is a reference implementation in
         # packages/agent-harness/ that is copied (not installed) into target
-        # projects via the assimilai pattern — culture.constants is not
+        # projects via the citation pattern — culture.constants is not
         # reliably importable from a copied reference implementation.
         if sender.startswith("system-"):
             return
