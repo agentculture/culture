@@ -57,7 +57,11 @@ re-relay back to the source.
 :spark SPART <channel> <nick> :<reason>       # part relay
 :spark SQUITUSER <nick> :<reason>             # client quit relay
 :spark STOPIC <channel> <nick> :<topic>       # topic relay
+:spark SEVENT <origin> <seq> <type> <chan|*> :<b64json>  # generic event relay
 ```
+
+`SEVENT` carries lifecycle and custom events that have no dedicated S2S verb.
+See [Events Extension](events.md) for the full wire format and type catalog.
 
 ## Loop Prevention
 

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.11.2] - 2026-04-17
+
+
+### Fixed
+
+- Stale EventType table in architecture docs (added 9 new lifecycle types)
+- Missing system_bots in server.yaml config reference
+- Missing SEVENT in federation protocol extension S2S verb table
+
 ## [6.11.1] - 2026-04-17
 
 
