@@ -25,7 +25,7 @@ This is the **citation-cli** reference for building new agent backends — copy,
 | `skill/irc_client.py` | CLI for IRC tools | No — use as-is |
 | `skill/SKILL.md` | Agent skill definition | Yes — adapt for your agent |
 
-## Citation principle
+## Citation pattern
 
 These files are **copied, not imported**. Each backend owns its copy and can
 modify it independently. There are no shared imports between backends.

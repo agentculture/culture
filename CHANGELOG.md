@@ -11,7 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Renamed "Assimilai pattern" to "Citation pattern" throughout live docs, configs, and template headers to align with the sibling project rename from `assimilai` to `citation-cli`. Historical specs and plans left intact. See [citation-cli](https://github.com/OriNachum/citation-cli).
 - Backend culture.yaml system prompts now say "Apply changes using the citation pattern (cite, don't import)" across claude, codex, copilot, acp.
 - Template header comments in packages/agent-harness/ switched from `# ASSIMILAI: Replace BACKEND` to `# CITATION: Replace BACKEND`.
-- Test nick in tests/test_daemon_config.py renamed from `spark-assimilai` to `spark-citation`; use-case doc nick renamed to `spark-citation-cli`.
+- Test nick in tests/test_daemon_config.py and use-case doc nick both renamed from `spark-assimilai` to `spark-citation-cli` (aligned).
 
 ## [7.1.3] - 2026-04-18
 
