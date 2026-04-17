@@ -42,6 +42,7 @@ packages = ["culture"]
 "culture/clients/acp/skill/SKILL.md" = "culture/clients/acp/skill/SKILL.md"
 "culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
 "culture/overview/web/style.css" = "culture/overview/web/style.css"
+"culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
 
 [project.optional-dependencies]
 copilot = ["github-copilot-sdk"]

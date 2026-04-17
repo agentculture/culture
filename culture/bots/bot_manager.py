@@ -126,6 +126,9 @@ class BotManager:
             if raw:
                 server_config = {"system_bots": raw}
         for cfg in discover_system_bots(server_name, server_config):
+            if cfg.name in self.bots:
+                logger.info("Skipping system bot %s — name already registered", cfg.name)
+                continue
             try:
                 self.register_bot(cfg)
             except Exception:

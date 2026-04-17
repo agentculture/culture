@@ -113,7 +113,6 @@ class VirtualClient:
 
         Unlike ``send_to_channel``, this method does not require the bot to be
         a member of the channel — it delivers directly to current members.
-        No MESSAGE event is emitted and no mention-notifications fire.
         Used by event-triggered bots with no pre-configured channels (e.g.
         the welcome bot) so they can respond to events without persistently
         occupying a channel.
@@ -132,6 +131,11 @@ class VirtualClient:
         for member in list(channel.members):
             if member is not self:
                 await member.send(relay)
+
+        await self.server.emit_event(
+            Event(type=EventType.MESSAGE, channel=channel_name, nick=self.nick, data={"text": text})
+        )
+        await self._notify_mentions(channel_name, text)
 
     async def send_to_channel(self, channel_name: str, text: str) -> None:
         """Post a PRIVMSG to a channel as this bot."""
