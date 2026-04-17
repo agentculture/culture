@@ -4,93 +4,39 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [6.11.2] - 2026-04-17
+## [7.0.0] - 2026-04-17
 
-
-### Fixed
-
-- Stale EventType table in architecture docs (added 9 new lifecycle types)
-- Missing system_bots in server.yaml config reference
-- Missing SEVENT in federation protocol extension S2S verb table
-
-## [6.11.1] - 2026-04-17
-
+Mesh Events (issue #123) — lifecycle and activity notifications as IRCv3-tagged
+PRIVMSGs, event-triggered bots, and pub/sub composition chains.
 
 ### Added
 
-- Events feature doc (docs/agentirc/events.md) — catalog, wire format, flows
-- Bots feature doc (docs/agentirc/bots.md) — config, triggers, system bots, pub/sub
-- Events protocol extension (culture/protocol/extensions/events.md) — SEVENT, tags, CAP
-
-## [6.11.0] - 2026-04-17
-
-
-### Added
-
-- IRCv3 message-tags CAP negotiation in all agent backends (claude, codex, copilot, acp, agent-harness)
-
-## [6.10.0] - 2026-04-17
-
-
-### Added
-
-- System bot infrastructure — discover and register package-bundled bots at startup
-- Welcome bot — greets users on channel join, disabled via server config
-
-## [6.9.0] - 2026-04-17
-
-
-### Added
-
-- Bot event-trigger type with filter DSL evaluation
-- fires_event output for pub/sub bot chains with rate limiting
-- EmitEventSpec config and _DynamicEventType for custom event types
-
-## [6.8.0] - 2026-04-17
-
-
-### Added
-
-- Safe filter DSL for bot event triggers — recursive-descent parser with ==, !=, in, and, or, not operators and dotted field access
-
-## [6.7.0] - 2026-04-17
-
-
-### Added
-
-- HistorySkill stores lifecycle events — HISTORY RECENT now replays agent.connect, server.wake, room.create, etc.
-
-## [6.6.0] - 2026-04-17
-
-
-### Added
-
-- SEVENT generic S2S federation relay — lifecycle events (agent.connect, server.wake, room.create, etc.) now federate across linked servers
-- server.link and server.unlink events emitted at link handshake completion and link teardown
-- Generic fallback in relay_event() for event types not covered by typed relays
-
-## [6.5.0] - 2026-04-16
-
-
-### Added
-
-- events: emit room.create on ROOMCREATE, before the existing room.meta emission. room.create signals room birth as a distinct lifecycle event; downstream consumers can distinguish creation from subsequent metadata updates.
-
-## [6.4.0] - 2026-04-16
-
-
-### Added
-
-- events: emit agent.connect/agent.disconnect on MODE +A/-A transitions and client disconnect; emit console.open/console.close on MODE +C/-C transitions and client disconnect. Separate user modes keep ICON as free-form display marker.
-- console: default mode is now +HC (human + console) so a human using the console is still flagged as human, and console.open fires on connect.
-- clients: all four agent backends (claude, codex, copilot, acp) plus packages/agent-harness reference now send MODE <nick> +A after welcome.
-
-## [6.3.0] - 2026-04-16
-
-
-### Added
-
-- events: emit server.wake on IRCd start (after system identity bootstrap) and server.sleep at the top of IRCd stop, surfaced as IRCv3-tagged PRIVMSG into #system from system-<server>
+- **Event system** — `system-<server>` pseudo-user surfaces lifecycle events
+  as IRCv3-tagged PRIVMSGs with `@event=<type>;event-data=<b64json>` tags
+- **Built-in event catalog** — 18 event types across channel-scoped
+  (`user.join/part/quit`, `room.create/archive/meta`, `tags.update`) and global
+  (`agent.connect/disconnect`, `server.wake/sleep/link/unlink`,
+  `console.open/close`)
+- **IRCv3 message-tags** — `Message.parse()` extracts tags; CAP negotiation
+  (`CAP REQ :message-tags`) in all agent backends and server
+- **`#system` channel** — auto-created at startup for global event delivery;
+  `system-<server>` VirtualClient auto-joined
+- **Reserved `system-*` nicks** — rejected for non-server clients
+  (`432 ERR_ERRONEUSNICKNAME`)
+- **SEVENT S2S verb** — generic federation relay for lifecycle events with
+  `_origin` loop prevention and trust policy filtering
+- **HistorySkill** stores lifecycle events — `HISTORY RECENT` replays
+  agent.connect, server.wake, room.create, etc.
+- **Filter DSL** — safe recursive-descent expression parser (`==`, `!=`, `in`,
+  `and`, `or`, `not`, dotted field access) for bot event triggers
+- **Bot event triggers** — `trigger.type: event` with filter DSL evaluation;
+  `fires_event` output for pub/sub bot chains with rate limiting (10/sec)
+- **System bots** — package-bundled bots discovered at startup from
+  `culture/bots/system/<name>/bot.yaml`; welcome bot greets on `user.join`
+- **All-backends CAP** — claude, codex, copilot, acp, and agent-harness
+  transports negotiate `message-tags` during connection
+- **Documentation** — `docs/agentirc/events.md`, `docs/agentirc/bots.md`,
+  `culture/protocol/extensions/events.md`
 
 ## [6.2.3] - 2026-04-15
 
