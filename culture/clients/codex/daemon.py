@@ -471,20 +471,26 @@ class CodexDaemon:
             line = line[2:]
         return line
 
+    def _clean_relay_lines(self, text: str) -> list[str]:
+        """Strip, filter, and clean lines from a text content item."""
+        result = []
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            line = self._strip_meta_response(line)
+            if line and line != ">":
+                result.append(line)
+        return result
+
     async def _send_relay_lines(self, relay_target: str, content: list) -> None:
         """Send each text content item line-by-line to the relay target."""
         for item in content:
-            if item.get("type") == "text":
-                text = item["text"].strip()
-                if text:
-                    for line in text.split("\n"):
-                        line = line.strip()
-                        if not line:
-                            continue
-                        line = self._strip_meta_response(line)
-                        # Skip lines that are just blockquote markers
-                        if line and line != ">":
-                            await self._transport.send_privmsg(relay_target, line)
+            if item.get("type") != "text":
+                continue
+            text = item["text"].strip()
+            for line in self._clean_relay_lines(text):
+                await self._transport.send_privmsg(relay_target, line)
 
     async def _relay_response_to_irc(self, msg: dict) -> None:
         """Dequeue the next relay target and send agent text lines to IRC."""
