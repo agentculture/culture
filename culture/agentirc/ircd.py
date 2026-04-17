@@ -81,6 +81,7 @@ class IRCd:
         logger.info("Loading bots...")
         self.bot_manager = BotManager(self)
         await self.bot_manager.load_bots()
+        self.bot_manager.load_system_bots()
 
         logger.info(
             "Binding IRC socket on %s:%d...",

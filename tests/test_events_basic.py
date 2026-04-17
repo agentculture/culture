@@ -33,13 +33,17 @@ async def test_event_nick_from_event_field_populates_payload(server, make_client
     )
     await server.emit_event(ev)
 
-    line = await c.recv_until("event=user.join")
-    assert "testserv-bob joined" in line  # template rendered actor
-    # Decode payload and confirm 'nick' was populated from Event.nick
-    at_idx = line.find("@")
-    space_idx = line.find(" ", at_idx)
-    tag_blob = line[at_idx + 1 : space_idx]
-    data_piece = [p for p in tag_blob.split(";") if p.startswith("event-data=")][0]
+    collected = await c.recv_until("event=user.join")
+    assert "testserv-bob joined" in collected  # template rendered actor
+    # Find the tagged system PRIVMSG line among potentially multiple received lines.
+    # Bots may also send untagged PRIVMSGs to the channel around the same time.
+    tagged_line = next(
+        (ln for ln in collected.split("\r\n") if ln.startswith("@") and "event=user.join" in ln),
+        None,
+    )
+    assert tagged_line is not None, f"Could not find tagged event line in: {collected!r}"
+    tags = tagged_line.split(" ", 1)[0][1:]  # strip leading @
+    data_piece = [p for p in tags.split(";") if p.startswith("event-data=")][0]
     decoded = json.loads(base64.b64decode(data_piece.split("=", 1)[1]))
     assert decoded["nick"] == "testserv-bob"
 

@@ -44,8 +44,15 @@ class VirtualClient:
     async def send(self, message: Message) -> None:
         """No-op — bots don't receive messages from others."""
 
-    async def join_channel(self, channel_name: str) -> None:
-        """Join a channel, notify members, and emit events."""
+    async def join_channel(self, channel_name: str, *, emit_event: bool = True) -> None:
+        """Join a channel, notify members, and optionally emit events.
+
+        Args:
+            channel_name: The channel to join.
+            emit_event: If False, skip emitting a user.join event (e.g. for
+                silent dynamic joins by event-triggered bots to avoid
+                triggering other bots that filter on user.join).
+        """
         channel = self.server.get_or_create_channel(channel_name)
         if self in channel.members:
             return
@@ -65,9 +72,10 @@ class VirtualClient:
             if member is not self:
                 await member.send(join_msg)
 
-        await self.server.emit_event(
-            Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
-        )
+        if emit_event:
+            await self.server.emit_event(
+                Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
+            )
 
     async def part_channel(self, channel_name: str) -> None:
         """Leave a channel, notify members, and emit events."""
@@ -99,6 +107,36 @@ class VirtualClient:
 
         if not channel.members and not channel.persistent:
             del self.server.channels[channel_name]
+
+    async def broadcast_to_channel(self, channel_name: str, text: str) -> None:
+        """Post a PRIVMSG to a channel without joining it first.
+
+        Unlike ``send_to_channel``, this method does not require the bot to be
+        a member of the channel — it delivers directly to current members.
+        Used by event-triggered bots with no pre-configured channels (e.g.
+        the welcome bot) so they can respond to events without persistently
+        occupying a channel.
+        """
+        text = _sanitize_irc_text(text)
+        channel = self.server.channels.get(channel_name)
+        if channel is None:
+            logger.warning("Bot %s: channel %s not found for broadcast", self.nick, channel_name)
+            return
+
+        relay = Message(
+            prefix=self.prefix,
+            command="PRIVMSG",
+            params=[channel_name, text],
+        )
+        members_snapshot = list(channel.members)
+        for member in members_snapshot:
+            if member is not self:
+                await member.send(relay)
+
+        await self.server.emit_event(
+            Event(type=EventType.MESSAGE, channel=channel_name, nick=self.nick, data={"text": text})
+        )
+        await self._notify_mentions(channel_name, text)
 
     async def send_to_channel(self, channel_name: str, text: str) -> None:
         """Post a PRIVMSG to a channel as this bot."""

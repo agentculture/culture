@@ -22,3 +22,4 @@ class ServerConfig:
     webhook_port: int = 7680
     data_dir: str = ""
     links: list[LinkConfig] = field(default_factory=list)
+    system_bots: dict = field(default_factory=dict)

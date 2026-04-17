@@ -128,34 +128,49 @@ class Bot:
         if not self.active or not self.virtual_client:
             raise RuntimeError(f"Bot {self.config.name} is not active")
 
-        # Try custom handler first
-        handler_path = BOTS_DIR / self.config.name / "handler.py"
-        if handler_path.is_file():
-            message = await self._run_custom_handler(handler_path, payload)
-            if message is None:
-                return ""  # Handler chose to drop this event
-        else:
-            message = self._render_message(payload)
-
+        message = await self._resolve_message(payload)
         if not message:
             return ""
 
-        # Prepend @mention if configured
         if self.config.mention:
             message = f"@{self.config.mention} {message}"
 
-        # Send to configured channels
-        for channel in self.config.channels:
-            await self.virtual_client.send_to_channel(channel, message)
+        await self._deliver(message, payload)
+        await self._maybe_fire_event(payload)
+        return message
 
-        # DM the owner if configured
+    async def _resolve_message(self, payload: dict) -> str:
+        """Render the message from custom handler or template."""
+        handler_path = BOTS_DIR / self.config.name / "handler.py"
+        if handler_path.is_file():
+            result = await self._run_custom_handler(handler_path, payload)
+            return "" if result is None else result
+        return self._render_message(payload)
+
+    async def _deliver(self, message: str, payload: dict) -> None:
+        """Send message to channels and optionally DM the owner."""
+        target_channels, dynamic = self._resolve_channels(payload)
+        for channel in target_channels:
+            if dynamic:
+                await self.virtual_client.broadcast_to_channel(channel, message)
+            else:
+                ch_obj = self.server.channels.get(channel)
+                if ch_obj is None or self.virtual_client not in ch_obj.members:
+                    await self.virtual_client.join_channel(channel)
+                await self.virtual_client.send_to_channel(channel, message)
         if self.config.dm_owner and self.config.owner:
             await self.virtual_client.send_dm(self.config.owner, message)
 
-        # Fire follow-on event if configured
-        await self._maybe_fire_event(payload)
-
-        return message
+    def _resolve_channels(self, payload: dict) -> tuple[list[str], bool]:
+        """Return (channels, is_dynamic) for message delivery."""
+        channels = list(self.config.channels)
+        if channels or self.config.trigger_type != "event":
+            return channels, False
+        event_ctx = payload.get("event", {})
+        event_channel = event_ctx.get("channel") if isinstance(event_ctx, dict) else None
+        if event_channel:
+            return [event_channel], True
+        return [], False
 
     async def _maybe_fire_event(self, payload: dict) -> None:
         """Emit a follow-on event if fires_event is configured on this bot."""

@@ -115,6 +115,25 @@ class BotManager:
             except Exception:
                 logger.exception("Bot %s handle() failed for event %s", cfg.name, event.type)
 
+    def load_system_bots(self) -> None:
+        """Discover and register system bots from the package."""
+        from culture.bots.system import discover_system_bots
+
+        server_name = self.server.config.name if self.server else "unknown"
+        server_config = {}
+        if self.server:
+            raw = getattr(self.server.config, "system_bots", None)
+            if raw:
+                server_config = {"system_bots": raw}
+        for cfg in discover_system_bots(server_name, server_config):
+            if cfg.name in self.bots:
+                logger.info("Skipping system bot %s — name already registered", cfg.name)
+                continue
+            try:
+                self.register_bot(cfg)
+            except Exception:
+                logger.exception("Failed to register system bot %s", cfg.name)
+
     async def create_bot(self, config: BotConfig) -> Bot:
         """Create a new bot: write config to disk and start it."""
         bot_dir = BOTS_DIR / config.name

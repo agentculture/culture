@@ -1,0 +1,11 @@
+bot:
+  name: welcome
+  owner: system
+  description: Greets users joining any channel.
+
+trigger:
+  type: event
+  filter: "type == 'user.join'"
+
+output:
+  template: "Welcome {event.nick} to {event.channel}"

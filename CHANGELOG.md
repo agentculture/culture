@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.10.0] - 2026-04-17
+
+
+### Added
+
+- System bot infrastructure — discover and register package-bundled bots at startup
+- Welcome bot — greets users on channel join, disabled via server config
+
 ## [6.9.0] - 2026-04-17
 
 

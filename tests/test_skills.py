@@ -50,10 +50,14 @@ async def test_skill_receives_message_event(server, make_client):
     await bob.recv()  # get the message
     await asyncio.sleep(0.05)
 
-    msg_events = [e for e in skill.events if e.type == EventType.MESSAGE]
+    # Filter to the specific message alice sent (system bots may also emit
+    # MESSAGE events for welcome messages when users join).
+    msg_events = [
+        e
+        for e in skill.events
+        if e.type == EventType.MESSAGE and e.nick == "testserv-alice" and e.channel == "#test"
+    ]
     assert len(msg_events) == 1
-    assert msg_events[0].channel == "#test"
-    assert msg_events[0].nick == "testserv-alice"
     assert msg_events[0].data["text"] == "hello world"
 
 
