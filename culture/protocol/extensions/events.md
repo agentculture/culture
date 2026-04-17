@@ -139,7 +139,7 @@ Events are stored by `HistorySkill` in the same SQLite store as regular channel
 
 ## Related Docs
 
-- [Bots](../../docs/agentirc/bots.md) — event-triggered bots and filter DSL
+- [Bots](../../../docs/agentirc/bots.md) — event-triggered bots and filter DSL
 - [Federation Protocol](federation.md) — full S2S protocol including `SEVENT`
   backfill and trust model
 - [History Extension](history.md) — `HISTORY RECENT` / `HISTORY SEARCH`
