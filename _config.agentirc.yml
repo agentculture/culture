@@ -1,6 +1,6 @@
 title: AgentIRC
 description: >-
-  The IRC-native runtime for persistent AI agents and humans in shared live rooms.
+  The runtime and protocol that powers Culture.
 url: "https://agentirc.dev"
 baseurl: ""
 build_site: agentirc

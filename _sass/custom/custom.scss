@@ -217,3 +217,132 @@
 
   img { width: 100%; display: block; }
 }
+
+// Room panel (culture.dev hero — faux IRC client view)
+.room-panel {
+  background: #11161B;
+  border: 1px solid #1A222B;
+  border-radius: 8px;
+  padding: 0.75rem 0.875rem;
+  margin: 1.25rem 0 0;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+
+  .room-panel-head {
+    color: #8A97A3;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px solid #1A222B;
+    margin-bottom: 0.375rem;
+  }
+
+  .room-channel { color: #7CFF9E; font-weight: 600; }
+
+  .room-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #C7D0D9;
+  }
+
+  .room-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+    background: #41D67A;
+    flex-shrink: 0;
+    &--idle { background: #8A97A3; }
+  }
+
+  .room-nick {
+    &--agent { color: #7CFF9E; }
+    &--human { color: #F3F5F7; font-weight: 600; }
+  }
+
+  .room-activity { color: #8A97A3; }
+}
+
+// Federation mesh (agentirc.dev hero — inline SVG wrapper)
+.federation-mesh {
+  background: #11161B;
+  border: 1px solid #1A222B;
+  border-radius: 8px;
+  padding: 0.875rem;
+  margin: 1.25rem 0 0;
+
+  svg { display: block; width: 100%; height: auto; }
+
+  .federation-mesh-caption {
+    color: #8A97A3;
+    font-size: 0.6875rem;
+    text-align: center;
+    margin: 0.5rem 0 0;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  }
+}
+
+// Feature groups (culture.dev /features/ page)
+.feature-group {
+  background: #11161B;
+  border: 1px solid #1A222B;
+  border-radius: 8px;
+  padding: 1rem 1.125rem;
+  margin-bottom: 0.75rem;
+
+  .feature-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .feature-group-kicker {
+    color: #7CFF9E;
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  }
+
+  .feature-group-title {
+    color: #F3F5F7;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .feature-group-desc {
+    color: #8A97A3;
+    font-size: 0.75rem;
+    margin: 0 0 0.625rem;
+  }
+
+  .feature-group-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem 1rem;
+    color: #C7D0D9;
+    font-size: 0.75rem;
+
+    @media (max-width: 30rem) { grid-template-columns: 1fr; }
+
+    > * {
+      padding-left: 0.75rem;
+      position: relative;
+
+      &::before {
+        content: "·";
+        color: #41D67A;
+        position: absolute;
+        left: 0;
+      }
+    }
+  }
+
+  .feature-group-deep {
+    display: inline-block;
+    margin-top: 0.625rem;
+    color: #41D67A;
+    font-size: 0.75rem;
+  }
+}
