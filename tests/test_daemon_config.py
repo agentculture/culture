@@ -673,7 +673,7 @@ def test_acp_load_config_strips_unknown_fields():
 def test_coerce_to_acp_agent_preserves_icon():
     """_coerce_to_acp_agent copies the icon field (#155)."""
     from culture.cli.agent import _coerce_to_acp_agent
-    from culture.clients.claude.config import AgentConfig
+    from culture.config import AgentConfig
 
     agent = AgentConfig(nick="spark-test", icon="robot")
     acp_agent = _coerce_to_acp_agent(agent)
@@ -683,7 +683,7 @@ def test_coerce_to_acp_agent_preserves_icon():
 def test_coerce_to_acp_agent_icon_none():
     """_coerce_to_acp_agent handles icon=None gracefully."""
     from culture.cli.agent import _coerce_to_acp_agent
-    from culture.clients.claude.config import AgentConfig
+    from culture.config import AgentConfig
 
     agent = AgentConfig(nick="spark-test")
     acp_agent = _coerce_to_acp_agent(agent)
@@ -699,11 +699,7 @@ def test_make_backend_config_passes_all_fields():
     """_make_backend_config includes supervisor, poll_interval, sleep schedule (#156)."""
     from culture.cli.agent import _make_backend_config
     from culture.clients.acp.config import DaemonConfig as ACPDaemonConfig
-    from culture.clients.claude.config import (
-        DaemonConfig,
-        ServerConnConfig,
-        SupervisorConfig,
-    )
+    from culture.config import DaemonConfig, ServerConnConfig, SupervisorConfig
 
     config = DaemonConfig(
         server=ServerConnConfig(name="spark"),

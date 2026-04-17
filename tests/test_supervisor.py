@@ -248,8 +248,7 @@ async def test_sdk_evaluate_fn_error_handling(monkeypatch):
     """SDK evaluate_fn raises on query failure (caught by Supervisor._evaluate)."""
 
     async def fake_query(*, prompt, options=None, transport=None):
-        if False:
-            yield  # make this an async generator
+        yield  # async generator — yields nothing before error
         raise RuntimeError("API error")
 
     monkeypatch.setattr("culture.clients.claude.supervisor.query", fake_query)

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [7.0.1] - 2026-04-17
+
+
+### Fixed
+
+- Wrong AgentConfig/DaemonConfig import types in test helpers (S5655)
+- Constant if-False condition replaced with unreachable yield pattern (S5797)
+
 ## [7.0.0] - 2026-04-17
 
 Mesh Events (issue #123) — lifecycle and activity notifications as IRCv3-tagged
