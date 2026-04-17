@@ -44,6 +44,10 @@ poll_interval: 60
 sleep_start: "23:00"
 sleep_end: "08:00"
 
+system_bots:
+  welcome:
+    enabled: true
+
 agents:
   myagent: /home/user/projects/myproject
   culture: /home/user/git/culture
@@ -83,6 +87,16 @@ agents:
 | `buffer_size` | `500` | Max messages to buffer per agent |
 | `sleep_start` | `"23:00"` | Time agents auto-pause (24h format) |
 | `sleep_end` | `"08:00"` | Time agents auto-resume (24h format) |
+
+### `system_bots` block
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `<name>.enabled` | `true` | Enable/disable a system bot by name (e.g. `welcome`) |
+
+System bots are package-bundled bots that load at server startup. Each bot's
+nick is `system-<servername>-<name>`. Set `enabled: false` to prevent a system
+bot from registering. See [Bots](/bots/) for details.
 
 ### `agents` manifest
 
