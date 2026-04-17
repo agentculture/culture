@@ -9,6 +9,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 Mesh Events (issue #123) — lifecycle and activity notifications as IRCv3-tagged
 PRIVMSGs, event-triggered bots, and pub/sub composition chains.
 
+> Versions 6.3.0 through 6.11.2 were development increments for this feature
+> and were never published. Their changes are consolidated here as 7.0.0.
+
+### Breaking Changes
+
+None. Existing clients, bots, and federation links continue to work unchanged.
+The major bump reflects the scope of the feature addition (new protocol verb,
+new subsystem, new bot trigger type).
+
 ### Added
 
 - **Event system** — `system-<server>` pseudo-user surfaces lifecycle events
