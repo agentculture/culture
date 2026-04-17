@@ -34,6 +34,19 @@ class IRCObserver:
         suffix = secrets.token_hex(2)  # 4 hex chars
         return f"{self.server_name}-_peek{suffix}"
 
+    async def _process_registration_line(
+        self, line: str, writer: asyncio.StreamWriter, nick: str
+    ) -> tuple[bool, str]:
+        """Handle one line during registration. Returns (done, nick)."""
+        msg = Message.parse(line)
+        if msg.command == "001":
+            return True, nick
+        if msg.command == "433":
+            nick = self._temp_nick()
+            writer.write(f"NICK {nick}\r\n".encode())
+            await writer.drain()
+        return False, nick
+
     async def _connect_and_register(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, str]:
         """Open a TCP connection, register with a temp nick, and return the streams.
 
@@ -49,7 +62,6 @@ class IRCObserver:
         writer.write("USER _peek 0 * :culture observer\r\n".encode())
         await writer.drain()
 
-        # Wait for RPL_WELCOME (001) to confirm registration
         buffer = ""
         try:
             while True:
@@ -59,14 +71,9 @@ class IRCObserver:
                 buffer += data.decode(errors="replace")
                 while "\r\n" in buffer:
                     line, buffer = buffer.split("\r\n", 1)
-                    msg = Message.parse(line)
-                    if msg.command == "001":
+                    done, nick = await self._process_registration_line(line, writer, nick)
+                    if done:
                         return reader, writer, nick
-                    # If nick is in use, try another
-                    if msg.command == "433":
-                        nick = self._temp_nick()
-                        writer.write(f"NICK {nick}\r\n".encode())
-                        await writer.drain()
         except asyncio.TimeoutError:
             writer.close()
             raise ConnectionError("Timed out waiting for server welcome")
@@ -124,6 +131,20 @@ class IRCObserver:
             results.append(parsed)
         return False
 
+    async def _drain_query_buffer(
+        self, buffer, end_numerics, parse_line, results, writer
+    ) -> tuple[str, bool]:
+        """Process complete lines from buffer. Returns (remainder, done)."""
+        while "\r\n" in buffer:
+            line, buffer = buffer.split("\r\n", 1)
+            if not line.strip():
+                continue
+            msg = Message.parse(line)
+            done = await self._process_query_line(msg, end_numerics, parse_line, results, writer)
+            if done:
+                return buffer, True
+        return buffer, False
+
     async def _irc_query(self, command, end_numerics, parse_line):
         """Send an IRC command, collect parsed results until an end marker."""
         reader, writer, nick = await self._connect_and_register()
@@ -138,16 +159,11 @@ class IRCObserver:
                 if not data:
                     break
                 buffer += data.decode(errors="replace")
-                while "\r\n" in buffer:
-                    line, buffer = buffer.split("\r\n", 1)
-                    if not line.strip():
-                        continue
-                    msg = Message.parse(line)
-                    done = await self._process_query_line(
-                        msg, end_numerics, parse_line, results, writer
-                    )
-                    if done:
-                        return results
+                buffer, done = await self._drain_query_buffer(
+                    buffer, end_numerics, parse_line, results, writer
+                )
+                if done:
+                    return results
             return results
         except asyncio.TimeoutError:
             return results

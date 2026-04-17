@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [7.0.2] - 2026-04-17
+
+
+### Fixed
+
+- Cognitive complexity in observer.py (CC 22→~13)
+- Cognitive complexity in ircd.py (CC 18→~12)
+- Cognitive complexity in server_link.py (CC 33→~14)
+
 ## [7.0.1] - 2026-04-17
 
 

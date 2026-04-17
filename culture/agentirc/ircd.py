@@ -517,18 +517,9 @@ class IRCd:
             except ConnectionError:
                 pass
 
-    async def _remove_client(self, client: Client) -> None:
-        if client.nick and client.nick in self.clients:
-            del self.clients[client.nick]
-        for channel in list(client.channels):
-            channel.remove(client)
-            if not channel.members and not channel.persistent:
-                del self.channels[channel.name]
-
-        # Emit lifecycle disconnect events based on user modes set at disconnect time.
-        # Wrapped individually in try/except so emission failure cannot block cleanup.
-        nick = client.nick or "<unknown>"
-        if "A" in getattr(client, "modes", set()):
+    async def _emit_disconnect_events(self, nick: str, modes: set) -> None:
+        """Emit lifecycle events for agent disconnect and/or console close."""
+        if "A" in modes:
             try:
                 await self.emit_event(
                     Event(
@@ -540,7 +531,7 @@ class IRCd:
                 )
             except Exception:
                 logger.exception("Failed to emit agent.disconnect for %s", nick)
-        if "C" in getattr(client, "modes", set()):
+        if "C" in modes:
             try:
                 await self.emit_event(
                     Event(
@@ -552,6 +543,17 @@ class IRCd:
                 )
             except Exception:
                 logger.exception("Failed to emit console.close for %s", nick)
+
+    async def _remove_client(self, client: Client) -> None:
+        if client.nick and client.nick in self.clients:
+            del self.clients[client.nick]
+        for channel in list(client.channels):
+            channel.remove(client)
+            if not channel.members and not channel.persistent:
+                del self.channels[channel.name]
+
+        nick = client.nick or "<unknown>"
+        await self._emit_disconnect_events(nick, getattr(client, "modes", set()))
 
     def _notify_local_quit(self, rc, quit_msg, notified: set) -> None:
         """Notify local members of a remote client quit and clean up channels."""

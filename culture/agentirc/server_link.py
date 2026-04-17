@@ -510,6 +510,19 @@ class ServerLink:
         if not channel.members:
             del self.server.channels[channel_name]
 
+    async def _cleanup_remote_client_channels(self, rc, quit_msg: Message) -> None:
+        """Notify local members of rc's quit and remove rc from channels."""
+        notified: set = set()
+        for channel in list(rc.channels):
+            for member in list(channel.members):
+                if not isinstance(member, RemoteClient) and member not in notified:
+                    await member.send(quit_msg)
+                    notified.add(member)
+            channel.members.discard(rc)
+            if not channel.members:
+                del self.server.channels[channel.name]
+        rc.channels.clear()
+
     async def _handle_squituser(self, msg: Message) -> None:
         """Handle relayed client QUIT from peer."""
         if len(msg.params) < 1:
@@ -522,19 +535,7 @@ class ServerLink:
             return
 
         quit_msg = Message(prefix=rc.prefix, command="QUIT", params=[reason])
-
-        # Notify local members in shared channels
-        notified = set()
-        for channel in list(rc.channels):
-            for member in list(channel.members):
-                if not isinstance(member, RemoteClient) and member not in notified:
-                    await member.send(quit_msg)
-                    notified.add(member)
-            channel.members.discard(rc)
-            if not channel.members:
-                del self.server.channels[channel.name]
-
-        rc.channels.clear()
+        await self._cleanup_remote_client_channels(rc, quit_msg)
         del self.server.remote_clients[nick]
 
     def _handle_squit(self, msg: Message) -> None:
@@ -719,6 +720,27 @@ class ServerLink:
 
     # --- Generic SEVENT federation ---
 
+    @staticmethod
+    def _decode_sevent_payload(b64: str, peer_name: str) -> dict | None:
+        """Decode and validate a base64-JSON SEVENT payload."""
+        try:
+            data = json.loads(base64.b64decode(b64))
+        except ValueError as exc:
+            logger.warning("SEVENT bad payload from %s: %s", peer_name, exc)
+            return None
+        if not isinstance(data, dict):
+            logger.warning("SEVENT non-dict payload from %s", peer_name)
+            return None
+        return data
+
+    @staticmethod
+    def _parse_event_type(type_str: str):
+        """Map a wire type string to EventType enum, or keep as string."""
+        try:
+            return EventType(type_str)
+        except ValueError:
+            return type_str
+
     async def _handle_sevent(self, msg: Message) -> None:
         """Ingest a generic federated event from a peer.
 
@@ -729,33 +751,18 @@ class ServerLink:
         origin, _seq, type_str, target, b64 = msg.params[:5]
         channel = None if target == "*" else target
 
-        # v1: direct-peer topology only — origin should match peer_name.
-        # Multi-hop mesh would need origin validation against known servers.
         if origin != self.peer_name:
             logger.warning("SEVENT origin %s != peer %s", origin, self.peer_name)
 
-        # Trust check: if channel-scoped, verify we should accept it
         if channel is not None and not self._check_incoming_trust(channel):
             return
 
-        try:
-            data = json.loads(base64.b64decode(b64))
-        except ValueError as exc:
-            logger.warning("SEVENT bad payload from %s: %s", self.peer_name, exc)
+        data = self._decode_sevent_payload(b64, self.peer_name)
+        if data is None:
             return
 
-        if not isinstance(data, dict):
-            logger.warning("SEVENT non-dict payload from %s", self.peer_name)
-            return
-
-        # Re-attach _origin so _surface_event_privmsg uses the correct federated prefix
         data["_origin"] = origin
-
-        # Map the type string back to an EventType if known; keep as string otherwise
-        try:
-            type_enum = EventType(type_str)
-        except ValueError:
-            type_enum = type_str  # custom event; stays as string for future bot events
+        type_enum = self._parse_event_type(type_str)
 
         ev = Event(
             type=type_enum,
@@ -771,6 +778,15 @@ class ServerLink:
         """Request missed events from peer since our last known seq."""
         await self.send_raw(f"BACKFILL {self.server.config.name} {self.last_seen_seq}")
 
+    @staticmethod
+    def _should_replay_event(seq: int, event: Event, effective_seq: int) -> bool:
+        """Return True if event should be replayed to a peer."""
+        if seq <= effective_seq:
+            return False
+        if event.data.get("_origin"):
+            return False
+        return True
+
     async def _handle_backfill(self, msg: Message) -> None:
         """Peer is requesting backfill from a given sequence."""
         if len(msg.params) < 2:
@@ -785,14 +801,9 @@ class ServerLink:
         acked = self.server._peer_acked_seq.get(self.peer_name, 0)
         effective_seq = max(from_seq, acked)
 
-        # Replay events from our log that are after effective_seq
         for seq, event in self.server._event_log:
-            if seq <= effective_seq:
-                continue
-            # Only replay events that originated locally
-            if event.data.get("_origin"):
-                continue
-            await self._replay_event(seq, event)
+            if self._should_replay_event(seq, event, effective_seq):
+                await self._replay_event(seq, event)
 
         await self.send_raw(f":{self.server.config.name} BACKFILLEND {self.server._seq}")
 
@@ -918,6 +929,19 @@ class ServerLink:
 
     # --- Mention notifications for remote messages ---
 
+    def _resolve_mention_target(self, raw_nick, sender_nick, seen, channel):
+        """Resolve a raw @mention to a notifiable local Client, or None."""
+        nick = raw_nick.rstrip(".,;:!?")
+        if nick in seen or nick == sender_nick:
+            return None
+        seen.add(nick)
+        target_client = self.server.clients.get(nick)
+        if not target_client:
+            return None
+        if channel and target_client not in channel.members:
+            return None
+        return target_client
+
     async def _notify_remote_mentions(
         self, channel_name: str | None, sender_nick: str, text: str
     ) -> None:
@@ -931,21 +955,14 @@ class ServerLink:
         channel = self.server.channels.get(channel_name) if channel_name else None
         source = channel_name or "a direct message"
         for raw_nick in mentioned_nicks:
-            nick = raw_nick.rstrip(".,;:!?")
-            if nick in seen or nick == sender_nick:
-                continue
-            seen.add(nick)
-            # Only notify local clients
-            target_client = self.server.clients.get(nick)
+            target_client = self._resolve_mention_target(raw_nick, sender_nick, seen, channel)
             if not target_client:
-                continue
-            if channel and target_client not in channel.members:
                 continue
             notice = Message(
                 prefix=self.server.config.name,
                 command="NOTICE",
                 params=[
-                    nick,
+                    target_client.nick,
                     f"{sender_nick} mentioned you in {source}: {text}",
                 ],
             )
