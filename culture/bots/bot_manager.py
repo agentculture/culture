@@ -115,7 +115,7 @@ class BotManager:
             except Exception:
                 logger.exception("Bot %s handle() failed for event %s", cfg.name, event.type)
 
-    async def load_system_bots(self) -> None:
+    def load_system_bots(self) -> None:
         """Discover and register system bots from the package."""
         from culture.bots.system import discover_system_bots
 

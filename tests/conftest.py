@@ -15,6 +15,10 @@ TEST_LINK_PASSWORD = "testlink123"
 # call rather than passing a parameter (per python:S7483).
 RECV_TIMEOUT_SECONDS = 2.0
 
+_BOTS_DIR_MANAGER = "culture.bots.bot_manager.BOTS_DIR"
+_BOTS_DIR_CONFIG = "culture.bots.config.BOTS_DIR"
+_BOTS_DIR_BOT = "culture.bots.bot.BOTS_DIR"
+
 
 class IRCTestClient:
     """A minimal IRC test client over raw TCP."""
@@ -92,9 +96,9 @@ async def server(tmp_path):
     empty_bots.mkdir()
     config = ServerConfig(name="testserv", host="127.0.0.1", port=0, webhook_port=0)
     with (
-        patch("culture.bots.bot_manager.BOTS_DIR", empty_bots),
-        patch("culture.bots.config.BOTS_DIR", empty_bots),
-        patch("culture.bots.bot.BOTS_DIR", empty_bots),
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
     ):
         ircd = IRCd(config)
         await ircd.start()
@@ -156,9 +160,9 @@ async def linked_servers(tmp_path):
     server_b = IRCd(config_b)
 
     with (
-        patch("culture.bots.bot_manager.BOTS_DIR", empty_bots),
-        patch("culture.bots.config.BOTS_DIR", empty_bots),
-        patch("culture.bots.bot.BOTS_DIR", empty_bots),
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
     ):
         await server_a.start()
         await server_b.start()
@@ -251,9 +255,9 @@ async def server_welcome_disabled(tmp_path):
         system_bots={"welcome": {"enabled": False}},
     )
     with (
-        patch("culture.bots.bot_manager.BOTS_DIR", empty_bots),
-        patch("culture.bots.config.BOTS_DIR", empty_bots),
-        patch("culture.bots.bot.BOTS_DIR", empty_bots),
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
     ):
         ircd = IRCd(config)
         await ircd.start()

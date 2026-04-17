@@ -128,7 +128,8 @@ class VirtualClient:
             command="PRIVMSG",
             params=[channel_name, text],
         )
-        for member in list(channel.members):
+        members_snapshot = list(channel.members)
+        for member in members_snapshot:
             if member is not self:
                 await member.send(relay)
 
