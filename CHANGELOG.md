@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [6.11.1] - 2026-04-17
+
+
+### Added
+
+- Events feature doc (docs/agentirc/events.md) — catalog, wire format, flows
+- Bots feature doc (docs/agentirc/bots.md) — config, triggers, system bots, pub/sub
+- Events protocol extension (protocol/extensions/events.md) — SEVENT, tags, CAP
+
 ## [6.11.0] - 2026-04-17
 
 
