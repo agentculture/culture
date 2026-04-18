@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 from rich.markdown import Markdown
@@ -30,6 +31,18 @@ def build_message_header(timestamp: float, icon: str, nick: str) -> Text:
     header.append(nick, style="bold")
     header.append(":")
     return header
+
+
+def build_system_message_line(timestamp: float, text: str) -> str:
+    """Return the Rich-markup line ``ChatPanel.add_system_message`` writes.
+
+    Pulled out so the formatting can be unit-tested directly. Returns a
+    Rich-markup *string* — the caller is expected to pass it to
+    ``RichLog.write`` so Rich parses ``[red]…[/]`` / ``[bold]…[/]`` tags
+    inside ``text`` as styling.
+    """
+    ts = datetime.fromtimestamp(timestamp).strftime("%H:%M")
+    return f"[dim]{ts}[/] [bold]system[/] {text}"
 
 
 class ChatInput(Input):
@@ -139,12 +152,17 @@ class ChatPanel(Widget):
     # ------------------------------------------------------------------
 
     def add_message(self, timestamp: float, icon: str, nick: str, text: str) -> None:
-        """Append a formatted message to the chat log.
+        """Append a chat message rendered as CommonMark markdown.
 
-        Renders ``text`` as CommonMark markdown via ``rich.markdown.Markdown``
-        on the lines below a ``[ts] icon nick:`` header. Rich-markup-looking
-        substrings such as ``[bold]X[/]`` in ``text`` are shown verbatim
-        because the body is passed as a renderable, not a markup string.
+        Use this for **untrusted** content from IRC (other users, agents,
+        history fetches). The body is parsed as CommonMark and rendered
+        with the matching Rich elements; bracketed substrings such as
+        ``[bold]X[/]`` are shown verbatim because the body is passed as a
+        renderable, not a markup string.
+
+        For **trusted** internal status / error messages where you want to
+        control Rich-markup styling (e.g. ``[red]error[/]``), use
+        :py:meth:`add_system_message` instead.
 
         Parameters
         ----------
@@ -160,6 +178,22 @@ class ChatPanel(Widget):
         log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
         log.write(build_message_header(timestamp, icon, nick))
         log.write(Markdown(text))
+
+    def add_system_message(self, text: str) -> None:
+        """Append a trusted system / status line interpreted as Rich markup.
+
+        Counterpart to :py:meth:`add_message`. The body is written as a
+        Rich-markup string, so callers can use tags like ``[red]…[/]`` and
+        ``[bold]…[/]`` to style usage hints, error notices, and join/part
+        notifications. The header is ``[ts] system``; the timestamp uses
+        ``time.time()``.
+
+        Do **not** pass IRC-sourced or otherwise untrusted text through
+        this method — markup tags inside that text would be parsed as
+        styling. Use :py:meth:`add_message` for that.
+        """
+        log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
+        log.write(build_system_message_line(time.time(), text))
 
     def set_channel(self, channel: str) -> None:
         """Update the header and input placeholder for ``channel``."""

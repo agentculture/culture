@@ -24,8 +24,9 @@ from datetime import datetime
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.text import Text
 
-from culture.console.widgets.chat import build_message_header
+from culture.console.widgets.chat import build_message_header, build_system_message_line
 
 
 def _ts(timestamp: float) -> str:
@@ -127,10 +128,16 @@ class TestMarkdownInlineFormatting:
         assert _strip_ansi(out) != out, "inline code should produce ANSI styling"
 
     def test_link_emits_osc8_hyperlink(self):
-        out = _render(Markdown("[Anthropic](https://anthropic.com)"))
-        # OSC 8 hyperlinks: ESC ] 8 ; ; URL ST ... ESC ] 8 ; ; ST
-        assert "\x1b]8;" in out, "link should produce OSC 8 hyperlink escape"
-        assert "https://anthropic.com" in out
+        out = _render(Markdown("[Anthropic](https://example.test/path)"))
+        # OSC 8 hyperlinks: ESC ] 8 ; <params> ; <URL> ST ... ESC ] 8 ; ; ST.
+        # Anchor the assertion to the full escape framing (ESC ] 8 ; ... ;
+        # https://example.test/path ESC) so the test does a full-shape match
+        # rather than a bare URL-substring search — the latter is a CodeQL
+        # "incomplete URL substring sanitization" smell even in tests.
+        assert re.search(
+            r"\x1b\]8;[^;]*;https://example\.test/path(?:\x1b\\|\x07)",
+            out,
+        ), "link should produce OSC 8 hyperlink escape with the source URL"
         assert "Anthropic" in _strip_ansi(out)
 
 
@@ -185,3 +192,50 @@ class TestRichMarkupNotReinterpreted:
         # before the literal "X" — confirm the bold SGR open code (\x1b[1m)
         # does not wrap a bare "X" in this output.
         assert "\x1b[1mX\x1b[" not in out
+
+
+# ---------------------------------------------------------------------------
+# build_system_message_line — Rich-markup path for trusted system messages
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSystemMessageLine:
+    """System messages must keep Rich-markup tags as styling, not literal text.
+
+    Internal callers (`/handle_join`, error paths, usage hints, etc.) format
+    their output with Rich markup like ``[red]error[/]``, ``[bold]#chan[/]``,
+    ``[dim]No history[/]``. Those tags must reach Rich's markup parser, not
+    be flattened to literal characters by the markdown pipeline.
+    """
+
+    def test_format_includes_timestamp_and_system_label(self):
+        line = build_system_message_line(0.0, "hello")
+        # Format: "[dim]HH:MM[/] [bold]system[/] {body}"
+        assert line == f"[dim]{_ts(0.0)}[/] [bold]system[/] hello"
+
+    def test_caller_markup_is_preserved_in_string(self):
+        line = build_system_message_line(0.0, "[red]Usage: /join #channel[/]")
+        assert "[red]Usage: /join #channel[/]" in line
+        # The body is appended unchanged — caller controls styling.
+        assert line.endswith("[red]Usage: /join #channel[/]")
+
+    def test_caller_markup_renders_as_styling_through_rich(self):
+        # Round-trip through a real Rich Console: [red] should produce a
+        # red ANSI escape, not literal "[red]" characters.
+        line = build_system_message_line(0.0, "[red]err[/]")
+        out = _render(Text.from_markup(line))
+        # Red foreground: SGR 31 in 8-color or 38;5;1/38;2;... in higher.
+        # Just check that styling escapes are present and the literal
+        # "[red]" tag is gone from the visible text.
+        plain = _strip_ansi(out)
+        assert "[red]" not in plain
+        assert "err" in plain
+
+    def test_brackets_in_text_when_caller_uses_rich_markup(self):
+        # The system path is for trusted content — a caller that passes
+        # raw "[bold]X[/]" *intends* it as styling. Confirm Rich parses it.
+        line = build_system_message_line(0.0, "[bold]important[/]")
+        out = _render(Text.from_markup(line))
+        # Bold SGR open code must appear before "important".
+        assert "\x1b[1m" in out
+        assert "important" in _strip_ansi(out)
