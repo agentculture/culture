@@ -4,12 +4,32 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from rich.markdown import Markdown
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Input, RichLog, Static
+
+
+def build_message_header(timestamp: float, icon: str, nick: str) -> Text:
+    """Return the ``[ts] icon nick:`` header rendered as a Rich ``Text``.
+
+    Pulled out of ``ChatPanel.add_message`` so it can be unit-tested without
+    a running Textual app. Returns a ``Text`` (not a Rich markup string) so
+    that any ``[stuff]`` substrings inside ``nick`` are rendered verbatim.
+    """
+    ts = datetime.fromtimestamp(timestamp).strftime("%H:%M")
+    header = Text()
+    header.append(ts, style="dim")
+    header.append(" ")
+    if icon:
+        header.append(f"{icon} ")
+    header.append(nick, style="bold")
+    header.append(":")
+    return header
 
 
 class ChatInput(Input):
@@ -121,6 +141,11 @@ class ChatPanel(Widget):
     def add_message(self, timestamp: float, icon: str, nick: str, text: str) -> None:
         """Append a formatted message to the chat log.
 
+        Renders ``text`` as CommonMark markdown via ``rich.markdown.Markdown``
+        on the lines below a ``[ts] icon nick:`` header. Rich-markup-looking
+        substrings such as ``[bold]X[/]`` in ``text`` are shown verbatim
+        because the body is passed as a renderable, not a markup string.
+
         Parameters
         ----------
         timestamp:
@@ -130,13 +155,11 @@ class ChatPanel(Widget):
         nick:
             Sender nick.
         text:
-            Message body.
+            Message body (rendered as markdown).
         """
         log: RichLog = self.query_one(self._CHAT_LOG_ID, RichLog)
-        ts = datetime.fromtimestamp(timestamp).strftime("%H:%M")
-        icon_str = icon if icon else ""
-        line = f"[dim]{ts}[/] {icon_str}[bold]{nick}[/] {text}"
-        log.write(line)
+        log.write(build_message_header(timestamp, icon, nick))
+        log.write(Markdown(text))
 
     def set_channel(self, channel: str) -> None:
         """Update the header and input placeholder for ``channel``."""
