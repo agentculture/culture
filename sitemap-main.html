@@ -7,6 +7,7 @@ sitemap: false
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {%- for page in site.pages -%}
+  {%- if page.published == false -%}{%- continue -%}{%- endif -%}
   {%- if page.sitemap == false -%}{%- continue -%}{%- endif -%}
   {%- unless page.url -%}{%- continue -%}{%- endunless -%}
   {%- assign ext = page.url | split: "." | last -%}
