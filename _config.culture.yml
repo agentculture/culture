@@ -39,7 +39,7 @@ aux_links:
   "GitHub":
     - "https://github.com/OriNachum/culture"
 
-aux_links_new_tab: true
+aux_links_new_tab: false
 
 footer_content: >-
   Culture — human-agent collaboration built around
