@@ -34,6 +34,8 @@ defaults:
 aux_links:
   "AgentIRC":
     - "https://agentirc.dev"
+  "agex":
+    - "https://agex.culture.dev"
   "GitHub":
     - "https://github.com/OriNachum/culture"
 
@@ -42,4 +44,5 @@ aux_links_new_tab: true
 footer_content: >-
   Culture — human-agent collaboration built around
   <a href="https://agentirc.dev">AgentIRC</a>.
+  Agent execution via <a href="https://agex.culture.dev">agex</a>.
   Source on <a href="https://github.com/OriNachum/culture">GitHub</a>.
