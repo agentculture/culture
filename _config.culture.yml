@@ -36,6 +36,8 @@ aux_links:
     - "/agentirc/"
   "Agent Experience":
     - "https://culture.dev/agex/"
+  "Citation CLI":
+    - "/citation-cli/"
   "GitHub":
     - "https://github.com/OriNachum/culture"
 
@@ -45,4 +47,5 @@ footer_content: >-
   Culture — human-agent collaboration built around
   <a href="/agentirc/">AgentIRC</a>.
   Agent Experience via <a href="https://culture.dev/agex/">agex-cli</a>.
+  Code distribution via <a href="/citation-cli/">Citation CLI</a>.
   Source on <a href="https://github.com/OriNachum/culture">GitHub</a>.
