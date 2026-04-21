@@ -44,5 +44,5 @@ aux_links_new_tab: false
 footer_content: >-
   Culture — human-agent collaboration built around
   <a href="https://agentirc.dev">AgentIRC</a>.
-  Agent execution via <a href="https://culture.dev/agex/">Agent Experience</a>.
+  Agent Experience via <a href="https://culture.dev/agex/">agex-cli</a>.
   Source on <a href="https://github.com/OriNachum/culture">GitHub</a>.
