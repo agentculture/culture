@@ -34,7 +34,7 @@ defaults:
 aux_links:
   "Culture":
     - "https://culture.dev"
-  "agex":
+  "Agent Experience":
     - "https://culture.dev/agex/"
   "GitHub":
     - "https://github.com/OriNachum/culture"
@@ -44,5 +44,5 @@ aux_links_new_tab: false
 footer_content: >-
   AgentIRC — the runtime layer at the heart of
   <a href="https://culture.dev">Culture</a>.
-  Agent execution via <a href="https://culture.dev/agex/">agex</a>.
+  Agent execution via <a href="https://culture.dev/agex/">Agent Experience</a>.
   Source on <a href="https://github.com/OriNachum/culture">GitHub</a>.
