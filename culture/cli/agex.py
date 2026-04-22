@@ -8,6 +8,8 @@ route through culture's universal-verb path.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import sys
 
 from culture.cli import introspect
@@ -15,61 +17,59 @@ from culture.cli import introspect
 NAME = "agex"
 
 
-def _run_agex(argv: list[str]) -> int:
-    """Invoke agex's typer app in-process, returning its exit code.
+def _run_agex(argv: list[str]) -> None:
+    """Invoke agex's typer app in-process.
 
     Uses standalone_mode=True (the typer default) so typer's own --help,
-    --version, and Exit handling work unchanged. Typer calls sys.exit when
-    done; we translate that SystemExit back into a return value.
+    --version, and Exit handling work unchanged. Typer calls ``sys.exit``
+    when done, raising ``SystemExit``; this function lets that propagate
+    so the caller (the ``culture agex`` passthrough) exits with the code
+    the user expects. Callers that need to capture output and translate
+    the exit into a return value should use :func:`_capture_agex` instead.
     """
     try:
         from agent_experience.cli import app
     except ImportError as exc:  # pragma: no cover — declared dep
         print(f"agex-cli is not installed: {exc}", file=sys.stderr)
-        return 2
+        sys.exit(2)
+    app(args=argv)
+
+
+def _capture_agex(argv: list[str]) -> tuple[str, int]:
+    """Run agex with stdout + stderr captured, translating SystemExit.
+
+    The universal-verb handlers need ``(output, exit_code)`` rather than a
+    process-level exit, so we deliberately catch ``SystemExit`` here and
+    translate it into a return value. The :func:`_run_agex` variant is for
+    the passthrough path where the exit must propagate.
+    """
+    buf = io.StringIO()
     try:
-        app(args=argv)
-    except SystemExit as e:
-        if e.code is None:
-            return 0
-        if isinstance(e.code, int):
-            return e.code
-        print(e.code, file=sys.stderr)
-        return 1
-    return 0
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            _run_agex(argv)
+    except SystemExit as exc:  # NOSONAR S5754 — see docstring
+        code = exc.code
+        if code is None:
+            return buf.getvalue(), 0
+        if isinstance(code, int):
+            return buf.getvalue(), code
+        return buf.getvalue() + str(code), 1
+    return buf.getvalue(), 0
 
 
 # --- universal-verb topic handlers for ``agex`` ---------------------------
 
 
 def _agex_explain(_topic: str | None) -> tuple[str, int]:
-    import contextlib
-    import io
-
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        code = _run_agex(["explain", "agex"])
-    return buf.getvalue(), code
+    return _capture_agex(["explain", "agex"])
 
 
 def _agex_overview(_topic: str | None) -> tuple[str, int]:
-    import contextlib
-    import io
-
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        code = _run_agex(["overview", "--agent", "claude-code"])
-    return buf.getvalue(), code
+    return _capture_agex(["overview", "--agent", "claude-code"])
 
 
 def _agex_learn(_topic: str | None) -> tuple[str, int]:
-    import contextlib
-    import io
-
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        code = _run_agex(["learn", "--agent", "claude-code"])
-    return buf.getvalue(), code
+    return _capture_agex(["learn", "--agent", "claude-code"])
 
 
 introspect.register_topic(
@@ -98,4 +98,4 @@ def register(subparsers: "argparse._SubParsersAction") -> None:
 
 def dispatch(args: argparse.Namespace) -> None:
     rest = list(getattr(args, "agex_args", []) or [])
-    sys.exit(_run_agex(rest))
+    _run_agex(rest)
