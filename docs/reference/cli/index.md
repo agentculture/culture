@@ -395,7 +395,7 @@ The legacy `~/.culture/agents.yaml` format is still supported; use `culture agen
 ## Universal verbs
 
 Available at the root of the command tree. See
-[`culture agex`](./agex.md) for detail.
+[`culture agex`](./agex/) for detail.
 
 - `culture explain [topic]` — deep description
 - `culture overview [topic]` — shallow summary

@@ -98,19 +98,28 @@ Unknown topic → exit 1 with a helpful available-topics list.
 
 `culture/cli/agex.py` does two things:
 
-1. Registers the `culture agex` subparser with `nargs=argparse.REMAINDER`,
-   so everything after `culture agex` flows verbatim. On dispatch:
+1. Registers the `culture agex` subparser with `nargs=argparse.REMAINDER`
+   and `prefix_chars=chr(0)` so everything after `culture agex` flows
+   verbatim — including `--flags` that argparse would otherwise intercept
+   (e.g. `--version`, `--help`). On dispatch:
    ```python
    from agent_experience.cli import app
-   app(args=rest, standalone_mode=False)
+   try:
+       app(args=rest)
+   except SystemExit as e:
+       return 0 if e.code is None else (e.code if isinstance(e.code, int) else 1)
    ```
-   The module is imported lazily inside the handler to keep culture's
-   startup path free of agex imports until needed.
+   `app()` runs with typer's default `standalone_mode=True` so typer's own
+   `--help`/`--version`/`typer.Exit` handling works unchanged; typer calls
+   `sys.exit` on completion, and culture translates the `SystemExit` back
+   into an exit code. The module is imported lazily inside the handler to
+   keep culture's startup path free of agex imports until needed.
 
-2. Registers three handlers with `introspect.register("agex", ...)`. These
-   invoke agex's underlying command functions directly (preferred — cleaner
-   error propagation) or fall back to `app(args=[...])` when that's
-   impractical. Exit codes propagate verbatim; no wrapping.
+2. Registers three handlers with `introspect.register_topic("agex", ...)`.
+   Each handler calls `_run_agex([verb, ...])` with stdout (and stderr)
+   redirected to an `io.StringIO` buffer so the universal-verb contract's
+   `(stdout, exit_code)` tuple captures everything agex emits. Exit codes
+   propagate verbatim; no wrapping.
 
 ### Root verbs
 
@@ -143,10 +152,13 @@ culture learn [topic]
 ## Data flow
 
 **`culture agex <rest...>`:**
-1. argparse captures `rest` via `nargs=argparse.REMAINDER`.
+1. argparse captures `rest` via `nargs=argparse.REMAINDER` on a subparser
+   configured with `prefix_chars=chr(0)` (so `--flags` don't get
+   intercepted by argparse before they reach typer).
 2. Handler lazy-imports `agent_experience.cli`.
-3. Calls `app(args=rest, standalone_mode=False)`.
-4. Typer's exit code becomes culture's process exit code.
+3. Calls `app(args=rest)` (typer's default `standalone_mode=True`).
+4. Typer's `sys.exit(code)` is caught as `SystemExit`; culture translates
+   `.code` back to the process exit code.
 
 **`culture explain <topic>`:**
 1. argparse passes `topic` to `introspect.explain(topic)`.
@@ -162,8 +174,8 @@ culture learn [topic]
 
 Three distinct failure modes, handled explicitly:
 
-- **`agex-cli` not importable** → raise `culture.CultureImportError` with a
-  message naming the missing dep. Shouldn't occur in normal installs
+- **`agex-cli` not importable** → print an error to stderr naming the
+  missing dep and return exit code 2. Shouldn't occur in normal installs
   (declared dep); matters for broken editable/dev environments.
 - **Unknown topic** → exit 1; stderr: `unknown topic '{topic}'; available:
   {list}`.

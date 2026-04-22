@@ -18,12 +18,15 @@ def test_register_and_resolve_explain():
 
 def test_unknown_topic_exits_1_with_available_list():
     introspect._clear_registry()  # starts fresh with root handlers re-registered
-    introspect.register_topic("alpha", explain=lambda _t: ("a", 0))
-    stdout, code = introspect.explain("bogus")
-    assert code == 1
-    assert "bogus" in stdout
-    assert "alpha" in stdout
-    assert "culture" in stdout
+    try:
+        introspect.register_topic("alpha", explain=lambda _t: ("a", 0))
+        stdout, code = introspect.explain("bogus")
+        assert code == 1
+        assert "bogus" in stdout
+        assert "alpha" in stdout
+        assert "culture" in stdout
+    finally:
+        introspect._clear_registry()
 
 
 def test_default_topic_is_culture_when_registered():

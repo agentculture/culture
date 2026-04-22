@@ -39,8 +39,9 @@ def register_topic(
 ) -> None:
     """Register handlers for a topic. Any verb may be omitted.
 
-    Re-registration is last-write-wins; a debug log is emitted when an
-    existing handler is overwritten so double-registration is traceable.
+    Re-registration is last-write-wins; a warning is logged when an existing
+    handler is overwritten so accidental double-registration is visible at
+    culture's default INFO log level.
     """
     for verb, handler, registry in (
         ("explain", explain, _explain),
@@ -50,7 +51,7 @@ def register_topic(
         if handler is None:
             continue
         if topic in registry:
-            _log.debug("overriding %s handler for topic %r", verb, topic)
+            _log.warning("overriding %s handler for topic %r", verb, topic)
         registry[topic] = handler
 
 
@@ -103,7 +104,7 @@ def _culture_explain(_topic: str | None) -> tuple[str, int]:
         "",
     ]
     for ns in _NAMESPACES:
-        registered = ns in _explain
+        registered = any(ns in registry for registry in _REGISTRIES.values())
         marker = "" if registered else "  (coming soon)"
         lines.append(f"- `culture {ns}`{marker}")
     lines.append("")
