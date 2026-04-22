@@ -391,3 +391,13 @@ culture bot unarchive spark-ori-ghci
 
 All commands use `~/.culture/server.yaml` by default. Override with `--config`.
 The legacy `~/.culture/agents.yaml` format is still supported; use `culture agent migrate` to convert.
+
+## Universal verbs
+
+Available at the root of the command tree. See
+[`culture agex`](./agex/) for detail.
+
+- `culture explain [topic]` — deep description
+- `culture overview [topic]` — shallow summary
+- `culture learn [topic]` — agent onboarding prompt
+- `culture agex <anything>` — passthrough to the agex CLI

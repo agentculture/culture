@@ -3,6 +3,22 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "agex-cli"
+version = "0.13.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "portalocker" },
+    { name = "pyyaml" },
+    { name = "tomlkit" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2e/7f/289573ec05dbf20beb45fbdc0b7c097efa7c4a20f24ad58632eb876adb17/agex_cli-0.13.1.tar.gz", hash = "sha256:91d7d74155c363dcf17940ded823cfee8adc55d0df95b504df1995deeebc411d", size = 227225, upload-time = "2026-04-20T23:34:14.731Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/02/ae9536429ce3016cc5fe53fe0dd8b543cae0f177310eea803fbdcf9c8b50/agex_cli-0.13.1-py3-none-any.whl", hash = "sha256:9cac19522e68cd8b88cc73e5fd0ac4cc28392a7048e1df64fd7f6e2bf25108b8", size = 40125, upload-time = "2026-04-20T23:34:13.062Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -561,9 +577,10 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "7.3.0"
+version = "7.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "agex-cli" },
     { name = "aiohttp" },
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
@@ -597,6 +614,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agex-cli", specifier = ">=0.13,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },
@@ -1366,6 +1384,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "portalocker"
+version = "3.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/77/65b857a69ed876e1951e88aaba60f5ce6120c33703f7cb61a3c894b8c1b6/portalocker-3.2.0.tar.gz", hash = "sha256:1f3002956a54a8c3730586c5c77bf18fae4149e07eaf1c29fc3faf4d5a3f89ac", size = 95644, upload-time = "2025-06-14T13:20:40.03Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl", hash = "sha256:3cdc5f565312224bc570c49337bd21428bba0ef363bbcf58b9ef4a9f11779968", size = 22424, upload-time = "2025-06-14T13:20:38.083Z" },
 ]
 
 [[package]]

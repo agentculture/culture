@@ -7,6 +7,12 @@ Commands are organized into noun-based groups:
     culture channel  {list,read,message,who}
     culture bot      {create,start,stop,list,inspect,archive,unarchive}
     culture skills   {install}
+    culture agex     {...full passthrough to the standalone `agex` CLI...}
+
+Universal verbs (available at the root):
+    culture explain [topic]    full description of topic (default: culture)
+    culture overview [topic]   shallow summary
+    culture learn [topic]      agent-facing onboarding prompt
 """
 
 from __future__ import annotations
@@ -16,9 +22,16 @@ import logging
 import sys
 
 from culture import __version__
-from culture.cli import agent, bot, channel, mesh, server, skills
+from culture.cli import agent, agex, bot, channel, introspect, mesh, server, skills
 
-GROUPS = [agent, server, mesh, channel, bot, skills]
+GROUPS = [agent, server, mesh, channel, bot, skills, agex, introspect]
+
+
+def _names_of(group) -> set[str]:
+    names = getattr(group, "NAMES", None)
+    if names is not None:
+        return set(names)
+    return {group.NAME}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -48,7 +61,7 @@ def main() -> None:
 
     try:
         for group in GROUPS:
-            if args.command == group.NAME:
+            if args.command in _names_of(group):
                 group.dispatch(args)
                 return
         parser.print_help()

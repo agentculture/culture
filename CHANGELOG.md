@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [7.4.0] - 2026-04-22
+
+### Added
+
+- culture agex passthrough to the standalone agex CLI (new subcommand embedding agex via typer)
+- Universal verbs culture explain, culture overview, culture learn at the CLI root, with a per-topic handler registry (culture/cli/introspect.py)
+- agex-cli>=0.13,<1.0 as a library dependency
+
 ## [7.3.0] - 2026-04-21
 
 ### Added

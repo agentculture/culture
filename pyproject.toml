@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "7.3.0"
+version = "7.4.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -20,6 +20,7 @@ dependencies = [
     "mistune>=3.0",
     "aiohttp>=3.9",
     "textual>=1.0",
+    "agex-cli>=0.13,<1.0",
 ]
 
 [project.urls]
