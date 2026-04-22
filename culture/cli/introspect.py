@@ -10,7 +10,10 @@ exports ``NAMES`` (frozenset) instead of the singular ``NAME``.
 from __future__ import annotations
 
 import argparse
+import logging
 from typing import Callable
+
+_log = logging.getLogger(__name__)
 
 Handler = Callable[[str | None], tuple[str, int]]
 
@@ -34,13 +37,21 @@ def register_topic(
     overview: Handler | None = None,
     learn: Handler | None = None,
 ) -> None:
-    """Register handlers for a topic. Any verb may be omitted."""
-    if explain is not None:
-        _explain[topic] = explain
-    if overview is not None:
-        _overview[topic] = overview
-    if learn is not None:
-        _learn[topic] = learn
+    """Register handlers for a topic. Any verb may be omitted.
+
+    Re-registration is last-write-wins; a debug log is emitted when an
+    existing handler is overwritten so double-registration is traceable.
+    """
+    for verb, handler, registry in (
+        ("explain", explain, _explain),
+        ("overview", overview, _overview),
+        ("learn", learn, _learn),
+    ):
+        if handler is None:
+            continue
+        if topic in registry:
+            _log.debug("overriding %s handler for topic %r", verb, topic)
+        registry[topic] = handler
 
 
 def _clear_registry() -> None:

@@ -47,7 +47,7 @@ def _agex_explain(_topic: str | None) -> tuple[str, int]:
     import io
 
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
         code = _run_agex(["explain", "agex"])
     return buf.getvalue(), code
 
@@ -57,7 +57,7 @@ def _agex_overview(_topic: str | None) -> tuple[str, int]:
     import io
 
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
         code = _run_agex(["overview", "--agent", "claude-code"])
     return buf.getvalue(), code
 
@@ -67,7 +67,7 @@ def _agex_learn(_topic: str | None) -> tuple[str, int]:
     import io
 
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
         code = _run_agex(["learn", "--agent", "claude-code"])
     return buf.getvalue(), code
 
