@@ -3,9 +3,15 @@ import asyncio
 from unittest.mock import patch
 
 import pytest_asyncio
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from culture.agentirc.config import LinkConfig, ServerConfig
 from culture.agentirc.ircd import IRCd
+from culture.telemetry.tracing import reset_for_tests as _reset_telemetry
 
 # Test-only link password — not a real credential (S2068)
 TEST_LINK_PASSWORD = "testlink123"
@@ -316,3 +322,23 @@ async def server_with_bots(server):
         return server, cfgs
 
     yield _make
+
+
+@pytest_asyncio.fixture
+async def tracing_exporter():
+    """In-memory span exporter for telemetry integration tests.
+
+    Installs a dedicated SDK TracerProvider with a SimpleSpanProcessor so
+    every finished span lands in the returned exporter synchronously. Cleans
+    up after the test so it doesn't leak into parallel workers.
+    """
+    _reset_telemetry()
+    exporter = InMemorySpanExporter()
+    provider = SdkTracerProvider(resource=Resource.create({"service.name": "test"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    try:
+        yield exporter
+    finally:
+        exporter.clear()
+        _reset_telemetry()
