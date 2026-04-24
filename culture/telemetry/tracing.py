@@ -16,8 +16,10 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import (
+    ALWAYS_OFF,
     ALWAYS_ON,
     ParentBased,
+    Sampler,
     TraceIdRatioBased,
 )
 from opentelemetry.trace import Tracer
@@ -41,7 +43,7 @@ def reset_for_tests() -> None:
     trace._TRACER_PROVIDER_SET_ONCE = trace.Once()  # type: ignore[attr-defined]
 
 
-def _build_sampler(name: str):
+def _build_sampler(name: str) -> Sampler:
     """Parse `sampler` string from TelemetryConfig into an OTEL Sampler."""
     if name == "parentbased_always_on":
         return ParentBased(ALWAYS_ON)
@@ -49,10 +51,12 @@ def _build_sampler(name: str):
         ratio = float(name.split(":", 1)[1])
         return ParentBased(TraceIdRatioBased(ratio))
     if name == "always_off":
-        from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
-
         return ALWAYS_OFF
-    logger.warning("Unknown sampler %r, falling back to parentbased_always_on", name)
+    logger.error(
+        "Unknown telemetry.traces_sampler %r, falling back to parentbased_always_on. "
+        "Valid values: parentbased_always_on, parentbased_traceidratio:<0.0-1.0>, always_off",
+        name,
+    )
     return ParentBased(ALWAYS_ON)
 
 
@@ -67,7 +71,9 @@ def init_telemetry(config: ServerConfig) -> Tracer:
     global _initialized_for, _tracer
 
     tcfg = config.telemetry
-    if _initialized_for is tcfg and _tracer is not None:
+    # Structural equality, not identity — catches silent bypass if a caller
+    # mutates TelemetryConfig between calls (the dataclass is not frozen).
+    if _initialized_for == tcfg and _tracer is not None:
         return _tracer
 
     if not tcfg.enabled or not tcfg.traces_enabled:
