@@ -13,6 +13,20 @@ class LinkConfig:
 
 
 @dataclass
+class TelemetryConfig:
+    """OpenTelemetry settings. Mirrors server.yaml `telemetry:` block."""
+
+    enabled: bool = False
+    service_name: str = "culture.agentirc"
+    otlp_endpoint: str = "http://localhost:4317"
+    otlp_protocol: str = "grpc"  # grpc | http/protobuf (only grpc supported initially)
+    otlp_timeout_ms: int = 5000
+    otlp_compression: str = "gzip"  # gzip | none
+    traces_enabled: bool = True
+    traces_sampler: str = "parentbased_always_on"
+
+
+@dataclass
 class ServerConfig:
     """Configuration for a culture server instance."""
 
@@ -23,3 +37,4 @@ class ServerConfig:
     data_dir: str = ""
     links: list[LinkConfig] = field(default_factory=list)
     system_bots: dict = field(default_factory=dict)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
