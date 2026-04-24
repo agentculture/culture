@@ -15,6 +15,8 @@ from pathlib import Path
 
 import yaml
 
+from culture.agentirc.config import TelemetryConfig
+
 logger = logging.getLogger("culture")
 
 
@@ -98,6 +100,7 @@ class ServerConfig:
     server: ServerConnConfig = field(default_factory=ServerConnConfig)
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
     webhooks: WebhookConfig = field(default_factory=WebhookConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
     buffer_size: int = 500
     poll_interval: int = 60
     sleep_start: str = "23:00"
@@ -202,6 +205,7 @@ def load_server_config(path: str | Path) -> ServerConfig:
     server = ServerConnConfig(**raw.get("server", {}))
     supervisor = SupervisorConfig(**raw.get("supervisor", {}))
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
+    telemetry = TelemetryConfig(**raw.get("telemetry", {}))
 
     manifest = raw.get("agents") or {}
     if not isinstance(manifest, dict):
@@ -211,6 +215,7 @@ def load_server_config(path: str | Path) -> ServerConfig:
         server=server,
         supervisor=supervisor,
         webhooks=webhooks,
+        telemetry=telemetry,
         buffer_size=raw.get("buffer_size", 500),
         poll_interval=raw.get("poll_interval", 60),
         sleep_start=raw.get("sleep_start", "23:00"),
@@ -258,6 +263,7 @@ def _load_legacy_config(path: str | Path) -> ServerConfig:
     server = ServerConnConfig(**raw.get("server", {}))
     supervisor = SupervisorConfig(**raw.get("supervisor", {}))
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
+    telemetry = TelemetryConfig(**raw.get("telemetry", {}))
 
     agents = []
     known = _KNOWN_AGENT_FIELDS | {"nick", "directory"}
@@ -278,6 +284,7 @@ def _load_legacy_config(path: str | Path) -> ServerConfig:
         server=server,
         supervisor=supervisor,
         webhooks=webhooks,
+        telemetry=telemetry,
         buffer_size=raw.get("buffer_size", 500),
         poll_interval=raw.get("poll_interval", 60),
         sleep_start=raw.get("sleep_start", "23:00"),
@@ -354,10 +361,12 @@ def migrate_legacy_to_manifest(path: str | Path) -> ServerConfig:
     server = ServerConnConfig(**raw.get("server", {}))
     supervisor = SupervisorConfig(**raw.get("supervisor", {}))
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
+    telemetry = TelemetryConfig(**raw.get("telemetry", {}))
     config = ServerConfig(
         server=server,
         supervisor=supervisor,
         webhooks=webhooks,
+        telemetry=telemetry,
         buffer_size=raw.get("buffer_size", 500),
         poll_interval=raw.get("poll_interval", 60),
         sleep_start=raw.get("sleep_start", "23:00"),
@@ -516,6 +525,7 @@ def save_server_config(path: str | Path, config: ServerConfig) -> None:
         "server": asdict(config.server),
         "supervisor": asdict(config.supervisor),
         "webhooks": asdict(config.webhooks),
+        "telemetry": asdict(config.telemetry),
         "buffer_size": config.buffer_size,
         "poll_interval": config.poll_interval,
         "sleep_start": config.sleep_start,
