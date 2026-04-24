@@ -84,9 +84,14 @@ class Client:
         return f"{self.nick}!{self.user}@{self.host}"
 
     async def send(self, message: Message) -> None:
-        tp = _current_traceparent()
-        if tp is not None:
-            _inject_traceparent(message, traceparent=tp, tracestate=None)
+        # Only inject trace context for clients that negotiated IRCv3
+        # message-tags; otherwise older clients would see an unexpected @-tag
+        # block and `send_tagged`'s tag-stripping for non-capable clients
+        # would be undone here.
+        if "message-tags" in self.caps:
+            tp = _current_traceparent()
+            if tp is not None:
+                _inject_traceparent(message, traceparent=tp, tracestate=None)
         try:
             self.writer.write(message.format().encode("utf-8"))
             await self.writer.drain()
@@ -97,13 +102,15 @@ class Client:
         """Write a pre-formatted IRC line to the client socket.
 
         Appends CRLF internally, matching ServerLink.send_raw convention.
-        Injects `culture.dev/traceparent` as an IRCv3 tag when a span is active.
+        Injects `culture.dev/traceparent` as an IRCv3 tag when a span is active
+        AND the client negotiated the `message-tags` capability.
         """
-        tp = _current_traceparent()
-        if tp is not None:
-            # send_raw takes a pre-formatted line without an existing tag
-            # block; prefix a fresh @tag.
-            line = f"@{_TP_TAG_NAME}={tp} {line}"
+        if "message-tags" in self.caps:
+            tp = _current_traceparent()
+            if tp is not None:
+                # send_raw takes a pre-formatted line without an existing tag
+                # block; prefix a fresh @tag.
+                line = f"@{_TP_TAG_NAME}={tp} {line}"
         try:
             self.writer.write(f"{line}\r\n".encode("utf-8"))
             await self.writer.drain()

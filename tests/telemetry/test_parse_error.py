@@ -6,27 +6,14 @@ from culture.agentirc.client import Client
 from culture.agentirc.config import ServerConfig, TelemetryConfig
 from culture.agentirc.ircd import IRCd
 from culture.protocol.message import Message
-
-
-class _FakeWriter:
-    def __init__(self):
-        self.buf = []
-
-    def get_extra_info(self, key, default=None):
-        return ("testaddr", 12345) if key == "peername" else default
-
-    def write(self, data):
-        self.buf.append(data)
-
-    async def drain(self):
-        pass
+from tests.telemetry._fakes import FakeWriter
 
 
 @pytest.mark.asyncio
 async def test_parse_error_surfaces_as_span_event(tracing_exporter):
     cfg = ServerConfig(name="spark", telemetry=TelemetryConfig(enabled=False))
     ircd = IRCd(cfg)
-    client = Client(reader=None, writer=_FakeWriter(), server=ircd)  # type: ignore[arg-type]
+    client = Client(reader=None, writer=FakeWriter(), server=ircd)  # type: ignore[arg-type]
     client.nick = "spark-alice"
 
     def _boom(_line):

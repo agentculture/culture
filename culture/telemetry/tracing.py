@@ -9,6 +9,7 @@ touching the global provider.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -29,7 +30,11 @@ from culture.agentirc.config import ServerConfig, TelemetryConfig
 logger = logging.getLogger(__name__)
 
 _CULTURE_TRACER_NAME = "culture.agentirc"
-_initialized_for: TelemetryConfig | None = None
+# Snapshot of the TelemetryConfig that was used at init time. Stored as a
+# dict so in-place mutation of the original TelemetryConfig still triggers
+# re-initialization on the next call (not just identity/equality on a
+# reference to the same mutable object).
+_initialized_for: dict | None = None
 _tracer: Tracer | None = None
 
 
@@ -71,14 +76,15 @@ def init_telemetry(config: ServerConfig) -> Tracer:
     global _initialized_for, _tracer
 
     tcfg = config.telemetry
-    # Structural equality, not identity — catches silent bypass if a caller
-    # mutates TelemetryConfig between calls (the dataclass is not frozen).
-    if _initialized_for == tcfg and _tracer is not None:
+    # Compare against an immutable snapshot so in-place mutation of the
+    # caller's TelemetryConfig is detected (the dataclass is not frozen).
+    snapshot = asdict(tcfg)
+    if _initialized_for == snapshot and _tracer is not None:
         return _tracer
 
     if not tcfg.enabled or not tcfg.traces_enabled:
         _tracer = trace.get_tracer(_CULTURE_TRACER_NAME)  # no-op when no provider set
-        _initialized_for = tcfg
+        _initialized_for = snapshot
         return _tracer
 
     resource = Resource.create(
@@ -97,7 +103,7 @@ def init_telemetry(config: ServerConfig) -> Tracer:
     trace.set_tracer_provider(provider)
 
     _tracer = trace.get_tracer(_CULTURE_TRACER_NAME)
-    _initialized_for = tcfg
+    _initialized_for = snapshot
     logger.info(
         "OTEL tracing initialized: service=%s instance=%s endpoint=%s sampler=%s",
         tcfg.service_name,

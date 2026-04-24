@@ -46,6 +46,23 @@ def test_extract_wrong_length_traceparent_is_dropped():
     assert result.status == "malformed"
 
 
+def test_extract_oversize_traceparent_returns_too_long():
+    # Valid prefix but padded past the 55-char W3C length.
+    oversize_tp = VALID_TP + "extra"
+    msg = Message(tags={TRACEPARENT_TAG: oversize_tp}, command="PRIVMSG")
+    result = extract_traceparent_from_tags(msg, peer="thor")
+    assert result.status == "too_long"
+    assert result.traceparent is None
+    assert result.peer == "thor"
+
+
+def test_inject_none_tracestate_clears_stale_tag():
+    msg = Message(tags={TRACESTATE_TAG: "stale=leftover"}, command="PRIVMSG", params=["#c", "hi"])
+    inject_traceparent(msg, traceparent=VALID_TP, tracestate=None)
+    assert msg.tags[TRACEPARENT_TAG] == VALID_TP
+    assert TRACESTATE_TAG not in msg.tags
+
+
 def test_extract_oversize_tracestate_is_dropped_tp_retained():
     oversize = "x=" + ("y" * 520)
     msg = Message(

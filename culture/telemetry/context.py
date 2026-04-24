@@ -31,10 +31,11 @@ class ExtractResult:
       - missing: no traceparent tag on the message.
       - valid: traceparent passed length+regex checks; tracestate (if any
         and within length cap) is also carried.
-      - malformed: traceparent failed the W3C regex or length check.
-      - too_long: reserved for future W3C versions that may permit longer
-        traceparent values. Currently unused — the regex is anchored so
-        any over-length value falls into `malformed`.
+      - malformed: traceparent was shorter than 55 chars or failed the W3C
+        regex (e.g. bad hex, all-zero trace-id or parent-id).
+      - too_long: traceparent was longer than 55 chars. Separated from
+        `malformed` so metrics can distinguish oversize peers from broken
+        peers (per `culture/protocol/extensions/tracing.md`).
     """
 
     status: ExtractStatus
@@ -54,6 +55,9 @@ def extract_traceparent_from_tags(msg: Message, peer: str | None) -> ExtractResu
     if raw_tp is None:
         return ExtractResult(status="missing", traceparent=None, tracestate=None, peer=peer)
 
+    if len(raw_tp) > _TRACEPARENT_LEN:
+        return ExtractResult(status="too_long", traceparent=None, tracestate=None, peer=peer)
+
     if len(raw_tp) != _TRACEPARENT_LEN or not _TRACEPARENT_RE.match(raw_tp):
         return ExtractResult(status="malformed", traceparent=None, tracestate=None, peer=peer)
 
@@ -69,7 +73,12 @@ def inject_traceparent(msg: Message, traceparent: str, tracestate: str | None) -
 
     Mutates `msg.tags` in place — the message will carry these tags on wire.
     No validation: caller is expected to pass well-formed W3C values.
+
+    When `tracestate is None`, any pre-existing `TRACESTATE_TAG` is removed
+    so a reused Message does not leak a stale tracestate value.
     """
     msg.tags[TRACEPARENT_TAG] = traceparent
     if tracestate is not None:
         msg.tags[TRACESTATE_TAG] = tracestate
+    else:
+        msg.tags.pop(TRACESTATE_TAG, None)
