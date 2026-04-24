@@ -8,6 +8,8 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING
 
+from opentelemetry import trace as _otel_trace
+
 from culture.agentirc.channel import Channel
 from culture.agentirc.config import ServerConfig
 from culture.agentirc.events import NO_SURFACE_EVENT_TYPES, render_event
@@ -170,35 +172,46 @@ class IRCd:
         return self._seq
 
     async def emit_event(self, event: Event) -> None:
-        # 1) Sequence + log.
-        seq = self.next_seq()
-        self._event_log.append((seq, event))
+        origin_tag = event.data.get("_origin")
+        attrs = {
+            "event.type": event.type.value,
+            "event.channel": event.channel or "",
+            "event.origin": "federated" if origin_tag else "local",
+        }
+        if origin_tag:
+            attrs["culture.federation.peer"] = origin_tag
+        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+            "irc.event.emit", attributes=attrs
+        ):
+            # 1) Sequence + log.
+            seq = self.next_seq()
+            self._event_log.append((seq, event))
 
-        # 2) Run skill hooks.
-        for skill in self.skills:
-            try:
-                await skill.on_event(event)
-            except Exception:
-                logger.exception("Skill %s failed on event %s", skill.name, event.type)
-
-        # 3) Relay to linked peers — only relay locally-originated events
-        # (no mesh routing; scope is direct peers only)
-        if not event.data.get("_origin"):
-            for peer_name, link in list(self.links.items()):
+            # 2) Run skill hooks.
+            for skill in self.skills:
                 try:
-                    await link.relay_event(event)
+                    await skill.on_event(event)
                 except Exception:
-                    logger.exception("Failed to relay event to %s", peer_name)
+                    logger.exception("Skill %s failed on event %s", skill.name, event.type)
 
-        # 4) Dispatch to event-triggered bots.
-        if self.bot_manager is not None:
-            try:
-                await self.bot_manager.on_event(event)
-            except Exception:
-                logger.exception("bot_manager.on_event failed")
+            # 3) Relay to linked peers — only relay locally-originated events
+            # (no mesh routing; scope is direct peers only)
+            if not origin_tag:
+                for peer_name, link in list(self.links.items()):
+                    try:
+                        await link.relay_event(event)
+                    except Exception:
+                        logger.exception("Failed to relay event to %s", peer_name)
 
-        # 5) Surface as tagged PRIVMSG from system-<server>.
-        await self._surface_event_privmsg(event)
+            # 4) Dispatch to event-triggered bots.
+            if self.bot_manager is not None:
+                try:
+                    await self.bot_manager.on_event(event)
+                except Exception:
+                    logger.exception("bot_manager.on_event failed")
+
+            # 5) Surface as tagged PRIVMSG from system-<server>.
+            await self._surface_event_privmsg(event)
 
     _NO_SURFACE_TYPES = NO_SURFACE_EVENT_TYPES
 
