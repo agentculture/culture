@@ -920,7 +920,11 @@ class ServerLink:
     async def _replay_event(self, seq: int, event: Event) -> None:
         """Replay a single event to the peer as S2S wire format."""
         origin = self.server.config.name
-        if event.type == EventType.MESSAGE:
+        # Federated events arrive with event.type as either an EventType enum
+        # or a plain string (when _parse_event_type sees an unknown wire type).
+        # Compare against the .value to handle both shapes — see #291.
+        event_type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
+        if event_type_str == EventType.MESSAGE.value:
             target = event.channel or event.data.get("target", "")
             text = event.data.get("text", "")
             # Filter channel messages through trust check

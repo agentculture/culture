@@ -8,6 +8,7 @@ import pytest_asyncio  # noqa: F401
 
 from culture.agentirc.config import LinkConfig, ServerConfig
 from culture.agentirc.ircd import IRCd
+from culture.agentirc.skill import Event
 from tests.conftest import TEST_LINK_PASSWORD, IRCTestClient
 
 # =============================================================================
@@ -1202,3 +1203,49 @@ async def test_new_channel_on_restricted_link_not_relayed():
             pass
         await server_a.stop()
         await server_b.stop()
+
+
+# =============================================================================
+# Phase 8: Replay regression — issue #291
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_replay_event_handles_string_typed_message_event(linked_servers):
+    """Regression for #291: _replay_event must accept event.type as a plain
+    string (the shape produced by _parse_event_type for non-enum wire types).
+
+    Before the fix, ``event.type == EventType.MESSAGE`` returned False when
+    ``event.type`` was the string ``"message"``, so the typed fast path
+    silently skipped — a federated MESSAGE event reaching backfill replay
+    would not produce the SMSG/SNOTICE wire output.
+    """
+    server_a, server_b = linked_servers
+    link_to_b = server_a.links["beta"]
+
+    captured: list[bytes] = []
+    real_write = link_to_b.writer.write
+
+    def recording_write(data):
+        captured.append(data)
+        return real_write(data)
+
+    link_to_b.writer.write = recording_write
+    try:
+        # Construct a string-typed MESSAGE event — the exact shape
+        # _parse_event_type emits.
+        event = Event(
+            type="message",  # type: ignore[arg-type] -- intentional string
+            channel=None,
+            nick="alpha-bob",
+            data={"target": "beta-charlie", "text": "ping-291"},
+        )
+        await link_to_b._replay_event(seq=42, event=event)
+    finally:
+        link_to_b.writer.write = real_write
+
+    wire = b"".join(captured).decode("utf-8", errors="replace")
+    assert (
+        " SMSG " in wire
+    ), f"expected SMSG in wire output for string-typed MESSAGE event, got: {wire!r}"
+    assert "ping-291" in wire
