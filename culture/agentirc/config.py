@@ -24,6 +24,8 @@ class TelemetryConfig:
     otlp_compression: str = "gzip"  # gzip | none
     traces_enabled: bool = True
     traces_sampler: str = "parentbased_always_on"
+    metrics_enabled: bool = True
+    metrics_export_interval_ms: int = 10000
 
 
 @dataclass

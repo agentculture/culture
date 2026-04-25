@@ -3,7 +3,10 @@ import asyncio
 from unittest.mock import patch
 
 import pytest_asyncio
+from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -11,6 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from culture.agentirc.config import LinkConfig, ServerConfig
 from culture.agentirc.ircd import IRCd
+from culture.telemetry.metrics import reset_for_tests as _reset_metrics
 from culture.telemetry.tracing import reset_for_tests as _reset_telemetry
 
 # Test-only link password — not a real credential (S2068)
@@ -342,3 +346,24 @@ async def tracing_exporter():
     finally:
         exporter.clear()
         _reset_telemetry()
+
+
+@pytest_asyncio.fixture
+async def metrics_reader():
+    """In-memory metric reader for telemetry integration tests.
+
+    Installs a dedicated SDK MeterProvider with an InMemoryMetricReader so
+    tests can `reader.get_metrics_data()` to walk recorded data points.
+    Cleans up after the test so it doesn't leak into parallel workers.
+    """
+    _reset_metrics()
+    reader = InMemoryMetricReader()
+    provider = SdkMeterProvider(
+        resource=Resource.create({"service.name": "test"}),
+        metric_readers=[reader],
+    )
+    otel_metrics.set_meter_provider(provider)
+    try:
+        yield reader
+    finally:
+        _reset_metrics()

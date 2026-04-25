@@ -35,10 +35,11 @@ class IRCd:
     """The culture IRC server."""
 
     def __init__(self, config: ServerConfig):
-        from culture.telemetry import init_telemetry
+        from culture.telemetry import init_metrics, init_telemetry
 
         self.config = config
         self.tracer = init_telemetry(config)
+        self.metrics = init_metrics(config)
         self.clients: dict[str, Client | VirtualClient] = {}  # nick -> Client
         self.channels: dict[str, Channel] = {}  # name -> Channel
         self.skills: list[Skill] = []
