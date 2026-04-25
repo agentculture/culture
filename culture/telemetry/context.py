@@ -6,6 +6,11 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from opentelemetry import trace as _otel_trace
+from opentelemetry.context import Context
+from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+from opentelemetry.trace.propagation import set_span_in_context
+
 from culture.protocol.message import Message
 
 TRACEPARENT_TAG = "culture.dev/traceparent"
@@ -82,3 +87,35 @@ def inject_traceparent(msg: Message, traceparent: str, tracestate: str | None) -
         msg.tags[TRACESTATE_TAG] = tracestate
     else:
         msg.tags.pop(TRACESTATE_TAG, None)
+
+
+def context_from_traceparent(tp: str) -> Context:
+    """Build an OTEL context whose current span is a NonRecordingSpan
+    synthesized from a W3C traceparent string. A span started under this
+    context will be parented as a child of the remote trace.
+
+    Caller MUST have validated `tp` (e.g. via `extract_traceparent_from_tags`).
+    Format: `00-<32-hex trace-id>-<16-hex parent-id>-<2-hex flags>`.
+    """
+    _, trace_hex, parent_hex, flags_hex = tp.split("-")
+    span_ctx = SpanContext(
+        trace_id=int(trace_hex, 16),
+        span_id=int(parent_hex, 16),
+        is_remote=True,
+        trace_flags=TraceFlags(int(flags_hex, 16)),
+    )
+    return set_span_in_context(NonRecordingSpan(span_ctx))
+
+
+def current_traceparent() -> str | None:
+    """W3C traceparent string for the currently-active OTEL span, or None
+    if no span is recording (no-op tracer or sampler dropped).
+    """
+    span = _otel_trace.get_current_span()
+    ctx = span.get_span_context()
+    if not ctx.is_valid:
+        return None
+    return (
+        f"00-{format(ctx.trace_id, '032x')}-{format(ctx.span_id, '016x')}"
+        f"-{format(int(ctx.trace_flags), '02x')}"
+    )

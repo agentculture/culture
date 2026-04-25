@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.3.0] - 2026-04-25
+
+### Added
+
+- `irc.s2s.session` span over ServerLink connection lifetime.
+- `irc.s2s.<VERB>` per-verb spans on inbound federation messages with traceparent extraction and the inbound mitigation rules from `culture/protocol/extensions/tracing.md`.
+- `irc.s2s.relay` span on outbound relay enforcing the re-sign-per-hop rule.
+- `irc.client.session` span over Client connection lifetime (#290).
+- `irc.join` and `irc.part` spans (#290).
+- Public `culture.telemetry.context_from_traceparent` and `culture.telemetry.current_traceparent` helpers.
+- Single traceparent injection choke point at `ServerLink.send_raw`.
+- End-to-end propagation tests proving one `trace_id` spans federated client → server → relay → server hops.
+
+### Changed
+
+- `Client._dispatch` span name and `irc.command` attribute now uppercase, matching `ServerLink._dispatch` convention.
+
+### Fixed
+
+- `_replay_event` uses the hasattr-guarded comparison so string-typed federated `event.type` no longer skips the typed fast path. (#291)
+
 ## [8.2.0] - 2026-04-24
 
 ### Added

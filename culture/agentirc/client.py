@@ -7,8 +7,8 @@ import re
 from typing import TYPE_CHECKING
 
 from opentelemetry import trace as _otel_trace
-from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
-from opentelemetry.trace.propagation import set_span_in_context
+from opentelemetry.context import Context as _OtelContext
+from opentelemetry.trace import Span as _OtelSpan
 
 from culture.agentirc.channel import Channel
 from culture.agentirc.skill import Event, EventType
@@ -18,6 +18,8 @@ from culture.protocol import replies
 from culture.protocol.message import Message
 from culture.telemetry.context import TRACEPARENT_TAG as _TP_TAG_NAME
 from culture.telemetry.context import (
+    context_from_traceparent,
+    current_traceparent,
     extract_traceparent_from_tags,
 )
 from culture.telemetry.context import inject_traceparent as _inject_traceparent
@@ -25,39 +27,12 @@ from culture.telemetry.context import inject_traceparent as _inject_traceparent
 # OTEL instrumentation name (must match `_CULTURE_TRACER_NAME` in
 # culture/telemetry/tracing.py so trace consumers see one consistent value).
 _TRACER_NAME = "culture.agentirc"
-# Span attribute keys for PRIVMSG body capture, defined once so a future
-# rename / sanitization layer has one edit point.
+# Span attribute keys, defined once so a future rename / sanitization layer
+# has one edit point.
 _ATTR_BODY = "irc.message.body"
 _ATTR_SIZE = "irc.message.size"
-
-
-def _context_from_traceparent(tp: str):
-    """Build an OTEL context whose current span is a NonRecordingSpan
-    synthesized from a W3C traceparent string. The `_dispatch` span we
-    start next will be a child of this context."""
-    # Format: 00-<trace-id>-<parent-id>-<flags>
-    _, trace_hex, parent_hex, flags_hex = tp.split("-")
-    span_ctx = SpanContext(
-        trace_id=int(trace_hex, 16),
-        span_id=int(parent_hex, 16),
-        is_remote=True,
-        trace_flags=TraceFlags(int(flags_hex, 16)),
-    )
-    return set_span_in_context(NonRecordingSpan(span_ctx))
-
-
-def _current_traceparent() -> str | None:
-    """Return the W3C traceparent for the currently-active span, or None
-    if no span is recording (no-op tracer / sampler dropped).
-    """
-    span = _otel_trace.get_current_span()
-    ctx = span.get_span_context()
-    if not ctx.is_valid:
-        return None
-    return (
-        f"00-{format(ctx.trace_id, '032x')}-{format(ctx.span_id, '016x')}"
-        f"-{format(int(ctx.trace_flags), '02x')}"
-    )
+_ATTR_NICK = "irc.client.nick"
+_ATTR_CHANNEL = "irc.channel"
 
 
 if TYPE_CHECKING:
@@ -86,6 +61,7 @@ class Client:
         self.caps: set[str] = set()
         self.modes: set[str] = set()
         self.icon: str | None = None
+        self._session_span: _OtelSpan | None = None
 
     @property
     def prefix(self) -> str:
@@ -97,7 +73,7 @@ class Client:
         # block and `send_tagged`'s tag-stripping for non-capable clients
         # would be undone here.
         if "message-tags" in self.caps:
-            tp = _current_traceparent()
+            tp = current_traceparent()
             if tp is not None:
                 _inject_traceparent(message, traceparent=tp, tracestate=None)
         try:
@@ -114,7 +90,7 @@ class Client:
         AND the client negotiated the `message-tags` capability.
         """
         if "message-tags" in self.caps:
-            tp = _current_traceparent()
+            tp = current_traceparent()
             if tp is not None:
                 # send_raw takes a pre-formatted line without an existing tag
                 # block; prefix a fresh @tag.
@@ -171,30 +147,42 @@ class Client:
             return buffer
 
     async def handle(self, initial_msg: str | None = None) -> None:
-        buffer = ""
-        if initial_msg:
-            buffer = initial_msg.replace("\r\n", "\n").replace("\r", "\n")
-            buffer = await self._process_buffer(buffer)
-        while True:
-            data = await self.reader.read(4096)
-            if not data:
-                break
-            buffer += data.decode("utf-8", errors="replace")
-            # Cap buffer to prevent unbounded memory growth (512 bytes per RFC 2812)
-            if len(buffer) > 8192:
-                buffer = buffer[-4096:]
-            # Normalize all line endings to \n for simpler parsing
-            buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
-            buffer = await self._process_buffer(buffer)
+        peer_info = self.writer.get_extra_info("peername")
+        remote_addr = f"{peer_info[0]}:{peer_info[1]}" if peer_info else ""
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            "irc.client.session",
+            attributes={"irc.client.remote_addr": remote_addr},
+        ) as span:
+            self._session_span = span
+            try:
+                buffer = ""
+                if initial_msg:
+                    buffer = initial_msg.replace("\r\n", "\n").replace("\r", "\n")
+                    buffer = await self._process_buffer(buffer)
+                while True:
+                    data = await self.reader.read(4096)
+                    if not data:
+                        break
+                    buffer += data.decode("utf-8", errors="replace")
+                    # Cap buffer to prevent unbounded memory growth (512 bytes per RFC 2812)
+                    if len(buffer) > 8192:
+                        buffer = buffer[-4096:]
+                    # Normalize all line endings to \n for simpler parsing
+                    buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
+                    buffer = await self._process_buffer(buffer)
+            except (ConnectionError, asyncio.IncompleteReadError):
+                pass
 
     async def _dispatch(self, msg: Message) -> None:
         extract = extract_traceparent_from_tags(msg, peer=None)
-        parent_ctx = None
         if extract.status == "valid":
-            parent_ctx = _context_from_traceparent(extract.traceparent)
+            parent_ctx: _OtelContext | None = context_from_traceparent(extract.traceparent)
+        else:
+            parent_ctx = _OtelContext()  # force root: detach from session span
 
+        verb = msg.command.upper()
         attrs = {
-            "irc.command": msg.command,
+            "irc.command": verb,
             "irc.prefix_nick": (msg.prefix.split("!")[0] if msg.prefix else ""),
             "culture.trace.origin": "local" if extract.status == "missing" else "remote",
         }
@@ -203,7 +191,7 @@ class Client:
 
         # Per-call get_tracer: test fixture swaps provider between tests.
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
-            f"irc.command.{msg.command}",
+            f"irc.command.{verb}",
             context=parent_ctx,
             attributes=attrs,
         ):
@@ -304,6 +292,8 @@ class Client:
 
         self.nick = nick
         self.server.clients[nick] = self
+        if self._session_span is not None:
+            self._session_span.set_attribute(_ATTR_NICK, nick)
         await self._try_register()
 
     async def _handle_user(self, msg: Message) -> None:
@@ -355,45 +345,49 @@ class Client:
             return
 
         channel_name = msg.params[0]
-        if not channel_name.startswith("#"):
-            return
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            "irc.join",
+            attributes={_ATTR_CHANNEL: channel_name, _ATTR_NICK: self.nick or ""},
+        ):
+            if not channel_name.startswith("#"):
+                return
 
-        # Block joins to archived rooms
-        existing = self.server.channels.get(channel_name)
-        if existing and existing.archived:
-            await self.send(
-                Message(
-                    prefix=self.server.config.name,
-                    command="NOTICE",
-                    params=[self.nick, f"{channel_name} is archived and cannot be joined"],
+            # Block joins to archived rooms
+            existing = self.server.channels.get(channel_name)
+            if existing and existing.archived:
+                await self.send(
+                    Message(
+                        prefix=self.server.config.name,
+                        command="NOTICE",
+                        params=[self.nick, f"{channel_name} is archived and cannot be joined"],
+                    )
                 )
+                return
+
+            channel = self.server.get_or_create_channel(channel_name)
+            if self in channel.members:
+                return
+
+            channel.add(self)
+            self.channels.add(channel)
+
+            # Notify all channel members (including self)
+            join_msg = Message(prefix=self.prefix, command="JOIN", params=[channel_name])
+            for member in list(channel.members):
+                await member.send(join_msg)
+
+            # Send topic if set
+            if channel.topic:
+                await self.send_numeric(replies.RPL_TOPIC, channel_name, channel.topic)
+
+            # Send names list
+            await self._send_names(channel)
+
+            # Emit event AFTER delivering all join-related numerics (topic, NAMES)
+            # so that the event PRIVMSG doesn't interleave with 353/366 in client buffers.
+            await self.server.emit_event(
+                Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
             )
-            return
-
-        channel = self.server.get_or_create_channel(channel_name)
-        if self in channel.members:
-            return
-
-        channel.add(self)
-        self.channels.add(channel)
-
-        # Notify all channel members (including self)
-        join_msg = Message(prefix=self.prefix, command="JOIN", params=[channel_name])
-        for member in list(channel.members):
-            await member.send(join_msg)
-
-        # Send topic if set
-        if channel.topic:
-            await self.send_numeric(replies.RPL_TOPIC, channel_name, channel.topic)
-
-        # Send names list
-        await self._send_names(channel)
-
-        # Emit event AFTER delivering all join-related numerics (topic, NAMES)
-        # so that the event PRIVMSG doesn't interleave with 353/366 in client buffers.
-        await self.server.emit_event(
-            Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
-        )
 
     async def _handle_part(self, msg: Message) -> None:
         if not msg.params:
@@ -401,36 +395,40 @@ class Client:
             return
 
         channel_name = msg.params[0]
-        reason = msg.params[1] if len(msg.params) > 1 else ""
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            "irc.part",
+            attributes={_ATTR_CHANNEL: channel_name, _ATTR_NICK: self.nick or ""},
+        ):
+            reason = msg.params[1] if len(msg.params) > 1 else ""
 
-        channel = self.server.channels.get(channel_name)
-        if not channel or self not in channel.members:
-            await self.send_numeric(
-                replies.ERR_NOTONCHANNEL,
-                channel_name,
-                replies.MSG_NOTONCHANNEL,
+            channel = self.server.channels.get(channel_name)
+            if not channel or self not in channel.members:
+                await self.send_numeric(
+                    replies.ERR_NOTONCHANNEL,
+                    channel_name,
+                    replies.MSG_NOTONCHANNEL,
+                )
+                return
+
+            part_params = [channel_name, reason] if reason else [channel_name]
+            part_msg = Message(prefix=self.prefix, command="PART", params=part_params)
+            for member in list(channel.members):
+                await member.send(part_msg)
+
+            await self.server.emit_event(
+                Event(
+                    type=EventType.PART,
+                    channel=channel_name,
+                    nick=self.nick,
+                    data={"reason": reason},
+                )
             )
-            return
 
-        part_params = [channel_name, reason] if reason else [channel_name]
-        part_msg = Message(prefix=self.prefix, command="PART", params=part_params)
-        for member in list(channel.members):
-            await member.send(part_msg)
+            channel.remove(self)
+            self.channels.discard(channel)
 
-        await self.server.emit_event(
-            Event(
-                type=EventType.PART,
-                channel=channel_name,
-                nick=self.nick,
-                data={"reason": reason},
-            )
-        )
-
-        channel.remove(self)
-        self.channels.discard(channel)
-
-        if not channel.members and not channel.persistent:
-            del self.server.channels[channel_name]
+            if not channel.members and not channel.persistent:
+                del self.server.channels[channel_name]
 
     async def _handle_topic(self, msg: Message) -> None:
         if not msg.params:

@@ -1,4 +1,7 @@
+from opentelemetry import trace as otel_trace
+
 from culture.protocol.message import Message
+from culture.telemetry import context_from_traceparent, current_traceparent
 from culture.telemetry.context import (
     TRACEPARENT_TAG,
     TRACESTATE_TAG,
@@ -103,3 +106,42 @@ def test_wire_roundtrip_through_parse_format():
     assert result.status == "valid"
     assert result.traceparent == VALID_TP
     assert result.tracestate == "vendor=abc"
+
+
+def test_current_traceparent_no_active_span_returns_none(tracing_exporter):
+    # No span started -> returns None even with provider installed.
+    assert current_traceparent() is None
+
+
+def test_current_traceparent_returns_w3c_string_for_active_span(tracing_exporter):
+    tracer = otel_trace.get_tracer("test")
+    with tracer.start_as_current_span("smoke"):
+        tp = current_traceparent()
+    assert tp is not None
+    parts = tp.split("-")
+    assert parts[0] == "00"
+    assert len(parts[1]) == 32  # trace-id
+    assert len(parts[2]) == 16  # parent-id
+    assert len(parts[3]) == 2  # flags
+
+
+def test_context_from_traceparent_parents_child_span(tracing_exporter):
+    parent_ctx = context_from_traceparent(VALID_TP)
+    tracer = otel_trace.get_tracer("test")
+    with tracer.start_as_current_span("child", context=parent_ctx) as child:
+        child_ctx = child.get_span_context()
+    # Child span shares the trace-id from the synthesized parent.
+    assert format(child_ctx.trace_id, "032x") == "4bf92f3577b34da6a3ce929d0e0e4736"
+    # And is_remote on the parent flowed through (the child is a local span,
+    # so we can't assert is_remote on the child — but matching trace_id is
+    # the load-bearing assertion: the parent context was honored).
+
+
+def test_current_traceparent_roundtrip_through_context_from_traceparent(tracing_exporter):
+    parent_ctx = context_from_traceparent(VALID_TP)
+    tracer = otel_trace.get_tracer("test")
+    with tracer.start_as_current_span("child", context=parent_ctx):
+        out = current_traceparent()
+    assert out is not None
+    # Trace-id preserved across the synthesized-parent → child handoff.
+    assert out.split("-")[1] == "4bf92f3577b34da6a3ce929d0e0e4736"

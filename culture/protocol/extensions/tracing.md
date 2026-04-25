@@ -29,3 +29,9 @@ User on `spark` sends:
     @culture.dev/traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 PRIVMSG #general :hi
 
 Server `spark` starts span `irc.command.PRIVMSG` as a child of the extracted context, relays the event via SEVENT to `thor`, re-injecting its own span's traceparent. Server `thor` sees trace ID `4bf92f35…4736` and starts another child span — the collector stitches both spans into one trace.
+
+**Re-sign per hop on the wire.** Concretely, the SEVENT line `spark` sends to `thor` looks like:
+
+    @culture.dev/traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-aaaaaaaaaaaaaaaa-01 :spark SEVENT spark 42 message #general :<base64>
+
+The trace-id (`4bf92f35…4736`) is preserved across the hop. The parent-id changes (`00f067aa…02b7` → `aaaaaaaa…aaaa`) because `spark` re-injects its own relay span's id, not the inbound parent-id verbatim. This produces a parent-per-hop span tree that mirrors the federation topology rather than collapsing every hop into one flat span.

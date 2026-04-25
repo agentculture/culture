@@ -7,17 +7,84 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from opentelemetry import trace as otel_trace
+from opentelemetry.context import Context as _OtelContext
+
 from culture.agentirc.remote_client import RemoteClient
 from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
 from culture.bots.virtual_client import VirtualClient
 from culture.constants import SYSTEM_USER_PREFIX
 from culture.protocol.message import Message
+from culture.telemetry import context_from_traceparent, current_traceparent
+from culture.telemetry.context import TRACEPARENT_TAG, extract_traceparent_from_tags
+
+# OTEL instrumentation name (must match `_CULTURE_TRACER_NAME` in
+# culture/telemetry/tracing.py so all spans go through one tracer instance).
+_TRACER_NAME = "culture.agentirc"
 
 if TYPE_CHECKING:
     from culture.agentirc.ircd import IRCd
 
 logger = logging.getLogger(__name__)
+
+
+def _prepend_trace_tags(line: str, tp: str) -> str:
+    """Inject *tp* as the ``culture.dev/traceparent`` IRCv3 tag on *line*.
+
+    - Empty line → returned unchanged (defensive no-op).
+    - Line with no existing tag block (does not start with ``@``) → prepend
+      ``@culture.dev/traceparent=<tp> `` before the rest of the line.
+    - Line that already has a tag block (starts with ``@``) → merge the tag
+      into the existing block.  If the block already contains
+      ``culture.dev/traceparent``, its value is replaced with *tp*; otherwise
+      the new tag is appended with a ``;`` separator.
+
+    The helper is intentionally lenient: if the tag block is somehow
+    ill-formed the existing text is preserved and the new tag is appended —
+    tagging is best-effort, never load-bearing.
+
+    .. note:: Parsing limitation
+
+        This helper does not fully parse or unescape IRCv3 tag values; it
+        simply splits the tag block on ``;`` and separates each tag's key from
+        its value on the first ``=``. This is safe for current ``send_raw``
+        callers, which today emit no tags of their own. Revisit if a caller
+        begins authoring tags whose values may contain IRCv3-escaped
+        semicolons.
+    """
+    if not line:
+        return line
+
+    if not line.startswith("@"):
+        return f"@{TRACEPARENT_TAG}={tp} {line}"
+
+    # Split off the tag block: everything up to the first space, then the rest.
+    space_idx = line.find(" ")
+    if space_idx == -1:
+        # Malformed: entire line is a tag block with no message body.
+        # Append the tag and move on.
+        return f"{line};{TRACEPARENT_TAG}={tp}"
+
+    tag_block = line[1:space_idx]  # strip leading '@'
+    rest = line[space_idx + 1 :]
+
+    # Split existing tags on ';', drop empty entries (e.g. from an empty tag
+    # block like "@ :rest"), then replace or append the traceparent tag.
+    tags = [t for t in tag_block.split(";") if t]
+    replaced = False
+    new_tags = []
+    for tag in tags:
+        key = tag.split("=", 1)[0]
+        if key == TRACEPARENT_TAG:
+            new_tags.append(f"{TRACEPARENT_TAG}={tp}")
+            replaced = True
+        else:
+            new_tags.append(tag)
+    if not replaced:
+        new_tags.append(f"{TRACEPARENT_TAG}={tp}")
+
+    return f"@{';'.join(new_tags)} {rest}"
 
 
 class ServerLink:
@@ -47,6 +114,7 @@ class ServerLink:
         self._peer_pass: str | None = None
         self.last_seen_seq: int = 0
         self._squit_received: bool = False
+        self._session_span: otel_trace.Span | None = None
 
     def should_relay(self, channel_name: str) -> bool:
         """Check if a channel event should be relayed over this link."""
@@ -62,6 +130,12 @@ class ServerLink:
         return False
 
     async def send_raw(self, line: str) -> None:
+        tp = current_traceparent()
+        if tp:
+            try:
+                line = _prepend_trace_tags(line, tp)
+            except Exception:  # noqa: BLE001 - telemetry must never break the link
+                logger.debug("traceparent injection failed; sending untagged", exc_info=True)
         try:
             self.writer.write(f"{line}\r\n".encode("utf-8"))
             await self.writer.drain()
@@ -87,40 +161,68 @@ class ServerLink:
 
     async def handle(self, initial_msg: str | None = None) -> None:
         """Main S2S connection loop."""
-        try:
-            if self.initiator:
-                await self._send_handshake()
-
-            buffer = ""
-            if initial_msg:
-                buffer = initial_msg + "\n"
-                buffer = await self._process_buffer(buffer)
-
-            while True:
-                data = await self.reader.read(4096)
-                if not data:
-                    break
-                buffer += data.decode("utf-8", errors="replace")
-                buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
-                buffer = await self._process_buffer(buffer)
-        except (ConnectionError, asyncio.IncompleteReadError):
-            pass
-        finally:
-            await self.server._remove_link(self, squit=self._squit_received)
-            self.writer.close()
+        tracer = otel_trace.get_tracer(_TRACER_NAME)
+        direction = "outbound" if self.initiator else "inbound"
+        with tracer.start_as_current_span(
+            "irc.s2s.session",
+            attributes={"s2s.direction": direction},
+        ) as span:
+            self._session_span = span
             try:
-                await self.writer.wait_closed()
-            except ConnectionError:
+                if self.initiator:
+                    await self._send_handshake()
+
+                buffer = ""
+                if initial_msg:
+                    buffer = initial_msg + "\n"
+                    buffer = await self._process_buffer(buffer)
+
+                while True:
+                    data = await self.reader.read(4096)
+                    if not data:
+                        break
+                    buffer += data.decode("utf-8", errors="replace")
+                    buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
+                    buffer = await self._process_buffer(buffer)
+            except (ConnectionError, asyncio.IncompleteReadError):
                 pass
+            finally:
+                await self.server._remove_link(self, squit=self._squit_received)
+                self.writer.close()
+                try:
+                    await self.writer.wait_closed()
+                except ConnectionError:
+                    pass
 
     async def _send_handshake(self) -> None:
         await self.send_raw(f"PASS {self.password}")
         await self.send_raw(f"SERVER {self.server.config.name} 1 :{self.server.config.name} IRC")
 
     async def _dispatch(self, msg: Message) -> None:
+        verb = msg.command.upper()
         handler = getattr(self, f"_handle_{msg.command.lower()}", None)
-        if handler:
-            await maybe_await(handler(msg))
+
+        extracted = extract_traceparent_from_tags(msg, peer=self.peer_name)
+        if extracted.status == "valid":
+            parent_ctx: _OtelContext | None = context_from_traceparent(extracted.traceparent)
+        else:
+            parent_ctx = _OtelContext()  # force root: detach from session span
+
+        attrs = {
+            "irc.command": verb,
+            "culture.trace.origin": "remote",
+            "culture.federation.peer": self.peer_name or "",
+        }
+        if extracted.status in ("malformed", "too_long"):
+            attrs["culture.trace.dropped_reason"] = extracted.status
+
+        with otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            f"irc.s2s.{verb}",
+            context=parent_ctx,
+            attributes=attrs,
+        ):
+            if handler:
+                await maybe_await(handler(msg))
 
     # --- Handshake handlers ---
 
@@ -189,6 +291,8 @@ class ServerLink:
         await self._validate_peer_credentials()
 
         self._authenticated = True
+        if self._session_span is not None:
+            self._session_span.set_attribute("s2s.peer", self.peer_name)
         self.server.links[self.peer_name] = self
         self.server.cancel_link_retry(self.peer_name)
 
@@ -818,7 +922,11 @@ class ServerLink:
     async def _replay_event(self, seq: int, event: Event) -> None:
         """Replay a single event to the peer as S2S wire format."""
         origin = self.server.config.name
-        if event.type == EventType.MESSAGE:
+        # Federated events arrive with event.type as either an EventType enum
+        # or a plain string (when _parse_event_type sees an unknown wire type).
+        # Compare against the .value to handle both shapes — see #291.
+        event_type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
+        if event_type_str == EventType.MESSAGE.value:
             target = event.channel or event.data.get("target", "")
             text = event.data.get("text", "")
             # Filter channel messages through trust check
@@ -833,23 +941,34 @@ class ServerLink:
 
     async def relay_event(self, event: Event) -> None:
         """Relay a local event to the peer in S2S wire format."""
-        origin = self.server.config.name
-        handler = self._RELAY_DISPATCH.get(event.type)
-        if handler:
-            await maybe_await(handler(self, event, origin))
-            return
+        event_type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
+        attrs = {
+            "event.type": event_type_str,
+            "s2s.peer": self.peer_name or "",
+        }
+        # Single span name (no verb suffix): the wire verb is decided downstream
+        # by _RELAY_DISPATCH or the SEVENT fallback, after this span opens.
+        with otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            "irc.s2s.relay", attributes=attrs
+        ):
+            origin = self.server.config.name
+            handler = self._RELAY_DISPATCH.get(event.type)
+            if handler:
+                await maybe_await(handler(self, event, origin))
+                return
 
-        # If no typed relay exists, fall back to generic SEVENT.
-        # v1 assumes all peers support SEVENT; cap negotiation is deferred — see plan task 12.
-        type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
-        payload = self.server._build_event_payload(event)
-        encoded = self.server._encode_event_data(payload, type_str)
-        target = event.channel or "*"
-        # Egress trust check: channel-scoped events respect should_relay; global events always relay
-        if event.channel is not None and not self.should_relay(event.channel):
-            return
-        seq = self.server._seq  # current local seq; peer stores but doesn't re-sequence
-        await self.send_raw(f":{origin} SEVENT {origin} {seq} {type_str} {target} :{encoded}")
+            # If no typed relay exists, fall back to generic SEVENT.
+            # v1 assumes all peers support SEVENT; cap negotiation is deferred — see plan task 12.
+            payload = self.server._build_event_payload(event)
+            encoded = self.server._encode_event_data(payload, event_type_str)
+            target = event.channel or "*"
+            # Egress trust check: channel-scoped events respect should_relay; global events always relay
+            if event.channel is not None and not self.should_relay(event.channel):
+                return
+            seq = self.server._seq  # current local seq; peer stores but doesn't re-sequence
+            await self.send_raw(
+                f":{origin} SEVENT {origin} {seq} {event_type_str} {target} :{encoded}"
+            )
 
     async def _relay_message(self, event: Event, origin: str) -> None:
         target = event.channel or event.data.get("target", "")
