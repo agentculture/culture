@@ -935,23 +935,32 @@ class ServerLink:
 
     async def relay_event(self, event: Event) -> None:
         """Relay a local event to the peer in S2S wire format."""
-        origin = self.server.config.name
-        handler = self._RELAY_DISPATCH.get(event.type)
-        if handler:
-            await maybe_await(handler(self, event, origin))
-            return
+        event_type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
+        attrs = {
+            "event.type": event_type_str,
+            "s2s.peer": self.peer_name or "",
+        }
+        with otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
+            "irc.s2s.relay", attributes=attrs
+        ):
+            origin = self.server.config.name
+            handler = self._RELAY_DISPATCH.get(event.type)
+            if handler:
+                await maybe_await(handler(self, event, origin))
+                return
 
-        # If no typed relay exists, fall back to generic SEVENT.
-        # v1 assumes all peers support SEVENT; cap negotiation is deferred — see plan task 12.
-        type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
-        payload = self.server._build_event_payload(event)
-        encoded = self.server._encode_event_data(payload, type_str)
-        target = event.channel or "*"
-        # Egress trust check: channel-scoped events respect should_relay; global events always relay
-        if event.channel is not None and not self.should_relay(event.channel):
-            return
-        seq = self.server._seq  # current local seq; peer stores but doesn't re-sequence
-        await self.send_raw(f":{origin} SEVENT {origin} {seq} {type_str} {target} :{encoded}")
+            # If no typed relay exists, fall back to generic SEVENT.
+            # v1 assumes all peers support SEVENT; cap negotiation is deferred — see plan task 12.
+            payload = self.server._build_event_payload(event)
+            encoded = self.server._encode_event_data(payload, event_type_str)
+            target = event.channel or "*"
+            # Egress trust check: channel-scoped events respect should_relay; global events always relay
+            if event.channel is not None and not self.should_relay(event.channel):
+                return
+            seq = self.server._seq  # current local seq; peer stores but doesn't re-sequence
+            await self.send_raw(
+                f":{origin} SEVENT {origin} {seq} {event_type_str} {target} :{encoded}"
+            )
 
     async def _relay_message(self, event: Event, origin: str) -> None:
         target = event.channel or event.data.get("target", "")
