@@ -8,9 +8,16 @@ import logging
 import os
 import shutil
 import tempfile
-from typing import Any, Awaitable, Callable
+import time
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
+
+from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
+from culture.clients.codex.telemetry import _HARNESS_TRACER_NAME, record_llm_call
+
+if TYPE_CHECKING:
+    from culture.clients.codex.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +33,8 @@ class CodexAgentRunner:
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
+        metrics: HarnessMetricsRegistry | None = None,
+        nick: str = "",
     ) -> None:
         self.model = model
         self.directory = directory
@@ -33,6 +42,8 @@ class CodexAgentRunner:
         self.on_exit = on_exit
         self.on_message = on_message
         self.on_turn_error = on_turn_error
+        self._metrics = metrics
+        self._nick = nick
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -335,28 +346,55 @@ class CodexAgentRunner:
 
     async def _execute_single_turn(self, text: str) -> None:
         """Send one turn request and wait for completion."""
-        self._turn_done.clear()
-        try:
-            await self._send_request(
-                "turn/start",
-                {
-                    "threadId": self._thread_id,
-                    "input": [{"type": "text", "text": text}],
-                },
+        start_perf = time.perf_counter()
+        outcome = "success"
+        tracer = _otel_trace.get_tracer(_HARNESS_TRACER_NAME)
+        with tracer.start_as_current_span(
+            "harness.llm.call",
+            attributes={
+                "harness.backend": "codex",
+                "harness.model": self.model,
+                "harness.nick": self._nick,
+            },
+        ):
+            self._turn_done.clear()
+            try:
+                await self._send_request(
+                    "turn/start",
+                    {
+                        "threadId": self._thread_id,
+                        "input": [{"type": "text", "text": text}],
+                    },
+                )
+                # Wait for turn/completed notification via the event
+                async with asyncio.timeout(300):
+                    await self._turn_done.wait()
+            except asyncio.TimeoutError:
+                outcome = "timeout"
+                logger.warning("Codex turn timed out after 300s")
+                self._turn_done.set()
+                if self.on_turn_error:
+                    await maybe_await(self.on_turn_error())
+            except Exception:
+                outcome = "error"
+                logger.exception("Codex turn error")
+                self._turn_done.set()
+                if self.on_turn_error:
+                    await maybe_await(self.on_turn_error())
+        duration_ms = (time.perf_counter() - start_perf) * 1000.0
+        if self._metrics is not None:
+            # Codex token usage tracking — issue #298 (currently usage=None;
+            # token counts are not exposed by the codex app-server turn/completed
+            # notification in the current SDK version).
+            record_llm_call(
+                self._metrics,
+                backend="codex",
+                model=self.model,
+                nick=self._nick,
+                usage=None,
+                duration_ms=duration_ms,
+                outcome=outcome,
             )
-            # Wait for turn/completed notification via the event
-            async with asyncio.timeout(300):
-                await self._turn_done.wait()
-        except asyncio.TimeoutError:
-            logger.warning("Codex turn timed out after 300s")
-            self._turn_done.set()
-            if self.on_turn_error:
-                await maybe_await(self.on_turn_error())
-        except Exception:
-            logger.exception("Codex turn error")
-            self._turn_done.set()
-            if self.on_turn_error:
-                await maybe_await(self.on_turn_error())
 
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""
