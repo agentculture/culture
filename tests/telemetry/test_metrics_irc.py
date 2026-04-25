@@ -74,7 +74,8 @@ async def test_privmsg_delivered_channel(metrics_reader, server, make_client):
 async def test_privmsg_delivered_dm(metrics_reader, server, make_client):
     """PRIVMSG to a nick increments delivered with kind=dm."""
     sender = await make_client(nick="testserv-frank", user="frank")
-    receiver = await make_client(nick="testserv-grace", user="grace")
+    # Receiver must exist so the dm path increments delivered; we don't read it.
+    await make_client(nick="testserv-grace", user="grace")
     await sender.send("PRIVMSG testserv-grace :hello")
     await sender.recv_all(timeout=0.5)
     await asyncio.sleep(0.1)

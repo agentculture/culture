@@ -26,6 +26,9 @@ from culture.protocol.message import Message
 
 logger = logging.getLogger(__name__)
 
+# Span/metric attribute keys defined once so a future rename has one edit point.
+_ATTR_EVENT_TYPE = "event.type"
+
 if TYPE_CHECKING:
     from culture.agentirc.client import Client
     from culture.agentirc.remote_client import RemoteClient
@@ -180,7 +183,7 @@ class IRCd:
         # server_link.py).
         event_type_str = event.type.value if hasattr(event.type, "value") else str(event.type)
         attrs: dict[str, str] = {
-            "event.type": event_type_str,
+            _ATTR_EVENT_TYPE: event_type_str,
             "event.origin": "federated" if origin_tag else "local",
         }
         if event.channel:
@@ -214,10 +217,10 @@ class IRCd:
     async def emit_event(self, event: Event) -> None:
         origin_tag = event.data.get("_origin")
         attrs = self._build_event_span_attrs(event, origin_tag)
-        event_type_str = attrs["event.type"]
+        event_type_str = attrs[_ATTR_EVENT_TYPE]
         origin_str = "federated" if origin_tag else "local"
 
-        self.metrics.events_emitted.add(1, {"event.type": event_type_str, "origin": origin_str})
+        self.metrics.events_emitted.add(1, {_ATTR_EVENT_TYPE: event_type_str, "origin": origin_str})
         render_started = time.perf_counter()
 
         # Per-call get_tracer: the `tracing_exporter` test fixture swaps the
@@ -235,7 +238,7 @@ class IRCd:
             await self._surface_event_privmsg(event)
 
         render_ms = (time.perf_counter() - render_started) * 1000.0
-        self.metrics.events_render_duration.record(render_ms, {"event.type": event_type_str})
+        self.metrics.events_render_duration.record(render_ms, {_ATTR_EVENT_TYPE: event_type_str})
 
     _NO_SURFACE_TYPES = NO_SURFACE_EVENT_TYPES
 

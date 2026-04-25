@@ -25,9 +25,9 @@ async def test_clients_connected_increments_on_connect_and_decrements_on_disconn
     # InMemoryMetricReader collects the latest value at read time, so
     # we can check the live value.
     during = get_up_down_value(metrics_reader, "culture.clients.connected", attrs={"kind": "human"})
-    assert during == baseline + 1, (
-        f"expected baseline+1 connected during session, got " f"baseline={baseline} during={during}"
-    )
+    assert (
+        during == baseline + 1
+    ), f"expected baseline+1 connected during session, got baseline={baseline} during={during}"
 
     await client.close()
     # Allow handle()'s finally to run.

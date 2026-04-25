@@ -1012,9 +1012,7 @@ class ServerLink:
                 encoded = self.server._encode_event_data(payload, event_type_str)
                 target = event.channel or "*"
                 # Egress trust check: channel-scoped events respect should_relay; global events always relay
-                if event.channel is not None and not self.should_relay(event.channel):
-                    pass
-                else:
+                if event.channel is None or self.should_relay(event.channel):
                     seq = self.server._seq  # current local seq; peer stores but doesn't re-sequence
                     await self.send_raw(
                         f":{origin} SEVENT {origin} {seq} {event_type_str} {target} :{encoded}"

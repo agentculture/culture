@@ -72,7 +72,7 @@ async def test_s2s_link_events_connect(metrics_reader, linked_servers):
 @pytest.mark.asyncio
 async def test_s2s_relay_latency_histogram(metrics_reader, linked_servers, make_client_a):
     """relay_event records to s2s_relay_latency when an event relays."""
-    server_a, _ = linked_servers
+    _ = linked_servers  # required for fixture setup
     client_a = await make_client_a(nick="alpha-alice", user="alice")
     await client_a.send("JOIN #relay-test")
     await client_a.recv_all(timeout=0.5)
@@ -127,7 +127,14 @@ async def test_s2s_link_events_auth_fail():
             name="beta",
             host="127.0.0.1",
             port=0,
-            links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password="correct")],
+            links=[
+                LinkConfig(
+                    name="alpha",
+                    host="127.0.0.1",
+                    port=0,
+                    password="correct",  # nosec B106 - test fixture, intentional bad-password assertion
+                )
+            ],
         )
 
         server_a = IRCd(config_a)
