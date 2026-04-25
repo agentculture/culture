@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from typing import TYPE_CHECKING
 
 from opentelemetry import trace as _otel_trace
@@ -162,6 +163,9 @@ class Client:
     async def handle(self, initial_msg: str | None = None) -> None:
         peer_info = self.writer.get_extra_info("peername")
         remote_addr = f"{peer_info[0]}:{peer_info[1]}" if peer_info else ""
+        kind = "human"  # Plan 5/6 will refine to bot/harness
+        self.server.metrics.clients_connected.add(1, {"kind": kind})
+        session_started = time.perf_counter()
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.client.session",
             attributes={"irc.client.remote_addr": remote_addr},
@@ -185,6 +189,11 @@ class Client:
                     buffer = await self._process_buffer(buffer)
             except (ConnectionError, asyncio.IncompleteReadError):
                 pass
+            finally:
+                self.server.metrics.clients_connected.add(-1, {"kind": kind})
+                self.server.metrics.client_session_duration.record(
+                    time.perf_counter() - session_started, {"kind": kind}
+                )
 
     async def _dispatch(self, msg: Message) -> None:
         extract = extract_traceparent_from_tags(msg, peer=None)
@@ -204,6 +213,7 @@ class Client:
             attrs["culture.trace.dropped_reason"] = extract.status
 
         # Per-call get_tracer: test fixture swaps provider between tests.
+        cmd_started = time.perf_counter()
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             f"irc.command.{verb}",
             context=parent_ctx,
@@ -225,6 +235,9 @@ class Client:
                     await self.send_numeric(
                         replies.ERR_UNKNOWNCOMMAND, msg.command, "Unknown command"
                     )
+        self.server.metrics.client_command_duration.record(
+            (time.perf_counter() - cmd_started) * 1000.0, {"verb": verb}
+        )
 
     async def _handle_ping(self, msg: Message) -> None:
         token = msg.params[0] if msg.params else ""
