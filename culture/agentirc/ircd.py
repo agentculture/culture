@@ -23,11 +23,22 @@ from culture.constants import (
     SYSTEM_USER_PREFIX,
 )
 from culture.protocol.message import Message
+from culture.telemetry.audit import build_audit_record
 
 logger = logging.getLogger(__name__)
 
 # Span/metric attribute keys defined once so a future rename has one edit point.
 _ATTR_EVENT_TYPE = "event.type"
+
+
+def _traceparent_tag_dict(trace_id_hex: str, span_id_hex: str) -> dict[str, str]:
+    """Build a {culture.dev/traceparent: <w3c-string>} dict for audit tags.
+
+    Returns {} when either id is empty (no active span context)."""
+    if not trace_id_hex or not span_id_hex:
+        return {}
+    return {"culture.dev/traceparent": f"00-{trace_id_hex}-{span_id_hex}-01"}
+
 
 if TYPE_CHECKING:
     from culture.agentirc.client import Client
@@ -226,14 +237,21 @@ class IRCd:
         self.metrics.events_emitted.add(1, {_ATTR_EVENT_TYPE: event_type_str, "origin": origin_str})
         render_started = time.perf_counter()
 
+        trace_id_hex = ""
+        span_id_hex = ""
+
         # Per-call get_tracer: the `tracing_exporter` test fixture swaps the
         # global provider between tests; a cached Tracer would bind to the
         # first test's provider and stop delivering to later ones.
         with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
             "irc.event.emit", attributes=attrs
-        ):
+        ) as span:
             seq = self.next_seq()
             self._event_log.append((seq, event))
+            ctx = span.get_span_context()
+            if ctx.is_valid:
+                trace_id_hex = format(ctx.trace_id, "032x")
+                span_id_hex = format(ctx.span_id, "016x")
             await self._run_skill_hooks(event)
             if not origin_tag:
                 await self._relay_to_peers(event)
@@ -242,6 +260,21 @@ class IRCd:
 
         render_ms = (time.perf_counter() - render_started) * 1000.0
         self.metrics.events_render_duration.record(render_ms, {_ATTR_EVENT_TYPE: event_type_str})
+
+        # Audit submit happens after the span exits so it doesn't sit inside
+        # the irc.event.emit span (would skew render duration). The trace_id/
+        # span_id captured inside the span point back at it for cross-pillar
+        # joins.
+        self.audit.submit(
+            build_audit_record(
+                server_name=self.config.name,
+                event=event,
+                origin_tag=origin_tag,
+                trace_id=trace_id_hex,
+                span_id=span_id_hex,
+                extra_tags=_traceparent_tag_dict(trace_id_hex, span_id_hex),
+            )
+        )
 
     _NO_SURFACE_TYPES = NO_SURFACE_EVENT_TYPES
 

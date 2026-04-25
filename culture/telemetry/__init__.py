@@ -3,7 +3,7 @@
 Public surface re-exported here; call sites import from `culture.telemetry`.
 """
 
-from culture.telemetry.audit import AuditSink, init_audit
+from culture.telemetry.audit import AuditSink, build_audit_record, init_audit
 from culture.telemetry.context import (
     TRACEPARENT_TAG,
     TRACESTATE_TAG,
@@ -22,6 +22,7 @@ __all__ = [
     "MetricsRegistry",
     "TRACEPARENT_TAG",
     "TRACESTATE_TAG",
+    "build_audit_record",
     "context_from_traceparent",
     "current_traceparent",
     "extract_traceparent_from_tags",

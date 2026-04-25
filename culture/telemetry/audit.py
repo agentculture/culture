@@ -244,7 +244,7 @@ def _target_for(event: "Event") -> dict[str, str]:
     return {"kind": "", "name": ""}
 
 
-def _build_audit_record(
+def build_audit_record(
     server_name: str,
     event: "Event",
     origin_tag: str | None,
