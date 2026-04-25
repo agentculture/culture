@@ -23,25 +23,14 @@ def _spans_with_name(exporter, name):
 async def test_client_session_span_records_remote_addr_and_nick(
     tracing_exporter, server, make_client
 ):
-    """irc.client.session span carries remote_addr and (after NICK) nick."""
+    """irc.client.session span records remote_addr and (after NICK) nick."""
     tracing_exporter.clear()
 
     client = await make_client(nick="testserv-alice", user="alice")
-    # Connection is open. Inspect the live span via the Client object on
-    # the server side (client is IRCTestClient — look up via server.clients).
-    assert "testserv-alice" in server.clients, "server did not register nick"
-    server_side_clients = server.clients
-    server_client = server_side_clients["testserv-alice"]
-    span = server_client._session_span
-    assert span is not None
-    attrs = dict(span.attributes or {})
-    assert attrs.get("irc.client.nick") == "testserv-alice"
-    remote_addr = attrs.get("irc.client.remote_addr", "")
-    assert ":" in remote_addr  # "ip:port" shape
+    assert "testserv-alice" in server.clients
 
-    # Now close — span should finish and land in exporter.
+    # Close — session span finishes and lands in exporter.
     await client.close()
-    # Allow teardown.
     for _ in range(50):
         if "testserv-alice" not in server.clients:
             break

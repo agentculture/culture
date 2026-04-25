@@ -151,21 +151,24 @@ class Client:
             attributes={"irc.client.remote_addr": remote_addr},
         ) as span:
             self._session_span = span
-            buffer = ""
-            if initial_msg:
-                buffer = initial_msg.replace("\r\n", "\n").replace("\r", "\n")
-                buffer = await self._process_buffer(buffer)
-            while True:
-                data = await self.reader.read(4096)
-                if not data:
-                    break
-                buffer += data.decode("utf-8", errors="replace")
-                # Cap buffer to prevent unbounded memory growth (512 bytes per RFC 2812)
-                if len(buffer) > 8192:
-                    buffer = buffer[-4096:]
-                # Normalize all line endings to \n for simpler parsing
-                buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
-                buffer = await self._process_buffer(buffer)
+            try:
+                buffer = ""
+                if initial_msg:
+                    buffer = initial_msg.replace("\r\n", "\n").replace("\r", "\n")
+                    buffer = await self._process_buffer(buffer)
+                while True:
+                    data = await self.reader.read(4096)
+                    if not data:
+                        break
+                    buffer += data.decode("utf-8", errors="replace")
+                    # Cap buffer to prevent unbounded memory growth (512 bytes per RFC 2812)
+                    if len(buffer) > 8192:
+                        buffer = buffer[-4096:]
+                    # Normalize all line endings to \n for simpler parsing
+                    buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
+                    buffer = await self._process_buffer(buffer)
+            except (ConnectionError, asyncio.IncompleteReadError):
+                pass
 
     async def _dispatch(self, msg: Message) -> None:
         extract = extract_traceparent_from_tags(msg, peer=None)
@@ -331,20 +334,17 @@ class Client:
         )
 
     async def _handle_join(self, msg: Message) -> None:
+        if not self._registered:
+            return
+        if not msg.params:
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "JOIN", replies.MSG_NEEDMOREPARAMS)
+            return
+
+        channel_name = msg.params[0]
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.join",
-            attributes={"irc.channel": "", "irc.client.nick": self.nick or ""},
-        ) as join_span:
-            if not self._registered:
-                return
-            if not msg.params:
-                await self.send_numeric(
-                    replies.ERR_NEEDMOREPARAMS, "JOIN", replies.MSG_NEEDMOREPARAMS
-                )
-                return
-
-            channel_name = msg.params[0]
-            join_span.set_attribute("irc.channel", channel_name)
+            attributes={"irc.channel": channel_name, "irc.client.nick": self.nick or ""},
+        ):
             if not channel_name.startswith("#"):
                 return
 
@@ -386,18 +386,15 @@ class Client:
             )
 
     async def _handle_part(self, msg: Message) -> None:
+        if not msg.params:
+            await self.send_numeric(replies.ERR_NEEDMOREPARAMS, "PART", replies.MSG_NEEDMOREPARAMS)
+            return
+
+        channel_name = msg.params[0]
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.part",
-            attributes={"irc.channel": "", "irc.client.nick": self.nick or ""},
-        ) as part_span:
-            if not msg.params:
-                await self.send_numeric(
-                    replies.ERR_NEEDMOREPARAMS, "PART", replies.MSG_NEEDMOREPARAMS
-                )
-                return
-
-            channel_name = msg.params[0]
-            part_span.set_attribute("irc.channel", channel_name)
+            attributes={"irc.channel": channel_name, "irc.client.nick": self.nick or ""},
+        ):
             reason = msg.params[1] if len(msg.params) > 1 else ""
 
             channel = self.server.channels.get(channel_name)
