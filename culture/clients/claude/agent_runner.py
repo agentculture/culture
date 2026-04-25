@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable
+import time
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -14,6 +15,9 @@ from claude_agent_sdk import (
     ToolUseBlock,
     query,
 )
+
+if TYPE_CHECKING:
+    from culture.clients.claude.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +50,16 @@ class AgentRunner:
         system_prompt: str = "",
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        metrics: HarnessMetricsRegistry | None = None,
+        nick: str = "",
     ) -> None:
         self.model = model
         self.directory = directory
         self.system_prompt = system_prompt
         self.on_exit = on_exit
         self.on_message = on_message
+        self._metrics = metrics
+        self._nick = nick
 
         self._session_id: str | None = None
         self._task: asyncio.Task | None = None
@@ -130,19 +138,59 @@ class AgentRunner:
 
     async def _process_turn(self, prompt: str) -> bool:
         """Run a single conversation turn. Returns False if a fatal error occurred."""
-        try:
-            async for message in query(
-                prompt=prompt,
-                options=self._make_options(),
-            ):
-                if isinstance(message, ResultMessage):
-                    self._handle_result_message(message)
-                elif isinstance(message, AssistantMessage):
-                    await self._handle_assistant_message(message)
-        except Exception:
-            logger.exception("SDK session turn error")
-            if not self._stopping and self.on_exit:
-                await self.on_exit(1)
+        from opentelemetry import trace as _otel_trace
+
+        tracer = _otel_trace.get_tracer("culture.harness.claude")
+        start_perf = time.perf_counter()
+        outcome = "success"
+        usage_dict: dict | None = None
+        failed = False
+        with tracer.start_as_current_span(
+            "harness.llm.call",
+            attributes={
+                "harness.backend": "claude",
+                "harness.model": self.model,
+                "harness.nick": self._nick,
+            },
+        ):
+            try:
+                async for message in query(
+                    prompt=prompt,
+                    options=self._make_options(),
+                ):
+                    if isinstance(message, ResultMessage):
+                        self._handle_result_message(message)
+                        # Extract usage if exposed by SDK; some ResultMessages have it
+                        u = getattr(message, "usage", None)
+                        if u is not None:
+                            usage_dict = {
+                                "tokens_input": getattr(u, "input_tokens", None)
+                                or (u.get("input_tokens") if isinstance(u, dict) else None),
+                                "tokens_output": getattr(u, "output_tokens", None)
+                                or (u.get("output_tokens") if isinstance(u, dict) else None),
+                            }
+                    elif isinstance(message, AssistantMessage):
+                        await self._handle_assistant_message(message)
+            except Exception:
+                outcome = "error"
+                failed = True
+                logger.exception("SDK session turn error")
+                if not self._stopping and self.on_exit:
+                    await self.on_exit(1)
+        duration_ms = (time.perf_counter() - start_perf) * 1000.0
+        if self._metrics is not None:
+            from culture.clients.claude.telemetry import record_llm_call
+
+            record_llm_call(
+                self._metrics,
+                backend="claude",
+                model=self.model,
+                nick=self._nick,
+                usage=usage_dict,
+                duration_ms=duration_ms,
+                outcome=outcome,
+            )
+        if failed:
             return False
         return True
 

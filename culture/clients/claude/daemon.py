@@ -15,6 +15,7 @@ from culture.clients.claude.irc_transport import IRCTransport
 from culture.clients.claude.message_buffer import MessageBuffer
 from culture.clients.claude.socket_server import SocketServer
 from culture.clients.claude.supervisor import Supervisor, make_sdk_evaluate_fn
+from culture.clients.claude.telemetry import init_harness_telemetry
 from culture.clients.claude.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
@@ -60,6 +61,8 @@ class AgentDaemon:
         self._socket_server: SocketServer | None = None
         self._agent_runner: AgentRunner | None = None
         self._supervisor: Supervisor | None = None
+        self._tracer = None
+        self._metrics = None
 
         # Crash-recovery state
         self._crash_times: list[float] = []
@@ -115,6 +118,9 @@ class AgentDaemon:
         self._pid_name = f"agent-{self.agent.nick}"
         write_pid(self._pid_name, os.getpid())
 
+        # 0.5. OTEL telemetry (if telemetry.enabled, installs SDK providers; else no-op).
+        self._tracer, self._metrics = init_harness_telemetry(self.config)
+
         # 1. Message buffer
         self._buffer = MessageBuffer(max_per_channel=self.config.buffer_size)
 
@@ -129,6 +135,9 @@ class AgentDaemon:
             on_mention=self._on_mention,
             tags=list(self.agent.tags),
             on_roominvite=self._on_roominvite,
+            tracer=self._tracer,
+            metrics=self._metrics,
+            backend="claude",
         )
         await self._transport.connect()
 
@@ -320,6 +329,8 @@ class AgentDaemon:
             system_prompt=self._build_system_prompt(),
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
+            metrics=self._metrics,
+            nick=self.agent.nick,
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)
