@@ -15,9 +15,21 @@ import pytest
 from opentelemetry import trace as otel_trace
 
 from culture.protocol.message import Message
-from culture.telemetry.context import TRACEPARENT_TAG, TRACESTATE_TAG
+from culture.telemetry.context import TRACEPARENT_TAG
 
 VALID_TP = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+
+async def _wait_for_span(exporter, name: str, timeout: float = 1.0) -> None:
+    """Wait until at least one span with `name` appears in `exporter`,
+    or `timeout` seconds elapse. SimpleSpanProcessor is synchronous, but
+    the federation write travels through an event-loop boundary."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        if any(s.name == name for s in exporter.get_finished_spans()):
+            return
+        await asyncio.sleep(0.02)
+    # Fall through; caller's assertion will fail with helpful context.
 
 
 def _spans_with_name(exporter, name):
@@ -40,7 +52,7 @@ async def test_dispatch_valid_traceparent_creates_child(tracing_exporter, linked
     await link_alpha_to_beta.writer.drain()
 
     # Give server_b time to dispatch.
-    await asyncio.sleep(0.2)
+    await _wait_for_span(tracing_exporter, "irc.s2s.SMSG")
 
     # Find an s2s.SMSG span on server_b.
     smsg_spans = _spans_with_name(tracing_exporter, "irc.s2s.SMSG")
@@ -65,7 +77,7 @@ async def test_dispatch_missing_traceparent_root_span(tracing_exporter, linked_s
     line = ":alpha SMSG #s2s-trace-test alpha-bob :hi"
     link_alpha_to_beta.writer.write((line + "\r\n").encode("utf-8"))
     await link_alpha_to_beta.writer.drain()
-    await asyncio.sleep(0.2)
+    await _wait_for_span(tracing_exporter, "irc.s2s.SMSG")
 
     smsg_spans = _spans_with_name(tracing_exporter, "irc.s2s.SMSG")
     assert smsg_spans
@@ -88,7 +100,7 @@ async def test_dispatch_malformed_traceparent_dropped(tracing_exporter, linked_s
     line = f"@{TRACEPARENT_TAG}=not-a-traceparent " ":alpha SMSG #s2s-trace-test alpha-bob :hi"
     link_alpha_to_beta.writer.write((line + "\r\n").encode("utf-8"))
     await link_alpha_to_beta.writer.drain()
-    await asyncio.sleep(0.2)
+    await _wait_for_span(tracing_exporter, "irc.s2s.SMSG")
 
     smsg_spans = _spans_with_name(tracing_exporter, "irc.s2s.SMSG")
     assert smsg_spans
@@ -110,7 +122,7 @@ async def test_dispatch_oversize_traceparent_dropped(tracing_exporter, linked_se
     line = f"@{TRACEPARENT_TAG}={oversize} " ":alpha SMSG #s2s-trace-test alpha-bob :hi"
     link_alpha_to_beta.writer.write((line + "\r\n").encode("utf-8"))
     await link_alpha_to_beta.writer.drain()
-    await asyncio.sleep(0.2)
+    await _wait_for_span(tracing_exporter, "irc.s2s.SMSG")
 
     smsg_spans = _spans_with_name(tracing_exporter, "irc.s2s.SMSG")
     assert smsg_spans
