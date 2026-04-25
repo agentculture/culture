@@ -23,4 +23,4 @@ class FakeWriter:
         self.buf.append(data)
 
     async def drain(self) -> None:
-        pass
+        """No-op: tests never block on socket flush."""

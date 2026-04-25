@@ -24,6 +24,6 @@ async def test_ircd_init_does_not_disturb_installed_provider(tracing_exporter):
     from opentelemetry import trace
 
     tracer = trace.get_tracer("smoke")
-    with tracer.start_as_current_span("smoke"):
-        pass
+    with tracer.start_as_current_span("smoke") as span:
+        assert span.is_recording()
     assert len(tracing_exporter.get_finished_spans()) == 1

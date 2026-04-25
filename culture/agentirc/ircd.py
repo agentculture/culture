@@ -171,8 +171,8 @@ class IRCd:
         self._seq += 1
         return self._seq
 
-    async def emit_event(self, event: Event) -> None:
-        origin_tag = event.data.get("_origin")
+    @staticmethod
+    def _build_event_span_attrs(event: Event, origin_tag: str | None) -> dict[str, str]:
         # event.type may be an EventType enum OR a plain string — federated
         # events forward unknown types verbatim (see _parse_event_type in
         # server_link.py).
@@ -185,40 +185,45 @@ class IRCd:
             attrs["event.channel"] = event.channel
         if origin_tag:
             attrs["culture.federation.peer"] = origin_tag
+        return attrs
+
+    async def _run_skill_hooks(self, event: Event) -> None:
+        for skill in self.skills:
+            try:
+                await skill.on_event(event)
+            except Exception:
+                logger.exception("Skill %s failed on event %s", skill.name, event.type)
+
+    async def _relay_to_peers(self, event: Event) -> None:
+        for peer_name, link in list(self.links.items()):
+            try:
+                await link.relay_event(event)
+            except Exception:
+                logger.exception("Failed to relay event to %s", peer_name)
+
+    async def _dispatch_to_bots(self, event: Event) -> None:
+        if self.bot_manager is None:
+            return
+        try:
+            await self.bot_manager.on_event(event)
+        except Exception:
+            logger.exception("bot_manager.on_event failed")
+
+    async def emit_event(self, event: Event) -> None:
+        origin_tag = event.data.get("_origin")
+        attrs = self._build_event_span_attrs(event, origin_tag)
         # Per-call get_tracer: the `tracing_exporter` test fixture swaps the
         # global provider between tests; a cached Tracer would bind to the
         # first test's provider and stop delivering to later ones.
         with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
             "irc.event.emit", attributes=attrs
         ):
-            # 1) Sequence + log.
             seq = self.next_seq()
             self._event_log.append((seq, event))
-
-            # 2) Run skill hooks.
-            for skill in self.skills:
-                try:
-                    await skill.on_event(event)
-                except Exception:
-                    logger.exception("Skill %s failed on event %s", skill.name, event.type)
-
-            # 3) Relay to linked peers — only relay locally-originated events
-            # (no mesh routing; scope is direct peers only)
+            await self._run_skill_hooks(event)
             if not origin_tag:
-                for peer_name, link in list(self.links.items()):
-                    try:
-                        await link.relay_event(event)
-                    except Exception:
-                        logger.exception("Failed to relay event to %s", peer_name)
-
-            # 4) Dispatch to event-triggered bots.
-            if self.bot_manager is not None:
-                try:
-                    await self.bot_manager.on_event(event)
-                except Exception:
-                    logger.exception("bot_manager.on_event failed")
-
-            # 5) Surface as tagged PRIVMSG from system-<server>.
+                await self._relay_to_peers(event)
+            await self._dispatch_to_bots(event)
             await self._surface_event_privmsg(event)
 
     _NO_SURFACE_TYPES = NO_SURFACE_EVENT_TYPES

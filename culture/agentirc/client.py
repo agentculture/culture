@@ -22,6 +22,14 @@ from culture.telemetry.context import (
 )
 from culture.telemetry.context import inject_traceparent as _inject_traceparent
 
+# OTEL instrumentation name (must match `_CULTURE_TRACER_NAME` in
+# culture/telemetry/tracing.py so trace consumers see one consistent value).
+_TRACER_NAME = "culture.agentirc"
+# Span attribute keys for PRIVMSG body capture, defined once so a future
+# rename / sanitization layer has one edit point.
+_ATTR_BODY = "irc.message.body"
+_ATTR_SIZE = "irc.message.size"
+
 
 def _context_from_traceparent(tp: str):
     """Build an OTEL context whose current span is a NonRecordingSpan
@@ -140,7 +148,7 @@ class Client:
     async def _process_buffer(self, buffer: str) -> str:
         """Parse and dispatch all complete lines from buffer, return remainder."""
         # Per-call get_tracer: test fixture swaps provider between tests.
-        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.client.process_buffer"
         ) as span:
             while "\n" in buffer:
@@ -194,7 +202,7 @@ class Client:
             attrs["culture.trace.dropped_reason"] = extract.status
 
         # Per-call get_tracer: test fixture swaps provider between tests.
-        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             f"irc.command.{msg.command}",
             context=parent_ctx,
             attributes=attrs,
@@ -706,12 +714,12 @@ class Client:
         await self.send_numeric(replies.RPL_UMODEIS, mode_str)
 
     async def _send_to_channel(self, channel, target, relay, text, is_notice):
-        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.privmsg.deliver.channel",
             attributes={
                 "irc.channel": target,
-                "irc.message.body": text,
-                "irc.message.size": len(text),
+                _ATTR_BODY: text,
+                _ATTR_SIZE: len(text),
                 "irc.notice": is_notice,
             },
         ):
@@ -733,12 +741,12 @@ class Client:
     async def _send_to_client(self, target, relay, text, is_notice):
         from culture.agentirc.remote_client import RemoteClient
 
-        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.privmsg.deliver.dm",
             attributes={
                 "irc.target.nick": target,
-                "irc.message.body": text,
-                "irc.message.size": len(text),
+                _ATTR_BODY: text,
+                _ATTR_SIZE: len(text),
                 "irc.notice": is_notice,
             },
         ):
@@ -775,12 +783,12 @@ class Client:
         target = msg.params[0]
         text = msg.params[1]
         # Per-call get_tracer: test fixture swaps provider between tests.
-        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+        with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.privmsg.dispatch",
             attributes={
                 "irc.target": target,
-                "irc.message.body": text,
-                "irc.message.size": len(text),
+                _ATTR_BODY: text,
+                _ATTR_SIZE: len(text),
             },
         ):
             relay = Message(prefix=self.prefix, command="PRIVMSG", params=[target, text])
