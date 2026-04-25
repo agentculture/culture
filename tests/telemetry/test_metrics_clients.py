@@ -7,7 +7,6 @@ import asyncio
 import pytest
 
 from tests.telemetry._metrics_helpers import (
-    get_counter_value,
     get_histogram_count,
     get_up_down_value,
 )
