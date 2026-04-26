@@ -12,9 +12,16 @@ import logging
 import os
 import shutil
 import tempfile
-from typing import Any, Awaitable, Callable
+import time
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
+
+from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
+from culture.clients.acp.telemetry import _HARNESS_TRACER_NAME, record_llm_call
+
+if TYPE_CHECKING:
+    from culture.clients.acp.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,8 @@ class ACPAgentRunner:
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
+        metrics: HarnessMetricsRegistry | None = None,
+        nick: str = "",
     ) -> None:
         self.model = model
         self.directory = directory
@@ -44,6 +53,8 @@ class ACPAgentRunner:
         self.on_exit = on_exit
         self.on_message = on_message
         self.on_turn_error = on_turn_error
+        self._metrics = metrics
+        self._nick = nick
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -431,16 +442,47 @@ class ACPAgentRunner:
 
     async def _execute_single_prompt(self, text: str) -> None:
         """Send one prompt and handle its result, managing the busy flag."""
-        try:
-            self._busy = True
-            resp = await self._send_prompt_with_retry(text)
-            await self._handle_prompt_result(resp)
-        except Exception:
-            logger.exception("ACP turn error")
-            if self.on_turn_error:
-                await maybe_await(self.on_turn_error())
-        finally:
-            self._busy = False
+        start_perf = time.perf_counter()
+        outcome = "success"
+        tracer = _otel_trace.get_tracer(_HARNESS_TRACER_NAME)
+        with tracer.start_as_current_span(
+            "harness.llm.call",
+            attributes={
+                "harness.backend": "acp",
+                "harness.model": self.model,
+                "harness.nick": self._nick,
+            },
+        ):
+            try:
+                self._busy = True
+                resp = await self._send_prompt_with_retry(text)
+                await self._handle_prompt_result(resp)
+            except TimeoutError:  # bubbles from _send_prompt_with_retry's retry-then-fail
+                outcome = "timeout"
+                logger.exception("ACP turn timeout")
+                if self.on_turn_error:
+                    await maybe_await(self.on_turn_error())
+            except Exception:
+                outcome = "error"
+                logger.exception("ACP turn error")
+                if self.on_turn_error:
+                    await maybe_await(self.on_turn_error())
+            finally:
+                self._busy = False
+        duration_ms = (time.perf_counter() - start_perf) * 1000.0
+        if self._metrics is not None:
+            # ACP token usage MAY arrive in session/update stopReason payload;
+            # current implementation does not extract — usage=None for v1.
+            # When we add extraction (per backing agent), thread through here.
+            record_llm_call(
+                self._metrics,
+                backend="acp",
+                model=self.model,
+                nick=self._nick,
+                usage=None,
+                duration_ms=duration_ms,
+                outcome=outcome,
+            )
 
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""

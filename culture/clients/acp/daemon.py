@@ -25,6 +25,7 @@ from culture.clients.acp.irc_transport import IRCTransport
 from culture.clients.acp.message_buffer import MessageBuffer
 from culture.clients.acp.socket_server import SocketServer
 from culture.clients.acp.supervisor import Supervisor, make_sdk_evaluate_fn
+from culture.clients.acp.telemetry import init_harness_telemetry
 from culture.clients.acp.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
@@ -71,6 +72,8 @@ class ACPDaemon:
         self._socket_server: SocketServer | None = None
         self._agent_runner: ACPAgentRunner | None = None
         self._supervisor: Supervisor | None = None
+        self._tracer = None
+        self._metrics = None
 
         # FIFO queue of relay targets — each @mention enqueues a target,
         # each agent response dequeues one, ensuring correct routing even
@@ -134,6 +137,9 @@ class ACPDaemon:
         self._pid_name = f"agent-{self.agent.nick}"
         write_pid(self._pid_name, os.getpid())
 
+        # 0.5. OTEL telemetry (if telemetry.enabled, installs SDK providers; else no-op).
+        self._tracer, self._metrics = init_harness_telemetry(self.config)
+
         # 1. Message buffer
         self._buffer = MessageBuffer(max_per_channel=self.config.buffer_size)
 
@@ -148,6 +154,9 @@ class ACPDaemon:
             on_mention=self._on_mention,
             tags=list(self.agent.tags),
             on_roominvite=self._on_roominvite,
+            tracer=self._tracer,
+            metrics=self._metrics,
+            backend="acp",
         )
         await self._transport.connect()
 
@@ -389,6 +398,8 @@ class ACPDaemon:
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
             on_turn_error=self._on_turn_error,
+            metrics=self._metrics,
+            nick=self.agent.nick,
         )
         # Absorb the system prompt response without relaying to IRC
         self._mention_targets.append(None)

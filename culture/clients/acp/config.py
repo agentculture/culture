@@ -63,12 +63,34 @@ class AgentConfig:
 
 
 @dataclass
+class TelemetryConfig:
+    """OpenTelemetry settings for the agent harness.
+
+    ``enabled: false`` by default so freshly installed harnesses don't
+    try to connect to a non-existent OTLP collector. Flip to ``true``
+    once your collector is running.
+    """
+
+    enabled: bool = False
+    service_name: str = "culture.harness.acp"
+    otlp_endpoint: str = "http://localhost:4317"
+    otlp_protocol: str = "grpc"  # grpc | http/protobuf (only grpc supported initially)
+    otlp_timeout_ms: int = 5000
+    otlp_compression: str = "gzip"
+    traces_enabled: bool = True
+    traces_sampler: str = "parentbased_always_on"
+    metrics_enabled: bool = True
+    metrics_export_interval_ms: int = 10000
+
+
+@dataclass
 class DaemonConfig:
     """Top-level daemon configuration."""
 
     server: ServerConnConfig = field(default_factory=ServerConnConfig)
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
     webhooks: WebhookConfig = field(default_factory=WebhookConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
     buffer_size: int = 500
     poll_interval: int = 60
     sleep_start: str = "23:00"
@@ -91,6 +113,7 @@ def load_config(path: str | Path) -> DaemonConfig:
     supervisor = SupervisorConfig(**raw.get("supervisor", {}))
 
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
+    telemetry = TelemetryConfig(**raw.get("telemetry", {}))
 
     agents = []
     known_agent_fields = {f.name for f in AgentConfig.__dataclass_fields__.values()}
@@ -102,6 +125,7 @@ def load_config(path: str | Path) -> DaemonConfig:
         server=server,
         supervisor=supervisor,
         webhooks=webhooks,
+        telemetry=telemetry,
         buffer_size=raw.get("buffer_size", 500),
         poll_interval=raw.get("poll_interval", 60),
         sleep_start=raw.get("sleep_start", "23:00"),
