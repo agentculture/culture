@@ -91,51 +91,58 @@ class BotManager:
     async def on_event(self, event) -> None:
         """Evaluate event-triggered bots against an event and dispatch matches."""
         # Snapshot: handle() may call emit_event() which re-enters on_event().
-        bots_snapshot = list(self.bots.values())
-        for bot in bots_snapshot:
-            cfg = bot.config
-            if cfg.trigger_type != "event":
-                continue
-            compiled = getattr(cfg, "_compiled_filter", None)
-            if compiled is None:
-                continue
-            ctx = {
-                "type": event.type.value if hasattr(event.type, "value") else str(event.type),
-                "channel": event.channel,
-                "nick": event.nick,
-                "data": dict(event.data),
-            }
+        ctx = {
+            "type": event.type.value if hasattr(event.type, "value") else str(event.type),
+            "channel": event.channel,
+            "nick": event.nick,
+            "data": dict(event.data),
+        }
+        for bot in list(self.bots.values()):
+            if self._matches_event(bot, ctx):
+                await self._dispatch_to_bot(bot, ctx)
+
+    def _matches_event(self, bot: Bot, ctx: dict) -> bool:
+        """True iff `bot` is event-triggered and its filter accepts `ctx`."""
+        cfg = bot.config
+        if cfg.trigger_type != "event":
+            return False
+        compiled = getattr(cfg, "_compiled_filter", None)
+        if compiled is None:
+            return False
+        try:
+            return bool(evaluate(compiled, ctx))
+        except Exception:
+            logger.exception("Filter evaluation failed for bot %s", cfg.name)
+            return False
+
+    async def _dispatch_to_bot(self, bot: Bot, ctx: dict) -> None:
+        """Lazily start the bot and run handle() inside a bot.event.dispatch span."""
+        if not await self._try_start_bot(bot):
+            return
+        cfg = bot.config
+        event_type_str = ctx["type"]
+        with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
+            "bot.event.dispatch",
+            attributes={"bot.name": cfg.name, "event.type": event_type_str},
+        ) as span:
+            outcome = "success"
             try:
-                if not evaluate(compiled, ctx):
-                    continue
-            except Exception:
-                logger.exception("Filter evaluation failed for bot %s", cfg.name)
-                continue
-            if not await self._try_start_bot(bot):
-                continue
-            event_type_str = ctx["type"]
-            with _otel_trace.get_tracer("culture.agentirc").start_as_current_span(
-                "bot.event.dispatch",
-                attributes={"bot.name": cfg.name, "event.type": event_type_str},
-            ) as span:
-                outcome = "success"
-                try:
-                    await bot.handle({"event": ctx})
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    outcome = "error"
-                    span.set_status(_otel_trace.StatusCode.ERROR, str(exc))
-                    logger.exception("Bot %s handle() failed for event %s", cfg.name, event.type)
-                finally:
-                    self.server.metrics.bot_invocations.add(
-                        1,
-                        {
-                            "bot": cfg.name,
-                            "event.type": event_type_str,
-                            "outcome": outcome,
-                        },
-                    )
+                await bot.handle({"event": ctx})
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                outcome = "error"
+                span.set_status(_otel_trace.StatusCode.ERROR, str(exc))
+                logger.exception("Bot %s handle() failed for event %s", cfg.name, ctx["type"])
+            finally:
+                self.server.metrics.bot_invocations.add(
+                    1,
+                    {
+                        "bot": cfg.name,
+                        "event.type": event_type_str,
+                        "outcome": outcome,
+                    },
+                )
 
     def load_system_bots(self) -> None:
         """Discover and register system bots from the package."""
