@@ -158,6 +158,74 @@ data:
 If you see `culture.harness.llm.tokens.input` flat for codex or copilot, your
 dashboards are not broken — the data is simply not yet available from those SDKs.
 
+## Harness API
+
+The reference implementation lives in `packages/agent-harness/telemetry.py`.
+Each backend owns a cited copy at `culture/clients/<backend>/telemetry.py`
+(the only per-backend edit sites are `_HARNESS_TRACER_NAME` and the
+`service_name` default in `config.py`).
+
+### `init_harness_telemetry`
+
+```python
+def init_harness_telemetry(config: DaemonConfig) -> tuple[Tracer, HarnessMetricsRegistry]:
+```
+
+Call once from `daemon.start()`, before the IRC transport connects. Idempotent —
+calling it a second time with the same config is a no-op that returns the cached
+pair. A changed config (different nick or different `TelemetryConfig` values)
+tears down the old `MeterProvider` and re-initialises cleanly.
+
+When `telemetry.enabled: false`, no SDK provider is installed. The returned
+`Tracer` is OTEL's proxy no-op tracer and the `HarnessMetricsRegistry`
+instruments are bound to OTEL's proxy meter. Call sites can `add()` /
+`record()` unconditionally — no `if telemetry.enabled` guards needed.
+
+### `HarnessMetricsRegistry`
+
+Dataclass that owns the four LLM instruments registered during
+`init_harness_telemetry`. Pass it to `record_llm_call` from `agent_runner.py`.
+
+| Field | Instrument | Metric name |
+|-------|-----------|-------------|
+| `llm_tokens_input` | Counter | `culture.harness.llm.tokens.input` |
+| `llm_tokens_output` | Counter | `culture.harness.llm.tokens.output` |
+| `llm_call_duration` | Histogram | `culture.harness.llm.call.duration` |
+| `llm_calls` | Counter | `culture.harness.llm.calls` |
+
+### `record_llm_call`
+
+```python
+def record_llm_call(
+    registry: HarnessMetricsRegistry,
+    *,
+    backend: str,
+    model: str,
+    nick: str,
+    usage: dict | None,
+    duration_ms: float,
+    outcome: str,
+) -> None:
+```
+
+Record metrics for one LLM call. Parameters:
+
+- `registry` — the `HarnessMetricsRegistry` returned by `init_harness_telemetry`.
+- `backend` — one of `"claude"`, `"codex"`, `"copilot"`, `"acp"`.
+- `model` — model identifier string used as the `model` label
+  (e.g. `"claude-opus-4-6"`).
+- `nick` — agent IRC nick (e.g. `"spark-claude"`); becomes the `harness.nick`
+  label on token counters.
+- `usage` — `dict | None`. Recognised keys: `tokens_input` (`int`) and
+  `tokens_output` (`int`). `None` and missing or non-`int` values are silently
+  skipped. codex (#298) and copilot (#299) currently pass `None`.
+- `duration_ms` — wall-clock call duration in milliseconds (`float`).
+- `outcome` — one of `"success"`, `"error"`, `"timeout"`.
+
+Behavior: always increments `llm_calls` and records `llm_call_duration`.
+Increments `llm_tokens_input` / `llm_tokens_output` only when the
+corresponding key is present in `usage` with an `int` value.
+
 ## What's not in 8.6.0
 
 - **Bot-side OTEL instrumentation** — Plan 6.
