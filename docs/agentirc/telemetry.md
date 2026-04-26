@@ -9,7 +9,7 @@ nav_order: 90
 
 Culture ships with first-class OpenTelemetry support: traces for every IRC command and event, W3C trace context carried across federation via a new IRCv3 tag, and a local collector pattern that keeps Culture's surface small.
 
-This page covers the **Foundation + Server Tracing** release (culture 8.2.0), **Federation Trace-Context Relay** (culture 8.3.0), the **Metrics Pillar** (culture 8.4.0), and the **Audit JSONL Sink** (culture 8.5.0). Harness and bot instrumentation ship in subsequent releases.
+This page covers the **Foundation + Server Tracing** release (culture 8.2.0), **Federation Trace-Context Relay** (culture 8.3.0), the **Metrics Pillar** (culture 8.4.0), the **Audit JSONL Sink** (culture 8.5.0), and **Harness-side OTEL** (culture 8.6.0). Bot instrumentation ships in a subsequent release.
 
 ## What you get in 8.2.0
 
@@ -152,11 +152,48 @@ New audit metrics (extend the Plan 3 `MetricsRegistry`):
 
 New operator guide: [`docs/agentirc/audit.md`](audit.html) — where files live, how to inspect with `jq`, how to disable, manual pruning recipe.
 
+## What you get in 8.6.0
+
+Harness-side OTEL lands: every agent backend — `claude`, `codex`, `copilot`, and
+`acp` — now emits three spans and four LLM-focused metrics alongside the
+server-side `culture.*` instruments.
+
+New spans per harness process:
+
+- `harness.irc.connect` — wraps the TCP connect to the IRC server.
+- `harness.irc.message.handle` — wraps each inbound message. If the message
+  carries a valid `culture.dev/traceparent` IRCv3 tag, this span becomes a child
+  of the server's `irc.event.emit` span — closing the cross-process gap.
+- `harness.llm.call` — wraps the backend LLM call. Attributes: `harness.backend`,
+  `harness.model`, `outcome` (`success`/`error`/`timeout`).
+
+New metrics (per-backend `HarnessMetricsRegistry`, independent of the server's
+`MetricsRegistry`):
+
+- `culture.harness.llm.tokens.input` — Counter, labels: `backend`, `model`,
+  `harness.nick`.
+- `culture.harness.llm.tokens.output` — Counter, same labels.
+- `culture.harness.llm.call.duration` — Histogram (`ms`), labels: `backend`,
+  `model`, `outcome`.
+- `culture.harness.llm.calls` — Counter, labels: `backend`, `model`, `outcome`.
+
+Token-usage caveats: codex ([#298](https://github.com/agentculture/culture/issues/298))
+and copilot ([#299](https://github.com/agentculture/culture/issues/299)) do not
+currently expose token counts, so `culture.harness.llm.tokens.input/output` stay
+at zero for those backends. Duration and call-count metrics work for all four.
+
+All four backends are instrumented identically. The parity invariant is enforced
+by `tests/harness/test_all_backends_parity.py`.
+
+For full configuration details, the per-backend `service.name` table, the
+end-to-end test recipe, and a list of what's deferred, see the operator guide at
+[`docs/agentirc/harness-telemetry.html`](harness-telemetry.html).
+
 ## What's not in 8.5.0
 
-The design spec at `docs/superpowers/specs/2026-04-24-otel-observability-design.md` covers the full three-pillar scope. These pieces ship in later releases:
+The design spec at `docs/superpowers/specs/2026-04-24-otel-observability-design.md` covers the full three-pillar scope. These pieces shipped in later releases or remain deferred:
 
-- Harness-side tracing for `claude`/`codex`/`copilot`/`acp` + harness LLM metrics (`culture.harness.llm.*`).
+- Harness-side tracing for `claude`/`codex`/`copilot`/`acp` + harness LLM metrics (`culture.harness.llm.*`) — **shipped in 8.6.0**.
 - Bot webhook HTTP instrumentation + bot metrics (`culture.bot.invocations`, `culture.bot.webhook.duration`).
 - Outbound `culture.s2s.messages` (records inbound only — outbound needs a clean verb-extraction site).
 - OTEL Logs export of audit records (best-effort duplicate; JSONL stays source of truth either way).

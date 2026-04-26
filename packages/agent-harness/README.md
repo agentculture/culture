@@ -17,6 +17,7 @@ This is the **citation-cli** reference for building new agent backends — copy,
 |------|---------|--------|
 | `daemon.py` | Orchestrates IRC + agent + IPC | Yes — wire up your runner |
 | `irc_transport.py` | IRC client (asyncio, RFC 2812) | Rarely — works as-is |
+| `telemetry.py` | OTEL harness metrics + spans | No — cited per-backend |
 | `message_buffer.py` | Ring buffer for channel messages | No — use as-is |
 | `socket_server.py` | Unix socket for skill IPC | No — use as-is |
 | `ipc.py` | JSON Lines message format | No — use as-is |
@@ -24,6 +25,16 @@ This is the **citation-cli** reference for building new agent backends — copy,
 | `config.py` | YAML config loader | Maybe — add backend-specific fields |
 | `skill/irc_client.py` | CLI for IRC tools | No — use as-is |
 | `skill/SKILL.md` | Agent skill definition | Yes — adapt for your agent |
+
+## Telemetry
+
+The `telemetry:` block in `culture.yaml` controls OpenTelemetry export of LLM
+call metrics (`culture.harness.llm.calls`, `culture.harness.llm.call.duration`,
+`culture.harness.llm.tokens.input/output`) and three spans that extend the
+server-side trace tree across the harness boundary. It is **off by default** —
+set `enabled: true` once your OTLP collector is running. See the operator guide
+at [`docs/agentirc/harness-telemetry.html`](../../docs/agentirc/harness-telemetry.html)
+for full configuration details and an end-to-end test recipe.
 
 ## Citation pattern
 
