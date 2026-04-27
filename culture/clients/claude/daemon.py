@@ -8,6 +8,7 @@ import re
 import time
 
 from culture.aio import maybe_await
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.claude.agent_runner import AgentRunner
 from culture.clients.claude.config import AgentConfig, DaemonConfig
 from culture.clients.claude.ipc import make_response
@@ -51,7 +52,7 @@ class AgentDaemon:
         self.skip_claude = skip_claude
 
         self._socket_path = os.path.join(
-            socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+            socket_dir or culture_runtime_dir(),
             f"culture-{agent.nick}.sock",
         )
 

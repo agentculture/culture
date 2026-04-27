@@ -24,17 +24,48 @@ def _valid_nick(nick: str) -> bool:
     return len(parts) == 2 and all(parts)
 
 
+_ISSUE_TRACKER_URL = "https://github.com/agentculture/culture/issues"
+
+
+def _warn_ipc_fallback(nick: str, sock: str, reason: str) -> None:
+    """Warn on stderr when CULTURE_NICK is set but the daemon IPC hop failed.
+
+    Issue #302: a silent fallback to the anonymous peek-nick observer hid a
+    socket-path mismatch between the CLI and the daemon for two releases on
+    macOS. The warning names the issue tracker so the next reproducer takes
+    seconds to file, not a Mac trip to diagnose.
+    """
+    print(
+        f"Warning: agent daemon for {nick} {reason} ({sock}).\n"
+        f"  Falling back to anonymous peek connection — your message/read will\n"
+        f"  not appear under {nick}.\n"
+        f"  Verify the daemon is running:    culture agent status {nick}\n"
+        f"  If it is running, this is a bug. Please open an issue:\n"
+        f"    {_ISSUE_TRACKER_URL}",
+        file=sys.stderr,
+    )
+
+
 def _try_ipc(msg_type: str, **kwargs) -> dict | None:
     """Try to route a command through the agent daemon's IPC socket.
 
     Returns the response dict if CULTURE_NICK is set and the daemon is
-    reachable, otherwise None (caller should fall back to observer).
+    reachable, otherwise None (caller should fall back to observer). If
+    CULTURE_NICK is set but IPC fails (unreachable or daemon rejected the
+    request), emits a stderr warning before returning so the silent peek
+    fallback in callers becomes visible — see issue #302.
     """
     nick = os.environ.get("CULTURE_NICK")
     if not nick or not _valid_nick(nick):
         return None
     sock = agent_socket_path(nick)
-    return asyncio.run(ipc_request(sock, msg_type, **kwargs))
+    resp = asyncio.run(ipc_request(sock, msg_type, **kwargs))
+    if resp is None:
+        _warn_ipc_fallback(nick, sock, "unreachable")
+    elif not resp.get("ok"):
+        err = resp.get("error", "unknown error")
+        _warn_ipc_fallback(nick, sock, f"rejected the request ({err})")
+    return resp
 
 
 def _require_ipc(msg_type: str, **kwargs) -> dict:

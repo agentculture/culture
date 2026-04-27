@@ -7,6 +7,7 @@ import glob
 import os
 
 from culture.bots.config import BOT_CONFIG_FILE
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.protocol.message import Message as IRCMessage
 
 from .model import Agent, BotInfo, MeshState, Message, Room
@@ -428,8 +429,7 @@ async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
     """Enrich local agents with daemon IPC status data."""
     from culture.clients.claude.ipc import decode_message, encode_message, make_request
 
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-    socket_pattern = os.path.join(runtime_dir, "culture-*.sock")
+    socket_pattern = os.path.join(culture_runtime_dir(), "culture-*.sock")
 
     for sock_path in glob.glob(socket_pattern):
         # Extract nick from socket filename: culture-<nick>.sock

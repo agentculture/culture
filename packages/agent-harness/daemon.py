@@ -22,6 +22,7 @@ from typing import Any
 
 # These imports point to YOUR backend's copies of these files:
 from culture.aio import maybe_await
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.BACKEND.config import AgentConfig, DaemonConfig
 from culture.clients.BACKEND.ipc import make_response
 from culture.clients.BACKEND.irc_transport import IRCTransport
@@ -66,7 +67,7 @@ class AgentDaemon:
         self.skip_agent = skip_agent
 
         self._socket_path = os.path.join(
-            socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+            socket_dir or culture_runtime_dir(),
             f"culture-{agent.nick}.sock",
         )
 

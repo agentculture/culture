@@ -295,7 +295,18 @@ Unix socket.
 $XDG_RUNTIME_DIR/culture-<nick>.sock
 ```
 
-Falls back to `/tmp/culture-<nick>.sock` if `XDG_RUNTIME_DIR` is not set.
+Falls back to `~/.culture/run/culture-<nick>.sock` (mode 0700) if
+`XDG_RUNTIME_DIR` is not set — typical on macOS. The fallback is
+user-private rather than world-writable like `/tmp/`.
+
+All socket-path resolvers (4 backend daemons, 4 skill irc_clients, the
+CLI in `culture/cli/shared/constants.py::culture_runtime_dir()`, the
+overview collector, and the console status reader) MUST go through
+`culture_runtime_dir()`. A regression test in
+`tests/test_socket_path_convergence.py` parametrically asserts every
+site agrees, with `XDG_RUNTIME_DIR` both set and unset. Any future site
+that re-introduces a raw `os.environ.get("XDG_RUNTIME_DIR", "/tmp")`
+will fail that test (issue #302).
 
 ### Message Format
 

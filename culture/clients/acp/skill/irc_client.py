@@ -16,6 +16,7 @@ import os
 import sys
 from typing import Any
 
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.acp.ipc import (
     MSG_TYPE_RESPONSE,
     MSG_TYPE_WHISPER,
@@ -192,8 +193,7 @@ def _sock_path_from_env() -> str:
     if not nick:
         print("ERROR: CULTURE_NICK environment variable is not set", file=sys.stderr)
         sys.exit(1)
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-    return os.path.join(runtime_dir, f"culture-{nick}.sock")
+    return os.path.join(culture_runtime_dir(), f"culture-{nick}.sock")
 
 
 def _parse_ask_timeout(remaining: list[str]) -> tuple[int, list[str]]:

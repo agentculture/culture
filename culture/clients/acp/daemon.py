@@ -18,6 +18,7 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.acp.agent_runner import ACPAgentRunner
 from culture.clients.acp.config import AgentConfig, DaemonConfig
 from culture.clients.acp.ipc import make_response
@@ -62,7 +63,7 @@ class ACPDaemon:
         self.skip_agent = skip_agent
 
         self._socket_path = os.path.join(
-            socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+            socket_dir or culture_runtime_dir(),
             f"culture-{agent.nick}.sock",
         )
 

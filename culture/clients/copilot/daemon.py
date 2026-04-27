@@ -15,6 +15,7 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.copilot.agent_runner import CopilotAgentRunner
 from culture.clients.copilot.config import AgentConfig, DaemonConfig
 from culture.clients.copilot.ipc import make_response
@@ -59,7 +60,7 @@ class CopilotDaemon:
         self.skip_copilot = skip_copilot
 
         self._socket_path = os.path.join(
-            socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+            socket_dir or culture_runtime_dir(),
             f"culture-{agent.nick}.sock",
         )
 

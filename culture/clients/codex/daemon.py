@@ -15,6 +15,7 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.codex.agent_runner import CodexAgentRunner
 from culture.clients.codex.config import AgentConfig, DaemonConfig
 from culture.clients.codex.ipc import make_response
@@ -66,7 +67,7 @@ class CodexDaemon:
         self.skip_codex = skip_codex
 
         self._socket_path = os.path.join(
-            socket_dir or os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+            socket_dir or culture_runtime_dir(),
             f"culture-{agent.nick}.sock",
         )
 

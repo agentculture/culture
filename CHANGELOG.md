@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.7.1] - 2026-04-27
+
+### Added
+
+- `tests/test_socket_path_convergence.py`: parametric regression test asserting all 8 daemon+skill resolvers agree with the CLI's `agent_socket_path()` for both `XDG_RUNTIME_DIR` set and unset.
+- `tests/test_constants.py`: unit tests pinning `culture_runtime_dir()` contract (env precedence, `~/.culture/run/` fallback, mode 0700).
+
+### Changed
+
+- `culture channel {message,list,read}`: when `CULTURE_NICK` is set but the daemon IPC is unreachable or rejects the request, the CLI now prints a stderr warning naming the nick, the socket path, and the GitHub issue tracker before falling back to the peek-nick observer. The fallback itself is preserved for human use (no `CULTURE_NICK`).
+
+### Fixed
+
+- Converged all socket-path resolvers (4 backend daemons, 4 skill irc_clients, overview collector, harness package reference impl) on `culture_runtime_dir()` so the CLI and daemon agree on the IPC socket path when `XDG_RUNTIME_DIR` is unset (macOS default). Previously the daemon listened on `/tmp/culture-<nick>.sock` while the CLI looked in `~/.culture/run/`, causing `culture channel message` to silently fall back to an anonymous `_peek<random>` nick (#302, regression of #203).
+
 ## [8.7.0] - 2026-04-26
 
 ### Added
