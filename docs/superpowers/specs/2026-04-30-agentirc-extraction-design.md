@@ -218,34 +218,86 @@ Standalone (non-culture) users of agentirc can override the config path via `age
 
 ## Migration mechanics
 
-### Order of operations
+The migration runs in **two tracks** owned by two different agents. The culture-side agent (this work) implements only Track A and produces the brief in Track B as a deliverable; the brief is then handed to the agent working in `../agentirc`. The culture-side cutover PR (Track A) **waits** on the agentirc release that Track B produces.
 
-1. **Bootstrap agentirc** (in `../agentirc`):
-   - Copy server-core files from `culture/agentirc/` (excluding `client.py`, `remote_client.py`, `__main__.py`) into `../agentirc/agentirc/`.
-   - Copy `protocol/extensions/` into `../agentirc/protocol/extensions/`.
-   - Copy IRCd-specific tests from culture's `tests/`.
-   - Add `pyproject.toml` (`name = "agentirc-cli"`, `version = "0.1.0"`, scripts `agentirc = "agentirc.cli:main"`).
-   - Rewrite imports in the new tree: `from culture.agentirc.X` → `from agentirc.X`.
-   - Add new modules `agentirc/cli.py` (extracted from `culture/cli/server.py` server-lifecycle code) and `agentirc/protocol.py` (verb / numeric / tag constants pulled from string-literals in `client.py` and `ircd.py`).
-   - First commit: `Initial import from culture@<sha>` — single synthetic commit pointing at the source SHA.
-   - CI mirrors culture's: pytest + black + isort + flake8 + bandit + markdownlint, plus version-check.
-   - Tag `v0.1.0`, publish to PyPI (publishing is already set up).
-2. **Culture-side cutover PR** (single PR, branch out per culture's standard workflow):
-   - `pyproject.toml`: add `agentirc-cli>=0.1,<0.2`. Regenerate `uv.lock`.
-   - Delete `culture/agentirc/` entirely.
-   - Move `client.py`, `remote_client.py` → `culture/transport/`. Add `culture/transport/__init__.py` re-exporting the public class names.
-   - Replace `culture/cli/server.py` with the passthrough shim.
-   - Update imports across culture: `culture.agentirc.{client,remote_client}` → `culture.transport.{client,remote_client}`; `culture.agentirc.config` → `agentirc.config`; protocol-constant string-literals → `agentirc.protocol`.
-   - Move `protocol/extensions/` out (lives in agentirc now).
-   - Move IRCd-targeted tests out of culture; keep transport / shim / mesh / bot / backend tests.
-   - Add `tests/test_server_shim.py`: invokes `culture server --help`, asserts it matches `agentirc --help` output to prove the passthrough.
-   - `/version-bump major` on culture (deleting the in-tree IRCd is a structural change, even if user-visible CLI is unchanged).
-   - `doc-test-alignment` audit before first push (per culture's CLAUDE.md).
-3. **Verification on a real deployment:**
-   - `pip install -U culture` on a host running `culture-agent-spark-culture.service`.
-   - Confirm the service restarts cleanly with the new agentirc dependency.
-   - Confirm `culture server status` and `agentirc status` produce identical output.
-   - Confirm an existing peer link still establishes (server-link tests in agentirc's CI cover the protocol; this is the in-prod sanity check).
+### Track A — culture-side (implemented in this repo)
+
+A single PR off `main`, following culture's standard workflow.
+
+1. `pyproject.toml`: add `agentirc-cli>=0.1,<0.2`. Regenerate `uv.lock`.
+2. Delete `culture/agentirc/` entirely.
+3. Move `client.py`, `remote_client.py` → `culture/transport/`. Add `culture/transport/__init__.py` re-exporting the public class names.
+4. Replace `culture/cli/server.py` with the passthrough shim (see "CLI surface" above).
+5. Update imports across culture:
+   - `culture.agentirc.{client,remote_client}` → `culture.transport.{client,remote_client}`
+   - `culture.agentirc.config` → `agentirc.config`
+   - Protocol-constant string-literals in `culture/transport/client.py` → `agentirc.protocol.*`
+6. Move `protocol/extensions/` out of culture (it lives in agentirc now).
+7. Move IRCd-targeted tests out of culture (they live in agentirc now); keep transport / shim / mesh / bot / backend tests.
+8. Add `tests/test_server_shim.py`: invokes `culture server --help` and asserts it matches `agentirc --help` output to prove the passthrough is byte-faithful.
+9. `/version-bump major` on culture (deleting the in-tree IRCd is a structural change even though user-visible CLI is unchanged).
+10. Run the `doc-test-alignment` subagent before the first push (per culture's CLAUDE.md).
+11. CI must be green and `agentirc-cli==<chosen pin>` must be installable from PyPI before merge.
+
+### Track B — hand-off brief for the agentirc agent
+
+This block is the deliverable. It is **handed to the agent working in `../agentirc`** and is intended to be self-contained — the receiving agent should not need culture-side context to act on it.
+
+**Goal:** Bootstrap `../agentirc` as a publishable Python package called `agentirc-cli` (import name `agentirc`, CLI binary `agentirc`) carrying the IRCd server core extracted from culture, plus a new CLI dispatch module and protocol-constants module. Tag `v0.1.0` and publish to PyPI.
+
+**Inputs:**
+
+- `../culture/culture/agentirc/` — server-core source, *minus* `client.py`, `remote_client.py`, `__main__.py` (those stay in culture).
+- `../culture/protocol/extensions/` — protocol docs, moved wholesale.
+- `../culture/tests/` — any test that imports `culture.agentirc.*` and is *not* transport-focused; sort per "Test-suite migration" below.
+- `../culture/culture/cli/server.py` — current server-lifecycle CLI dispatch; the new `agentirc/cli.py` is extracted from this.
+- The source-of-truth culture commit SHA at the time of copy (caller will provide).
+
+**Tasks:**
+
+1. Create the package layout under `../agentirc/agentirc/` exactly as specified in "Repo layout — `../agentirc`" earlier in this spec.
+2. Copy each server-core file from culture into `../agentirc/agentirc/` per the "What moves to `../agentirc`" table.
+3. Copy `protocol/extensions/` from culture into `../agentirc/protocol/extensions/`.
+4. Sort the relevant tests from culture's `tests/` into `../agentirc/tests/` per the "Test-suite migration" rules in this spec's Testing section.
+5. Rewrite imports inside the new tree: `from culture.agentirc.X` → `from agentirc.X`. There must be no remaining `culture.` imports in agentirc.
+6. Create `agentirc/cli.py` from culture's `cli/server.py` server-lifecycle code. Expose:
+   - `main()` — entrypoint for the `agentirc` console script.
+   - `dispatch(argv: list[str]) -> int` — the function culture's shim will call. Same flag set, same exit codes, same output as the CLI binary.
+   - Subcommands per the "CLI surface" table (`serve`, `start`, `stop`, `restart`, `status`, `link`, `logs`, `version`).
+   - `--config` defaults to `~/.culture/server.yaml`.
+7. Create `agentirc/protocol.py`. Pull verb names, numeric reply codes, and extension tags out of string-literals in `ircd.py` (and in culture's `client.py` — read it for reference but do **not** copy the file). Export them as named constants.
+8. Create `agentirc/__main__.py` so `python -m agentirc` works (delegates to `agentirc.cli:main`).
+9. Write `pyproject.toml`: `name = "agentirc-cli"`, `version = "0.1.0"`, scripts `agentirc = "agentirc.cli:main"`. Mirror culture's dev-dep set (pytest, pytest-asyncio, pytest-xdist, black, isort, flake8, pylint, bandit, markdownlint).
+10. Mirror culture's pre-commit, CI, and `/version-bump`/CHANGELOG workflow. Start CHANGELOG at `0.1.0`.
+11. Write `docs/api-stability.md` documenting the public surface culture pins on: `agentirc.config`, `agentirc.cli`, `agentirc.protocol`. Mark everything else internal.
+12. First commit message: `Initial import from culture@<SHA>` (where `<SHA>` is the culture commit ID provided by the caller).
+13. Run the full test suite — it must pass before tagging.
+14. Tag `v0.1.0`, push, publish to PyPI as `agentirc-cli`. (PyPI publishing is already set up.)
+15. Report back the published version + git SHA so culture's Track A PR can pin against it.
+
+**Out of scope for Track B:**
+
+- Editing culture. Track B touches `../agentirc` only.
+- Rewriting any of the moved code beyond import-path adjustments and the new `cli.py`/`protocol.py` modules. The IRCd, stores, channels, server-link, and skills are copied as-is.
+- Renaming on-disk artifacts (config paths, sockets, systemd unit names) — they stay culture-named per the Configuration section.
+- Publishing protocol/extensions docs externally.
+
+**Acceptance criteria:**
+
+- `pip install agentirc-cli==0.1.0` from PyPI produces a working `agentirc` binary.
+- `agentirc serve --config ~/.culture/server.yaml` starts an IRCd indistinguishable from today's `culture server start`.
+- `agentirc.config.LinkConfig`, `agentirc.config.PeerSpec`, `agentirc.cli.dispatch`, and `agentirc.protocol.*` are importable.
+- All tests in `../agentirc/tests/` pass under `pytest -n auto`.
+- `git grep -E '^(from|import) culture' agentirc/ tests/` returns nothing.
+
+### Track C — verification on a real deployment
+
+After Track A merges and culture is released:
+
+- `pip install -U culture` on a host running `culture-agent-spark-culture.service`.
+- Confirm the service restarts cleanly with the new `agentirc-cli` dependency.
+- Confirm `culture server status` and `agentirc status` produce byte-identical output.
+- Confirm an existing peer link still establishes (server-link tests in agentirc's CI cover the protocol; this is the in-prod sanity check).
 
 ### Distribution
 
