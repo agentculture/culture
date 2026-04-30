@@ -30,7 +30,7 @@ This is the first of several planned splits — `culture-agent` and `culture-bot
 ## Goals
 
 - agentirc lives in `../agentirc` as an independently versioned package on PyPI (distribution name `agentirc-cli`, import name `agentirc`), with its own CLI binary `agentirc`.
-- Culture consumes it as a normal dependency (`agentirc-cli>=0.1,<0.2`).
+- Culture consumes it as a normal dependency (`agentirc-cli>=9.0,<10.0`).
 - `culture server <verb> <args>` continues to work for every existing verb, with identical flags, output, and exit codes — implemented as a 1:1 passthrough into `agentirc.cli.dispatch`.
 - On-disk footprint stays culture-named: `~/.culture/server.yaml`, current socket paths, `culture-agent-*.service` systemd units, current log paths. Existing deployments need zero migration.
 - The IRCd's protocol surface (`protocol/extensions/`) lives in agentirc, where it belongs.
@@ -88,7 +88,7 @@ This is the first of several planned splits — `culture-agent` and `culture-bot
 ```
 agentirc/
 ├── pyproject.toml          # name = "agentirc-cli"; scripts = { agentirc = "agentirc.cli:main" }
-├── CHANGELOG.md            # starts at 0.1.0
+├── CHANGELOG.md            # starts at 9.0.0 (aligned with culture's version stream)
 ├── README.md
 ├── LICENSE
 ├── agentirc/
@@ -124,7 +124,7 @@ agentirc/
 
 ```
 culture/
-├── pyproject.toml          # adds: agentirc-cli>=0.1,<0.2
+├── pyproject.toml          # adds: agentirc-cli>=9.0,<10.0
 ├── uv.lock                 # regenerated
 ├── culture/
 │   ├── agentirc/           # DELETED
@@ -224,7 +224,7 @@ The migration runs in **two tracks** owned by two different agents. The culture-
 
 A single PR off `main`, following culture's standard workflow.
 
-1. `pyproject.toml`: add `agentirc-cli>=0.1,<0.2`. Regenerate `uv.lock`.
+1. `pyproject.toml`: add `agentirc-cli>=9.0,<10.0`. Regenerate `uv.lock`.
 2. Delete `culture/agentirc/` entirely.
 3. Move `client.py`, `remote_client.py` → `culture/transport/`. Add `culture/transport/__init__.py` re-exporting the public class names.
 4. Replace `culture/cli/server.py` with the passthrough shim (see "CLI surface" above).
@@ -243,7 +243,7 @@ A single PR off `main`, following culture's standard workflow.
 
 This block is the deliverable. It is **handed to the agent working in `../agentirc`** and is intended to be self-contained — the receiving agent should not need culture-side context to act on it.
 
-**Goal:** Bootstrap `../agentirc` as a publishable Python package called `agentirc-cli` (import name `agentirc`, CLI binary `agentirc`) carrying the IRCd server core extracted from culture, plus a new CLI dispatch module and protocol-constants module. Tag `v0.1.0` and publish to PyPI.
+**Goal:** Bootstrap `../agentirc` as a publishable Python package called `agentirc-cli` (import name `agentirc`, CLI binary `agentirc`) carrying the IRCd server core extracted from culture, plus a new CLI dispatch module and protocol-constants module. Tag `v9.0.0` and publish to PyPI.
 
 **Inputs:**
 
@@ -267,12 +267,12 @@ This block is the deliverable. It is **handed to the agent working in `../agenti
    - `--config` defaults to `~/.culture/server.yaml`.
 7. Create `agentirc/protocol.py`. Pull verb names, numeric reply codes, and extension tags out of string-literals in `ircd.py` (and in culture's `client.py` — read it for reference but do **not** copy the file). Export them as named constants.
 8. Create `agentirc/__main__.py` so `python -m agentirc` works (delegates to `agentirc.cli:main`).
-9. Write `pyproject.toml`: `name = "agentirc-cli"`, `version = "0.1.0"`, scripts `agentirc = "agentirc.cli:main"`. Mirror culture's dev-dep set (pytest, pytest-asyncio, pytest-xdist, black, isort, flake8, pylint, bandit, markdownlint).
-10. Mirror culture's pre-commit, CI, and `/version-bump`/CHANGELOG workflow. Start CHANGELOG at `0.1.0`.
+9. Write `pyproject.toml`: `name = "agentirc-cli"`, `version = "9.0.0"` (aligned with culture's version stream — agentirc-cli prior history runs through 8.7.1; 9.0.0 is the first release of the extracted IRCd), scripts `agentirc = "agentirc.cli:main"`. Mirror culture's dev-dep set (pytest, pytest-asyncio, pytest-xdist, black, isort, flake8, pylint, bandit, markdownlint).
+10. Mirror culture's pre-commit, CI, and `/version-bump`/CHANGELOG workflow. CHANGELOG starts at `9.0.0`.
 11. Write `docs/api-stability.md` documenting the public surface culture pins on: `agentirc.config`, `agentirc.cli`, `agentirc.protocol`. Mark everything else internal.
 12. First commit message: `Initial import from culture@<SHA>` (where `<SHA>` is the culture commit ID provided by the caller).
 13. Run the full test suite — it must pass before tagging.
-14. Tag `v0.1.0`, push, publish to PyPI as `agentirc-cli`. (PyPI publishing is already set up.)
+14. Tag `v9.0.0`, push, publish to PyPI as `agentirc-cli`. (PyPI publishing is already set up.)
 15. Report back the published version + git SHA so culture's Track A PR can pin against it.
 
 **Out of scope for Track B:**
@@ -284,7 +284,7 @@ This block is the deliverable. It is **handed to the agent working in `../agenti
 
 **Acceptance criteria:**
 
-- `pip install agentirc-cli==0.1.0` from PyPI produces a working `agentirc` binary.
+- `pip install agentirc-cli==9.0.0` from PyPI produces a working `agentirc` binary.
 - `agentirc serve --config ~/.culture/server.yaml` starts an IRCd indistinguishable from today's `culture server start`.
 - `agentirc.config.LinkConfig`, `agentirc.config.PeerSpec`, `agentirc.cli.dispatch`, and `agentirc.protocol.*` are importable.
 - All tests in `../agentirc/tests/` pass under `pytest -n auto`.
@@ -301,14 +301,14 @@ After Track A merges and culture is released:
 
 ### Distribution
 
-- agentirc → PyPI as `agentirc-cli` (semver). Culture pins `agentirc-cli>=0.1,<0.2`.
+- agentirc → PyPI as `agentirc-cli` (semver). Culture pins `agentirc-cli>=9.0,<10.0`.
 - TestPyPI carries both `agentirc-cli` and a squatted `agentirc`; only `agentirc-cli` is the canonical name. Anything publishing or installing should use `agentirc-cli`.
 - agentirc adopts culture's version workflow (`/version-bump`, CHANGELOG, version-check CI).
 - All-backends rule still applies: changes that cross the agentirc / culture-transport boundary must be reflected across all four backends in culture (`claude`, `codex`, `copilot`, `acp`).
 
 ### Rollback
 
-If the cutover PR breaks something not caught in CI, the rollback is a `git revert` of the culture-side PR. The agentirc repo itself is independent and stays. Pinning `agentirc-cli>=0.1,<0.2` means culture cannot accidentally pick up an incompatible 0.2.0 release.
+If the cutover PR breaks something not caught in CI, the rollback is a `git revert` of the culture-side PR. The agentirc repo itself is independent and stays. Pinning `agentirc-cli>=9.0,<10.0` means culture cannot accidentally pick up an incompatible 10.0.0 release.
 
 ## Testing strategy
 
@@ -342,7 +342,7 @@ Tests under culture's `tests/` are sorted into three buckets at copy time:
 | Protocol constants drift between agentirc (server) and culture/transport (client). | `agentirc.protocol` is the single source. Both sides import from there; tests on either side fail fast on missing constants. |
 | Existing deployment breaks because something on disk is unexpectedly named. | Goals/Non-Goals: nothing on disk is renamed. The verification step on a real deployment catches anything we missed. |
 | `culture server --help` output diverges from `agentirc --help` over time. | The shim parity test asserts byte-equality of the help text. CI fails if drift appears. |
-| First PyPI release of agentirc is broken; culture cutover PR can't merge. | Culture pins `agentirc-cli>=0.1,<0.2`. Patches go out as `0.1.1`, `0.1.2`. Culture's PR can wait or pin to a specific known-good `==0.1.X`. |
+| First PyPI release of agentirc is broken; culture cutover PR can't merge. | Culture pins `agentirc-cli>=9.0,<10.0`. Patches go out as `9.0.1`, `9.0.2`. Culture's PR can wait or pin to a specific known-good `==9.0.X`. |
 | Future changes touch both repos at once and become hard to coordinate. | All-backends rule already requires multi-backend coordination; the same discipline extends to multi-repo coordination. Significant cross-repo work pairs an agentirc PR with a culture PR that bumps the floor pin. |
 
 ## Open questions

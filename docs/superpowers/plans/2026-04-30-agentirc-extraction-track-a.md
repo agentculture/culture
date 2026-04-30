@@ -4,7 +4,7 @@
 
 **Goal:** Cut over culture to consume the `agentirc-cli` PyPI package: delete the in-tree IRCd, relocate the client transport to `culture/transport/`, install a 1:1 passthrough shim at `culture server <verb>`, and ship a major version bump.
 
-**Architecture:** Single PR off `main`. Adds `agentirc-cli>=0.1,<0.2` as a runtime dep. Replaces `culture/cli/server.py` with a thin argparse-`REMAINDER` passthrough into `agentirc.cli.dispatch(argv) -> int`. Moves `culture/agentirc/{client,remote_client}.py` to `culture/transport/` (git mv to preserve blame). Deletes `culture/agentirc/` and `protocol/extensions/` wholesale. Adds one shim parity test and one cross-repo smoke test.
+**Architecture:** Single PR off `main`. Adds `agentirc-cli>=9.0,<10.0` as a runtime dep. Replaces `culture/cli/server.py` with a thin argparse-`REMAINDER` passthrough into `agentirc.cli.dispatch(argv) -> int`. Moves `culture/agentirc/{client,remote_client}.py` to `culture/transport/` (git mv to preserve blame). Deletes `culture/agentirc/` and `protocol/extensions/` wholesale. Adds one shim parity test and one cross-repo smoke test.
 
 **Tech Stack:** Python 3.x, uv (deps + lockfile), argparse, pytest + pytest-asyncio + pytest-xdist, pre-commit (black + isort + flake8 + pylint + bandit + markdownlint).
 
@@ -14,8 +14,7 @@
 
 ## Preconditions (do not start until all are true)
 
-- `agentirc-cli==<VERSION>` is published to PyPI (Track B is merged in `agentculture/agentirc` and the agentirc agent has tagged + released).
-- The exact version string the engineer will pin is known. Throughout this plan, **`<VERSION>`** is a placeholder for that version (e.g., `0.1.0`). Replace it everywhere before executing.
+- `agentirc-cli==9.0.0` is published to PyPI (verified at plan-write time on 2026-04-30; Track B merged in `agentculture/agentirc` and tagged 9.0.0). If a newer 9.0.x patch exists by execution time, prefer it; the dependency pin range `>=9.0,<10.0` accepts any 9.x.y.
 - Working tree on `main` is clean: `git status` shows no staged or unstaged changes inside `culture/agentirc/`, `culture/cli/server.py`, `culture/cli/shared/mesh.py`, `culture/bots/`, `culture/clients/`, or `protocol/extensions/`.
 - Pre-existing untracked changes elsewhere are fine but should be stashed if they could interfere with `/version-bump` or `git mv`.
 
@@ -27,7 +26,7 @@ If any precondition fails, stop and resolve it before continuing.
 
 | Path | Action | Notes |
 |---|---|---|
-| `pyproject.toml` | Modify | Add `agentirc-cli>=0.1,<0.2` to runtime deps. |
+| `pyproject.toml` | Modify | Add `agentirc-cli>=9.0,<10.0` to runtime deps. |
 | `uv.lock` | Modify | Regenerate via `uv lock`. |
 | `culture/agentirc/` | Delete (whole directory) | All ~3,600 LOC, including `__main__.py` and `skills/`. |
 | `culture/agentirc/client.py` | `git mv` → `culture/transport/client.py` | Preserves blame. |
@@ -53,15 +52,15 @@ If any precondition fails, stop and resolve it before continuing.
 - [ ] **Step 1.1:** Confirm the published version.
 
 ```bash
-uv pip install --dry-run "agentirc-cli==<VERSION>" 2>&1 | tail -5
+uv pip install --dry-run "agentirc-cli==9.0.0" 2>&1 | tail -5
 ```
 
-Expected: a line like `Would install agentirc-cli==<VERSION>`. If you see `Could not find a version that satisfies the requirement`, agentirc-cli isn't on PyPI yet — STOP. Do not start the cutover.
+Expected: a line like `Would install agentirc-cli==9.0.0`. If you see `Could not find a version that satisfies the requirement`, agentirc-cli isn't on PyPI yet — STOP. Do not start the cutover.
 
 - [ ] **Step 1.2:** Smoke-test the binary in a clean throwaway venv.
 
 ```bash
-cd /tmp && uv venv check-agentirc && uv pip install --python check-agentirc/bin/python "agentirc-cli==<VERSION>" >/dev/null && check-agentirc/bin/agentirc --help && rm -rf check-agentirc
+cd /tmp && uv venv check-agentirc && uv pip install --python check-agentirc/bin/python "agentirc-cli==9.0.0" >/dev/null && check-agentirc/bin/agentirc --help && rm -rf check-agentirc
 ```
 
 Expected: `agentirc --help` lists subcommands `serve start stop restart status link logs version` (or a superset). Confirms the binary is wired up.
@@ -69,7 +68,7 @@ Expected: `agentirc --help` lists subcommands `serve start stop restart status l
 - [ ] **Step 1.3:** Inspect the public API surface.
 
 ```bash
-cd /tmp && uv run --with "agentirc-cli==<VERSION>" python -c "
+cd /tmp && uv run --with "agentirc-cli==9.0.0" python -c "
 import agentirc.config, agentirc.cli, agentirc.protocol
 print('config:', sorted(n for n in dir(agentirc.config) if not n.startswith('_')))
 print('cli:', sorted(n for n in dir(agentirc.cli) if not n.startswith('_')))
@@ -97,7 +96,7 @@ Expected: branch created and checked out.
 
 - [ ] **Step 2.2:** Add `agentirc-cli` to runtime dependencies.
 
-Open `pyproject.toml` and add `"agentirc-cli>=0.1,<0.2"` to the `[project] dependencies` list. Keep the list alphabetised if culture's existing entries are alphabetised; otherwise append.
+Open `pyproject.toml` and add `"agentirc-cli>=9.0,<10.0"` to the `[project] dependencies` list. Keep the list alphabetised if culture's existing entries are alphabetised; otherwise append.
 
 - [ ] **Step 2.3:** Regenerate the lockfile.
 
@@ -693,7 +692,7 @@ Open `CHANGELOG.md`. Replace the auto-generated stub for the new version with a 
 
 ### Changed (breaking)
 
-- The IRCd has been extracted into a separate package, `agentirc-cli`. Culture now depends on `agentirc-cli>=0.1,<0.2`.
+- The IRCd has been extracted into a separate package, `agentirc-cli`. Culture now depends on `agentirc-cli>=9.0,<10.0`.
 - `culture server <verb>` is now a 1:1 passthrough into `agentirc.cli.dispatch`. All existing verbs continue to work; their flags, output, and exit codes come from `agentirc-cli`.
 - `culture/agentirc/` has been deleted. Code that imported `culture.agentirc.*` must update:
   - `culture.agentirc.client` / `culture.agentirc.remote_client` → `culture.transport.client` / `culture.transport.remote_client`
@@ -819,7 +818,7 @@ git push -u origin agentirc-extraction-cutover
 gh pr create --base main --title "feat: extract IRCd to agentirc-cli; culture server becomes passthrough" --body "$(cat <<'EOF'
 ## Summary
 
-- Cuts culture over to consume `agentirc-cli>=0.1,<0.2` from PyPI.
+- Cuts culture over to consume `agentirc-cli>=9.0,<10.0` from PyPI.
 - Deletes `culture/agentirc/` (~3,600 LOC); moves client transport to `culture/transport/`; replaces `culture/cli/server.py` with a 1:1 argparse-`REMAINDER` passthrough into `agentirc.cli.dispatch`.
 - Deletes `protocol/extensions/` (it lives in agentirc's repo now).
 - Major version bump.
@@ -863,4 +862,4 @@ After this PR merges and a culture release is published:
 - Confirm `culture server status` and `agentirc status` produce byte-identical output.
 - Confirm an existing peer link still establishes.
 
-If anything misbehaves on a real deployment, file follow-up issues; do not roll back unless behavior is broken (the dependency pin `agentirc-cli>=0.1,<0.2` already protects against accidental 0.2 upgrades).
+If anything misbehaves on a real deployment, file follow-up issues; do not roll back unless behavior is broken (the dependency pin `agentirc-cli>=9.0,<10.0` already protects against accidental 10.0 upgrades).
