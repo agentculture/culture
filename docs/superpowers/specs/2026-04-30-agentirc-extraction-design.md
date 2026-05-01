@@ -1,8 +1,30 @@
 # AgentIRC Extraction Design
 
-**Status:** Proposed
+**Status:** In progress — Phase A1 landed in culture 8.8.0 (2026-05-01); Phase A3 blocked on agentculture/agentirc#15
 **Date:** 2026-04-30
 **Owner:** Ori Nachum
+
+## Implementation status (added 2026-05-01)
+
+Track A on the culture side is split into phases because the literal
+"delete `culture/agentirc/{ircd, ...}.py` and shim `culture server start`"
+described below cannot land in one PR — culture's bots
+(`culture/bots/*`) hold an in-process `IRCd` reference and call
+`server.emit_event`/`server.channels`/`server.get_or_create_channel`
+directly. agentirc's published public API (see
+`docs/api-stability.md` in agentirc) exposes no out-of-process bot
+hook, and `Event`/`EventType` are explicitly internal.
+
+| Phase | Scope | Status |
+|---|---|---|
+| **B** (agentirc bootstrap) | `agentirc-cli==9.4.1` published, public API stable, on-disk layout preserved | ✅ done (see culture#308) |
+| **A1** (culture-side public-API migration) | Pin `agentirc-cli>=9.4,<10`; `culture/agentirc/config.py` becomes a re-export shim over `agentirc.config`; canonical call sites (telemetry, mesh CLI, conftest) retarget; minor bump 8.7.1 → 8.8.0 | ✅ done 2026-05-01 |
+| **A2** (decide bot-runtime story) | agentirc to add a documented out-of-process bot extension API (event-stream verb, public Event/EventType, silent-bot connection convention); culture/bots/* rewritten against it | ⏸ blocked on agentculture/agentirc#15 |
+| **A3** (final cutover) | Delete `culture/agentirc/{ircd,server_link,channel,config,events,room_store,thread_store,history_store,rooms_util,skill,client,remote_client}.py` + `culture/agentirc/skills/`; drop `culture/agentirc/` from wheel packages; replace `culture/cli/server.py:_run_server` with `subprocess.run(["agentirc", *argv])` (or `agentirc.cli.dispatch`); keep culture-only verbs `default`/`rename`/`archive`/`unarchive`; major bump | ⏸ depends on A2 |
+
+The Boundary / Plan sections below describe the A3 end state. They
+remain the target; the phased approach is purely about how culture
+gets there without breaking bots in flight.
 
 ## Summary
 

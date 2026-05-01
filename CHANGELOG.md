@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.8.0] - 2026-05-01
+
+### Added
+
+- `agentirc-cli>=9.4,<10` runtime dependency — the IRCd config dataclasses (`ServerConfig`, `LinkConfig`, `TelemetryConfig`) are now sourced from the published `agentirc.config` PyPI package instead of culture's local copy. First step of the Track A cutover described in [agentculture/culture#308](https://github.com/agentculture/culture/issues/308).
+
+### Changed
+
+- `culture/agentirc/config.py` is now a re-export shim over `agentirc.config` — `from culture.agentirc.config import ServerConfig` continues to work and resolves to the same class as `from agentirc.config import ServerConfig` (no parallel-dataclass identity hazard). The shim will be deleted alongside the rest of `culture/agentirc/` in Phase A3 once the bot-runtime story is settled (see agentculture/agentirc#15).
+- Canonical call sites retargeted to import directly from `agentirc.config`: `culture/cli/shared/mesh.py`, `culture/config.py`, `culture/telemetry/{metrics,tracing,audit}.py`, `tests/conftest.py`. Bot-runtime call sites (`culture/bots/*`, `culture/agentirc/ircd.py`, `culture/cli/server.py:_run_server`, `culture/clients/*/daemon.py`) intentionally retain their `culture.agentirc.*` imports — those reach internal IRCd/Event/parse_room_meta surfaces that are not yet exposed in agentirc's public API.
+
 ## [8.7.1] - 2026-04-27
 
 ### Added

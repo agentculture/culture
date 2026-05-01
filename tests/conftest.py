@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
 from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
@@ -13,7 +14,6 @@ from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from culture.agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
 from culture.agentirc.ircd import IRCd
 from culture.telemetry.metrics import reset_for_tests as _reset_metrics
 from culture.telemetry.tracing import reset_for_tests as _reset_telemetry

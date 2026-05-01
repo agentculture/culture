@@ -1,49 +1,14 @@
-from dataclasses import dataclass, field
+"""Re-export shim for the IRCd config dataclasses.
 
+The dataclass definitions live in `agentirc.config` (the published
+`agentirc-cli` PyPI package). This module re-exports them so
+existing `from culture.agentirc.config import ...` call sites keep
+working during the Track A migration. New code should import from
+`agentirc.config` directly.
 
-@dataclass
-class LinkConfig:
-    """Configuration for a server-to-server link."""
+Removed alongside the rest of `culture/agentirc/` in Phase A3.
+"""
 
-    name: str
-    host: str
-    port: int
-    password: str
-    trust: str = "full"  # "full" or "restricted"
+from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
 
-
-@dataclass
-class TelemetryConfig:
-    """OpenTelemetry settings. Mirrors server.yaml `telemetry:` block."""
-
-    enabled: bool = False
-    service_name: str = "culture.agentirc"
-    otlp_endpoint: str = "http://localhost:4317"
-    otlp_protocol: str = "grpc"  # grpc | http/protobuf (only grpc supported initially)
-    otlp_timeout_ms: int = 5000
-    otlp_compression: str = "gzip"  # gzip | none
-    traces_enabled: bool = True
-    traces_sampler: str = "parentbased_always_on"
-    metrics_enabled: bool = True
-    metrics_export_interval_ms: int = 10000
-    # Audit JSONL sink (Plan 4). Independent of `enabled` — audit fires
-    # even when telemetry is off so admins always have the trail.
-    audit_enabled: bool = True
-    audit_dir: str = "~/.culture/audit"
-    audit_max_file_bytes: int = 256 * 1024 * 1024  # 256 MiB
-    audit_rotate_utc_midnight: bool = True
-    audit_queue_depth: int = 10000
-
-
-@dataclass
-class ServerConfig:
-    """Configuration for a culture server instance."""
-
-    name: str = "culture"
-    host: str = "0.0.0.0"
-    port: int = 6667
-    webhook_port: int = 7680
-    data_dir: str = ""
-    links: list[LinkConfig] = field(default_factory=list)
-    system_bots: dict = field(default_factory=dict)
-    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
+__all__ = ["LinkConfig", "ServerConfig", "TelemetryConfig"]
