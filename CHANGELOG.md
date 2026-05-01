@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `culture/agentirc/config.py` is now a re-export shim over `agentirc.config` — `from culture.agentirc.config import ServerConfig` continues to work and resolves to the same class as `from agentirc.config import ServerConfig` (no parallel-dataclass identity hazard). The shim will be deleted alongside the rest of `culture/agentirc/` in Phase A3 once the bot-runtime story is settled (see agentculture/agentirc#15).
 - Canonical call sites retargeted to import directly from `agentirc.config`: `culture/cli/shared/mesh.py`, `culture/config.py`, `culture/telemetry/{metrics,tracing,audit}.py`, `tests/conftest.py`. Bot-runtime call sites (`culture/bots/*`, `culture/agentirc/ircd.py`, `culture/cli/server.py:_run_server`, `culture/clients/*/daemon.py`) intentionally retain their `culture.agentirc.*` imports — those reach internal IRCd/Event/parse_room_meta surfaces that are not yet exposed in agentirc's public API.
 
+### Removed
+
+- Bootstrap-era `agentirc-cli` and `agentirc` alias publish steps from `.github/workflows/publish.yml`. `agentirc-cli` is now owned by [agentculture/agentirc](https://github.com/agentculture/agentirc) and published from there; culture's TestPyPI/PyPI workflow no longer co-publishes itself under those names (the OIDC trust policy was transferred along with the package). Culture continues to publish itself as `culture` on both indices.
+- `agentirc-cli` / `agentirc` fallback chain in `culture/__init__.py` `__version__` resolution. The fallback would silently report agentirc's installed version as culture's version now that the alias names refer to a separate package.
+
 ## [8.7.1] - 2026-04-27
 
 ### Added
