@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- `agentirc-cli>=9.4,<10` runtime dependency — the IRCd config dataclasses (`ServerConfig`, `LinkConfig`, `TelemetryConfig`) are now sourced from the published `agentirc.config` PyPI package instead of culture's local copy. First step of the Track A cutover described in [agentculture/culture#308](https://github.com/agentculture/culture/issues/308).
+- `agentirc-cli>=9.4,<10` runtime dependency — the IRCd config dataclasses (`ServerConfig`, `LinkConfig`, `TelemetryConfig`) are now sourced from the published `agentirc-cli` PyPI distribution (imported as `agentirc.config`) instead of culture's local copy. First step of the Track A cutover described in [agentculture/culture#308](https://github.com/agentculture/culture/issues/308).
 
 ### Changed
 
