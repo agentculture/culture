@@ -20,7 +20,7 @@ def parse_link(value: str):
     Trust is extracted from the end if it matches a known value.
     This allows passwords containing colons.
     """
-    from culture.agentirc.config import LinkConfig
+    from agentirc.config import LinkConfig
 
     trust = "full"
     if value.endswith(":full") or value.endswith(":restricted"):
@@ -41,7 +41,8 @@ def parse_link(value: str):
 
 def resolve_links_from_mesh(mesh_config_path: str) -> list:
     """Load link configs from mesh.yaml, looking up passwords from OS keyring."""
-    from culture.agentirc.config import LinkConfig
+    from agentirc.config import LinkConfig
+
     from culture.credentials import lookup_credential
     from culture.mesh_config import load_mesh_config
 

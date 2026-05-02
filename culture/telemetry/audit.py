@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from culture.agentirc.config import ServerConfig
+from agentirc.config import ServerConfig
 
 if TYPE_CHECKING:
     from culture.agentirc.skill import Event

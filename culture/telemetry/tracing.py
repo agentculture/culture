@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 
+from agentirc.config import ServerConfig, TelemetryConfig
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
@@ -24,8 +25,6 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
 )
 from opentelemetry.trace import Tracer
-
-from culture.agentirc.config import ServerConfig, TelemetryConfig
 
 logger = logging.getLogger(__name__)
 

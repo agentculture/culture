@@ -15,14 +15,13 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 
+from agentirc.config import ServerConfig
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.metrics import Counter, Histogram, Meter, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
-
-from culture.agentirc.config import ServerConfig
 
 logger = logging.getLogger(__name__)
 

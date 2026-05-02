@@ -17,6 +17,21 @@ wheels = [
 ]
 
 [[package]]
+name = "agentirc-cli"
+version = "9.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/a2/8b634f282dee305914bc7981b9078e974807b2dfaa86cf703a34fed0f260/agentirc_cli-9.4.1.tar.gz", hash = "sha256:cee4f94485cd005c8db4a0314b40b090258b5f0a655b3407772ff0db9594495b", size = 203722, upload-time = "2026-05-01T16:07:52.49Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/b7/330842c7791663945658b1c42f4f63038e463f925c55cdc891d0374ec9dc/agentirc_cli-9.4.1-py3-none-any.whl", hash = "sha256:12c0db88541f30f443910b139bb897f06c99024f49cc3b0ded26c0bb2b1365c5", size = 92046, upload-time = "2026-05-01T16:07:53.473Z" },
+]
+
+[[package]]
 name = "agex-cli"
 version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
@@ -591,10 +606,11 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "8.7.1"
+version = "8.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
+    { name = "agentirc-cli" },
     { name = "agex-cli" },
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -635,6 +651,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "afi-cli", specifier = ">=0.3,<1.0" },
+    { name = "agentirc-cli", specifier = ">=9.4,<10" },
     { name = "agex-cli", specifier = ">=0.13,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },

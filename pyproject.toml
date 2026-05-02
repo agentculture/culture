@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "8.7.1"
+version = "8.8.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
+    "agentirc-cli>=9.4,<10",
     "anthropic>=0.40",
     "claude-agent-sdk>=0.1",
     "mistune>=3.0",
