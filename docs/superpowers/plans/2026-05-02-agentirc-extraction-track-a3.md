@@ -1,12 +1,14 @@
 # AgentIRC Extraction — Track A3 (Final Cutover) Implementation Plan
 
+> **Plan revised 2026-05-03.** A2's approach changed (cross-repo split filed as agentculture/agentirc#22): culture's `culture/cli/server.py:_run_server` now embeds `agentirc.ircd.IRCd` directly in-process (no subprocess), and `culture/bots/virtual_client.py` is a thin wrapper over the public `agentirc.virtual_client.VirtualClient`. A3 inherits that — Task 1.3's old "in-process dispatch vs subprocess run" decision is settled (A2 already chose in-process); the partial-passthrough shim still preserves culture-owned verbs (`default`/`rename`/`archive`/`unarchive`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **This plan supersedes** `docs/superpowers/plans/2026-04-30-agentirc-extraction-track-a.md`. The original drafted A1+A2+A3 as a single PR; phasing forced a split. A1 shipped in culture#309 (8.8.0); A2 ships in `feat/bots-public-extension-api` (8.9.0, see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md`); A3 is this plan.
+> **This plan supersedes** `docs/superpowers/plans/2026-04-30-agentirc-extraction-track-a.md`. The original drafted A1+A2+A3 as a single PR; phasing forced a split. A1 shipped in culture#309 (8.8.0); A2 ships in `feat/bots-embedded-agentirc` (8.9.0, see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md`); A3 is this plan.
 
-**Goal:** Delete the bundled IRCd in `culture/agentirc/` and shim `culture server <verb>` to the installed `agentirc` binary. After A3, the only Python files remaining under `culture/agentirc/` are `config.py` (the A1 re-export shim) and `__init__.py`. Major version bump 8.x → 9.0.0.
+**Goal:** Delete the bundled IRCd in `culture/agentirc/`. A2 already swapped `culture/cli/server.py:_run_server` to embed `agentirc.ircd.IRCd` directly, so the bundled files are dead weight by this point. A3 removes them, finishes the partial-passthrough shim for non-`start` lifecycle verbs (forwarding to `agentirc.cli.dispatch`), and bumps major. After A3, the only Python files remaining under `culture/agentirc/` are `config.py` (the A1 re-export shim) and `__init__.py`. Major version bump 8.x → 9.0.0.
 
-**Architecture:** Single PR off `main`, after A2 has merged. `git rm` the IRCd source files (`ircd.py`, `server_link.py`, `channel.py`, `events.py`, the four stores, `rooms_util.py`, `skill.py`, `skills/`). `git mv` `client.py` and `remote_client.py` to `culture/transport/` (preserves blame; they were never IRCd code). Replace `culture/cli/server.py:_run_server` with a thin passthrough into `agentirc.cli.dispatch` (in-process) or `subprocess.run(["agentirc", *argv])` (subprocess) — Task 4 chooses. Delete `protocol/extensions/` (lives in agentirc's repo). Bump major.
+**Architecture:** Single PR off `main`, after A2 has merged. `git rm` the IRCd source files (`ircd.py`, `server_link.py`, `channel.py`, `events.py`, the four stores, `rooms_util.py`, `skill.py`, `skills/`). `git mv` `client.py` and `remote_client.py` to `culture/transport/` (preserves blame; they were never IRCd code). `culture/cli/server.py` already constructs `agentirc.ircd.IRCd(config)` for `start` (per A2); A3 layers on a partial passthrough — culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) keep their existing handlers, lifecycle verbs other than `start` (`stop`/`status`/`restart`/`link`/`logs`/`version`/`serve`) forward to `agentirc.cli.dispatch`. Delete `protocol/extensions/` (lives in agentirc's repo). Bump major.
 
 **Tech Stack:** Python 3.x, uv, argparse, pytest + pytest-asyncio + pytest-xdist, pre-commit (black + isort + flake8 + pylint + bandit + markdownlint).
 
@@ -61,7 +63,7 @@
 | `culture/agentirc/config.py` | Keep | A1 re-export shim over `agentirc.config`. Stays through 9.x; remove in 10.0.0. |
 | `culture/agentirc/__init__.py` | Modify | Trim to a single re-export of `agentirc.config` symbols. |
 | `culture/transport/__init__.py` | Create | Re-exports the public class names from `client.py` and `remote_client.py`. |
-| `culture/cli/server.py` | Rewrite | ~30 lines. Partial passthrough — culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) dispatch to `culture/cli/server_local.py`; everything else forwards to `agentirc.cli.dispatch` (or `subprocess.run` for `start`). |
+| `culture/cli/server.py` | Modify | ~30 lines. Partial passthrough — culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) dispatch to `culture/cli/server_local.py`; `start` continues to use the in-process `agentirc.ircd.IRCd(config)` path A2 introduced; other lifecycle verbs (`stop`/`status`/`restart`/`link`/`logs`/`version`/`serve`) forward to `agentirc.cli.dispatch`. |
 | `culture/cli/server_local.py` | Create | Houses the moved handler bodies for `default`/`rename`/`archive`/`unarchive` (extracted from today's `culture/cli/server.py`). Helpers (`read_default_server`, rename/archive utilities) stay in `culture/cli/shared/`. |
 | `culture/bots/`, `culture/clients/*/daemon.py` | Modify (imports only) | `culture.agentirc.{client,remote_client}` → `culture.transport.{client,remote_client}`. |
 | `protocol/extensions/` | Delete (whole dir) | Lives in agentirc now. |
@@ -80,12 +82,7 @@
 
 - [ ] **Step 1.2:** Confirm the agentirc CLI surface (run the `agentirc --help` snippet from "Preconditions"). Save the output — Task 5's shim parity test reads from this.
 
-- [ ] **Step 1.3:** Decide between in-process `dispatch` and subprocess `run`:
-
-  - **In-process** (`from agentirc.cli import dispatch; return dispatch(argv)`) — same Python interpreter, same env, faster, easier to debug, but couples culture's process to agentirc internals.
-  - **Subprocess** (`subprocess.run(["agentirc", *argv])`) — fully decoupled, works even if agentirc fails to import, but adds ~50ms fork overhead per invocation and may complicate signal handling for `culture server start` (which is long-running).
-
-  Recommendation: **in-process** for everything except `start` (which is long-running and benefits from process isolation). Verify `dispatch` is exposed (run the snippet from "Preconditions"). **Record the decision in this task before continuing.**
+- [ ] **Step 1.3:** Inherit A2's decision: **in-process embedding via `agentirc.ircd.IRCd`** for `culture server start`, plus `agentirc.cli.dispatch(argv)` for the other lifecycle verbs (`stop`, `status`, `link`, `logs`, `version`, `serve`). A2 already wired `_run_server` to construct `agentirc.ircd.IRCd(config)` directly; A3 just reuses that path. The "subprocess for `start`" alternative from the original A3 draft is no longer relevant — A2 confirmed the public class boots cleanly in culture's CLI process. Confirm by reading `culture/cli/server.py` post-A2 and verifying `_run_server` already imports from `agentirc.ircd`.
 
 ---
 
@@ -193,7 +190,12 @@
 - [ ] **Step 4.2:** Decide the routing rule. The shim is a **partial** passthrough — culture-owned verbs (`default`, `rename`, `archive`, `unarchive`) stay in culture; everything else forwards to agentirc. Implement as a dispatch dict, not as a hard-coded "if argv[0] in {…}" + drop-through, so the verb list is reviewable in one place:
 
   ```python
-  """culture server <verb> — partial passthrough; culture-owned verbs stay local."""
+  """culture server <verb> — partial passthrough.
+
+  - culture-owned verbs (default/rename/archive/unarchive) stay local
+  - `start` keeps using A2's in-process agentirc.ircd.IRCd path
+  - other lifecycle verbs forward to agentirc.cli.dispatch
+  """
   from agentirc.cli import dispatch as _agentirc_dispatch
 
   from culture.cli.server_local import (
@@ -201,6 +203,7 @@
       cmd_rename,
       cmd_archive,
       cmd_unarchive,
+      cmd_start,  # the A2-introduced in-process path; still owned by culture
   )
 
   _CULTURE_OWNED = {
@@ -208,6 +211,7 @@
       "rename": cmd_rename,
       "archive": cmd_archive,
       "unarchive": cmd_unarchive,
+      "start": cmd_start,
   }
 
   def server(argv: list[str]) -> int:
@@ -217,20 +221,9 @@
       return _agentirc_dispatch(argv)
   ```
 
-  If Task 1.3 chose subprocess for `start`, special-case it inside the agentirc branch:
+  Move the existing handler bodies for `default`/`rename`/`archive`/`unarchive` and the A2-introduced in-process `start` (whichever name `_run_server` uses today, exposed as `cmd_start`) from `culture/cli/server.py` into a new `culture/cli/server_local.py` so the shim file stays small and the culture-owned logic has its own home. Keep the helpers (`read_default_server`, the rename/archive utilities) where they live today (`culture/cli/shared/`).
 
-  ```python
-  import subprocess
-
-  def server(argv: list[str]) -> int:
-      if argv and argv[0] in _CULTURE_OWNED:
-          return _CULTURE_OWNED[argv[0]](argv[1:])
-      if argv and argv[0] == "start":
-          return subprocess.run(["agentirc", *argv]).returncode
-      return _agentirc_dispatch(argv)
-  ```
-
-  Move the existing handler bodies for `default`/`rename`/`archive`/`unarchive` from `culture/cli/server.py` into a new `culture/cli/server_local.py` so the shim file stays small and the culture-owned logic has its own home. Keep the helpers (`read_default_server`, the rename/archive utilities) where they live today (`culture/cli/shared/`).
+  Why `start` is culture-owned, not forwarded: A2 wired it to construct `agentirc.ircd.IRCd(config)` directly and register culture's bots against it. Forwarding `start` to `agentirc.cli.dispatch(["start", ...])` would lose the bot registration — bots would never load. Keep `start` local; A3 doesn't need to change A2's choice here.
 
 - [ ] **Step 4.3:** Properties to preserve:
   - **Pure forwarding for non-culture verbs.** Culture does not parse, validate, or rename any flag agentirc owns. New verbs added in agentirc are reachable via `culture server <new-verb>` automatically.
@@ -274,9 +267,10 @@
   CULTURE = [sys.executable, "-m", "culture", "server"]
   AGENTIRC = ["agentirc"]
 
-  # Agentirc-owned verbs only; culture-owned verbs (default/rename/archive/unarchive)
-  # are tested separately because they have no agentirc counterpart.
-  AGENTIRC_VERBS = ["status", "version", "logs", "start", "stop", "restart", "link", "serve"]
+  # Agentirc-owned verbs only; culture-owned verbs (start/default/rename/archive/unarchive)
+  # are tested separately because they either have no agentirc counterpart (default/rename/archive/unarchive)
+  # or culture deliberately keeps them local (start — A2 hosts an in-process agentirc.ircd.IRCd plus culture's bots).
+  AGENTIRC_VERBS = ["status", "version", "logs", "stop", "restart", "link", "serve"]
 
 
   def _run(cmd: list[str]) -> tuple[int, str, str]:
@@ -312,7 +306,7 @@
       assert _strip_argv0(culture_out) == agentirc_out
 
 
-  @pytest.mark.parametrize("verb", ["default", "rename", "archive", "unarchive"])
+  @pytest.mark.parametrize("verb", ["start", "default", "rename", "archive", "unarchive"])
   def test_culture_owned_verb_still_dispatches_locally(verb: str) -> None:
       """Culture-owned verbs must NOT be forwarded to agentirc. `--help` must succeed without an agentirc binary on PATH."""
       rc, out, err = _run([*CULTURE, verb, "--help"])
@@ -469,7 +463,7 @@
 
   Then invoke `superpowers:code-reviewer` per culture/CLAUDE.md's "Pre-push review for library/protocol code" rule. A3 is structural — deleting code, moving call sites, swapping a process boundary. The reviewer catches anything that breaks an exception-handling chain or leaves dangling imports.
 
-- [ ] **Step 8.3:** `/version-bump major` (8.9.x → 9.0.0). A3 deletes in-tree code and changes the launch model from in-process to (potentially) subprocess; that's structural, even though user-visible CLI is unchanged.
+- [ ] **Step 8.3:** `/version-bump major` (8.9.x → 9.0.0). A3 deletes in-tree code (~3,600 LOC of bundled IRCd) and finalizes the partial-passthrough shim — structural, even though user-visible CLI is unchanged.
 
 - [ ] **Step 8.4:** Edit the new `[9.0.0]` section of `CHANGELOG.md`:
 
