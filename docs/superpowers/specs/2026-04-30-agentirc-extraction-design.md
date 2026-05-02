@@ -1,27 +1,24 @@
 # AgentIRC Extraction Design
 
-**Status:** In progress — A1 landed in culture 8.8.0 (2026-05-01); A2/A3 unblocked by agentirc-cli 9.5.0 (2026-05-02, agentculture/agentirc#15 closed)
+**Status:** In progress — A1 landed in culture 8.8.0 (2026-05-01); A2 blocked on **A2-Bridge** (agentculture/agentirc#22, public IRCd + VirtualClient); A3 unblocked once A2 lands
 **Date:** 2026-04-30
 **Owner:** Ori Nachum
 
-## Implementation status (updated 2026-05-02)
+## Implementation status (updated 2026-05-03)
 
-Track A on the culture side is split into phases because the literal
-"delete `culture/agentirc/{ircd, ...}.py` and shim `culture server start`"
-described below cannot land in one PR — culture's bots
-(`culture/bots/*`) hold an in-process `IRCd` reference and call
-`server.emit_event`/`server.channels`/`server.get_or_create_channel`
-directly. With `agentirc-cli==9.5.0` (2026-05-02), agentirc now exposes
-a documented out-of-process bot extension API (`agentirc.io/bot` CAP,
-`EVENTSUB`/`EVENTUNSUB`/`EVENT`/`EVENTERR`/`EVENTPUB` verbs, public
-5-field envelope in `agentirc.protocol`), so A2 is no longer blocked.
+Track A on the culture side is split into phases because the literal "delete `culture/agentirc/{ircd, ...}.py` and shim `culture server start`" described below cannot land in one PR — culture's bots (`culture/bots/*`) hold an in-process `IRCd` reference and call `server.emit_event`/`server.channels`/`server.get_or_create_channel` directly.
+
+`agentirc-cli==9.5.0` (2026-05-02) shipped the **wire-protocol** half of the bot extension API (`agentirc.io/bot` CAP, `EVENTSUB`/`EVENTUNSUB`/`EVENT`/`EVENTERR`/`EVENTPUB` verbs, public 5-field envelope in `agentirc.protocol`). What it did **not** ship is a public **Python embedding API** — the only currently-public way to drive an IRCd from another Python process is `agentirc.cli.dispatch(argv) -> int`, which runs the CLI to completion with no hook to inject in-process bots. Culture's bot framework is in-process by design. Without a public `IRCd` constructor and a public `VirtualClient` class, A2 has to either re-implement the bot-CAP TCP client from scratch (~300+ LOC, all of which agentirc has internally as `_internal.virtual_client.VirtualClient` but marks off-limits) or backport CAP/`EVENTSUB`/`EVENTPUB` machinery into the bundled IRCd (~500 LOC, all thrown away in A3).
+
+The lighter path is to ask agentirc to promote two existing internal classes to public — `agentirc.ircd.IRCd` and `agentirc._internal.virtual_client.VirtualClient`. That's the **A2-Bridge** track filed as agentculture/agentirc#22 (2026-05-03). Once 9.6.0 ships, culture's A2 collapses to "switch `culture/cli/server.py:_run_server` to construct `agentirc.ircd.IRCd(config)` directly; rewrite `culture/bots/virtual_client.py` as a ~50-LOC wrapper around the promoted `agentirc.virtual_client.VirtualClient`."
 
 | Phase | Scope | Status |
 |---|---|---|
 | **B** (agentirc bootstrap) | `agentirc-cli==9.4.1` published, public API stable, on-disk layout preserved | ✅ done (see culture#308) |
 | **A1** (culture-side public-API migration) | Pin `agentirc-cli>=9.4,<10`; `culture/agentirc/config.py` becomes a re-export shim over `agentirc.config`; canonical call sites (telemetry, mesh CLI, conftest) retarget; minor bump 8.7.1 → 8.8.0 | ✅ done 2026-05-01 (culture#309) |
-| **A2** (rewrite bots against public extension API) | Bump dep floor to `agentirc-cli>=9.5,<10`; rewrite `culture/bots/{virtual_client,bot,bot_manager,http_listener}.py` against `agentirc.io/bot` CAP + `EVENTSUB`/`EVENTPUB` + 5-field envelope; culture takes ownership of the `webhook_port` HTTP listener (agentirc 9.5 stops binding it); minor bump 8.8.0 → 8.9.0 | 🟢 ready — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md` |
-| **A3** (final cutover) | Delete the bundled IRCd: `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` + `culture/agentirc/skills/`; `git mv` `culture/agentirc/{client,remote_client}.py` → `culture/transport/`; replace `culture/cli/server.py:_run_server` with `subprocess.run(["agentirc", *argv])` (or `agentirc.cli.dispatch`) while preserving culture-owned verbs `default`/`rename`/`archive`/`unarchive` in culture's own dispatcher; keep `culture/agentirc/config.py` as the A1 re-export shim through 9.x; major bump 8.x → 9.0 | 🟢 ready after A2 — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md` |
+| **A2-Bridge** (agentirc-side public-API expansion) | Promote `agentirc.ircd.IRCd` and `agentirc._internal.virtual_client.VirtualClient` to public surface. Document in `agentirc/docs/api-stability.md`. Transitional re-export at the old internal path through 9.6.x. agentirc minor bump 9.5 → 9.6. | ⏸ filed at agentculture/agentirc#22 (2026-05-03) |
+| **A2** (culture-side bot rewrite, embedded mode) | Bump dep floor to `agentirc-cli>=9.6,<10`; switch `culture/cli/server.py:_run_server` to `agentirc.ircd.IRCd(config)`; rewrite `culture/bots/virtual_client.py` as a thin wrapper over `agentirc.virtual_client.VirtualClient`; webhook listener (`webhook_port`) moves from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`; minor bump 8.8.0 → 8.9.0 | ⏸ blocked on A2-Bridge — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md` |
+| **A3** (final cutover) | Delete the bundled IRCd: `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` + `culture/agentirc/skills/`; `git mv` `culture/agentirc/{client,remote_client}.py` → `culture/transport/`; A2 already swapped `_run_server` to embedded `agentirc.ircd.IRCd`, so this phase is mostly deletion + culture-owned verb preservation (`default`/`rename`/`archive`/`unarchive`); keep `culture/agentirc/config.py` as the A1 re-export shim through 9.x; major bump 8.x → 9.0 | ⏸ ready after A2 — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md` |
 
 The Boundary / Plan sections below describe the A3 end state. They
 remain the target; the phased approach is purely about how culture
@@ -83,7 +80,7 @@ This is the first of several planned splits — `culture-agent` and `culture-bot
 ## Goals
 
 - agentirc lives in `../agentirc` as an independently versioned package on PyPI (distribution name `agentirc-cli`, import name `agentirc`), with its own CLI binary `agentirc`.
-- Culture consumes it as a normal dependency (`agentirc-cli>=9.5,<10.0`).
+- Culture consumes it as a normal dependency (`agentirc-cli>=9.6,<10.0`).
 - `culture server <verb> <args>` continues to work for every existing verb, with identical flags, output, and exit codes — implemented as a 1:1 passthrough into `agentirc.cli.dispatch`.
 - On-disk footprint stays culture-named: `~/.culture/server.yaml`, current socket paths, `culture-agent-*.service` systemd units, current log paths. Existing deployments need zero migration.
 - The IRCd's protocol surface (`protocol/extensions/`) lives in agentirc, where it belongs.
@@ -180,7 +177,7 @@ agentirc/
 
 ```
 culture/
-├── pyproject.toml          # adds: agentirc-cli>=9.5,<10.0
+├── pyproject.toml          # adds: agentirc-cli>=9.6,<10.0
 ├── uv.lock                 # regenerated
 ├── culture/
 │   ├── agentirc/           # DELETED
@@ -248,20 +245,23 @@ The public surface of agentirc — what culture (and any third-party consumer) i
 |---|---|---|
 | `agentirc.config` | `ServerConfig`, `LinkConfig`, `TelemetryConfig`, plus dataclass fields | Public, semver-tracked. Breaking changes require a major bump. |
 | `agentirc.cli` | `main()`, `dispatch(argv) -> int` | Public, semver-tracked. |
-| `agentirc.protocol` | Verb name constants (incl. `EVENTSUB`, `EVENTUNSUB`, `EVENT`, `EVENTERR`, `EVENTPUB`), numeric reply codes, extension tag names, the canonical 5-field `Event` envelope (`type`/`channel`/`nick`/`data`/`timestamp`), `EVENT_TYPE_RE` | Public, semver-tracked. Wire format byte-locked under semver (see agentirc `tests/test_wire_format_envelope.py::test_envelope_byte_lock`). |
+| `agentirc.protocol` | Verb name constants (incl. `EVENTSUB`, `EVENTUNSUB`, `EVENT`, `EVENTERR`, `EVENTPUB`), numeric reply codes, extension tag names, the canonical 5-field `Event` envelope (`type`/`channel`/`nick`/`data`/`timestamp`), per-type `EVENT_TYPE_*` string constants, `BOT_CAP = "agentirc.io/bot"` | Public, semver-tracked. Wire format byte-locked under semver (see agentirc `tests/test_wire_format_envelope.py::test_envelope_byte_lock`). |
+| `agentirc.ircd` | `IRCd` (constructor + lifecycle) | 🟡 **Pending agentirc#22 (A2-Bridge).** Currently listed as internal in `agentirc/docs/api-stability.md`; promotion is the prerequisite for culture A2 to embed it in-process. After 9.6.0, public + semver-tracked. |
+| `agentirc.virtual_client` | `VirtualClient` (in-process bot, duck-typed Client/RemoteClient) | 🟡 **Pending agentirc#22 (A2-Bridge).** Today at `agentirc._internal.virtual_client.VirtualClient`; A2-Bridge promotes to `agentirc.virtual_client.VirtualClient` (or `agentirc.bot.VirtualClient` if agentirc prefers that namespace). After 9.6.0, public + semver-tracked, with transitional re-export at the old internal path through 9.6.x. |
 | `agentirc.skill` | Re-exports `Event`, `EventType` from `agentirc.protocol` | **Transitional** — present through the 9.5.x line, removed in 10.0.0. New code should import from `agentirc.protocol` directly. |
 
-Everything else — `agentirc.ircd`, `agentirc.server_link`, `agentirc.channel`, the stores, the in-tree skills, anything under `agentirc._internal.*` — is internal. Agentirc may refactor freely without breaking culture. Documented in `agentirc/docs/api-stability.md`.
+Everything else — `agentirc.server_link`, `agentirc.channel`, the stores, the in-tree skills, anything under `agentirc._internal.*` — is internal. Agentirc may refactor freely without breaking culture. Documented in `agentirc/docs/api-stability.md`.
 
 ### Where culture imports from agentirc
 
 | Culture module | Imports |
 |---|---|
-| `culture/cli/server.py` | `agentirc.cli.dispatch` |
+| `culture/cli/server.py` | `agentirc.cli.dispatch` (unchanged); after A2, also `agentirc.ircd.IRCd` (embeds in-process for `culture server start`) |
 | `culture/cli/shared/mesh.py` | `agentirc.config.LinkConfig` |
 | `culture/config.py`, `culture/telemetry/{metrics,tracing,audit}.py`, `tests/conftest.py` | `agentirc.config.{ServerConfig, LinkConfig, TelemetryConfig}` (since A1, culture#309) |
 | `culture/transport/client.py` | `agentirc.protocol.*` (verb / numeric / tag constants) |
-| `culture/bots/{virtual_client,bot,bot_manager}.py` | `agentirc.protocol.{Event, EventType, EVENTSUB, EVENTUNSUB, EVENT, EVENTERR, EVENTPUB}` (after A2) |
+| `culture/bots/virtual_client.py` (after A2) | `agentirc.virtual_client.VirtualClient` (thin wrapper for culture-specific concerns: BotConfig, template engine, fires_event, owner DM) |
+| `culture/bots/{bot,bot_manager}.py` (after A2) | `agentirc.protocol.{Event, EventType}` for envelope decoding; `IRCd` reference comes from `culture/cli/server.py:_run_server` |
 | `culture/clients/*/daemon.py` | `culture.transport` only (no agentirc internals) |
 
 ## Configuration & on-disk footprint
@@ -277,13 +277,42 @@ Standalone (non-culture) users of agentirc can override the config path via `age
 
 ## Migration mechanics
 
-The migration runs in **two tracks** owned by two different agents. The culture-side agent (this work) implements only Track A and produces the brief in Track B as a deliverable; the brief is then handed to the agent working in `../agentirc`. The culture-side cutover PR (Track A) **waits** on the agentirc release that Track B produces.
+The migration runs across **multiple cross-repo tracks** owned by different agents. The culture-side agent (this work) implements culture-side tracks (A1, A2, A3) and produces hand-off briefs (Track B for the original bootstrap, A2-Bridge for the embedding-API expansion). Briefs are handed to the agent working in `../agentirc`. Culture-side cutover PRs **wait** on the agentirc releases the briefs trigger.
+
+### Track A2-Bridge — hand-off brief for the agentirc agent (filed as agentculture/agentirc#22 on 2026-05-03)
+
+This block is **handed to the agent working in `../agentirc`** and is intended to be self-contained — the receiving agent should not need culture-side context to act on it. It is mirrored here from the GitHub issue body for searchability.
+
+**One-line ask:** Promote `agentirc._internal.virtual_client.VirtualClient` and `agentirc.ircd.IRCd` to the public API surface so a Python embedder can construct an IRCd in-process and host bots inside it.
+
+**Why this exact shape:**
+
+- `_internal.virtual_client.VirtualClient` already encapsulates everything a co-hosted bot needs: `caps = frozenset({BOT_CAP, "message-tags"})` so it gets the silent-JOIN / no-auto-op / `+`-prefix / `B`-flag treatment exactly like a CAP-negotiated TCP bot, plus `join_channel(name, *, emit_event)`, `part_channel(name)`, and the duck-typed Client/RemoteClient interface for `channel.members` / NAMES / WHO / WHOIS. agentirc's own `#system` welcome bot consumes this class today. Culture's `culture/bots/virtual_client.py` is functionally identical to it.
+- `agentirc.ircd.IRCd` is the constructor. Culture's `culture server start` needs a public way to instantiate one in-process and add bots to it. The class is already importable; it just sits under "Internal modules" in `docs/api-stability.md`.
+- If agentirc prefers a different layout (e.g. `agentirc.host.Host` as a façade owning an internal IRCd + exposing `host.add_bot(VirtualClient(...))`), that's fine. The constraint is the **capability**, not the names.
+
+**Concrete asks:**
+
+1. **Promote `IRCd`.** Move `agentirc.ircd` out of the "Internal modules" list in `docs/api-stability.md`. Document the public constructor signature, lifecycle methods (`start`/`stop`), and bot-extension hooks (event emission, subscription registration). If the current internal API surface is too wide, expose a narrower public façade and keep the wider class internal.
+2. **Promote `VirtualClient`.** Move `agentirc._internal.virtual_client` → `agentirc.virtual_client` (or `agentirc.bot.VirtualClient` if a `bot` namespace is preferred). Keep a transitional re-export at the old path through 9.6.x; remove in 10.0.0 with a deprecation warning across that window.
+3. **Federation interop sniff (optional).** While agentirc is touching `_handle_sevent` for any reason, please consider mirroring the 9.5 → ≤9.4 envelope sniff back to a 9.4.x patch release. If awkward, no problem — culture can ship the workaround in `culture/agentirc/server_link.py` until A3 deletes that file.
+4. **Out of scope.** No new code is required — this is mostly relabeling existing internals to public, plus documentation. No protocol changes. No CLI changes.
+
+**Acceptance criteria:**
+
+- `agentirc-cli==9.6.0` (or whatever minor) is on PyPI.
+- `from agentirc.virtual_client import VirtualClient` works (or whatever public name).
+- `from agentirc.ircd import IRCd` works AND `agentirc/docs/api-stability.md` lists it under public modules.
+- The transitional `_internal.virtual_client.VirtualClient` re-export still works (deprecation warning OK).
+- `agentirc/docs/api-stability.md` has a section explaining the embedding pattern with a minimal worked example.
+
+This is a minor bump for agentirc — additive, no breaking change.
 
 ### Track A — culture-side (implemented in this repo)
 
 A single PR off `main`, following culture's standard workflow.
 
-1. `pyproject.toml`: add `agentirc-cli>=9.5,<10.0`. Regenerate `uv.lock`.
+1. `pyproject.toml`: add `agentirc-cli>=9.6,<10.0`. Regenerate `uv.lock`.
 2. Delete `culture/agentirc/` entirely.
 3. Move `client.py`, `remote_client.py` → `culture/transport/`. Add `culture/transport/__init__.py` re-exporting the public class names.
 4. Replace `culture/cli/server.py` with the passthrough shim (see "CLI surface" above).
@@ -360,14 +389,14 @@ After Track A merges and culture is released:
 
 ### Distribution
 
-- agentirc → PyPI as `agentirc-cli` (semver). Culture pins `agentirc-cli>=9.5,<10.0`.
+- agentirc → PyPI as `agentirc-cli` (semver). Culture pins `agentirc-cli>=9.6,<10.0`.
 - TestPyPI carries both `agentirc-cli` and a squatted `agentirc`; only `agentirc-cli` is the canonical name. Anything publishing or installing should use `agentirc-cli`.
 - agentirc adopts culture's version workflow (`/version-bump`, CHANGELOG, version-check CI).
 - All-backends rule still applies: changes that cross the agentirc / culture-transport boundary must be reflected across all four backends in culture (`claude`, `codex`, `copilot`, `acp`).
 
 ### Rollback
 
-If the cutover PR breaks something not caught in CI, the rollback is a `git revert` of the culture-side PR. The agentirc repo itself is independent and stays. Pinning `agentirc-cli>=9.5,<10.0` means culture cannot accidentally pick up an incompatible 10.0.0 release.
+If the cutover PR breaks something not caught in CI, the rollback is a `git revert` of the culture-side PR. The agentirc repo itself is independent and stays. Pinning `agentirc-cli>=9.6,<10.0` means culture cannot accidentally pick up an incompatible 10.0.0 release.
 
 ## Testing strategy
 
@@ -401,7 +430,7 @@ Tests under culture's `tests/` are sorted into three buckets at copy time:
 | Protocol constants drift between agentirc (server) and culture/transport (client). | `agentirc.protocol` is the single source. Both sides import from there; tests on either side fail fast on missing constants. |
 | Existing deployment breaks because something on disk is unexpectedly named. | Goals/Non-Goals: nothing on disk is renamed. The verification step on a real deployment catches anything we missed. |
 | `culture server --help` output diverges from `agentirc --help` over time. | The shim parity test asserts byte-equality of the help text. CI fails if drift appears. |
-| An agentirc-cli release introduces a regression that breaks culture. | Culture pins `agentirc-cli>=9.5,<10.0`. Patches go out as `9.5.1`, `9.5.2`, etc. Culture can pin to a specific known-good `==9.5.X` if a patch in the floor range turns out to be broken. |
+| An agentirc-cli release introduces a regression that breaks culture. | Culture pins `agentirc-cli>=9.6,<10.0`. Patches go out as `9.6.1`, `9.6.2`, etc. Culture can pin to a specific known-good `==9.6.X` if a patch in the floor range turns out to be broken. |
 | Future changes touch both repos at once and become hard to coordinate. | All-backends rule already requires multi-backend coordination; the same discipline extends to multi-repo coordination. Significant cross-repo work pairs an agentirc PR with a culture PR that bumps the floor pin. |
 
 ## Open questions

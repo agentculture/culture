@@ -1,57 +1,61 @@
-# AgentIRC Extraction — Track A2 (Bot Framework Rewrite) Implementation Plan
+# AgentIRC Extraction — Track A2 (Bot Framework Rewrite, Embedded Mode) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Plan revised 2026-05-03.** The original A2 plan assumed culture would re-implement an `agentirc.io/bot` TCP CAP client from scratch, because agentirc 9.5's bot-side machinery (`_internal.virtual_client.VirtualClient`) was internal. Then we filed [agentculture/agentirc#22](https://github.com/agentculture/agentirc/issues/22) (the **A2-Bridge** track) to promote `agentirc.ircd.IRCd` and `agentirc._internal.virtual_client.VirtualClient` to public. This plan is rewritten for the lighter post-Bridge approach: switch `culture server start` to embed `agentirc.ircd.IRCd` in-process, and rewrite `culture/bots/virtual_client.py` as a thin wrapper over `agentirc.virtual_client.VirtualClient`. The TCP-from-scratch approach is no longer relevant.
 
-**Goal:** Rewrite culture's bot framework against the public bot extension API in `agentirc-cli==9.5.0` (`agentirc.io/bot` CAP, `EVENTSUB`/`EVENTUNSUB`/`EVENT`/`EVENTERR`/`EVENTPUB` verbs, canonical 5-field envelope in `agentirc.protocol`). After this lands, `culture/bots/*` no longer holds an in-process `IRCd` reference and no longer reaches into `server.emit_event`/`server.channels`/`server.get_or_create_channel`/`server.get_client`/`server.config`/`server.metrics`. This unblocks Track A3 — the deletion of `culture/agentirc/{ircd,server_link,channel,…}` and the subprocess shim at `culture server`.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Architecture:** Single PR off `main`. Bumps the dep floor to `agentirc-cli>=9.5,<10`. Rewrites `culture/bots/{virtual_client,bot,bot_manager,http_listener}.py` and `culture/bots/system/__init__.py`. Culture takes ownership of the `webhook_port` HTTP listener (agentirc 9.5 no longer binds it). Bot tests stay; the harness shifts from "construct an IRCd, hand it to BotManager" to "spin up an IRCd, connect a CAP-bot to it." Minor bump 8.8.0 → 8.9.0.
+**Goal:** Drop the in-process IRCd reference from culture's bot framework. After A2 lands:
+
+- `culture/cli/server.py:_run_server` constructs `agentirc.ircd.IRCd(config)` directly (in-process, same Python process). The bundled IRCd in `culture/agentirc/` is orphaned but stays on disk for A3 to delete.
+- `culture/bots/virtual_client.py` is a thin wrapper around `agentirc.virtual_client.VirtualClient` for culture-specific concerns (BotConfig, template engine, `fires_event` chaining, owner DM). Most of the existing 231-line file collapses to ~50 lines.
+- `culture/bots/bot.py`, `bot_manager.py` lose direct in-process IRCd reaches; they consume the publicly-typed `agentirc.ircd.IRCd` instance.
+- `culture/bots/http_listener.py` ownership moves from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py` (agentirc 9.5 already stops binding `webhook_port`; culture takes ownership).
+- All 10 bot test files keep their behavioral assertions; the harness shifts from "construct culture's bundled IRCd" to "construct `agentirc.ircd.IRCd`."
+
+**Architecture:** Single PR off `main` after agentirc 9.6.0 ships. Bumps the dep floor `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.6,<10`. Minor bump 8.8.0 → 8.9.0 — additive within the bot framework, no public-API removal.
 
 **Tech Stack:** Python 3.x, uv (deps + lockfile), aiohttp (existing webhook listener), pytest + pytest-asyncio + pytest-xdist, pre-commit (black + isort + flake8 + pylint + bandit + markdownlint).
 
-**Companion spec:** `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md` (see "Implementation status" table for A2 row, "Federation interop during the migration window" for the optional sniff patch).
+**Companion spec:** `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md` (see "Implementation status" table for A2-Bridge + A2 rows; "Migration mechanics / Track A2-Bridge" for the full agentirc-side brief).
 
 ---
 
 ## Preconditions (do not start until all are true)
 
-- `agentirc-cli==9.5.0` (or any later 9.5.x patch) is installable from PyPI:
+- agentirc#22 is closed and `agentirc-cli==9.6.0` is published to PyPI:
 
   ```bash
-  uv pip install --dry-run "agentirc-cli>=9.5,<10" 2>&1 | tail -5
+  uv pip install --dry-run "agentirc-cli>=9.6,<10" 2>&1 | tail -5
   ```
 
-  Expected: a line like `Would install agentirc-cli==9.5.0`.
+  Expected: a line like `Would install agentirc-cli==9.6.0`.
 
-- The public surface culture will pin against is reachable:
+- The promoted public surface is reachable:
 
   ```bash
-  cd /tmp && uv run --with "agentirc-cli>=9.5,<10" python -c "
-  from agentirc.protocol import Event, EventType, EVENT_TYPE_RE
-  from agentirc.protocol import EVENTSUB, EVENTUNSUB, EVENT, EVENTERR, EVENTPUB
-  print('envelope fields:', sorted(Event.__dataclass_fields__))
-  print('verbs:', EVENTSUB, EVENTUNSUB, EVENT, EVENTERR, EVENTPUB)
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" python -c "
+  from agentirc.ircd import IRCd
+  from agentirc.virtual_client import VirtualClient   # or agentirc.bot.VirtualClient if agentirc chose that namespace
+  from agentirc.protocol import Event, EventType, BOT_CAP
+  print('IRCd:', IRCd)
+  print('VirtualClient:', VirtualClient)
+  print('BOT_CAP:', BOT_CAP)
   "
   ```
 
-  Expected: `envelope fields: ['channel', 'data', 'nick', 'timestamp', 'type']`. If `agentirc.protocol` doesn't export these, **stop** — the floor was bumped past a release that doesn't actually carry the surface.
+  Expected: all three classes/constants resolve. If `agentirc.virtual_client` doesn't exist (agentirc may have chosen `agentirc.bot.VirtualClient` instead), update this plan to use the actual name and continue.
 
-- `agentirc.io/bot` CAP is advertised by **both** the in-tree bundled IRCd and a freshly-installed `agentirc serve`:
+- agentirc's `docs/api-stability.md` lists `agentirc.ircd` and `agentirc.virtual_client` (or whatever name) under public modules. Confirms the surface is semver-tracked, not just incidentally importable.
 
   ```bash
-  # Bundled IRCd (still in tree until A3):
-  python -c "from culture.agentirc.ircd import IRCd; from agentirc.config import ServerConfig; print('bundled CAP', IRCd(ServerConfig(name='t')).advertised_caps)"
-
-  # Installed agentirc:
-  cd /tmp && uv run --with "agentirc-cli>=9.5,<10" python -c "from agentirc.ircd import IRCd; from agentirc.config import ServerConfig; print('installed CAP', IRCd(ServerConfig(name='t')).advertised_caps)"
+  curl -s https://raw.githubusercontent.com/agentculture/agentirc/main/docs/api-stability.md | grep -E '(agentirc\.ircd|agentirc\.virtual_client|agentirc\.bot)'
   ```
 
-  Both must list `agentirc.io/bot`. If the bundled IRCd doesn't yet, **stop** — A2 lands before A3 with the bundled IRCd still hosting bots, so the bundled IRCd must speak the CAP. If only the bundled IRCd is missing, the simplest fix is to merge the bot CAP support upstream (forward-port from agentirc 9.5 into `culture/agentirc/`) before continuing — that's a separate small PR, see the "Bundled-IRCd CAP backport" precondition note below.
+  Expected: matching lines under the "Public" or "Public modules" section.
 
 - Working tree on `main` is clean. `git status` shows no staged/unstaged changes inside `culture/bots/`, `culture/agentirc/`, `culture/cli/server.py`, or `tests/test_*bot*.py`.
 
-### Bundled-IRCd CAP backport (separate small PR if needed)
-
-If the bundled IRCd in `culture/agentirc/` doesn't yet advertise `agentirc.io/bot` or handle `EVENTSUB`/`EVENTPUB`, ship a minimal backport as a standalone patch PR (8.8.0 → 8.8.1 patch — pure compat, no public-API change). Cherry-pick the relevant changes from agentirc PR #20 into `culture/agentirc/{ircd.py,server_link.py,protocol.py}`. Independent of this plan; a hard precondition for it. The simpler alternative is to skip A2 in-tree testing entirely and run A2 + A3 in the same release window — but that loses the safety of landing A2 against the still-bundled IRCd.
+If any precondition fails, stop and resolve before continuing.
 
 ---
 
@@ -59,17 +63,17 @@ If the bundled IRCd in `culture/agentirc/` doesn't yet advertise `agentirc.io/bo
 
 | Path | Action | Notes |
 |---|---|---|
-| `pyproject.toml` | Modify | Bump `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.5,<10`. |
+| `pyproject.toml` | Modify | Bump `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.6,<10`. |
 | `uv.lock` | Modify | Regenerate via `uv lock`. |
-| `culture/bots/virtual_client.py` | Rewrite | Drop `server` reference; become a CAP-bot client (see Task 4 decision point). |
-| `culture/bots/bot.py` | Modify | Replace `server.get_client`/`server.channels.get`/`server.emit_event`/`server.config.webhook_port` with `EVENTPUB` + bot-client helpers. |
-| `culture/bots/bot_manager.py` | Modify | Replace in-process `on_event` hook with an `EVENTSUB` subscription. Telemetry handle moves to `culture.telemetry.metrics` directly. |
-| `culture/bots/http_listener.py` | Modify | Listener owned by `BotManager`, not by `IRCd`. Route handlers unchanged. |
-| `culture/bots/system/__init__.py` | Modify | `discover_system_bots` no longer needs an `IRCd` reference. |
-| `culture/agentirc/ircd.py` | Modify | Stop instantiating `BotManager`/`HttpListener` here. Bots are external CAP clients now. (Lines ~92-122 today.) |
-| `culture/agentirc/CLAUDE.md` | Modify | Note: bots no longer depend on the in-process IRCd; only `culture/cli/server.py:_run_server` still imports `culture.agentirc.{ircd,server_link,channel}`. |
-| `tests/test_*bot*.py`, `tests/test_virtual_client.py`, `tests/test_events_bot_*.py`, `tests/test_welcome_bot.py`, `tests/test_http_listener.py` | Modify (harness) | Where tests construct an `IRCd` and pass it to `BotManager`, switch to constructing an `IRCd` and starting a separate `BotManager` that connects to it as a CAP client. Test assertions about behavior stay. |
-| `tests/conftest.py` | Modify (fixtures) | Add a `cap_bot_client` fixture that wraps `agentirc.protocol.Event` decoding for tests. |
+| `culture/cli/server.py` | Modify | `_run_server` (or whatever the entrypoint is named) constructs `agentirc.ircd.IRCd(config)` in-process instead of `culture.agentirc.ircd.IRCd(config)`. |
+| `culture/bots/virtual_client.py` | Rewrite | Thin (~50 LOC) wrapper around `agentirc.virtual_client.VirtualClient`. Composes culture-specific glue: BotConfig integration, template rendering, fires_event chaining, owner DM. |
+| `culture/bots/bot.py` | Modify | Keep the `server: IRCd` field (still needed for `get_client`/`channels`/`emit_event`/`fires_event`), but type it against the public `agentirc.ircd.IRCd` instead of the bundled `culture.agentirc.ircd.IRCd`. Add a `server_config: culture.config.ServerConfig` field for `webhook_port` (which moves out of agentirc). |
+| `culture/bots/bot_manager.py` | Modify | Drop in-process `on_event` hook against the bundled IRCd. Telemetry counters source from `culture.telemetry.metrics` directly, not `server.metrics`. |
+| `culture/bots/http_listener.py` | Modify | Listener owned by `BotManager`, started by `BotManager.start()`. Same aiohttp code; just owned by culture, not driven from `IRCd._http_listener`. |
+| `culture/bots/system/__init__.py` | Modify | `discover_system_bots` no longer needs an `IRCd` reference — takes `server_name: str` (from `culture.config.ServerConfig.name`). |
+| `culture/agentirc/CLAUDE.md` | Modify | Add a "Status (after A2)" note: bots no longer depend on the in-process IRCd; `culture/cli/server.py` uses `agentirc.ircd.IRCd` directly. The bundled IRCd is dead; A3 deletes it. |
+| `tests/test_*bot*.py`, `tests/test_virtual_client.py`, `tests/test_events_bot_*.py`, `tests/test_welcome_bot.py`, `tests/test_http_listener.py` | Modify (harness only) | Replace "construct `culture.agentirc.ircd.IRCd`, hand to BotManager" with "construct `agentirc.ircd.IRCd`, hand to BotManager." Behavioral assertions stay. |
+| `tests/conftest.py` | Modify (fixtures) | The `ircd` fixture (or equivalent) now constructs `agentirc.ircd.IRCd` directly. |
 | `culture/__init__.py`, `pyproject.toml`, `CHANGELOG.md` | Modify | `/version-bump minor` (8.8.0 → 8.9.0). |
 
 ---
@@ -78,33 +82,32 @@ If the bundled IRCd in `culture/agentirc/` doesn't yet advertise `agentirc.io/bo
 
 **Files:** none (verification only).
 
-- [ ] **Step 1.1:** Confirm 9.5.0 is on PyPI.
+- [ ] **Step 1.1:** Confirm 9.6 on PyPI.
 
   ```bash
-  uv pip install --dry-run "agentirc-cli>=9.5,<10" 2>&1 | tail -5
+  uv pip install --dry-run "agentirc-cli>=9.6,<10" 2>&1 | tail -5
   ```
 
-- [ ] **Step 1.2:** Confirm the public surface.
+- [ ] **Step 1.2:** Confirm the promoted public surface.
 
-  Run the `agentirc.protocol` snippet from "Preconditions" above. **Save the output** — Tasks 4-6 reference these symbol names.
+  Run the snippet from "Preconditions" above. **Save the actual `agentirc.virtual_client` (or whatever) module name** — every subsequent task references it.
 
-- [ ] **Step 1.3:** Confirm both IRCds advertise `agentirc.io/bot`.
+- [ ] **Step 1.3:** Confirm `docs/api-stability.md` lists the new public modules.
 
-  Run both CAP-advertise snippets from "Preconditions". If only the bundled one is missing, branch out and ship the cherry-pick PR (see "Bundled-IRCd CAP backport"); merge it before continuing.
+  Run the curl + grep snippet from "Preconditions." If it doesn't list them, **stop** — the agentirc release shipped without the doc update; file a follow-up issue and wait for the next patch.
 
-- [ ] **Step 1.4:** Smoke-test an `EVENTSUB` round-trip against a freshly-installed `agentirc serve`.
+- [ ] **Step 1.4:** Read `agentirc.virtual_client.VirtualClient`'s public signature in the installed wheel:
 
   ```bash
-  cd /tmp && uv venv eventsub-check && uv pip install --python eventsub-check/bin/python "agentirc-cli>=9.5,<10" >/dev/null
-  eventsub-check/bin/agentirc serve --config /tmp/test-server.yaml &
-  AGENTIRC_PID=$!
-  sleep 2
-  # connect a raw client, NICK/USER, CAP REQ agentirc.io/bot, EVENTSUB 1, JOIN #room from another client, expect EVENT 1 :<base64-json>
-  # (full snippet in agentirc/docs/cli.md)
-  kill $AGENTIRC_PID
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" python -c "
+  import inspect
+  from agentirc.virtual_client import VirtualClient
+  print('init:', inspect.signature(VirtualClient.__init__))
+  print('public methods:', sorted(n for n in dir(VirtualClient) if not n.startswith('_')))
+  "
   ```
 
-  Smoke test only — full integration coverage comes from the rewritten bot tests in Task 9.
+  This is the API culture's wrapper composes around. Record the constructor signature (likely `(nick: str, user: str, server: IRCd)` matching the internal version) and the public method names. Tasks 4-6 reference these.
 
 ---
 
@@ -116,12 +119,12 @@ If the bundled IRCd in `culture/agentirc/` doesn't yet advertise `agentirc.io/bo
 
   ```bash
   git checkout main && git pull
-  git checkout -b feat/bots-public-extension-api
+  git checkout -b feat/bots-embedded-agentirc
   ```
 
 - [ ] **Step 2.2:** Bump the floor in `pyproject.toml`.
 
-  Locate the `dependencies = [...]` block and change `"agentirc-cli>=9.4,<10"` → `"agentirc-cli>=9.5,<10"`.
+  Locate the `dependencies = [...]` block and change `"agentirc-cli>=9.4,<10"` → `"agentirc-cli>=9.6,<10"`.
 
 - [ ] **Step 2.3:** Regenerate the lockfile.
 
@@ -131,21 +134,21 @@ If the bundled IRCd in `culture/agentirc/` doesn't yet advertise `agentirc.io/bo
 
   Stage both files together (per culture's CLAUDE.md "always stage uv.lock with pyproject.toml" rule).
 
-- [ ] **Step 2.4:** Sanity check — the existing test suite still passes against 9.5 with the bot framework unchanged.
+- [ ] **Step 2.4:** Sanity check — the existing test suite still passes against 9.6 with the bot framework unchanged. Floor bump alone shouldn't change behavior; A1's config shim absorbs any 9.5 → 9.6 dataclass-field additions.
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_bots_integration.py tests/test_virtual_client.py
   ```
 
-  Expected: green. The dep bump alone shouldn't change behavior; A1's config shim absorbs any 9.4 → 9.5 dataclass-field additions.
+  Expected: green.
 
 ---
 
 ## Task 3 — Retarget `Event`/`EventType` imports to `agentirc.protocol`
 
-**Files:** `culture/bots/virtual_client.py`, anywhere else culture imports `Event`/`EventType`.
+**Files:** `culture/bots/virtual_client.py` (and anywhere else culture imports `Event`/`EventType` from a transitional path).
 
-The transitional re-exports at `agentirc.skill.{Event, EventType}` work through 9.5.x and disappear in 10.0.0. Pin to `agentirc.protocol` directly.
+The transitional re-exports at `agentirc.skill.{Event, EventType}` work through 9.5.x (probably 9.6.x too) and disappear in 10.0.0. Pin to `agentirc.protocol` directly.
 
 - [ ] **Step 3.1:** Find every site that imports `Event` or `EventType` from `culture.agentirc.skill` or `agentirc.skill`.
 
@@ -153,10 +156,10 @@ The transitional re-exports at `agentirc.skill.{Event, EventType}` work through 
   grep -rn 'from culture\.agentirc\.skill import\|from agentirc\.skill import' culture/ tests/
   ```
 
-  Survey-time hit list (verify on the current main):
+  Expected hit list (verify on the current main):
   - `culture/bots/virtual_client.py:8`
 
-  Expect this to be the only match. If there are more, add them to the change set.
+  If there are more matches, add them to the change set.
 
 - [ ] **Step 3.2:** Replace each import:
 
@@ -167,7 +170,7 @@ The transitional re-exports at `agentirc.skill.{Event, EventType}` work through 
   from agentirc.protocol import Event, EventType
   ```
 
-- [ ] **Step 3.3:** Run a focused test pass to confirm no behavior change.
+- [ ] **Step 3.3:** Run a focused test pass:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_virtual_client.py tests/test_events_bot_trigger.py tests/test_events_bot_chain.py
@@ -177,77 +180,163 @@ The transitional re-exports at `agentirc.skill.{Event, EventType}` work through 
 
 ---
 
-## Task 4 — Rewrite `culture/bots/virtual_client.py` against the public extension API
+## Task 4 — Switch `culture/cli/server.py` to embed `agentirc.ircd.IRCd`
+
+**Files:** `culture/cli/server.py`.
+
+This is the key swap that decouples culture's bot framework from the bundled IRCd. After this step, `culture server start` is hosting agentirc's IRCd directly, which natively speaks the bot CAP and routes everything through the public `VirtualClient` interface.
+
+- [ ] **Step 4.1:** Read `culture/cli/server.py:_run_server` (the function the CLI dispatcher calls for `culture server start`). Identify how it constructs the IRCd today:
+
+  ```bash
+  grep -n 'IRCd(\|from culture.agentirc.ircd import\|class.*IRCd\|_run_server' culture/cli/server.py
+  ```
+
+  Record the exact construction site and the lifecycle methods called on it (`await ircd.start()`, etc.).
+
+- [ ] **Step 4.2:** Replace the import + construction:
+
+  ```python
+  # before
+  from culture.agentirc.ircd import IRCd
+  # ...
+  ircd = IRCd(config)
+  await ircd.start()
+
+  # after
+  from agentirc.ircd import IRCd
+  # ...
+  ircd = IRCd(config)
+  await ircd.start()
+  ```
+
+  The constructor signature should match (both take `ServerConfig`). If the published `agentirc.ircd.IRCd` constructor differs from the bundled one, adapt — but the A2-Bridge brief specifically asked for "stable embedding API" so this should be a drop-in.
+
+- [ ] **Step 4.3:** The four culture-owned verbs (`default`, `rename`, `archive`, `unarchive`) stay culture-side. They operate on culture's local state, not the IRCd; their handlers are unchanged. Verify by re-running `grep -n 'default\|rename\|archive\|unarchive' culture/cli/server.py` and confirming each is still wired to its existing handler.
+
+- [ ] **Step 4.4:** Smoke test:
+
+  ```bash
+  uv run python -m culture server start --name smoke --port 6700 &
+  PID=$!
+  sleep 2
+  uv run python -c "
+  import socket
+  s = socket.socket()
+  s.connect(('127.0.0.1', 6700))
+  s.send(b'NICK smoke\r\nUSER smoke 0 * :smoke\r\n')
+  data = s.recv(4096)
+  print(data.decode())
+  s.close()
+  "
+  kill $PID
+  ```
+
+  Expected: server responds with `001 :Welcome ...` numerics. Confirms `agentirc.ircd.IRCd` boots cleanly from culture's CLI.
+
+---
+
+## Task 5 — Rewrite `culture/bots/virtual_client.py` as a wrapper
 
 **Files:** `culture/bots/virtual_client.py`.
 
-This is the heart of A2. `VirtualClient` today is a duck-typed in-process bot that holds an `IRCd` reference (`self.server`) and uses it for: (a) emitting events, (b) reading/writing channel state, (c) resolving nicks, (d) reading server config. Each of these has a public-API equivalent in 9.5.
+The 231-line file today re-implements what `agentirc.virtual_client.VirtualClient` already provides. After A2-Bridge, that's a public class. Culture's wrapper composes around it for culture-specific concerns: `BotConfig` integration, template-engine rendering (via `culture/bots/template_engine.py`), `fires_event` chaining, owner DM routing.
 
-- [ ] **Step 4.1: Decision point — connection model.** Before writing code, decide:
-
-  - **Option A: TCP CAP-bot client.** `VirtualClient` opens a real connection to `127.0.0.1:<irc_port>` (the same port humans use), `CAP REQ agentirc.io/bot`, and uses standard IRC verbs + the new `EVENT*` verbs for all bot operations.
-  - **Option B: In-process Python API.** If `agentirc-cli==9.5` exposes a class like `agentirc.bot.Bot` or `agentirc.bot.Client` for in-process bot hosting, use that.
-
-  Verify which option agentirc 9.5 supports:
+- [ ] **Step 5.1:** Read both files side-by-side to confirm shape:
 
   ```bash
-  cd /tmp && uv run --with "agentirc-cli>=9.5,<10" python -c "
-  import agentirc
-  print(sorted(n for n in dir(agentirc) if not n.startswith('_')))
-  try:
-      import agentirc.bot
-      print('bot module:', sorted(n for n in dir(agentirc.bot) if not n.startswith('_')))
-  except ImportError:
-      print('no agentirc.bot module — Option A required')
-  "
+  wc -l culture/bots/virtual_client.py
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" python -c "
+  import inspect
+  from agentirc.virtual_client import VirtualClient
+  print(inspect.getsource(VirtualClient))
+  " | wc -l
   ```
 
-  **Record the decision in this task before continuing.** Recommendation: prefer Option B if available (matches the in-process pattern agentirc's own `VirtualClient` uses for the system bot, per agentirc#15 closing comment); fall back to Option A.
+  Expected: ~230 LOC in culture, ~250 LOC in agentirc — they're functionally the same class. The wrapper composes; it does not re-implement.
 
-- [ ] **Step 4.2:** Replace the four `server.emit_event(Event(...))` call sites (current lines 76, 95, 136, 158) with `EVENTPUB`. The wire form is `EVENTPUB <type> <channel-or-*> :<base64-json-data>`. Under Option B, the API call is the agentirc-provided `bot.emit(type, channel, data)`. Under Option A, the call is the bot client's own `send_eventpub(type, channel, data_dict)`. The 5-field envelope (`type`/`channel`/`nick`/`data`/`timestamp`) is constructed server-side; the bot only supplies `type`, `channel`, and `data` (`nick` is the bot's own nick; `timestamp` is server-set).
+- [ ] **Step 5.2:** Rewrite `culture/bots/virtual_client.py`. Target shape:
 
-- [ ] **Step 4.3:** Replace the four `server.channels.get(name)`/`del` accesses (lines 82, 109, 121, 144) and the `server.get_or_create_channel(name)` access (line 56). These are used today for: pre-checking JOIN, post-PART cleanup, broadcast membership walk, mention recipient walk.
+  ```python
+  """Culture's wrapper around agentirc's public VirtualClient.
 
-  - For JOIN/PART: rely on the IRC `JOIN` verb (server tracks membership; bot doesn't need to).
-  - For broadcast and mention walks: use the inbound `EVENT` envelopes plus the existing IRC `NAMES` / `WHO` paths the harness uses for any human-facing client. Do not maintain a duplicate channel registry inside the bot process.
-  - If a piece of state (e.g., "is this user opt-in for this channel") is genuinely needed, surface it via an `EVENT` filter instead of polling state.
+  Composes culture-specific glue (BotConfig, template engine, fires_event,
+  owner DM) over the protocol-and-channel-membership behavior owned by
+  agentirc.virtual_client.VirtualClient.
+  """
 
-- [ ] **Step 4.4:** Replace the two `server.get_client(nick)` lookups (lines 175, 212). These are for DM target resolution and `@`-mention recipient lookup. Equivalents:
+  from __future__ import annotations
+  from typing import TYPE_CHECKING
 
-  - DM: just send `PRIVMSG <nick> :<text>`. The server resolves the nick.
-  - Mention: parse mentions out of incoming `EVENT` payloads; for each mention, send `NOTICE <nick> :<mention-text>`. No client lookup needed.
+  from agentirc.protocol import Event, EventType
+  from agentirc.virtual_client import VirtualClient as _AgentircVirtualClient
 
-- [ ] **Step 4.5:** Replace `server.config.name` (line 36) with the bot's own configured server identity, read from `~/.culture/server.yaml` via culture's own loader (`culture.config.load_server_config(path)` → `culture.config.ServerConfig`). The `~/.culture/server.yaml` schema is culture's nested format and is parsed by `culture.config.ServerConfig`, **not** by `agentirc.config.ServerConfig` (which is the IRCd's flat config dataclass and would fail to parse the nested file). The system-nick prefix is a culture-side concept; keep the prefix logic in `culture/bots/virtual_client.py` and source the server name from `culture.config.ServerConfig.name` (and `webhook_port` from the same instance for Tasks 5 and 7), not from a server reference.
+  from culture.bots.template_engine import render_template
 
-- [ ] **Step 4.6:** Add `EVENTSUB` subscription registration in `VirtualClient.__init__` or `start`. The bot's filter is whatever the bot's `BotConfig.trigger_type == "event"` filter compiles to (see `culture/bots/filter_dsl.py`). For non-event-triggered bots (webhook only), no subscription is needed.
+  if TYPE_CHECKING:
+      from agentirc.ircd import IRCd
+      from culture.bots.config import BotConfig
 
-- [ ] **Step 4.7:** Run the focused tests:
+
+  class VirtualClient(_AgentircVirtualClient):
+      """A culture bot's IRC presence — extends agentirc.VirtualClient with culture-specific behavior."""
+
+      def __init__(self, bot_config: BotConfig, server: IRCd) -> None:
+          super().__init__(nick=bot_config.nick, user=bot_config.user, server=server)
+          self.bot_config = bot_config
+          # culture-specific fields here
+
+      async def broadcast_to_channel(self, channel_name: str, text: str) -> None:
+          """Render a message via culture's template engine and broadcast."""
+          rendered = render_template(text, self.bot_config.template_vars)
+          await super().broadcast_to_channel(channel_name, rendered)
+
+      async def fire_event(self, event_type: EventType, channel: str | None, data: dict) -> None:
+          """Emit a culture-defined event (for fires_event chaining)."""
+          await self.server.emit_event(Event(type=event_type, channel=channel, nick=self.nick, data=data))
+
+      # ... other culture-specific methods composed over super() ...
+  ```
+
+  Target: ~50-80 LOC. If you find yourself re-implementing `join_channel`/`part_channel`/etc., stop — the parent class already does that; just call `super().method(...)`.
+
+- [ ] **Step 5.3:** Run the focused tests:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_virtual_client.py
   ```
 
-  Expected: green. Anything that fails here is a behavioral mismatch in the rewrite — fix it now, not later.
+  Expected: green. Anything that fails is a behavioral mismatch in the rewrite — fix it now, not later.
 
 ---
 
-## Task 5 — Refactor `culture/bots/bot.py`
+## Task 6 — Refactor `culture/bots/bot.py`
 
 **Files:** `culture/bots/bot.py`.
 
 Bot composes `BotConfig` + `VirtualClient` + `IRCd` ref today. The IRCd ref is used at four sites:
 
-- [ ] **Step 5.1:** `bot.py:98` (`server.get_client` for nick collision check at start). Replace with a `WHO <nick>` query against the bot's own connection (Option A) or a public helper (Option B).
+- [ ] **Step 6.1:** `bot.py:98` (`server.get_client` for nick collision check at start). The promoted `agentirc.ircd.IRCd` exposes `get_client(nick)` publicly (verify in Step 1.4's surface dump). Call it directly: `existing = self.server.get_client(self.nick)`.
 
-- [ ] **Step 5.2:** `bot.py:168` (`server.channels.get` for dynamic-join channel check). Replace with a `LIST <channel>` or remove entirely if the JOIN itself is sufficient (server returns an error if the channel doesn't exist and the bot's not allowed to create it).
+- [ ] **Step 6.2:** `bot.py:168` (`server.channels.get` for dynamic-join channel check). Same — `IRCd.channels` is publicly accessible after A2-Bridge. If the public surface narrows this to a method (`get_channel(name)`), use that.
 
-- [ ] **Step 5.3:** `bot.py:211` (`server.emit_event` for `fires_event`). Replace with `EVENTPUB`. The `fires_event` semantics — bot triggers downstream bots — survive unchanged because `EVENTPUB` reuses `IRCd.emit_event` server-side and federation/skill-hooks/`#system` surfacing all happen on the same path (per agentirc#15 closing comment, "Decision E").
+- [ ] **Step 6.3:** `bot.py:211` (`server.emit_event` for `fires_event`). Calls into `IRCd.emit_event` publicly. The `fires_event` semantics — bot triggers downstream bots — survive unchanged because emit_event still routes through the same skill-hooks / federation-relay / `#system`-surfacing path.
 
-- [ ] **Step 5.4:** `bot.py:89-90` (`server.config.webhook_port` for URL construction). Read directly from culture's own `ServerConfig` instance (the one `BotManager` constructs in Task 6).
+- [ ] **Step 6.4:** `bot.py:89-90` (`server.config.webhook_port` for URL construction). Read directly from culture's own `culture.config.ServerConfig` (the one BotManager loads in Task 7), not from `IRCd.config` — `webhook_port` is a culture-side concern after agentirc 9.5.
 
-- [ ] **Step 5.5:** Remove the `server: IRCd` field from `Bot.__init__`. The bot composes `BotConfig` + `VirtualClient` + culture's own `ServerConfig`; that's all it needs.
+- [ ] **Step 6.5:** Keep the `server: IRCd` field on `Bot.__init__` — it's still needed for `get_client`/`channels`/`emit_event`, just typed against the public class now:
 
-- [ ] **Step 5.6:** Run the focused tests:
+  ```python
+  from agentirc.ircd import IRCd
+
+  class Bot:
+      def __init__(self, bot_config: BotConfig, server: IRCd, server_config: ServerConfig) -> None:
+          self.bot_config = bot_config
+          self.server = server
+          self.server_config = server_config  # culture-side ServerConfig with webhook_port
+  ```
+
+- [ ] **Step 6.6:** Run the focused tests:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_bot.py tests/test_bot_config_fires_event_toplevel.py
@@ -255,15 +344,25 @@ Bot composes `BotConfig` + `VirtualClient` + `IRCd` ref today. The IRCd ref is u
 
 ---
 
-## Task 6 — Refactor `culture/bots/bot_manager.py`
+## Task 7 — Refactor `culture/bots/bot_manager.py`
 
 **Files:** `culture/bots/bot_manager.py`.
 
-`BotManager.on_event` is hooked by `IRCd._dispatch_to_bots` today. After the cutover, the IRCd doesn't dispatch to bots — bots subscribe to events themselves via `EVENTSUB`. The manager becomes a coordinator of bot subscriptions, not an event sink.
+The manager wires bots to the IRCd's event stream. After A2 it consumes the publicly-typed IRCd reference handed to it by `culture/cli/server.py:_run_server`.
 
-- [ ] **Step 6.1:** Replace the `on_event(self, event: Event)` method with a per-bot `EVENTSUB` registration that runs at bot start. For event-triggered bots, the manager (or each bot's `VirtualClient`) sends `EVENTSUB <id> [type=…] [channel=…] [nick=…]`; the filter is compiled from `BotConfig` via `filter_dsl.py` (already exists).
+- [ ] **Step 7.1:** Replace the `on_event(self, event: Event)` method's wiring. Today `IRCd._dispatch_to_bots` calls `bot_manager.on_event(event)` directly via in-process plumbing in the bundled IRCd. After A2, the public IRCd has `subscription_registry` (or whatever the A2-Bridge promotion exposes) that BotManager can register against. Read the public surface:
 
-- [ ] **Step 6.2:** Telemetry. The four `server.metrics.bot_invocations.add()` call sites (lines 138-145) and `bot_manager.server.metrics.bot_webhook_duration.record()` in `http_listener.py:73-76` switch to importing the meters directly:
+  ```bash
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" python -c "
+  import inspect
+  from agentirc.ircd import IRCd
+  print('IRCd public methods:', sorted(n for n in dir(IRCd) if not n.startswith('_')))
+  "
+  ```
+
+  Wire BotManager to the appropriate hook; for in-process bots the hook is likely just calling a registered callback on every `emit_event`.
+
+- [ ] **Step 7.2:** Telemetry. The four `server.metrics.bot_invocations.add()` call sites (lines 138-145) and `bot_manager.server.metrics.bot_webhook_duration.record()` in `http_listener.py:73-76` switch to importing the meters directly:
 
   ```python
   from culture.telemetry import metrics as telemetry_metrics
@@ -273,14 +372,24 @@ Bot composes `BotConfig` + `VirtualClient` + `IRCd` ref today. The IRCd ref is u
 
   The OTEL instruments are already module-level in `culture/telemetry/metrics.py` (per A1's audit); no need to route through the server.
 
-- [ ] **Step 6.3:** Remove the `IRCd` reference from `BotManager.__init__`. The manager constructs:
-  - `culture.telemetry.metrics` (module import).
-  - `culture.config.ServerConfig` (loaded from `~/.culture/server.yaml` via `culture.config.load_server_config`). The nested `~/.culture/server.yaml` schema is culture's, not agentirc's — see Step 4.5 above.
-  - A `VirtualClient` per bot (per Task 4), each with its own `EVENTSUB` subscription if event-triggered.
+- [ ] **Step 7.3:** `BotManager.__init__` takes the IRCd reference plus culture's own `ServerConfig`:
 
-- [ ] **Step 6.4:** Update `BotManager.dispatch(bot_name, payload)` (line 215) to no longer assume an IRCd is local — webhook payloads come in via `http_listener.py` and just route to the bot's `handle()` method, same as today.
+  ```python
+  from agentirc.ircd import IRCd
+  from culture.config import ServerConfig as CultureServerConfig, load_server_config
 
-- [ ] **Step 6.5:** Run the focused tests:
+  class BotManager:
+      def __init__(self, server: IRCd, server_config: CultureServerConfig) -> None:
+          self.server = server
+          self.server_config = server_config  # nested format, parsed by culture.config
+          self.bots: dict[str, Bot] = {}
+  ```
+
+  `culture/cli/server.py:_run_server` constructs both `IRCd(agentirc_config)` and `BotManager(server=ircd, server_config=culture_server_config)` and wires them.
+
+- [ ] **Step 7.4:** Update `BotManager.dispatch(bot_name, payload)` (line 215) — webhook payloads come in via `http_listener.py` and route to the bot's `handle()`. Same as today; just confirm the IRCd reference flows correctly.
+
+- [ ] **Step 7.5:** Run the focused tests:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_bot_manager.py tests/test_events_bot_trigger.py tests/test_events_bot_chain.py
@@ -288,32 +397,31 @@ Bot composes `BotConfig` + `VirtualClient` + `IRCd` ref today. The IRCd ref is u
 
 ---
 
-## Task 7 — Move webhook listener ownership from IRCd to BotManager
+## Task 8 — Move webhook listener ownership from IRCd to BotManager
 
 **Files:** `culture/bots/http_listener.py`, `culture/agentirc/ircd.py`.
 
-agentirc 9.5 stops binding `webhook_port` (per agentirc#15 closing comment, "Webhook ownership"). `webhook_port` stays in `ServerConfig` for backward compat, but the listener moves to culture.
+agentirc 9.5 already stops binding `webhook_port` (per agentirc#15 closing comment). After A2's switch to `agentirc.ircd.IRCd`, no IRCd is binding it — culture must.
 
-- [ ] **Step 7.1:** Move the listener startup. Today (`culture/agentirc/ircd.py:112-116`):
-
-  ```python
-  self._http_listener = HttpListener(bot_manager, "127.0.0.1", webhook_port)
-  ```
-
-  Move this into `BotManager.start()`:
+- [ ] **Step 8.1:** Move the listener startup from the bundled IRCd's `__init__` (`culture/agentirc/ircd.py:112-116` today) into `BotManager.start()`:
 
   ```python
-  self._http_listener = HttpListener(self, "127.0.0.1", self.config.webhook_port)
+  # in BotManager.start():
+  self._http_listener = HttpListener(
+      bot_manager=self,
+      host="127.0.0.1",
+      port=self.server_config.webhook_port,
+  )
   await self._http_listener.start()
   ```
 
-  Move the corresponding shutdown call (somewhere around `ircd.py:122` today) into `BotManager.stop()`.
+  Move the corresponding shutdown into `BotManager.stop()`.
 
-- [ ] **Step 7.2:** Delete the listener instantiation from `culture/agentirc/ircd.py`. After A2 lands, the bundled IRCd is bot-free — it's just an IRC server. (A3 will then delete the bundled IRCd entirely.)
+- [ ] **Step 8.2:** Delete the listener instantiation from `culture/agentirc/ircd.py`. After A2, the bundled IRCd is bot-free *and* effectively dead (because `_run_server` uses `agentirc.ircd.IRCd`); A3 deletes the file entirely. This step prevents accidental double-binding if someone constructs the bundled IRCd manually before A3.
 
-- [ ] **Step 7.3:** `HttpListener.__init__` already takes `bot_manager`; no signature change. Confirm `_handle_webhook` (line 81) still calls `bot_manager.dispatch(bot_name, payload)` — that path is unchanged.
+- [ ] **Step 8.3:** `HttpListener.__init__` already takes `bot_manager`; no signature change needed. Confirm `_handle_webhook` (line 81) still calls `bot_manager.dispatch(bot_name, payload)`.
 
-- [ ] **Step 7.4:** Run the focused tests:
+- [ ] **Step 8.4:** Run the focused tests:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_http_listener.py
@@ -323,17 +431,17 @@ agentirc 9.5 stops binding `webhook_port` (per agentirc#15 closing comment, "Web
 
 ---
 
-## Task 8 — System bot loading without an IRCd reference
+## Task 9 — System bot loading without an IRCd reference
 
 **Files:** `culture/bots/system/__init__.py`, `culture/bots/bot_manager.py`.
 
-`BotManager.load_system_bots()` (line 147) currently calls `discover_system_bots()` and passes its `IRCd` reference. After A2, system bots are just normal bots that happen to ship in the wheel; they connect via the same CAP-bot path as user bots.
+`BotManager.load_system_bots()` (line 147) currently calls `discover_system_bots()` and passes its `IRCd` reference (the bundled one's). After A2 the IRCd reference is the public `agentirc.ircd.IRCd`, but more importantly the discovery only needs the server *name* for the prefix, not the IRCd itself.
 
-- [ ] **Step 8.1:** Update `discover_system_bots(server_name: str)` signature — take a server name string, not an `IRCd`. The function scans `culture/bots/system/<subdir>/bot.yaml` and prefixes each name with `system-{server_name}-`.
+- [ ] **Step 9.1:** Update `discover_system_bots(server_name: str)` signature — take a string, not an `IRCd`. The function scans `culture/bots/system/<subdir>/bot.yaml` and prefixes each name with `system-{server_name}-`.
 
-- [ ] **Step 8.2:** Update `BotManager.load_system_bots()` to pass `self.config.name` instead of an IRCd reference.
+- [ ] **Step 9.2:** Update `BotManager.load_system_bots()` to pass `self.server_config.name` (culture's own config — see Task 7.3) instead of an IRCd reference.
 
-- [ ] **Step 8.3:** Run the focused test:
+- [ ] **Step 9.3:** Run the focused test:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q tests/test_welcome_bot.py
@@ -341,31 +449,26 @@ agentirc 9.5 stops binding `webhook_port` (per agentirc#15 closing comment, "Web
 
 ---
 
-## Task 9 — Test harness migration
+## Task 10 — Test harness migration
 
 **Files:** all `tests/test_*bot*.py`, `tests/test_virtual_client.py`, `tests/test_events_bot_*.py`, `tests/test_welcome_bot.py`, `tests/test_http_listener.py`, `tests/conftest.py`.
 
-The tests assert bot behavior — webhook → IRC flow, event filter matching, fires_event chains, system bot rendering, virtual-client JOIN/PART. These behaviors are unchanged; only the harness for setting up "an IRCd plus some bots" changes.
+The 10 bot test files assert behavior — webhook → IRC flow, event filter matching, fires_event chains, system bot rendering, virtual-client JOIN/PART. Behaviors are unchanged. The harness shifts.
 
-- [ ] **Step 9.1:** Add a `cap_bot_client` fixture to `tests/conftest.py`:
+- [ ] **Step 10.1:** Update `tests/conftest.py`'s IRCd fixture (or equivalent). Replace `from culture.agentirc.ircd import IRCd` with `from agentirc.ircd import IRCd`. Constructor signature should match.
 
-  ```python
-  @pytest.fixture
-  async def cap_bot_client(ircd):
-      """Connect a CAP-bot client to the running IRCd. Returns a helper with .send(), .recv(), .eventsub(), .eventpub()."""
-      # ... establish connection, NICK/USER, CAP REQ agentirc.io/bot, ACK
+- [ ] **Step 10.2:** For each test file, replace any direct import of `culture.agentirc.ircd.IRCd` with `agentirc.ircd.IRCd`. Most tests use the fixture, so the changes are limited to a handful of files.
+
+  ```bash
+  grep -rln 'from culture\.agentirc\.ircd import\|culture\.agentirc\.ircd\.' tests/
   ```
 
-  The fixture is the testing-side analog of `VirtualClient` — it mirrors the verb sequence but exposes assertion-friendly helpers.
+- [ ] **Step 10.3:** Special cases:
+  - `tests/test_events_bot_chain.py` — bot fires event, second bot triggers. Both bots are in-process VirtualClients hosted by the constructed `agentirc.ircd.IRCd`; the chain runs through the IRCd's `emit_event` → registered callbacks. Expected to work unchanged in observable behavior.
+  - `tests/test_bots_integration.py` — full webhook → IRC flow. Webhook listener is now in `BotManager`; the URL is unchanged (`http://127.0.0.1:<webhook_port>/<bot>`).
+  - `tests/test_virtual_client.py` — culture's wrapper now extends `agentirc.virtual_client.VirtualClient`. Behavioral assertions (does broadcast work, does fires_event fire) stay; if any tests reach into private internals of culture's VirtualClient, refactor them to use the public surface or move them to test the wrapper composition specifically.
 
-- [ ] **Step 9.2:** For each test file, replace the "construct IRCd, hand to BotManager, manipulate bots in-process" pattern with "construct IRCd, start BotManager, BotManager opens CAP-bot connections to IRCd". Most tests need at most a few lines changed in the setup; assertions stay.
-
-- [ ] **Step 9.3:** Special cases:
-  - `tests/test_events_bot_chain.py` — bot fires event, second bot triggers. After A2, both bots are CAP clients; the chain runs over the wire (`EVENTPUB` → server `emit_event` → reflexive `EVENT` to subscribed bots). Expected to work unchanged in observable behavior.
-  - `tests/test_bots_integration.py` — full webhook → IRC flow. Webhook listener is now in `BotManager`; the `POST /<bot>` URL is unchanged (`http://127.0.0.1:<webhook_port>/<bot>`).
-  - `tests/test_virtual_client.py` — was unit-testing the in-process `VirtualClient`. Rename helper assertions if internal method names change; behavioral assertions stay.
-
-- [ ] **Step 9.4:** Run the full test suite:
+- [ ] **Step 10.4:** Run the full suite:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q
@@ -375,116 +478,123 @@ The tests assert bot behavior — webhook → IRC flow, event filter matching, f
 
 ---
 
-## Task 10 — `culture/agentirc/CLAUDE.md` note
+## Task 11 — `culture/agentirc/CLAUDE.md` note
 
 **Files:** `culture/agentirc/CLAUDE.md`.
 
-- [ ] **Step 10.1:** Append a paragraph noting that bots are no longer in-process consumers of this directory:
+- [ ] **Step 11.1:** Append a paragraph noting the bundled IRCd is dead:
 
   ```markdown
   ## Status (after A2, 2026-05-XX)
 
-  After Phase A2 (`feat/bots-public-extension-api`), `culture/bots/*` no
-  longer holds an in-process `IRCd` reference. Bots connect to the IRCd
-  via the public `agentirc.io/bot` CAP and use `EVENTSUB`/`EVENTPUB`
-  instead of `server.emit_event` and `server.channels`. The only
-  remaining culture-side consumer of `culture/agentirc/{ircd, server_link,
-  channel, ...}` internals is `culture/cli/server.py:_run_server`. A3
-  deletes the bundled IRCd and replaces that import with a subprocess
-  shim into the installed `agentirc` binary.
+  After Phase A2 (`feat/bots-embedded-agentirc`), `culture/cli/server.py:_run_server`
+  constructs `agentirc.ircd.IRCd(config)` directly — the bundled IRCd in this
+  directory is no longer instantiated by anything in culture. `culture/bots/*`
+  uses `agentirc.virtual_client.VirtualClient` (promoted to public in
+  agentirc 9.6.0 via agentculture/agentirc#22). The files here are dead
+  weight; A3 deletes them and `git mv`s `client.py` / `remote_client.py`
+  to `culture/transport/`. `config.py` stays as the A1 re-export shim
+  through 9.x.
   ```
 
 ---
 
-## Task 11 — Pre-push reviewer + doc audit
+## Task 12 — Pre-push reviewer + doc audit
 
 **Files:** none (audits only).
 
-- [ ] **Step 11.1:** Stage all changes and run the code reviewer agent on the diff:
+- [ ] **Step 12.1:** Stage all changes:
 
   ```bash
-  git add -p   # selective; or git add for everything in the change set
+  git add -A
   ```
 
-  Then invoke `superpowers:code-reviewer` per culture/CLAUDE.md's "Pre-push review for library/protocol code" rule. A2 touches transport (CAP negotiation, EVENT verb wire format) and protocol parsers — exactly the choke points the rule targets.
+- [ ] **Step 12.2:** Run the code reviewer per culture/CLAUDE.md's "Pre-push review for library/protocol code" rule. A2 swaps a process boundary (bundled IRCd → public agentirc.ircd.IRCd) and changes who owns the webhook listener — exactly the choke points the rule targets:
 
-- [ ] **Step 11.2:** Run the `doc-test-alignment` subagent:
-
-  ```bash
-  Agent(subagent_type="doc-test-alignment", prompt="Audit the staged diff on feat/bots-public-extension-api for new public surface (CLI commands, config fields, IRC verbs, exceptions, public functions) and report missing docs/ or protocol/extensions/ coverage.")
+  ```text
+  Agent(subagent_type="superpowers:code-reviewer", prompt="Review the staged diff on feat/bots-embedded-agentirc — A2 of the agentirc extraction. Key concerns: (1) IRCd reference handoff from culture/cli/server.py:_run_server through BotManager to Bot/VirtualClient, (2) webhook listener ownership transfer from culture/agentirc/ircd.py to culture/bots/bot_manager.py, (3) culture's VirtualClient subclass composing correctly over agentirc.virtual_client.VirtualClient. Spec: docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md. Plan: docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md.")
   ```
 
-  A2 is mostly internal rewrite, but the change in webhook ownership and the `agentirc.io/bot` CAP usage may need updates in `docs/` (search for `webhook_port`, `bot_manager`, `webhook listener`).
+- [ ] **Step 12.3:** Run the `doc-test-alignment` subagent:
 
-- [ ] **Step 11.3:** Address any findings — fix docs, re-stage, repeat until both audits are clean.
+  ```text
+  Agent(subagent_type="doc-test-alignment", prompt="Audit the staged diff on feat/bots-embedded-agentirc for new public surface and report missing docs/ or protocol/extensions/ coverage. Note that culture/bots/virtual_client.py is now a wrapper over agentirc.virtual_client.VirtualClient — culture's docs may need updates noting the public agentirc surface culture depends on.")
+  ```
+
+- [ ] **Step 12.4:** Address any findings — fix docs, re-stage, repeat until both audits are clean.
 
 ---
 
-## Task 12 — Version bump, push, PR
+## Task 13 — Version bump, push, PR
 
 **Files:** `culture/__init__.py`, `pyproject.toml`, `CHANGELOG.md`.
 
-- [ ] **Step 12.1:** `/version-bump minor` (8.8.0 → 8.9.0). A2 is additive within the bot framework — no public-API removal — so this is minor, not major.
+- [ ] **Step 13.1:** `/version-bump minor` (8.8.0 → 8.9.0). A2 is additive within the bot framework — no public-API removal — so this is minor, not major.
 
-- [ ] **Step 12.2:** Verify the bump:
+- [ ] **Step 13.2:** Verify the bump:
 
   ```bash
   grep -n '8\.9\.0' culture/__init__.py pyproject.toml CHANGELOG.md
   ```
 
-- [ ] **Step 12.3:** Edit the new `[8.9.0]` section of `CHANGELOG.md` to describe what changed. Suggested entries:
+- [ ] **Step 13.3:** Edit the new `[8.9.0]` section of `CHANGELOG.md`:
 
   ```markdown
   ### Changed
-  - Rewrote culture/bots/* against the public bot extension API in agentirc-cli 9.5.0 (`agentirc.io/bot` CAP, `EVENTSUB`/`EVENTPUB`, 5-field envelope from `agentirc.protocol`). Bots no longer hold an in-process IRCd reference. Webhook listener (`webhook_port`) ownership moved from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`. Public bot behavior unchanged.
-  - Bumped `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.5,<10`.
+  - Switched `culture server start` to embed `agentirc.ircd.IRCd` directly (in-process, via the public class promoted in agentirc 9.6.0 / agentculture/agentirc#22). The bundled IRCd in `culture/agentirc/` is now orphaned but stays on disk for A3 to delete.
+  - Rewrote `culture/bots/virtual_client.py` as a thin wrapper around `agentirc.virtual_client.VirtualClient` (promoted to public in agentirc 9.6.0). Culture-specific concerns (BotConfig, template engine, fires_event, owner DM) compose over the public class. Public bot behavior unchanged.
+  - Webhook listener (`webhook_port`) ownership moved from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`.
+  - Bumped `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.6,<10`.
 
   ### Notes
-  - This is the second of three phases extracting `culture/agentirc/` into the standalone `agentirc-cli` PyPI package. Phase A1 (config dataclasses) shipped in 8.8.0 (#309); Phase A3 (delete bundled IRCd, subprocess shim, major bump) follows.
+  - This is the second of three phases extracting `culture/agentirc/` into the standalone `agentirc-cli` PyPI package. Phase A1 (config dataclasses) shipped in 8.8.0 (#309); Phase A3 (delete bundled IRCd, major bump) follows. Cross-repo coordination tracked at agentculture/agentirc#22.
   ```
 
-- [ ] **Step 12.4:** Final test pass + format check:
+- [ ] **Step 13.4:** Final test pass + format check:
 
   ```bash
   bash .claude/skills/run-tests/scripts/test.sh -p -q
-  uv run black culture/bots/ culture/agentirc/ircd.py
-  uv run isort culture/bots/ culture/agentirc/ircd.py
+  uv run black culture/bots/ culture/cli/server.py culture/agentirc/ircd.py
+  uv run isort culture/bots/ culture/cli/server.py culture/agentirc/ircd.py
   ```
 
-- [ ] **Step 12.5:** Commit and push:
+- [ ] **Step 13.5:** Commit and push:
 
   ```bash
   git commit -m "$(cat <<'EOF'
-  feat(bots): rewrite against agentirc-cli 9.5 public extension API (Track A2)
+  feat(bots): embed agentirc.ircd.IRCd; rewrite VirtualClient as wrapper (Track A2)
 
-  Drops the in-process IRCd reference from culture/bots/*. Bots now subscribe
-  via EVENTSUB/EVENTPUB and connect with the agentirc.io/bot CAP. Webhook
-  listener ownership moves from IRCd to BotManager (agentirc 9.5 no longer
-  binds webhook_port). Unblocks Phase A3.
+  Switches culture server start to construct agentirc.ircd.IRCd directly
+  (in-process), and rewrites culture/bots/virtual_client.py as a thin
+  wrapper around the public agentirc.virtual_client.VirtualClient promoted
+  in agentirc 9.6.0 (agentculture/agentirc#22). The bundled IRCd in
+  culture/agentirc/ is orphaned; A3 deletes it. Webhook listener ownership
+  moves from IRCd to BotManager. Public bot behavior unchanged.
 
   - Claude
 
   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
   EOF
   )"
-  git push -u origin feat/bots-public-extension-api
+  git push -u origin feat/bots-embedded-agentirc
   ```
 
-- [ ] **Step 12.6:** Open the PR via the `pr-review` skill (or `gh pr create`):
+- [ ] **Step 13.6:** Open the PR via the `pr-review` skill (or `gh pr create`):
 
   ```bash
-  gh pr create --title "Phase A2: rewrite bots against agentirc-cli 9.5 public extension API" --body "$(cat <<'EOF'
+  gh pr create --title "Phase A2: embed agentirc.ircd.IRCd and rewrite VirtualClient as wrapper" --body "$(cat <<'EOF'
   ## Summary
 
-  - Rewrite `culture/bots/{virtual_client,bot,bot_manager,http_listener}.py` against the public bot extension API in agentirc-cli 9.5.0 (`agentirc.io/bot` CAP, `EVENTSUB`/`EVENTUNSUB`/`EVENT`/`EVENTERR`/`EVENTPUB` verbs, 5-field envelope from `agentirc.protocol`).
-  - `Event`/`EventType` now sourced from `agentirc.protocol` directly (the `agentirc.skill` re-exports are transitional, gone in 10.0.0).
-  - Webhook listener (`webhook_port`) ownership moves from the IRCd to `BotManager` — agentirc 9.5 stops binding the port (per agentculture/agentirc#15 closing comment).
-  - Bumps dep floor `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.5,<10`.
+  - Switch `culture/cli/server.py:_run_server` to construct `agentirc.ircd.IRCd(config)` directly (in-process). The bundled IRCd in `culture/agentirc/` is orphaned but stays on disk for A3 to delete.
+  - Rewrite `culture/bots/virtual_client.py` as a thin wrapper around `agentirc.virtual_client.VirtualClient` (promoted to public in agentirc 9.6.0 via agentculture/agentirc#22). Culture-specific concerns compose over the public class.
+  - Webhook listener (`webhook_port`) ownership moves from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`.
+  - `Event`/`EventType` imports retargeted from `culture.agentirc.skill` to `agentirc.protocol`.
+  - Bumps dep floor `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.6,<10`.
   - `8.8.0 → 8.9.0` (minor — additive, no public-API removal).
 
   ## Why
 
-  Phase A2 of the agentirc extraction (spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md`). Unblocks Phase A3 (delete bundled IRCd, subprocess shim, major bump) by removing culture/bots' last in-process dependency on `culture/agentirc/`.
+  Phase A2 of the agentirc extraction (spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md`). Cross-repo coordination at agentculture/agentirc#22 unblocked this by promoting `agentirc.ircd.IRCd` and `agentirc.virtual_client.VirtualClient` to public. Phase A3 (delete bundled IRCd, major bump) follows.
 
   ## Test plan
 
@@ -493,10 +603,11 @@ The tests assert bot behavior — webhook → IRC flow, event filter matching, f
   - [x] Pre-commit hooks clean
   - [x] `superpowers:code-reviewer` clean
   - [x] `doc-test-alignment` clean
+  - [x] Manual smoke: `culture server start --port 6700` boots; raw IRC client receives 001 welcome numerics
 
   ## Out of scope (Phase A3 follow-up)
 
-  Deletion of `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill,client,remote_client}.py`, subprocess shim at `culture/cli/server.py:_run_server`, culture major bump. Plan: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md`.
+  Deletion of `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py`, `git mv` of `client.py`/`remote_client.py` to `culture/transport/`, culture major bump. Plan: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md`.
 
   - Claude
 
@@ -505,7 +616,7 @@ The tests assert bot behavior — webhook → IRC flow, event filter matching, f
   )"
   ```
 
-- [ ] **Step 12.7:** Wait for CI:
+- [ ] **Step 13.7:** Wait for CI:
 
   ```bash
   gh pr checks
@@ -517,14 +628,15 @@ The tests assert bot behavior — webhook → IRC flow, event filter matching, f
 
 ## Summary
 
-- Rewrites `culture/bots/*` against the public bot extension API in `agentirc-cli==9.5.0`. Drops the in-process IRCd reference. `EVENTSUB`/`EVENTPUB` replace `BotManager.on_event`/`server.emit_event`.
-- Webhook listener (`webhook_port`) ownership moves from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`.
-- `agentirc.skill.{Event, EventType}` import path → `agentirc.protocol.{Event, EventType}`.
-- Bumps dep floor to `agentirc-cli>=9.5,<10`. Minor bump 8.8.0 → 8.9.0.
+- Switches `culture server start` to embed `agentirc.ircd.IRCd` (public after agentirc 9.6.0 / agentculture/agentirc#22) instead of culture's bundled IRCd.
+- Rewrites `culture/bots/virtual_client.py` as a thin wrapper over `agentirc.virtual_client.VirtualClient` — culture-specific concerns compose over the public class.
+- Moves webhook listener ownership from `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`.
+- Bumps dep floor to `agentirc-cli>=9.6,<10`. Minor bump 8.8.0 → 8.9.0.
 
-User-visible bot behavior is unchanged: webhook URLs, event filters, fires_event chains, system bots, telemetry counters all behave identically. The change is purely architectural — bots become CAP clients of the IRCd instead of in-process consumers.
+User-visible bot behavior is unchanged: webhook URLs, event filters, fires_event chains, system bots, telemetry counters all behave identically. The change is architectural — bots and the IRCd are still in the same Python process, but the IRCd is now agentirc's public class, not culture's bundled fork.
 
 Spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md` (Track A2 row).
+Cross-repo coordination: agentculture/agentirc#22.
 A3 follow-up: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md`.
 
 ## Test plan
@@ -532,7 +644,8 @@ A3 follow-up: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md
 - [ ] Existing bot test suite passes (`bash .claude/skills/run-tests/scripts/test.sh -p -q`).
 - [ ] `superpowers:code-reviewer` runs clean against the staged diff.
 - [ ] `doc-test-alignment` reports no missing `docs/` or `protocol/extensions/` coverage.
-- [ ] Post-merge: verify on the spark host that `culture-agent-spark-culture.service` continues to receive bot events (system welcome bot still greets joins, any user-configured event-triggered bots still fire).
+- [ ] Manual smoke: `culture server start` boots `agentirc.ircd.IRCd`, raw client receives 001 welcome numerics, system welcome bot greets a JOIN.
+- [ ] Post-merge: verify on the spark host that `culture-agent-spark-culture.service` continues to receive bot events with the new dependency.
 
 ---
 
@@ -540,7 +653,7 @@ A3 follow-up: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md
 
 After this PR merges:
 
-- The bundled IRCd in `culture/agentirc/` is bot-free. Only `culture/cli/server.py:_run_server` still imports it.
-- A3 can now delete `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill,client,remote_client}.py` and `culture/agentirc/skills/`, and replace `_run_server` with a subprocess shim into the installed `agentirc` binary.
+- `culture/cli/server.py:_run_server` already uses `agentirc.ircd.IRCd` — A3 doesn't need to change the launch model further.
+- The bundled IRCd in `culture/agentirc/` is orphaned (no consumers in culture); A3 just `git rm`s it.
 - `culture/agentirc/config.py` (the A1 re-export shim) stays — A3 keeps it through the 9.x line per the spec.
-- The federation envelope sniff (spec § "Federation interop during the migration window") is no longer relevant once A3 lands; ship it only if mixed-version peers are expected during the A2-to-A3 window.
+- The federation envelope sniff (spec § "Federation interop during the migration window") becomes irrelevant once A3 deletes the bundled IRCd entirely; ship it only if mixed-version peers are expected during the brief A2-to-A3 window.
