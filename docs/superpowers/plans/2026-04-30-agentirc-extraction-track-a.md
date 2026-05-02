@@ -1,5 +1,13 @@
 # AgentIRC Extraction — Track A (Culture-Side Cutover) Implementation Plan
 
+> **⚠ Superseded (2026-05-02).** This plan drafted A1+A2+A3 as a single PR. Phasing forced a split:
+>
+> - **A1** (config dataclasses) shipped in culture#309 (8.8.0, 2026-05-01).
+> - **A2** (bot framework rewrite against agentirc-cli 9.5 public extension API) — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md`.
+> - **A3** (delete bundled IRCd + subprocess shim + major bump) — see `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md`.
+>
+> This file is kept for historical context; do not execute it. Companion spec (still authoritative): `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cut over culture to consume the `agentirc-cli` PyPI package: delete the in-tree IRCd, relocate the client transport to `culture/transport/`, install a 1:1 passthrough shim at `culture server <verb>`, and ship a major version bump.
