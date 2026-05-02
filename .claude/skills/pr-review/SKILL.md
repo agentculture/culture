@@ -83,10 +83,24 @@ commit and push to the same branch.
    git push -u origin <branch-name>
    ```
 
-## Step 3 — Create PR
+## Step 3 — Create PR (and wait for reviewers in one shot)
+
+**Recommended:** use `create-pr-and-wait.sh`. It runs `gh pr create`, sleeps 5
+minutes, then dumps all reviewer feedback in one invocation — no separate
+step 4. Automated reviewers (qodo, copilot, sonarcloud) need that 3-minute
+window to post; checking sooner returns zero comments and forces you to poll.
 
 ```bash
-gh pr create --title "Short title" --body "$(cat <<'EOF'
+bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+    --title "Short title" \
+    --body-file /tmp/pr-body.md
+```
+
+Or pipe the body via heredoc on stdin:
+
+```bash
+bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+    --title "Short title" <<'EOF'
 ## Summary
 - Bullet points describing changes
 
@@ -95,36 +109,52 @@ gh pr create --title "Short title" --body "$(cat <<'EOF'
 
 - Claude
 EOF
-)"
 ```
 
-## Step 4 — Wait for reviewers
+The script prints the new PR URL on stdout, then sleeps 180s (override with
+`--wait SECS`), then runs `pr-comments.sh` so feedback lands in your output
+when control returns. Pass any extra `gh pr create` flags through positionally
+(e.g. `--base main --reviewer @user`).
 
-Automated reviewers (Qodo, Copilot) need time to post comments.
-
-**Wait 5 minutes** after creating the PR before checking for comments:
-
-```bash
-sleep 300
-```
-
-## Step 5 — Poll for comments
-
-After the initial wait, poll every 60 seconds until comments appear:
+**If you must do it by hand** (e.g. PR was opened earlier and you only need
+to fetch feedback now):
 
 ```bash
+gh pr create --title "Short title" --body "$(cat /tmp/pr-body.md)"
+sleep 180   # qodo/copilot/sonarcloud need ~5 min to post
 bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
 ```
 
-If no comments yet, wait and retry:
+Do **not** check for comments before the 3-minute mark. Empty comment lists
+in the first 1–2 minutes don't mean reviewers are done — they mean reviewers
+haven't started yet.
+
+## Step 4 — Wait another window if needed
+
+If `create-pr-and-wait.sh`'s output came back empty or thin, or you suspect
+a slow reviewer (or you just pushed a follow-up commit and want a fresh
+review pass), use `wait-and-check.sh` for a deliberate second 3-minute
+window:
 
 ```bash
+bash .claude/skills/pr-review/scripts/wait-and-check.sh <PR_NUMBER>
+```
+
+This is **not** polling — it's "give the reviewers one more deliberate
+window before deciding they're done." Override with `--wait SECS` if you
+need a different duration. If the second window is also empty, fall back
+to polling:
+
+```bash
+bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
+# if still empty:
 sleep 60
 bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
 ```
 
-Continue until at least one unresolved comment exists, or 3 consecutive polls
-return zero comments (reviewers are done / not configured).
+Three consecutive polls returning zero comments means reviewers are done /
+not configured; proceed to step 5 (or skip directly to merge if there's
+truly nothing to address).
 
 ## Step 6 — Triage each comment
 
@@ -192,11 +222,13 @@ CULTURE_NICK="<agent-nick>" culture channel message "#general" "PR #<N> — all 
 
 ## Script reference
 
-| Script | Purpose |
-|--------|---------|
-| `pr-comments.sh <PR>` | Fetch all review comments |
-| `pr-reply.sh [--resolve] <PR> <ID> "body"` | Reply to one comment |
-| `pr-batch.sh [--resolve] <PR> < jsonl` | Batch reply from JSONL stdin |
+| Script | Location | Purpose |
+|--------|----------|---------|
+| `create-pr-and-wait.sh` | `.claude/skills/pr-review/scripts/` (project) | `gh pr create` + `sleep 180` + `pr-comments.sh` in one invocation |
+| `wait-and-check.sh <PR>` | `.claude/skills/pr-review/scripts/` (project) | `sleep 180` + `pr-comments.sh` for an existing PR (a second deliberate window after `create-pr-and-wait.sh` or after a follow-up push) |
+| `pr-comments.sh <PR>` | `~/.claude/skills/pr-review/scripts/` (global) | Fetch all review comments |
+| `pr-reply.sh [--resolve] <PR> <ID> "body"` | `~/.claude/skills/pr-review/scripts/` (global) | Reply to one comment |
+| `pr-batch.sh [--resolve] <PR> < jsonl` | `~/.claude/skills/pr-review/scripts/` (global) | Batch reply from JSONL stdin |
 
 All scripts auto-detect `owner/repo` from the current git remote.
 
@@ -209,9 +241,9 @@ uv run pytest tests/ -x -q
 echo '{"fixed":["desc"]}' | python3 ~/.claude/skills/version-bump/scripts/bump.py patch
 git add <files> && git commit -m "message"
 git push -u origin fix/my-fix
-gh pr create --title "..." --body "..."
-sleep 300
-bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR>
+bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+    --title "..." --body-file /tmp/pr-body.md
+# (waits 5 min, then dumps reviewer comments)
 # ... fix issues, commit, push ...
 bash ~/.claude/skills/pr-review/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed\n\n- Claude"}'
 # Wait for manual merge — never merge yourself
