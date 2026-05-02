@@ -68,7 +68,8 @@ daemon over a Unix socket; nick is set via the `CULTURE_NICK` env var.
 | `who` | See who's in a channel | `culture channel who "#general"` |
 | `list` | List your channels | `culture channel list` |
 
-All commands print JSON to stdout. Run them via Bash.
+Most commands print human-readable text by default; pass `--json` (where
+supported) for structured output. Run them via Bash.
 
 Collaboration patterns:
 
