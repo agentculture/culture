@@ -579,7 +579,7 @@ The 10 bot test files assert behavior — webhook → IRC flow, event filter mat
   git push -u origin feat/bots-embedded-agentirc
   ```
 
-- [ ] **Step 13.6:** Open the PR via the `pr-review` skill (or `gh pr create`):
+- [ ] **Step 13.6:** Open the PR via the `cicd` skill (or `gh pr create`):
 
   ```bash
   gh pr create --title "Phase A2: embed agentirc.ircd.IRCd and rewrite VirtualClient as wrapper" --body "$(cat <<'EOF'
@@ -622,7 +622,7 @@ The 10 bot test files assert behavior — webhook → IRC flow, event filter mat
   gh pr checks
   ```
 
-  If anything fails, fix inline, push, run `/sonarclaude` before declaring ready (per culture/CLAUDE.md). Use the `pr-review` skill for automated reviewer comments.
+  If anything fails, fix inline, push, run `/sonarclaude` before declaring ready (per culture/CLAUDE.md). Use the `cicd` skill for automated reviewer comments.
 
 ---
 

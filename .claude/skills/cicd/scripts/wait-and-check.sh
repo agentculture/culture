@@ -53,6 +53,10 @@ sleep "$WAIT_SECS"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_COMMENTS="$SCRIPT_DIR/pr-comments.sh"
+# NOTE: the user's global skills dir still holds the trio
+# (pr-comments.sh / pr-reply.sh / pr-batch.sh) under the old `pr-review` name —
+# steward 0.7's rename is in-repo only. If the global ever moves to `cicd/`,
+# update this constant to match.
 GLOBAL_COMMENTS="$HOME/.claude/skills/pr-review/scripts/pr-comments.sh"
 
 REPO_ARG=()

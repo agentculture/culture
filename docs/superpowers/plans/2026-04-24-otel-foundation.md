@@ -2111,7 +2111,7 @@ EOF
 Once Qodo and Copilot comment:
 
 ```
-Skill(skill="pr-review")
+Skill(skill="cicd")  # renamed from "pr-review" in culture 8.8.1
 ```
 
 Address comments, push fixes, reply, resolve threads.

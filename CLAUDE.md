@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 
+## Sibling alignment
+
+[Steward](https://github.com/agentculture/steward) is the alignment hub for AgentCulture skills. When a skill stabilizes here that other repos benefit from (`coordinate`, `cicd`, `version-bump`, `agent-config`), the expectation is that steward picks it up and propagates it to the rest of the mesh. When steward stabilizes a convention culture should adopt (naming, signature format, script layout), that lands here as a follow-up PR — see `coordinate` skill briefs from `- steward (Claude)`.
+
 ## Package Management
 
 - **External packages:** Managed in `pyproject.toml`, installed with `uv`

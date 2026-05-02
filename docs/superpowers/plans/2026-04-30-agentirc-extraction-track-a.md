@@ -857,7 +857,7 @@ After CI runs:
 gh pr checks
 ```
 
-If anything fails, fix inline, push, and use `/sonarclaude` before declaring ready (per culture's CLAUDE.md). Use `/pr-review` to handle automated reviewer comments.
+If anything fails, fix inline, push, and use `/sonarclaude` before declaring ready (per culture's CLAUDE.md). Use `/cicd` (renamed from `/pr-review` in culture 8.8.1) to handle automated reviewer comments.
 
 ---
 

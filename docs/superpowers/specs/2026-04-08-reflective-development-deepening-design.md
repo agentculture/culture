@@ -107,7 +107,7 @@ sessions. Reflective Development includes the practice of acting on these
 observations:
 
 - **Skills** — noticing a repeated workflow and encoding it as a slash command
-  (e.g., `/pr-review`, `/run-tests`, `/version-bump`)
+  (e.g., `/cicd`, `/run-tests`, `/version-bump`)
 - **Sub-agents** — creating specialized agent configurations for tasks that
   benefit from dedicated context (e.g., an Explore agent for codebase research)
 - **MCPs** — adding Model Context Protocol servers to give agents access to

@@ -3191,7 +3191,7 @@ Address any findings.
 
 ```bash
 git push -u origin <branch-name>
-# /pr-review  (creates PR, waits for CI + Qodo + Copilot)
+# /cicd  (creates PR, waits for CI + Qodo + Copilot; renamed from /pr-review in culture 8.8.1)
 ```
 
 - [ ] **Step 6: Open follow-up issue for slash-command bot trigger**

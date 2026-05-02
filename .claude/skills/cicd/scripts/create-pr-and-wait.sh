@@ -23,8 +23,9 @@ set -euo pipefail
 #   2. `sleep $WAIT_SECS` to give reviewers time to post.
 #   3. Run `pr-comments.sh <PR_NUMBER>` to dump inline + issue + review
 #      comments. Looks for the script in this directory first, then in the
-#      user's global ~/.claude/skills/pr-review/scripts/, then falls back to
-#      an inline `gh api` dump.
+#      user's global ~/.claude/skills/pr-review/scripts/ (still under the
+#      old skill name — steward 0.7's rename is in-repo only), then falls
+#      back to an inline `gh api` dump.
 #
 # Exit codes:
 #   0  PR created and feedback fetched (no judgment about whether feedback
@@ -87,6 +88,7 @@ sleep "$WAIT_SECS"
 # Step 3: dump feedback
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_COMMENTS="$SCRIPT_DIR/pr-comments.sh"
+# Global trio still lives under `pr-review/` (see header).
 GLOBAL_COMMENTS="$HOME/.claude/skills/pr-review/scripts/pr-comments.sh"
 
 if [[ -x "$PROJECT_COMMENTS" ]]; then
