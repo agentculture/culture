@@ -312,10 +312,6 @@ This is a minor bump for agentirc — additive, no breaking change.
 
 A single PR off `main`, following culture's standard workflow.
 
-### Track A — culture-side (implemented in this repo)
-
-A single PR off `main`, following culture's standard workflow.
-
 1. `pyproject.toml`: add `agentirc-cli>=9.6,<10.0`. Regenerate `uv.lock`.
 2. Delete `culture/agentirc/` entirely.
 3. Move `client.py`, `remote_client.py` → `culture/transport/`. Add `culture/transport/__init__.py` re-exporting the public class names.

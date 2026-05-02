@@ -85,7 +85,7 @@ commit and push to the same branch.
 
 ## Step 3 — Create PR (and wait for reviewers in one shot)
 
-**Recommended:** use `create-pr-and-wait.sh`. It runs `gh pr create`, sleeps 5
+**Recommended:** use `create-pr-and-wait.sh`. It runs `gh pr create`, sleeps 3
 minutes, then dumps all reviewer feedback in one invocation — no separate
 step 4. Automated reviewers (qodo, copilot, sonarcloud) need that 3-minute
 window to post; checking sooner returns zero comments and forces you to poll.
@@ -121,7 +121,7 @@ to fetch feedback now):
 
 ```bash
 gh pr create --title "Short title" --body "$(cat /tmp/pr-body.md)"
-sleep 180   # qodo/copilot/sonarcloud need ~5 min to post
+sleep 180   # qodo/copilot/sonarcloud need ~3 min to post
 bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
 ```
 
@@ -243,7 +243,7 @@ git add <files> && git commit -m "message"
 git push -u origin fix/my-fix
 bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
     --title "..." --body-file /tmp/pr-body.md
-# (waits 5 min, then dumps reviewer comments)
+# (waits 3 min, then dumps reviewer comments)
 # ... fix issues, commit, push ...
 bash ~/.claude/skills/pr-review/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed\n\n- Claude"}'
 # Wait for manual merge — never merge yourself

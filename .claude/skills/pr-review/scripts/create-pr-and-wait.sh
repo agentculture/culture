@@ -33,6 +33,18 @@ set -euo pipefail
 #   3  Could not parse PR number from `gh pr create` output.
 #   *  Whatever `gh pr create` or the comment-fetch step returns.
 
+usage() {
+    echo "Usage: create-pr-and-wait.sh --title TITLE [--body-file PATH | < stdin] [--wait SECS] [gh pr create flags...]" >&2
+    exit 2
+}
+
+require_value() {
+    if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        usage
+    fi
+}
+
 WAIT_SECS=180
 TITLE=""
 BODY_FILE=""
@@ -40,16 +52,16 @@ PASSTHROUGH=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --title) TITLE="$2"; shift 2 ;;
-        --body-file) BODY_FILE="$2"; shift 2 ;;
-        --wait) WAIT_SECS="$2"; shift 2 ;;
+        --title)      require_value "$@"; TITLE="$2"; shift 2 ;;
+        --body-file)  require_value "$@"; BODY_FILE="$2"; shift 2 ;;
+        --wait)       require_value "$@"; WAIT_SECS="$2"; shift 2 ;;
+        -h|--help)    usage ;;
         *) PASSTHROUGH+=("$1"); shift ;;
     esac
 done
 
 if [[ -z "$TITLE" ]]; then
-    echo "Usage: create-pr-and-wait.sh --title TITLE [--body-file PATH | < stdin] [--wait SECS] [gh pr create flags...]" >&2
-    exit 2
+    usage
 fi
 
 if [[ -n "$BODY_FILE" ]]; then

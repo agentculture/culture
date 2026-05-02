@@ -67,7 +67,7 @@ If any precondition fails, stop and resolve before continuing.
 | `uv.lock` | Modify | Regenerate via `uv lock`. |
 | `culture/cli/server.py` | Modify | `_run_server` (or whatever the entrypoint is named) constructs `agentirc.ircd.IRCd(config)` in-process instead of `culture.agentirc.ircd.IRCd(config)`. |
 | `culture/bots/virtual_client.py` | Rewrite | Thin (~50 LOC) wrapper around `agentirc.virtual_client.VirtualClient`. Composes culture-specific glue: BotConfig integration, template rendering, fires_event chaining, owner DM. |
-| `culture/bots/bot.py` | Modify | Drop the `server: IRCd` field. Read IRCd touchpoints (`emit_event`, channel lookup, client lookup, webhook port) from the publicly-typed `agentirc.ircd.IRCd` instance. |
+| `culture/bots/bot.py` | Modify | Keep the `server: IRCd` field (still needed for `get_client`/`channels`/`emit_event`/`fires_event`), but type it against the public `agentirc.ircd.IRCd` instead of the bundled `culture.agentirc.ircd.IRCd`. Add a `server_config: culture.config.ServerConfig` field for `webhook_port` (which moves out of agentirc). |
 | `culture/bots/bot_manager.py` | Modify | Drop in-process `on_event` hook against the bundled IRCd. Telemetry counters source from `culture.telemetry.metrics` directly, not `server.metrics`. |
 | `culture/bots/http_listener.py` | Modify | Listener owned by `BotManager`, started by `BotManager.start()`. Same aiohttp code; just owned by culture, not driven from `IRCd._http_listener`. |
 | `culture/bots/system/__init__.py` | Modify | `discover_system_bots` no longer needs an `IRCd` reference — takes `server_name: str` (from `culture.config.ServerConfig.name`). |

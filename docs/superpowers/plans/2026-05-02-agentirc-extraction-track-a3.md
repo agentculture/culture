@@ -26,10 +26,10 @@
 
   Expected: no matches under `culture/bots/`. Test files may still hit IRCd internals — Task 7 cleans those up.
 
-- `agentirc-cli>=9.5,<10` exposes the full CLI surface culture is shimming to:
+- `agentirc-cli>=9.6,<10` exposes the full CLI surface culture is shimming to:
 
   ```bash
-  cd /tmp && uv run --with "agentirc-cli>=9.5,<10" agentirc --help
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" agentirc --help
   ```
 
   Expected: subcommands `serve start stop restart status link logs version` (or a superset). If anything's missing, **stop** — the shim parity test (Task 5) will fail.
@@ -37,7 +37,7 @@
 - `agentirc.cli.dispatch(argv) -> int` is callable in-process (verifies the shim path works without forking a subprocess):
 
   ```bash
-  cd /tmp && uv run --with "agentirc-cli>=9.5,<10" python -c "
+  cd /tmp && uv run --with "agentirc-cli>=9.6,<10" python -c "
   from agentirc.cli import dispatch
   rc = dispatch(['version'])
   print('exit code:', rc)
@@ -54,7 +54,7 @@
 
 | Path | Action | Notes |
 |---|---|---|
-| `pyproject.toml` | Modify | Drop `culture/agentirc/` from package data / wheel includes if explicitly listed. No dep change (A2 already pinned `>=9.5,<10`). |
+| `pyproject.toml` | Modify | Drop `culture/agentirc/` from package data / wheel includes if explicitly listed. No dep change (A2 already pinned `>=9.6,<10`). |
 | `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` | Delete | The IRCd core. |
 | `culture/agentirc/skills/` | Delete (whole dir) | Server-side skill plugins. |
 | `culture/agentirc/__main__.py` | Delete | `python -m culture.agentirc` retired (no known callers). |

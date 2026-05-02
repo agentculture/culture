@@ -19,21 +19,33 @@ set -euo pipefail
 #   2   Bad usage (missing PR number).
 #   *   Whatever the comment-fetch step returns.
 
+usage() {
+    echo "Usage: wait-and-check.sh <PR_NUMBER> [--wait SECS] [--repo OWNER/REPO]" >&2
+    exit 2
+}
+
+require_value() {
+    if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        usage
+    fi
+}
+
 WAIT_SECS=180
 REPO=""
 PR_NUM=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --wait) WAIT_SECS="$2"; shift 2 ;;
-        --repo) REPO="$2"; shift 2 ;;
+        --wait)     require_value "$@"; WAIT_SECS="$2"; shift 2 ;;
+        --repo)     require_value "$@"; REPO="$2"; shift 2 ;;
+        -h|--help)  usage ;;
         *) PR_NUM="$1"; shift ;;
     esac
 done
 
 if [[ -z "$PR_NUM" ]]; then
-    echo "Usage: wait-and-check.sh <PR_NUMBER> [--wait SECS] [--repo OWNER/REPO]" >&2
-    exit 2
+    usage
 fi
 
 echo "Waiting ${WAIT_SECS}s before re-checking PR #${PR_NUM}..."
