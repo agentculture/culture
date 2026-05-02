@@ -1,16 +1,20 @@
 ---
-name: pr-review
+name: cicd
 description: >
-  Full PR workflow for culture: branch, commit, push, create PR, wait for
-  automated reviewers, fetch comments, fix or pushback, reply, resolve threads.
-  Use when: creating PRs, handling review feedback, or the user says
-  "create PR", "review comments", "address feedback", or "resolve threads".
+  CI/CD lane for culture: branch, commit, push, create PR, wait for automated
+  reviewers, fetch comments, fix or pushback, reply, resolve threads. Renamed
+  from `pr-review` in culture 8.8.1 to align with steward 0.7's skill-name
+  convention; the same trigger phrases keep working. Use when: creating PRs,
+  handling review feedback, or the user says "create PR", "review comments",
+  "address feedback", "resolve threads", or "use pr-review" / "use cicd".
 ---
 
-# PR Review Workflow
+# CI/CD Lane (formerly pr-review)
 
 Complete pull request lifecycle for the culture project. Follow every step
-in order.
+in order. The skill was renamed from `pr-review` to `cicd` in culture 8.8.1;
+existing prompts that say "use pr-review" still resolve here through the
+trigger phrases above.
 
 ## Step 1 — Branch
 
@@ -91,7 +95,7 @@ step 4. Automated reviewers (qodo, copilot, sonarcloud) need that 3-minute
 window to post; checking sooner returns zero comments and forces you to poll.
 
 ```bash
-bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
     --title "Short title" \
     --body-file /tmp/pr-body.md
 ```
@@ -99,7 +103,7 @@ bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
 Or pipe the body via heredoc on stdin:
 
 ```bash
-bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
     --title "Short title" <<'EOF'
 ## Summary
 - Bullet points describing changes
@@ -137,7 +141,7 @@ review pass), use `wait-and-check.sh` for a deliberate second 3-minute
 window:
 
 ```bash
-bash .claude/skills/pr-review/scripts/wait-and-check.sh <PR_NUMBER>
+bash .claude/skills/cicd/scripts/wait-and-check.sh <PR_NUMBER>
 ```
 
 This is **not** polling — it's "give the reviewers one more deliberate
@@ -224,8 +228,8 @@ CULTURE_NICK="<agent-nick>" culture channel message "#general" "PR #<N> — all 
 
 | Script | Location | Purpose |
 |--------|----------|---------|
-| `create-pr-and-wait.sh` | `.claude/skills/pr-review/scripts/` (project) | `gh pr create` + `sleep 180` + `pr-comments.sh` in one invocation |
-| `wait-and-check.sh <PR>` | `.claude/skills/pr-review/scripts/` (project) | `sleep 180` + `pr-comments.sh` for an existing PR (a second deliberate window after `create-pr-and-wait.sh` or after a follow-up push) |
+| `create-pr-and-wait.sh` | `.claude/skills/cicd/scripts/` (project) | `gh pr create` + `sleep 180` + `pr-comments.sh` in one invocation |
+| `wait-and-check.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | `sleep 180` + `pr-comments.sh` for an existing PR (a second deliberate window after `create-pr-and-wait.sh` or after a follow-up push) |
 | `pr-comments.sh <PR>` | `~/.claude/skills/pr-review/scripts/` (global) | Fetch all review comments |
 | `pr-reply.sh [--resolve] <PR> <ID> "body"` | `~/.claude/skills/pr-review/scripts/` (global) | Reply to one comment |
 | `pr-batch.sh [--resolve] <PR> < jsonl` | `~/.claude/skills/pr-review/scripts/` (global) | Batch reply from JSONL stdin |
@@ -241,7 +245,7 @@ uv run pytest tests/ -x -q
 echo '{"fixed":["desc"]}' | python3 ~/.claude/skills/version-bump/scripts/bump.py patch
 git add <files> && git commit -m "message"
 git push -u origin fix/my-fix
-bash .claude/skills/pr-review/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
     --title "..." --body-file /tmp/pr-body.md
 # (waits 3 min, then dumps reviewer comments)
 # ... fix issues, commit, push ...

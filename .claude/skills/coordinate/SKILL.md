@@ -5,7 +5,7 @@ description: >
   hand off briefs to sibling-repo agents (agentirc, future culture-agent
   / culture-bot). Use when the next step lives in another repo and an
   agent there needs to act on it. Auto-signs every post with
-  `- culture (Claude)`. Not for in-culture issues — use `pr-review` or
+  `- culture (Claude)`. Not for in-culture issues — use `cicd` or
   `gh issue create` directly for those.
 ---
 
@@ -21,8 +21,8 @@ The home for cross-repo coordination originating from culture. The pattern recur
 
 ## When NOT to Use
 
-- **In-culture issues** — open them with `gh issue create` directly, or work them through the `pr-review` skill.
-- **PR review comments** — that's the `pr-review` skill (which already auto-signs replies).
+- **In-culture issues** — open them with `gh issue create` directly, or work them through the `cicd` skill.
+- **PR review comments** — that's the `cicd` skill (which already auto-signs replies).
 - **Routine commits** — those don't get a cross-repo signature.
 
 ## Conventions
@@ -80,6 +80,6 @@ More scripts can land here as the cross-repo coordination footprint grows — `p
 
 - Post a brief that says "see culture's plan" without inlining the content. Briefs must be self-contained.
 - Skip the signature. The script enforces it; do not introduce a `--no-signature` flag.
-- Use this skill for in-culture issues — use `gh issue create` or the `pr-review` skill instead.
+- Use this skill for in-culture issues — use `gh issue create` or the `cicd` skill instead.
 - Manually type `- culture (Claude)` at the end of the body — the script appends it. Manual typing creates double-signatures when the script is later refactored.
 - Post the same ask twice. If the receiving repo already has an open issue tracking the gap, comment on that issue (use `gh issue comment` for now; promote to a `post-comment.sh` script when it becomes a recurring pattern).

@@ -74,7 +74,7 @@ This is distinct from the documentation loop. NLM is about docs flowing back as 
 
 Working with agents reveals friction — tasks that take more effort than they should, patterns that repeat without automation, context that gets lost between sessions. Reflective Development includes the practice of acting on these observations:
 
-- **Skills** — noticing a repeated workflow and encoding it as a slash command (e.g., `/pr-review`, `/run-tests`, `/version-bump`)
+- **Skills** — noticing a repeated workflow and encoding it as a slash command (e.g., `/cicd`, `/run-tests`, `/version-bump`)
 - **Sub-agents** — creating specialized agent configurations for tasks that benefit from dedicated context (e.g., an Explore agent for codebase research, a Plan agent for architecture)
 - **MCPs** — adding Model Context Protocol servers to give agents access to external tools and data sources (e.g., GitHub integration for PR workflows)
 - **CLAUDE.md updates** — capturing hard-won project knowledge so future sessions start with better context

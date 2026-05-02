@@ -559,7 +559,7 @@
   gh pr checks
   ```
 
-  If anything fails, fix inline, push, run `/sonarclaude` before declaring ready (per culture/CLAUDE.md). Use the `pr-review` skill for automated reviewer comments.
+  If anything fails, fix inline, push, run `/sonarclaude` before declaring ready (per culture/CLAUDE.md). Use the `cicd` skill for automated reviewer comments.
 
 ---
 
