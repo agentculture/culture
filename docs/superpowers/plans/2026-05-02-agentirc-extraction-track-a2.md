@@ -217,7 +217,7 @@ This is the heart of A2. `VirtualClient` today is a duck-typed in-process bot th
   - DM: just send `PRIVMSG <nick> :<text>`. The server resolves the nick.
   - Mention: parse mentions out of incoming `EVENT` payloads; for each mention, send `NOTICE <nick> :<mention-text>`. No client lookup needed.
 
-- [ ] **Step 4.5:** Replace `server.config.name` (line 36) with the bot's own configured server identity, read from `~/.culture/server.yaml` via `agentirc.config.ServerConfig`. The system-nick prefix is a culture-side concept; keep the prefix logic in `culture/bots/virtual_client.py` and source the server name from culture's own config loader, not from a server reference.
+- [ ] **Step 4.5:** Replace `server.config.name` (line 36) with the bot's own configured server identity, read from `~/.culture/server.yaml` via culture's own loader (`culture.config.load_server_config(path)` → `culture.config.ServerConfig`). The `~/.culture/server.yaml` schema is culture's nested format and is parsed by `culture.config.ServerConfig`, **not** by `agentirc.config.ServerConfig` (which is the IRCd's flat config dataclass and would fail to parse the nested file). The system-nick prefix is a culture-side concept; keep the prefix logic in `culture/bots/virtual_client.py` and source the server name from `culture.config.ServerConfig.name` (and `webhook_port` from the same instance for Tasks 5 and 7), not from a server reference.
 
 - [ ] **Step 4.6:** Add `EVENTSUB` subscription registration in `VirtualClient.__init__` or `start`. The bot's filter is whatever the bot's `BotConfig.trigger_type == "event"` filter compiles to (see `culture/bots/filter_dsl.py`). For non-event-triggered bots (webhook only), no subscription is needed.
 
@@ -275,7 +275,7 @@ Bot composes `BotConfig` + `VirtualClient` + `IRCd` ref today. The IRCd ref is u
 
 - [ ] **Step 6.3:** Remove the `IRCd` reference from `BotManager.__init__`. The manager constructs:
   - `culture.telemetry.metrics` (module import).
-  - `agentirc.config.ServerConfig` (loaded from `~/.culture/server.yaml`).
+  - `culture.config.ServerConfig` (loaded from `~/.culture/server.yaml` via `culture.config.load_server_config`). The nested `~/.culture/server.yaml` schema is culture's, not agentirc's — see Step 4.5 above.
   - A `VirtualClient` per bot (per Task 4), each with its own `EVENTSUB` subscription if event-triggered.
 
 - [ ] **Step 6.4:** Update `BotManager.dispatch(bot_name, payload)` (line 215) to no longer assume an IRCd is local — webhook payloads come in via `http_listener.py` and just route to the bot's `handle()` method, same as today.

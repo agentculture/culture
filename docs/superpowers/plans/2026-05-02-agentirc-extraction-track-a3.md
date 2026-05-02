@@ -61,7 +61,8 @@
 | `culture/agentirc/config.py` | Keep | A1 re-export shim over `agentirc.config`. Stays through 9.x; remove in 10.0.0. |
 | `culture/agentirc/__init__.py` | Modify | Trim to a single re-export of `agentirc.config` symbols. |
 | `culture/transport/__init__.py` | Create | Re-exports the public class names from `client.py` and `remote_client.py`. |
-| `culture/cli/server.py` | Rewrite | ~25 lines. Argparse `REMAINDER` passthrough into `agentirc.cli.dispatch` or `subprocess.run`. |
+| `culture/cli/server.py` | Rewrite | ~30 lines. Partial passthrough — culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) dispatch to `culture/cli/server_local.py`; everything else forwards to `agentirc.cli.dispatch` (or `subprocess.run` for `start`). |
+| `culture/cli/server_local.py` | Create | Houses the moved handler bodies for `default`/`rename`/`archive`/`unarchive` (extracted from today's `culture/cli/server.py`). Helpers (`read_default_server`, rename/archive utilities) stay in `culture/cli/shared/`. |
 | `culture/bots/`, `culture/clients/*/daemon.py` | Modify (imports only) | `culture.agentirc.{client,remote_client}` → `culture.transport.{client,remote_client}`. |
 | `protocol/extensions/` | Delete (whole dir) | Lives in agentirc now. |
 | `tests/test_*` for IRCd internals | Delete | They live in agentirc's repo now. |
@@ -176,48 +177,84 @@
 
 **Files:** `culture/cli/server.py`.
 
-- [ ] **Step 4.1:** Read the current `culture/cli/server.py` and identify the exact entrypoint culture's CLI dispatcher calls (likely `_run_server(args)` or similar). Note the function signature and return-type contract.
+- [ ] **Step 4.1:** Read the current `culture/cli/server.py` and enumerate **every** subcommand it owns. Today's `culture server` parser carries (per `culture/cli/server.py:1` docstring + the subparser block):
 
-- [ ] **Step 4.2:** Replace with the shim. Preferred shape (in-process, per Task 1.3 decision):
+  | Verb | Owner after A3 |
+  |---|---|
+  | `start`, `stop`, `status` | agentirc (lifecycle) |
+  | `link`, `logs`, `version`, `serve` | agentirc (lifecycle / introspection) |
+  | `default` | **culture** (writes the local default-server pointer; reads `read_default_server()` from `culture/cli/shared/server.py`) |
+  | `rename` | **culture** (renames the server in the local config and updates agent nicks; touches culture's own state) |
+  | `archive` | **culture** (archives the local server config; culture-side state) |
+  | `unarchive` | **culture** (unarchives the local server config; culture-side state) |
+
+  Run `grep -n 'add_parser\|server_sub' culture/cli/server.py` to confirm the live list before continuing — do not rely on this table if it disagrees with the file.
+
+- [ ] **Step 4.2:** Decide the routing rule. The shim is a **partial** passthrough — culture-owned verbs (`default`, `rename`, `archive`, `unarchive`) stay in culture; everything else forwards to agentirc. Implement as a dispatch dict, not as a hard-coded "if argv[0] in {…}" + drop-through, so the verb list is reviewable in one place:
 
   ```python
-  """culture server <verb> — passthrough into the installed agentirc CLI."""
+  """culture server <verb> — partial passthrough; culture-owned verbs stay local."""
   from agentirc.cli import dispatch as _agentirc_dispatch
 
+  from culture.cli.server_local import (
+      cmd_default,
+      cmd_rename,
+      cmd_archive,
+      cmd_unarchive,
+  )
+
+  _CULTURE_OWNED = {
+      "default": cmd_default,
+      "rename": cmd_rename,
+      "archive": cmd_archive,
+      "unarchive": cmd_unarchive,
+  }
+
   def server(argv: list[str]) -> int:
-      """culture server <verb> <args> → agentirc <verb> <args>."""
+      """culture server <verb> <args> → culture-local handler if culture-owned, else agentirc."""
+      if argv and argv[0] in _CULTURE_OWNED:
+          return _CULTURE_OWNED[argv[0]](argv[1:])
       return _agentirc_dispatch(argv)
   ```
 
-  If Task 1.3 chose subprocess for `start`, special-case it:
+  If Task 1.3 chose subprocess for `start`, special-case it inside the agentirc branch:
 
   ```python
-  import os
   import subprocess
-  from agentirc.cli import dispatch as _agentirc_dispatch
 
   def server(argv: list[str]) -> int:
+      if argv and argv[0] in _CULTURE_OWNED:
+          return _CULTURE_OWNED[argv[0]](argv[1:])
       if argv and argv[0] == "start":
-          # long-running; isolate in subprocess so a culture upgrade can replace it cleanly
           return subprocess.run(["agentirc", *argv]).returncode
       return _agentirc_dispatch(argv)
   ```
 
-  Properties to preserve:
-  - **Pure forwarding.** Culture does not parse, validate, or rename any flag. New verbs added in agentirc are reachable via `culture server <new-verb>` automatically.
-  - **Single source of truth.** Help text, error messages, exit codes — all from agentirc.
+  Move the existing handler bodies for `default`/`rename`/`archive`/`unarchive` from `culture/cli/server.py` into a new `culture/cli/server_local.py` so the shim file stays small and the culture-owned logic has its own home. Keep the helpers (`read_default_server`, the rename/archive utilities) where they live today (`culture/cli/shared/`).
 
-- [ ] **Step 4.3:** Wire the shim into culture's CLI dispatcher. The dispatcher (in `culture/cli/__init__.py` or `culture/cli/main.py`) probably calls `_run_server(args)` today; switch it to call `server(argv)`.
+- [ ] **Step 4.3:** Properties to preserve:
+  - **Pure forwarding for non-culture verbs.** Culture does not parse, validate, or rename any flag agentirc owns. New verbs added in agentirc are reachable via `culture server <new-verb>` automatically.
+  - **Single source of truth for help / error / exit codes** of agentirc-owned verbs — all from agentirc.
+  - **Culture-owned verbs stay culture-owned.** `default`/`rename`/`archive`/`unarchive` keep their current signatures, flags, output, and exit codes. They must continue to operate on culture's state — agentirc has no notion of them.
 
-- [ ] **Step 4.4:** Manual smoke:
+- [ ] **Step 4.4:** Wire the shim into culture's CLI dispatcher. The dispatcher (in `culture/cli/__init__.py` or `culture/cli/main.py`) probably calls `_run_server(args)` today; switch it to call `server(argv)`.
+
+- [ ] **Step 4.5:** Manual smoke — covers both branches of the dispatch:
 
   ```bash
+  # agentirc branch:
   uv run python -m culture server --help
   uv run python -m culture server status
   uv run python -m culture server version
+
+  # culture-owned branch:
+  uv run python -m culture server default --help
+  uv run python -m culture server rename --help
+  uv run python -m culture server archive --help
+  uv run python -m culture server unarchive --help
   ```
 
-  Each should produce the same output as `agentirc --help`, `agentirc status`, `agentirc version`. Differences are bugs in the shim, not features.
+  Agentirc verbs should match `agentirc <verb> --help` exactly. Culture-owned verbs should print culture's own help text, identical to today's `culture server <verb> --help` before the shim landed.
 
 ---
 
@@ -225,10 +262,10 @@
 
 **Files:** `tests/test_server_shim.py`.
 
-- [ ] **Step 5.1:** Create the test:
+- [ ] **Step 5.1:** Create the test. Note: the shim is a **partial** passthrough (per Task 4.2), so the parity test only covers agentirc-owned verbs. Culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) get their own regression tests that assert their pre-A3 behavior is unchanged.
 
   ```python
-  """Asserts culture server <verb> is byte-identical to agentirc <verb>."""
+  """Asserts culture server <verb> is byte-identical to agentirc <verb> for agentirc-owned verbs."""
   import subprocess
   import sys
 
@@ -237,33 +274,54 @@
   CULTURE = [sys.executable, "-m", "culture", "server"]
   AGENTIRC = ["agentirc"]
 
+  # Agentirc-owned verbs only; culture-owned verbs (default/rename/archive/unarchive)
+  # are tested separately because they have no agentirc counterpart.
+  AGENTIRC_VERBS = ["status", "version", "logs", "start", "stop", "restart", "link", "serve"]
+
+
   def _run(cmd: list[str]) -> tuple[int, str, str]:
       proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
       return proc.returncode, proc.stdout, proc.stderr
 
-  def test_help_matches() -> None:
-      culture_rc, culture_out, culture_err = _run([*CULTURE, "--help"])
-      agentirc_rc, agentirc_out, agentirc_err = _run([*AGENTIRC, "--help"])
-      assert culture_rc == agentirc_rc
-      # The argv[0] in usage lines will differ ("culture server" vs "agentirc"); strip it.
-      def _strip_argv0(text: str) -> str:
-          return "\n".join(
-              line.replace("culture server", "agentirc")
-              for line in text.splitlines()
-          )
-      assert _strip_argv0(culture_out) == agentirc_out
 
-  @pytest.mark.parametrize("verb", ["status", "version", "logs"])
-  def test_verb_help_matches(verb: str) -> None:
+  def _strip_argv0(text: str) -> str:
+      """The argv[0] in usage lines will differ ("culture server" vs "agentirc"); normalize it."""
+      return "\n".join(
+          line.replace("culture server", "agentirc")
+          for line in text.splitlines()
+      )
+
+
+  def test_top_level_help_lists_all_agentirc_verbs() -> None:
+      """`culture server --help` must list every verb agentirc lists, plus the culture-owned ones."""
+      _, culture_out, _ = _run([*CULTURE, "--help"])
+      _, agentirc_out, _ = _run([*AGENTIRC, "--help"])
+      for verb in AGENTIRC_VERBS:
+          assert verb in culture_out, f"agentirc-owned verb {verb!r} missing from culture's help"
+          assert verb in agentirc_out
+      for verb in ("default", "rename", "archive", "unarchive"):
+          assert verb in culture_out, f"culture-owned verb {verb!r} missing from culture's help"
+
+
+  @pytest.mark.parametrize("verb", AGENTIRC_VERBS)
+  def test_agentirc_verb_help_matches(verb: str) -> None:
+      """Help text for agentirc-owned verbs must be byte-identical between culture and agentirc."""
       culture_rc, culture_out, _ = _run([*CULTURE, verb, "--help"])
       agentirc_rc, agentirc_out, _ = _run([*AGENTIRC, verb, "--help"])
       assert culture_rc == agentirc_rc
-      def _strip_argv0(text: str) -> str:
-          return "\n".join(line.replace("culture server", "agentirc") for line in text.splitlines())
       assert _strip_argv0(culture_out) == agentirc_out
+
+
+  @pytest.mark.parametrize("verb", ["default", "rename", "archive", "unarchive"])
+  def test_culture_owned_verb_still_dispatches_locally(verb: str) -> None:
+      """Culture-owned verbs must NOT be forwarded to agentirc. `--help` must succeed without an agentirc binary on PATH."""
+      rc, out, err = _run([*CULTURE, verb, "--help"])
+      assert rc == 0, f"{verb} --help failed: {err}"
+      # Sanity: this is culture's argparse output, not agentirc's. argparse usage line includes the parser path.
+      assert verb in out
   ```
 
-  Pattern lifted from PR #309's `tests/test_agentirc_config_shim.py::test_shim_is_identity` — same identity-invariant style.
+  Pattern for the agentirc-side comparison lifted from PR #309's `tests/test_agentirc_config_shim.py::test_shim_is_identity` — same identity-invariant style. The culture-owned verb tests are new and are A3's regression guardrail against accidentally over-shimming.
 
 - [ ] **Step 5.2:** Run it:
 
@@ -356,12 +414,12 @@
 
   All new code should import from `agentirc.config` directly.
   """
-  from culture.agentirc.config import ServerConfig, LinkConfig, PeerSpec, TelemetryConfig
+  from culture.agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
 
-  __all__ = ["ServerConfig", "LinkConfig", "PeerSpec", "TelemetryConfig"]
+  __all__ = ["LinkConfig", "ServerConfig", "TelemetryConfig"]
   ```
 
-  Match the actual exports of `culture/agentirc/config.py` after A1; don't speculate.
+  This matches the actual A1 shim shipped in culture#309 (`culture/agentirc/config.py` re-exports exactly `LinkConfig`, `ServerConfig`, `TelemetryConfig` from `agentirc.config` — no `PeerSpec`; `agentirc.config` does not export a `PeerSpec` class as of 9.5, peer entries are represented as `LinkConfig` instances). Verify against the file before committing — don't speculate.
 
 - [ ] **Step 7.3:** `git rm` `protocol/extensions/`:
 
@@ -417,7 +475,7 @@
 
   ```markdown
   ### Changed (breaking)
-  - The bundled IRCd in `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` and `culture/agentirc/skills/` is gone; `culture server <verb>` now passes through to the installed `agentirc-cli` binary. User-visible behavior is unchanged.
+  - The bundled IRCd in `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` and `culture/agentirc/skills/` is gone. `culture server <verb>` is now a partial passthrough into the installed `agentirc-cli` binary for lifecycle verbs (`start`/`stop`/`restart`/`status`/`serve`/`link`/`logs`/`version`); culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) continue to dispatch to culture's own handlers. User-visible behavior is unchanged for every existing verb.
   - `python -m culture.agentirc` is removed (no known callers). Use `agentirc` (CLI) or `python -m agentirc`.
   - `protocol/extensions/` moved to agentirc's repo.
   - `culture/agentirc/{client,remote_client}.py` moved to `culture/transport/`. Code that imported them under the old path needs to update imports — `culture/bots/*` and `culture/clients/*/daemon.py` are already updated.
@@ -469,7 +527,7 @@
 
   - Delete `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py` and `culture/agentirc/skills/` — the bundled IRCd is gone. Final phase of the agentirc extraction.
   - `git mv culture/agentirc/{client,remote_client}.py → culture/transport/` (preserves blame). Update importers across `culture/bots/*` and `culture/clients/*/daemon.py`.
-  - Replace `culture/cli/server.py:_run_server` with a thin passthrough into `agentirc.cli.dispatch`. New verbs added in agentirc reach `culture server <verb>` automatically.
+  - Replace `culture/cli/server.py:_run_server` with a partial-passthrough shim: lifecycle verbs (`start`/`stop`/`restart`/`status`/`serve`/`link`/`logs`/`version`) forward into `agentirc.cli.dispatch`, while culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) keep dispatching to culture's own handlers (now in `culture/cli/server_local.py`). New agentirc verbs reach `culture server <verb>` automatically; culture's own verbs are not affected.
   - Delete `protocol/extensions/` (lives in agentirc's repo now).
   - Keep `culture/agentirc/config.py` as the A1 re-export shim through 9.x; removed in 10.0.0.
   - `8.9.x → 9.0.0` (major — structural change, even though user-visible CLI is unchanged).
@@ -520,14 +578,14 @@
 - Keeps `culture/agentirc/config.py` as the A1 re-export shim through 9.x.
 - Major version bump 8.9.x → 9.0.0.
 
-User-visible behavior unchanged: every `culture server <verb> <args>` invocation continues to work, with flags / output / exit codes coming from `agentirc-cli`. On-disk footprint (config path, sockets, systemd units, logs) unchanged.
+User-visible behavior unchanged: every `culture server <verb> <args>` invocation continues to work. Lifecycle verbs (`start`/`stop`/`restart`/`status`/`serve`/`link`/`logs`/`version`) get their flags / output / exit codes from `agentirc-cli` via the shim; culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) keep their existing culture-side implementations. On-disk footprint (config path, sockets, systemd units, logs) unchanged.
 
 Spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md`.
 
 ## Test plan
 
 - [ ] Existing test suite passes (`bash .claude/skills/run-tests/scripts/test.sh -p -q`).
-- [ ] New `tests/test_server_shim.py` asserts every verb in `agentirc --help` is reachable via `culture server <verb> --help`.
+- [ ] New `tests/test_server_shim.py` asserts every agentirc-owned verb is reachable with byte-identical help via `culture server <verb> --help`, and that culture-owned verbs (`default`/`rename`/`archive`/`unarchive`) continue to dispatch locally rather than being shimmed to agentirc.
 - [ ] New `tests/test_agentirc_smoke.py` boots `agentirc serve` as a subprocess and TCP-connects to it.
 - [ ] Post-merge: verify on the spark host that `culture-agent-spark-culture.service` restarts cleanly with the new release; `culture server status` and `agentirc status` produce identical output (Track C verification).
 
