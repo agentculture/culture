@@ -52,3 +52,72 @@ def test_learn_prompt_opencode_backend_normalized():
     output = generate_learn_prompt(nick="spark-acp", backend="opencode")
     assert "culture channel" in output
     assert "python3 -m" not in output
+
+
+def test_learn_prompt_teaches_communicate_skill_setup():
+    """8.9.0: prompt walks the agent through creating their own communicate skill."""
+    output = generate_learn_prompt(nick="spark-claude", server="spark", backend="claude")
+    # Walkthrough section is present.
+    assert "Set Up Your `communicate` Skill" in output
+    # Path is a generic placeholder — the agent maps it to whatever their
+    # harness uses for project-local skills. No backend-specific path baked
+    # into the prompt.
+    assert "<current-project>/<your-skills-location>/communicate/SKILL.md" in output
+    assert "<current-project>/<your-skills-location>/communicate/scripts/post-issue.sh" in output
+    # Includes both halves: in-mesh and cross-repo.
+    assert "culture channel" in output
+    assert "post-issue.sh" in output
+
+
+def test_learn_prompt_signature_per_agent():
+    """The agent's communicate skill auto-signs `- <nick> (<harness>)`, not as culture."""
+    # Claude harness pretty-prints to "Claude Code".
+    output = generate_learn_prompt(nick="spark-claude", server="spark", backend="claude")
+    assert "- spark-claude (Claude Code)" in output
+
+    # Codex harness pretty-prints to "Codex".
+    output = generate_learn_prompt(nick="thor-codex", server="thor", backend="codex")
+    assert "- thor-codex (Codex)" in output
+
+    # Copilot.
+    output = generate_learn_prompt(nick="orin-copilot", server="orin", backend="copilot")
+    assert "- orin-copilot (Copilot)" in output
+
+    # ACP (legacy "opencode" normalizes to acp).
+    output = generate_learn_prompt(nick="dev-acp", backend="opencode")
+    assert "- dev-acp (ACP)" in output
+
+
+def test_learn_prompt_communicate_skill_section_is_harness_agnostic():
+    """The communicate-skill walkthrough uses a generic project-relative placeholder.
+
+    The user's directive: paths in this section should be in the current
+    project directory and harness-agnostic — the agent reading the prompt
+    knows which concrete project-local skills directory their own harness
+    uses. So the prompt uses `<current-project>/<your-skills-location>/communicate/` as a
+    placeholder rather than baking in `.claude/skills/`, `.agents/skills/`,
+    `.copilot_skills/`, etc.
+    """
+    for backend in ("claude", "codex", "acp", "copilot"):
+        output = generate_learn_prompt(nick=f"spark-{backend}", backend=backend)
+        set_up_section = output.split("## Set Up Your `communicate` Skill", 1)[1]
+        set_up_section = set_up_section.split("\n## ", 1)[0]  # cut at next H2
+        # Generic placeholder is present.
+        assert "<current-project>/<your-skills-location>/communicate/" in set_up_section, (
+            f"Set Up section for backend={backend} missing the generic "
+            f"<current-project>/<your-skills-location>/communicate/ placeholder"
+        )
+        # No backend-specific harness paths in this section.
+        for harness_path in (
+            ".claude/skills/",
+            ".agents/skills/",
+            ".acp/skills/",
+            ".copilot_skills/",
+        ):
+            assert harness_path not in set_up_section, (
+                f"Set Up section for backend={backend} leaks harness-specific "
+                f"path {harness_path!r} — should be the generic placeholder"
+            )
+        # No home-rooted paths.
+        assert "~/" not in set_up_section
+        assert "/home/" not in set_up_section

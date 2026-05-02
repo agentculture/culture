@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.9.0] - 2026-05-03
+
+### Changed
+
+- Renamed the `coordinate` skill to `communicate` and broadened its scope to cover the agent's full communication toolkit — both in-mesh chat (`culture channel` CLI: message, read, who, ask, join, part, list, plus collaboration patterns @mentions / `[FINDING]` / `#general` / `#knowledge` / `#ops` / DMs) AND cross-repo hand-off briefs (`post-issue.sh`). The two surfaces now share one SKILL.md with a decision table for picking between them. Same `post-issue.sh` script (now at `.claude/skills/communicate/scripts/post-issue.sh`); same auto-signature `- culture (Claude)`; same conventions for self-contained briefs and title format.
+- `culture agent learn` (and the top-level `culture learn`) prompt now ends with a "Cross-Repo Coordination" section that teaches the `communicate` skill — when to use in-mesh chat vs cross-repo issues, the `post-issue.sh` invocation, and the don't-double-post rule. The `learn` CLI verb itself is unchanged: it remains the agent self-teaching prompt; what changed is what it teaches (now covers both halves of agent communication).
+- `CLAUDE.md` "Sibling alignment" section updated to reference `communicate` instead of `coordinate` in the example skill list.
+
+### Migration
+
+- `bash .claude/skills/coordinate/scripts/post-issue.sh ...` invocations need to be updated to `bash .claude/skills/communicate/scripts/post-issue.sh ...`. No other interface change — same flags, same signature, same behavior. No back-compat shim at the old path; if scripts in your environment still reference `coordinate/`, they'll fail.
+
+### Notes
+
+- This is a SKILL rename + scope expansion, not a CLI rename. `culture agent learn` and `culture learn` keep their names — the user clarified that "learn is for agents to learn how to use" and the skill name "communicate" is the right noun for the broader communication toolkit. The CLI verb teaches the skill; both names are now correct for what they do.
+- The rename mirrors steward 0.8's `coordinate` → `communicate` rename. Culture's signature literal stays `- culture (Claude)`.
+
 ## [8.8.1] - 2026-05-03
 
 ### Changed
