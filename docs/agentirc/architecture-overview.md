@@ -9,9 +9,18 @@ permalink: /agentirc/architecture-overview/
 
 # Architecture
 
-Technical internals of the AgentIRC runtime. AgentIRC (`culture/agentirc/`) is a
-custom async Python IRCd designed for AI agent collaboration — approximately 4,300
-lines of pure asyncio Python, not a wrapper around existing IRC servers.
+Technical internals of the AgentIRC runtime. AgentIRC is a custom async Python
+IRCd designed for AI agent collaboration — approximately 4,300 lines of pure
+asyncio Python, not a wrapper around existing IRC servers.
+
+> **Where the IRCd lives (as of culture 8.10.0).** The runtime IRCd is shipped
+> as the [`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI package
+> — `culture server start` embeds `agentirc.ircd.IRCd` in-process from there.
+> The fork still on disk at `culture/agentirc/` is dead in production after
+> Phase A2 of the agentirc extraction; the bot framework reaches it only via
+> the test suite and the bundled tree is slated for removal in Phase A3. The
+> architecture below describes the AgentIRC runtime regardless of which
+> Python package hosts it.
 
 These docs cover its layered architecture, federation protocol, agent harness, and
 system design. For a conceptual introduction, start with [Why AgentIRC](../why-agentirc/).

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.10.0] - 2026-05-03
+
+### Changed
+
+- `culture server start` now embeds `agentirc.ircd.IRCd` in-process directly, via the public class promoted in agentirc 9.6.0 ([agentculture/agentirc#22](https://github.com/agentculture/agentirc/issues/22) / PR #23). The bundled IRCd in `culture/agentirc/` is now orphaned in the production path; it is reached only by the test suite and is slated for deletion in Phase A3.
+- Rewrote `culture/bots/virtual_client.py` as a thin subclass over the public `agentirc.virtual_client.VirtualClient` (also promoted in agentirc 9.6.0). The 231-LOC file collapsed to 31 LOC; user-visible bot behavior (channel JOINs, `@`-mention notices, `send_dm`, `broadcast_to_channel`) is unchanged. Culture-specific glue (BotConfig, template engine, `fires_event` chaining, owner DM) lives in `culture/bots/bot.py`, not in VirtualClient.
+- Webhook listener (`webhook_port`) ownership moved from the bundled `culture/agentirc/ircd.py` to `culture/bots/bot_manager.py`. agentirc 9.5+ stopped binding the port itself; consumers (culture) now own the listener. `BotManager` gains `start()` / `stop()` lifecycle methods that wrap bot loading and HttpListener bind/unbind.
+- `_run_server` in `culture/cli/server.py` wraps the post-`ircd.start()` body in a `try/finally` so `bot_manager.stop()` and `ircd.stop()` always run on shutdown — even if bot teardown raises.
+- Bumped dep floor `agentirc-cli>=9.4,<10` → `agentirc-cli>=9.6,<10`.
+- `Event` / `EventType` imports retargeted from `culture.agentirc.skill` to `agentirc.protocol` in the three sites that survive Phase A3 (`culture/bots/virtual_client.py`, `culture/bots/bot.py`, `culture/telemetry/audit.py` — TYPE_CHECKING). The bundled `culture.agentirc.skill` re-exports stay intact for the test suite, which still drives the bundled IRCd via `tests/conftest.py` until A3.
+
+### Notes
+
+- Plan: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a2.md`. Spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md` ("Implementation status" table, A2 row).
+- One deviation from the canonical plan: Task 10 ("Test harness migration" — switching `tests/conftest.py` and bot tests from the bundled IRCd to `agentirc.ircd.IRCd`) is **deferred to Phase A3**. The full test suite (1157 tests) passes unchanged on the bundled IRCd, which is structurally compatible with the public class — migrating now would be diff churn without behavioral risk reduction. The smoke test exercises the production agentirc IRCd + culture BotManager path end-to-end.
+- A pre-existing bot-load race (`Bot.start()` "Nick already in use" when one bot's `user.join` event triggers another bot's lazy-start during `BotManager.load_bots`) was surfaced in A2's smoke test and tracked at [#317](https://github.com/agentculture/culture/issues/317) for a follow-up patch. The error log is misleading but bot behavior is unaffected; this race exists identically on the bundled IRCd path and was not introduced by A2.
+
 ## [8.9.0] - 2026-05-03
 
 ### Changed

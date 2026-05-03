@@ -18,7 +18,7 @@ wheels = [
 
 [[package]]
 name = "agentirc-cli"
-version = "9.4.1"
+version = "9.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -26,9 +26,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/a2/8b634f282dee305914bc7981b9078e974807b2dfaa86cf703a34fed0f260/agentirc_cli-9.4.1.tar.gz", hash = "sha256:cee4f94485cd005c8db4a0314b40b090258b5f0a655b3407772ff0db9594495b", size = 203722, upload-time = "2026-05-01T16:07:52.49Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/60/94e25eae65659ce7046f2db98b9d05b328babc810ff8467c36f24f8a4e18/agentirc_cli-9.6.0.tar.gz", hash = "sha256:b3d29949233c0a767a329aff9866197aed7db52e1b7e3641e7a9e71ac97529b8", size = 262835, upload-time = "2026-05-02T20:56:11.282Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/b7/330842c7791663945658b1c42f4f63038e463f925c55cdc891d0374ec9dc/agentirc_cli-9.4.1-py3-none-any.whl", hash = "sha256:12c0db88541f30f443910b139bb897f06c99024f49cc3b0ded26c0bb2b1365c5", size = 92046, upload-time = "2026-05-01T16:07:53.473Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/73/decc7659ed19cfab7a37c8012339a07452650670fb59cce112961c02b5fa/agentirc_cli-9.6.0-py3-none-any.whl", hash = "sha256:86bcbde1f9cfd18000616ac8f6e39ff19e4b59de7716f5ff174b0a92c7caf02e", size = 108483, upload-time = "2026-05-02T20:56:09.812Z" },
 ]
 
 [[package]]
@@ -606,7 +606,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "8.9.0"
+version = "8.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -651,7 +651,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "afi-cli", specifier = ">=0.3,<1.0" },
-    { name = "agentirc-cli", specifier = ">=9.4,<10" },
+    { name = "agentirc-cli", specifier = ">=9.6,<10" },
     { name = "agex-cli", specifier = ">=0.13,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },

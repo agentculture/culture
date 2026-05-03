@@ -8,16 +8,16 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agentirc.protocol import Event, EventType
 from opentelemetry import trace as _otel_trace
 
-from culture.agentirc.skill import Event, EventType
 from culture.bots.config import BOTS_DIR, BotConfig
 from culture.bots.template_engine import render_fallback, render_template
 from culture.bots.virtual_client import VirtualClient
 from culture.constants import EVENT_TYPE_RE
 
 if TYPE_CHECKING:
-    from culture.agentirc.ircd import IRCd
+    from agentirc.ircd import IRCd
 
 logger = logging.getLogger(__name__)
 

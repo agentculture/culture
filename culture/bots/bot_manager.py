@@ -21,7 +21,9 @@ from culture.bots.filter_dsl import FilterParseError, compile_filter, evaluate
 _FILTER_ERRORS = (FilterParseError, TypeError)
 
 if TYPE_CHECKING:
-    from culture.agentirc.ircd import IRCd
+    from agentirc.ircd import IRCd
+
+    from culture.bots.http_listener import HttpListener
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,52 @@ class BotManager:
     def __init__(self, server: IRCd):
         self.server = server
         self.bots: dict[str, Bot] = {}  # name -> Bot
+        self._http_listener: HttpListener | None = None
+
+    async def start(self) -> None:
+        """Load configured bots and start the webhook HTTP listener.
+
+        Owned by ``BotManager`` after Phase A2 — agentirc 9.5+ stopped
+        binding ``webhook_port`` itself; consumers (culture) host the
+        listener now. Called by ``culture/cli/server.py:_run_server``
+        after ``ircd.start()`` completes and culture has assigned itself
+        to ``ircd.bot_manager``.
+
+        Crash-safe: if any step after ``load_bots`` raises, already-loaded
+        bots are torn down before the exception propagates so the caller
+        doesn't see a half-started state.
+        """
+        from culture.bots.http_listener import HttpListener
+
+        try:
+            await self.load_bots()
+            self.load_system_bots()
+
+            webhook_port = self.server.config.webhook_port
+            self._http_listener = HttpListener(self, "127.0.0.1", webhook_port)
+            try:
+                await self._http_listener.start()
+            except OSError:
+                # Port unavailable (e.g. tests using port 0 that got an
+                # in-use ephemeral port). Non-fatal — bots still work,
+                # just without the HTTP endpoint.
+                logger.warning("Could not start webhook listener on port %d", webhook_port)
+                self._http_listener = None
+        except Exception:
+            # Tear down anything already loaded so we don't leak running
+            # bots or a half-bound listener up to the caller.
+            await self.stop()
+            raise
+
+    async def stop(self) -> None:
+        """Stop all bots and the webhook HTTP listener."""
+        if self._http_listener is not None:
+            try:
+                await self._http_listener.stop()
+            except Exception:
+                logger.exception("Failed to stop webhook listener")
+            self._http_listener = None
+        await self.stop_all()
 
     async def load_bots(self) -> None:
         """Scan ~/.culture/bots/ and load all bot definitions."""

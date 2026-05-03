@@ -417,8 +417,10 @@ async def _run_server(
     data_dir: str = "",
 ) -> None:
     """Run the IRC server (called in the daemon child process)."""
-    from culture.agentirc.config import ServerConfig
-    from culture.agentirc.ircd import IRCd
+    from agentirc.config import ServerConfig
+    from agentirc.ircd import IRCd
+
+    from culture.bots.bot_manager import BotManager
 
     config = ServerConfig(
         name=name,
@@ -430,27 +432,42 @@ async def _run_server(
     )
     ircd = IRCd(config)
     await ircd.start()
-    logger.info("Server '%s' listening on %s:%d", name, host, port)
 
-    for lc in config.links:
-        try:
-            await ircd.connect_to_peer(lc.host, lc.port, lc.password, lc.trust)
-            logger.info("Linking to %s at %s:%d", lc.name, lc.host, lc.port)
-        except Exception as e:
-            logger.error("Failed to link to %s: %s — will retry", lc.name, e)
-            ircd.maybe_retry_link(lc.name)
+    try:
+        # agentirc 9.6 ships a stub `bot_manager` that no-ops. Replace it
+        # with culture's, then load bots and start the webhook listener —
+        # agentirc stopped binding `webhook_port` in 9.5, so consumers
+        # own that surface.
+        ircd.bot_manager = BotManager(ircd)
+        await ircd.bot_manager.start()
+        logger.info("Server '%s' listening on %s:%d", name, host, port)
 
-    stop_event = asyncio.Event()
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, stop_event.set)
-        except (NotImplementedError, RuntimeError):
-            signal.signal(sig, lambda *_: stop_event.set())
+        for lc in config.links:
+            try:
+                await ircd.connect_to_peer(lc.host, lc.port, lc.password, lc.trust)
+                logger.info("Linking to %s at %s:%d", lc.name, lc.host, lc.port)
+            except Exception as e:
+                logger.error("Failed to link to %s: %s — will retry", lc.name, e)
+                ircd.maybe_retry_link(lc.name)
 
-    await stop_event.wait()
-    logger.info("Server '%s' shutting down", name)
-    await ircd.stop()
+        stop_event = asyncio.Event()
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop_event.set)
+            except (NotImplementedError, RuntimeError):
+                signal.signal(sig, lambda *_: stop_event.set())
+
+        await stop_event.wait()
+    finally:
+        logger.info("Server '%s' shutting down", name)
+        bm = getattr(ircd, "bot_manager", None)
+        if bm is not None:
+            try:
+                await bm.stop()
+            except Exception:
+                logger.exception("bot_manager.stop failed")
+        await ircd.stop()
 
 
 def _wait_for_graceful_stop(pid: int, timeout_ticks: int = 50) -> bool:
