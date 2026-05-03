@@ -59,11 +59,17 @@ class BotManager:
             self._http_listener = HttpListener(self, "127.0.0.1", webhook_port)
             try:
                 await self._http_listener.start()
-            except OSError:
+            except OSError as exc:
                 # Port unavailable (e.g. tests using port 0 that got an
                 # in-use ephemeral port). Non-fatal — bots still work,
-                # just without the HTTP endpoint.
-                logger.warning("Could not start webhook listener on port %d", webhook_port)
+                # just without the HTTP endpoint. Surface the underlying
+                # errno so operators can distinguish EADDRINUSE / EACCES /
+                # other bind failures without re-running with a debugger.
+                logger.warning(
+                    "Could not start webhook listener on port %d: %s",
+                    webhook_port,
+                    exc,
+                )
                 self._http_listener = None
         except Exception:
             # Tear down anything already loaded so we don't leak running

@@ -467,7 +467,13 @@ async def _run_server(
                 await bm.stop()
             except Exception:
                 logger.exception("bot_manager.stop failed")
-        await ircd.stop()
+        try:
+            await ircd.stop()
+        except Exception:
+            # Best-effort shutdown: a teardown failure here would otherwise
+            # mask the original exception that broke us out of the body
+            # (or turn a clean shutdown into a crash). Log and move on.
+            logger.exception("ircd.stop failed")
 
 
 def _wait_for_graceful_stop(pid: int, timeout_ticks: int = 50) -> bool:
