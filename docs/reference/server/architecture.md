@@ -25,12 +25,27 @@ at the repo root.
    persisted state from disk.
 2. **Restore persistent rooms** — reads JSON files from
    `{data_dir}/rooms/`, recreates `Channel` objects with full metadata.
-3. **Initialize BotManager** — loads bot definitions from
-   `~/.culture/bots/`, creates VirtualClients.
-4. **Bind TCP socket** — `asyncio.start_server()` on
+3. **Bind TCP socket** — `asyncio.start_server()` on
    `config.host:config.port`.
-5. **Start webhook HTTP listener** — binds on `127.0.0.1:webhook_port`.
-   Non-fatal if port is unavailable.
+
+After `ircd.start()` returns, `culture/cli/server.py:_run_server` (the
+production entrypoint behind `culture server start`) attaches culture's
+`BotManager` to the running IRCd and calls `bot_manager.start()`:
+
+1. **Replace `ircd.bot_manager`** — agentirc 9.6 ships a no-op stub
+   `BotManager` so consumers can plug their own. Culture swaps in
+   `culture.bots.BotManager(ircd)`.
+2. **`bot_manager.start()`** — loads bot definitions from
+   `~/.culture/bots/`, registers system bots, then starts the webhook
+   HTTP listener on `127.0.0.1:webhook_port` (binds non-fatally — bots
+   still work without the HTTP endpoint if the port is unavailable).
+   agentirc 9.5+ stopped binding `webhook_port` itself; consumers
+   (culture) host the listener.
+
+Shutdown reverses the sequence: `bot_manager.stop()` (stops the listener
+and parts every bot) runs before `ircd.stop()`. Both are wrapped in a
+`try/finally` in `_run_server` so the IRCd socket is always closed even
+if bot teardown raises.
 
 ## Connection Routing
 

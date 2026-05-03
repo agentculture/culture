@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, Any
 from agentirc.config import ServerConfig
 
 if TYPE_CHECKING:
-    from culture.agentirc.skill import Event
+    from agentirc.protocol import Event
+
     from culture.telemetry.metrics import MetricsRegistry
 
 logger = logging.getLogger(__name__)
