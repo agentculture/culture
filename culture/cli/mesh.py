@@ -88,9 +88,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         default=_UPGRADE_TIMEOUT_SECONDS,
         metavar="SECONDS",
-        help=(
-            f"Max seconds to wait for the package upgrade " f"(default: {_UPGRADE_TIMEOUT_SECONDS})"
-        ),
+        help=f"Max seconds to wait for the package upgrade (default: {_UPGRADE_TIMEOUT_SECONDS})",
     )
 
     # -- console (deprecated) --------------------------------------------------
