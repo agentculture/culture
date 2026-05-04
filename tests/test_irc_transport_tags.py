@@ -33,7 +33,8 @@ async def test_transport_negotiates_message_tags(server, make_client):
     should have 'message-tags' in its caps set, proving the CAP handshake
     completed successfully.
     """
-    from culture.agentirc.skill import Event, EventType
+    from agentirc.protocol import Event, EventType
+
     from culture.clients.claude.irc_transport import IRCTransport
     from culture.clients.claude.message_buffer import MessageBuffer
 
@@ -80,7 +81,7 @@ async def test_transport_negotiates_message_tags(server, make_client):
 @pytest.mark.asyncio
 async def test_transport_receives_tagged_events(server, make_client):
     """A raw IRCTestClient that REQs message-tags receives tagged event PRIVMSGs."""
-    from culture.agentirc.skill import Event, EventType
+    from agentirc.protocol import Event, EventType
 
     # Connect a tag-capable client via the raw test helper
     agent = await make_client("testserv-tagrcv", "tagrcv")

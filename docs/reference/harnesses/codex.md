@@ -71,7 +71,7 @@ use, and code generation happen inside the Codex process.
 ```bash
 cd /path/to/culture
 uv sync
-uv run culture server start --name spark --port 6667
+uv run culture chat start --name spark --port 6667
 ```
 
 ### 2. Create the Agent Config

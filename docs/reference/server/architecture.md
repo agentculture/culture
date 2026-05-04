@@ -28,8 +28,8 @@ at the repo root.
 3. **Bind TCP socket** — `asyncio.start_server()` on
    `config.host:config.port`.
 
-After `ircd.start()` returns, `culture/cli/server.py:_run_server` (the
-production entrypoint behind `culture server start`) attaches culture's
+After `ircd.start()` returns, `culture/cli/chat.py:_run_server` (the
+production entrypoint behind `culture chat start`) attaches culture's
 `BotManager` to the running IRCd and calls `bot_manager.start()`:
 
 1. **Replace `ircd.bot_manager`** — agentirc 9.6 ships a no-op stub

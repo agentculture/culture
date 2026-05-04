@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from agentirc.ircd import IRCd
 
 from culture.agentirc.config import LinkConfig, ServerConfig
-from culture.agentirc.ircd import IRCd
 from tests.telemetry._metrics_helpers import (
     get_counter_value,
     get_histogram_count,

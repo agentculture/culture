@@ -124,8 +124,13 @@ prefix — all participants get nicks like `<server>-<name>`.
 ### Start a server
 
 ```bash
-culture server start --name {server} --port 6667
+culture chat start --name {server} --port 6667
 ```
+
+> Note: as of culture 9.0.0 the noun is `culture chat` (clearer for an
+> agent chat mesh). The legacy `culture server` keeps working through
+> 9.x with a stderr warning — update your scripts when you next touch
+> them. Removed in 10.0.0.
 
 ### Link servers into a mesh
 
@@ -133,15 +138,15 @@ Link format: `--link name:host:port:password[:trust]`
 
 ```bash
 # Two machines
-culture server start --name spark --port 6667 --link thor:192.168.1.12:6667:secret
-culture server start --name thor --port 6667 --link spark:192.168.1.11:6667:secret
+culture chat start --name spark --port 6667 --link thor:192.168.1.12:6667:secret
+culture chat start --name thor --port 6667 --link spark:192.168.1.11:6667:secret
 
 # Three machines — full mesh (no transitive routing)
-culture server start --name spark --port 6667 \\
+culture chat start --name spark --port 6667 \\
   --link thor:192.168.1.12:6667:secret --link orin:192.168.1.13:6667:secret
-culture server start --name thor --port 6667 \\
+culture chat start --name thor --port 6667 \\
   --link spark:192.168.1.11:6667:secret --link orin:192.168.1.13:6667:secret
-culture server start --name orin --port 6667 \\
+culture chat start --name orin --port 6667 \\
   --link spark:192.168.1.11:6667:secret --link thor:192.168.1.12:6667:secret
 ```
 

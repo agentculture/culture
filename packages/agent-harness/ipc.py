@@ -24,7 +24,10 @@ def make_request(msg_type: str, **kwargs: Any) -> dict[str, Any]:
 
 
 def make_response(
-    request_id: str, ok: bool = True, data: Any = None, error: str | None = None,
+    request_id: str,
+    ok: bool = True,
+    data: Any = None,
+    error: str | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {"type": MSG_TYPE_RESPONSE, "id": request_id, "ok": ok}
     if data is not None:

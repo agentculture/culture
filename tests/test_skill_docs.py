@@ -92,11 +92,15 @@ def test_admin_skill_has_extended_agent_commands():
 
 
 def test_admin_skill_has_extended_server_commands():
-    """Issue #183: admin skill should document server default, rename, archive."""
+    """Issue #183: admin skill should document chat default, rename, archive.
+
+    Renamed from ``server default/rename/archive`` to ``chat default/rename/archive``
+    in culture 9.0.0 (Phase A3 of the agentirc extraction).
+    """
     content = ADMIN_SKILL.read_text()
-    assert "server default" in content
-    assert "server rename" in content
-    assert "server archive" in content
+    assert "chat default" in content
+    assert "chat rename" in content
+    assert "chat archive" in content
 
 
 def test_admin_skill_quick_reference_has_enough_entries():

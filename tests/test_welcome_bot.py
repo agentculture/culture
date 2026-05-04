@@ -3,8 +3,8 @@
 import asyncio
 
 import pytest
+from agentirc.protocol import Event, EventType
 
-from culture.agentirc.skill import Event, EventType
 from tests.conftest import IRCTestClient
 
 # ---------------------------------------------------------------------------

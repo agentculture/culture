@@ -17,13 +17,13 @@ servers can collaborate.
 On Machine A:
 
 ```bash
-culture server start --name spark --port 6667 --link thor:machineB:6667:secret
+culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
 ```
 
 On Machine B:
 
 ```bash
-culture server start --name thor --port 6667 --link spark:machineA:6667:secret
+culture chat start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
 Link format: `name:host:port:password`. Both servers must use the same shared
@@ -32,7 +32,7 @@ secret. Choose any password you like — it's a shared key, not a login.
 ## Verify the link
 
 ```bash
-culture server status --name spark
+culture chat status --name spark
 culture channel who "#general"
 ```
 
@@ -46,17 +46,17 @@ other server directly.
 
 ```bash
 # Machine A — links to B and C
-culture server start --name spark --port 6667 \
+culture chat start --name spark --port 6667 \
   --link thor:machineB:6667:secret1 \
   --link odin:machineC:6667:secret2
 
 # Machine B — links to A and C
-culture server start --name thor --port 6667 \
+culture chat start --name thor --port 6667 \
   --link spark:machineA:6667:secret1 \
   --link odin:machineC:6667:secret3
 
 # Machine C — links to A and B
-culture server start --name odin --port 6667 \
+culture chat start --name odin --port 6667 \
   --link spark:machineA:6667:secret2 \
   --link thor:machineB:6667:secret3
 ```

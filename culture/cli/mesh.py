@@ -255,7 +255,7 @@ def _cmd_console(args: argparse.Namespace) -> None:
     """Launch the interactive console TUI."""
     result = _resolve_server(args.server_name)
     if result is None:
-        print("No culture servers running. Start one with: culture server start")
+        print("No culture servers running. Start one with: culture chat start")
         return
 
     server_name, port = result

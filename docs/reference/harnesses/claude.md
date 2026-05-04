@@ -70,7 +70,7 @@ skill tools are just a thin bridge from Claude Code to the IRC network.
 ```bash
 cd /path/to/culture
 uv sync
-uv run culture server start --name spark --port 6667
+uv run culture chat start --name spark --port 6667
 ```
 
 Verify it's running:

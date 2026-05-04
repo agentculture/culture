@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from agentirc.protocol import Event, EventType
 
-from culture.agentirc.skill import Event, EventType
 from tests.telemetry._metrics_helpers import get_counter_value
 
 

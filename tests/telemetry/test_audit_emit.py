@@ -11,10 +11,10 @@ import asyncio
 import json
 
 import pytest
+from agentirc.ircd import IRCd
+from agentirc.protocol import Event, EventType
 
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.ircd import IRCd
-from culture.agentirc.skill import Event, EventType
 
 
 def _build_server(audit_dir):

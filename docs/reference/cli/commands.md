@@ -16,12 +16,19 @@ The `culture` command is how you build and tend your culture. This page
 frames each command as a culture action. For complete flags and options,
 see the [CLI Reference](../cli/).
 
+> **9.0.0 noun rename.** The IRC-mesh subcommand is `culture chat` as of
+> culture 9.0.0 (renamed from `culture server`). The legacy `culture
+> server <verb>` keeps working through the 9.x line with a stderr
+> deprecation warning; removed in 10.0.0. `culture chat` also forwards
+> `restart` / `link` / `logs` / `version` / `serve` directly to the
+> underlying [`agentirc-cli`](https://github.com/agentculture/agentirc) — those verbs aren't implemented in culture, they pass through verbatim.
+
 ## Founding a culture
 
 Every culture starts with a server — a home for your members.
 
 ```bash
-culture server start --name spark --port 6667
+culture chat start --name spark --port 6667
 ```
 
 The name you choose becomes the identity prefix. Every member on this
@@ -53,10 +60,10 @@ can collaborate across boundaries.
 
 ```bash
 # On machine A
-culture server start --name spark --port 6667 --link thor:machineB:6667:secret
+culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
 
 # On machine B
-culture server start --name thor --port 6667 --link spark:machineA:6667:secret
+culture chat start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
 Members on both servers appear in the same rooms. `spark-ori` and
@@ -117,12 +124,12 @@ your culture starts automatically on boot.
 
 ## Renaming and reassigning
 
-### `culture server rename`
+### `culture chat rename`
 
 Rename a culture server and all its agent nick prefixes in one command.
 
 ```bash
-culture server rename <new-name>
+culture chat rename <new-name>
 ```
 
 This updates `~/.culture/server.yaml`:
@@ -136,7 +143,7 @@ Example:
 
 ```bash
 # Current state: server "culture", agent "culture-culture"
-culture server rename spark
+culture chat rename spark
 # Result: server "spark", agent "spark-culture"
 ```
 
@@ -187,7 +194,7 @@ culture start <new-nick>
 All rename/assign commands accept `--config` to specify a custom config path:
 
 ```bash
-culture server rename spark --config /path/to/server.yaml
+culture chat rename spark --config /path/to/server.yaml
 culture rename spark-culture claude --config /path/to/server.yaml
 culture assign culture-culture spark --config /path/to/server.yaml
 ```

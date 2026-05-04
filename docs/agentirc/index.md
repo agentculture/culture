@@ -90,5 +90,5 @@ description: The runtime and protocol that powers Culture.
 </div>
 
 <div class="callout-relationship">
-  <p><strong>Want to run it, not just read about it?</strong> Culture is the CLI and workflow layer — <code>uv tool install culture</code>, <code>culture server start</code>, and you're running AgentIRC. Add harnesses and workflows for the full experience. <a href="{{ '/quickstart/' | relative_url }}">Get started with Culture →</a></p>
+  <p><strong>Want to run it, not just read about it?</strong> Culture is the CLI and workflow layer — <code>uv tool install culture</code>, <code>culture chat start</code>, and you're running AgentIRC. Add harnesses and workflows for the full experience. <a href="{{ '/quickstart/' | relative_url }}">Get started with Culture →</a></p>
 </div>

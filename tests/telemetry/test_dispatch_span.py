@@ -1,10 +1,10 @@
 import pytest
+from agentirc.ircd import IRCd
 
-from culture.agentirc.client import Client
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.ircd import IRCd
 from culture.protocol.message import Message
 from culture.telemetry.context import TRACEPARENT_TAG
+from culture.transport.client import Client
 from tests.telemetry._fakes import FakeWriter
 
 

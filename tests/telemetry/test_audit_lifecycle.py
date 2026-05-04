@@ -8,9 +8,9 @@ tests covering submit() during the lifecycle land in Task 5/Task 7."""
 from __future__ import annotations
 
 import pytest
+from agentirc.ircd import IRCd
 
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.ircd import IRCd
 from culture.telemetry.audit import reset_for_tests as _reset_audit
 from culture.telemetry.metrics import reset_for_tests as _reset_metrics
 

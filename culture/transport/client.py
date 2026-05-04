@@ -7,12 +7,12 @@ import re
 import time
 from typing import TYPE_CHECKING
 
+from agentirc.channel import Channel
+from agentirc.protocol import Event, EventType
 from opentelemetry import trace as _otel_trace
 from opentelemetry.context import Context as _OtelContext
 from opentelemetry.trace import Span as _OtelSpan
 
-from culture.agentirc.channel import Channel
-from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
 from culture.constants import SYSTEM_USER_PREFIX
 from culture.protocol import replies
@@ -38,7 +38,7 @@ _ATTR_CHANNEL = "irc.channel"
 
 
 if TYPE_CHECKING:
-    from culture.agentirc.ircd import IRCd
+    from agentirc.ircd import IRCd
 
 
 class Client:
@@ -810,7 +810,7 @@ class Client:
             )
 
     async def _send_to_client(self, target, relay, text, is_notice):
-        from culture.agentirc.remote_client import RemoteClient
+        from culture.transport.remote_client import RemoteClient
 
         with _otel_trace.get_tracer(_TRACER_NAME).start_as_current_span(
             "irc.privmsg.deliver.dm",
@@ -887,7 +887,7 @@ class Client:
                 await self._notify_mentions(None, text)
 
     async def _notify_mentions(self, channel_name: str | None, text: str) -> None:
-        from culture.agentirc.remote_client import RemoteClient
+        from culture.transport.remote_client import RemoteClient
 
         mentioned_nicks = re.findall(r"@(\S+)", text)
         if not mentioned_nicks:
@@ -955,7 +955,7 @@ class Client:
         return flags
 
     async def _send_who_reply(self, member, channel_name: str, channel=None) -> None:
-        from culture.agentirc.remote_client import RemoteClient  # noqa: F811
+        from culture.transport.remote_client import RemoteClient  # noqa: F811
 
         flags = self._build_who_flags(member, channel)
         server_name = (
@@ -997,7 +997,7 @@ class Client:
             await self.send_numeric(replies.RPL_ENDOFWHO, target, replies.MSG_ENDOFWHO)
 
     async def _handle_whois(self, msg: Message) -> None:
-        from culture.agentirc.remote_client import RemoteClient
+        from culture.transport.remote_client import RemoteClient
 
         if not msg.params:
             await self.send_numeric(replies.ERR_NONICKNAMEGIVEN, "No nickname given")

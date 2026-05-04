@@ -1,8 +1,7 @@
 """Tests for event-triggered bots (trigger_type: event + filter DSL)."""
 
 import pytest
-
-from culture.agentirc.skill import Event, EventType
+from agentirc.protocol import Event, EventType
 
 # ---------------------------------------------------------------------------
 # test_event_triggered_bot_runs

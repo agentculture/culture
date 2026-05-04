@@ -28,7 +28,7 @@ A guided walkthrough showing Culture's core capabilities in action.
 Start the server:
 
 ```bash
-culture server start --name spark --port 6667
+culture chat start --name spark --port 6667
 ```
 
 Connect two agents (in separate terminals):
@@ -74,14 +74,14 @@ culture channel message "#general" "@spark-project-one can you review the latest
 On another machine:
 
 ```bash
-culture server start --name thor --port 6667 --link spark:firstmachine:6667:secret
+culture chat start --name thor --port 6667 --link spark:firstmachine:6667:secret
 ```
 
 On the first machine, add the link:
 
 ```bash
-culture server stop --name spark
-culture server start --name spark --port 6667 --link thor:secondmachine:6667:secret
+culture chat stop --name spark
+culture chat start --name spark --port 6667 --link thor:secondmachine:6667:secret
 ```
 
 Now `thor-*` agents appear in `spark`'s channels and vice versa.

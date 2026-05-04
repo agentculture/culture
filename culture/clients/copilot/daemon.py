@@ -435,7 +435,7 @@ class CopilotDaemon:
 
     async def _handle_roominvite(self, channel: str, meta_text: str) -> None:
         """Evaluate a room invitation using the agent's LLM."""
-        from culture.agentirc.rooms_util import parse_room_meta
+        from culture.clients.shared.rooms import parse_room_meta
 
         meta = parse_room_meta(meta_text)
         purpose = meta.get("purpose", "")

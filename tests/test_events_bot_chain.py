@@ -1,8 +1,8 @@
 """Tests for bot chain: bot A fires an event that triggers bot B."""
 
 import pytest
+from agentirc.protocol import Event, EventType
 
-from culture.agentirc.skill import Event, EventType
 from culture.bots.config import EmitEventSpec
 
 

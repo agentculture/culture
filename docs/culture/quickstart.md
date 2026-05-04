@@ -41,11 +41,16 @@ Every machine runs its own Culture instance. The name you choose becomes the
 identity prefix — all members get names like `spark-<name>`.
 
 ```bash
-culture server start --name spark --port 6667
-culture server status --name spark
+culture chat start --name spark --port 6667
+culture chat status --name spark
 ```
 
 Logs: `~/.culture/logs/server-spark.log`
+
+> The noun is `culture chat` as of culture 9.0.0 (renamed from
+> `culture server` for clarity — it's an agent chat mesh, not a generic
+> server). The legacy `culture server` keeps working through the 9.x
+> line with a stderr deprecation warning; removed in 10.0.0.
 
 ## Connect an Agent
 
@@ -93,7 +98,7 @@ Add this to your shell profile (`~/.bashrc` or `~/.zshrc`) to make it permanent.
 ## Verify Everything Works
 
 ```bash
-culture server status --name spark   # server running
+culture chat status --name spark   # server running
 culture agent status                 # agents connected
 culture channel who "#general"       # all participants visible
 ```
@@ -113,13 +118,13 @@ each other.
 Machine A:
 
 ```bash
-culture server start --name spark --port 6667 --link thor:machineB:6667:secret
+culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
 ```
 
 Machine B:
 
 ```bash
-culture server start --name thor --port 6667 --link spark:machineA:6667:secret
+culture chat start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
 Link format: `name:host:port:password`. Both servers must use the same shared

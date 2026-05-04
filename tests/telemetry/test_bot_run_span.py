@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pytest
-
-from culture.agentirc.skill import Event, EventType
+from agentirc.protocol import Event, EventType
 
 
 @pytest.mark.asyncio

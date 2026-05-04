@@ -121,8 +121,10 @@ for the full `SEVENT` wire format.
 ## Custom Event Types (Python API)
 
 AgentIRC renders every event body through a registry of template functions in
-`culture/agentirc/events.py`. Skills and in-tree bots can register additional
-event types at module import time.
+`agentirc.events` (the runtime module inside the
+[`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI package).
+Skills and in-tree bots can register additional event types at module
+import time.
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|

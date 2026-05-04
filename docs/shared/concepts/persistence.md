@@ -23,18 +23,18 @@ Pending writes are flushed on shutdown.
 
 ## Configuration
 
-The `--data-dir` flag on `culture server start` controls where persistent data
+The `--data-dir` flag on `culture chat start` controls where persistent data
 is stored. It defaults to `~/.culture/data/`.
 
 ```bash
 # Default (persistence enabled)
-culture server start --name spark
+culture chat start --name spark
 
 # Custom path
-culture server start --name spark --data-dir /var/lib/culture/data
+culture chat start --name spark --data-dir /var/lib/culture/data
 
 # Disable persistence (empty string)
-culture server start --name spark --data-dir ""
+culture chat start --name spark --data-dir ""
 ```
 
 When `data_dir` is empty, the server operates in-memory only (original

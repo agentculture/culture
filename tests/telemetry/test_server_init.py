@@ -1,7 +1,7 @@
 import pytest
+from agentirc.ircd import IRCd
 
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.ircd import IRCd
 
 
 def test_ircd_init_sets_tracer_attribute():
