@@ -77,7 +77,7 @@ def test_forwarded_verb_is_reachable(verb: str) -> None:
     accept it should exit 0. agentirc-owned argparse may not accept
     `--help` for every verb, so we only assert the verb is reachable
     (no `Unknown chat command` error)."""
-    rc, out, err = _run([*CULTURE, verb, "--help"])
+    _, out, err = _run([*CULTURE, verb, "--help"])
     combined = (out + "\n" + err).lower()
     assert (
         "unknown chat command" not in combined

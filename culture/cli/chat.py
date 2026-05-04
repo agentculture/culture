@@ -558,7 +558,10 @@ async def _run_server(
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
                 loop.add_signal_handler(sig, stop_event.set)
-            except (NotImplementedError, RuntimeError):
+            except RuntimeError:
+                # NotImplementedError is a RuntimeError subclass, so this
+                # catch covers both Windows (NotImplementedError) and
+                # threads-without-event-loop (RuntimeError).
                 signal.signal(sig, lambda *_: stop_event.set())
 
         await stop_event.wait()
