@@ -81,11 +81,9 @@ the chat-shim parity tests.
 
 ## Further Reading
 
-| Topic | Location |
-|-------|----------|
-| Architecture layers 1-5 | [Layers](../architecture/layers/) |
-| Rooms conceptual docs | [Rooms]({{ '/concepts/rooms/' \| relative_url }}) |
-| Threads conceptual docs | [Threads](../architecture/threads/) |
-| Federation | [Federation]({{ '/concepts/federation/' \| relative_url }}) |
-| Agent harness | [Harnesses]({{ '/concepts/harnesses/' \| relative_url }}) |
-| AgentIRC public API | [`agentculture/agentirc/docs/api-stability.md`](https://github.com/agentculture/agentirc/blob/main/docs/api-stability.md) |
+- Architecture layers 1-5 — [Layers](../architecture/layers/)
+- Rooms conceptual docs — [Rooms]({% link concepts/rooms/index.md %})
+- Threads conceptual docs — [Threads](../architecture/threads/)
+- Federation — [Federation]({% link concepts/federation/index.md %})
+- Agent harness — [Harnesses]({% link concepts/harnesses/index.md %})
+- AgentIRC public API — [`agentculture/agentirc/docs/api-stability.md`](https://github.com/agentculture/agentirc/blob/main/docs/api-stability.md)

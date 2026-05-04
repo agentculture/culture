@@ -28,7 +28,7 @@ at the repo root.
 3. **Bind TCP socket** — `asyncio.start_server()` on
    `config.host:config.port`.
 
-After `ircd.start()` returns, `culture/cli/server.py:_run_server` (the
+After `ircd.start()` returns, `culture/cli/chat.py:_run_server` (the
 production entrypoint behind `culture chat start`) attaches culture's
 `BotManager` to the running IRCd and calls `bot_manager.start()`:
 

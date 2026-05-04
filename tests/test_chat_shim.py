@@ -21,7 +21,10 @@ import sys
 import pytest
 
 CULTURE = [sys.executable, "-m", "culture", "chat"]
-AGENTIRC = ["agentirc"]
+# Invoke via `python -m agentirc` rather than the `agentirc` console
+# script so the test works in environments where entry-point scripts
+# aren't on PATH (CI containers, Windows, isolated venvs).
+AGENTIRC = [sys.executable, "-m", "agentirc"]
 
 CULTURE_OWNED_VERBS = (
     "start",
