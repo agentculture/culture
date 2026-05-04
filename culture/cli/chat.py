@@ -586,6 +586,9 @@ def _force_kill(pid: int, name: str) -> None:
         print(f"Server '{name}' did not stop gracefully, sending SIGKILL")
         sig = signal.SIGKILL
     try:
+        # NOSONAR S4828: PID was validated by is_process_alive +
+        # is_culture_process in _server_stop before reaching this
+        # graceful-stop fallback; we are signaling our own daemon.
         os.kill(pid, sig)
     except ProcessLookupError:
         pass
@@ -610,6 +613,9 @@ def _server_stop(args: argparse.Namespace) -> None:
         return
 
     print(f"Stopping server '{args.name}' (PID {pid})...")
+    # NOSONAR S4828: PID validated above by read_pid + is_process_alive +
+    # is_culture_process — we only signal our own daemon, never an
+    # arbitrary system process.
     os.kill(pid, signal.SIGTERM)
 
     if _wait_for_graceful_stop(pid):
