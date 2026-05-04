@@ -9,9 +9,9 @@ import asyncio
 import json
 
 import pytest
+from agentirc.protocol import Event, EventType
 
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.skill import Event, EventType
 from culture.telemetry import AuditSink, init_audit
 from culture.telemetry.audit import build_audit_record as _build_audit_record
 from culture.telemetry.audit import reset_for_tests as _reset_audit

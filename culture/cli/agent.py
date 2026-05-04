@@ -481,7 +481,7 @@ def _probe_server_connection(host: str, port: int, server_name: str) -> None:
         hint = ""
         server_pid = read_pid(f"server-{server_name}")
         if not server_pid or not is_process_alive(server_pid):
-            hint = f"\nStart it with: culture server start --name {server_name}"
+            hint = f"\nStart it with: culture chat start --name {server_name}"
         print(
             f"Error: cannot connect to IRC server at {host}:{port}.{hint}",
             file=sys.stderr,

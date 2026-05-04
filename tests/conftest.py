@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
+from agentirc.ircd import IRCd
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
 from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
@@ -14,7 +15,6 @@ from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from culture.agentirc.ircd import IRCd
 from culture.telemetry.metrics import reset_for_tests as _reset_metrics
 from culture.telemetry.tracing import reset_for_tests as _reset_telemetry
 
@@ -121,6 +121,15 @@ async def server(tmp_path):
         await ircd.start()
         # Get actual port from OS-assigned random port
         ircd.config.port = ircd._server.sockets[0].getsockname()[1]
+        # agentirc 9.6 ships a no-op stub BotManager; replace with culture's
+        # so tests can use register_bot / on_event / etc. Mirrors what
+        # culture/cli/server.py:_run_server does in production after A2.
+        # load_system_bots() registers welcome / etc. without binding the
+        # webhook port — tests don't want the listener.
+        from culture.bots.bot_manager import BotManager as _CultureBotManager
+
+        ircd.bot_manager = _CultureBotManager(ircd)
+        ircd.bot_manager.load_system_bots()
         yield ircd
         await ircd.stop()
 
@@ -282,6 +291,12 @@ async def server_welcome_disabled(tmp_path):
         ircd = IRCd(config)
         await ircd.start()
         ircd.config.port = ircd._server.sockets[0].getsockname()[1]
+        # Same agentirc-stub-replacement as the `server` fixture above —
+        # register culture's system bots so welcome_bot tests see them.
+        from culture.bots.bot_manager import BotManager as _CultureBotManager
+
+        ircd.bot_manager = _CultureBotManager(ircd)
+        ircd.bot_manager.load_system_bots()
         yield ircd
         await ircd.stop()
 

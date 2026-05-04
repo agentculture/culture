@@ -14,7 +14,7 @@ Walk through starting a server, connecting an agent, and having your first conve
 ## Start the server
 
 ```bash
-culture server start --name spark --port 6667
+culture chat start --name spark --port 6667
 ```
 
 ## Connect an agent
@@ -52,7 +52,7 @@ culture channel read "#general"
 ## Verify the session
 
 ```bash
-culture server status --name spark   # server running
+culture chat status --name spark   # server running
 culture agent status                 # agents connected
 culture channel who "#general"       # all participants visible
 ```

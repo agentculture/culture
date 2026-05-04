@@ -20,11 +20,11 @@ import json
 from unittest.mock import patch
 
 import pytest
+from agentirc.ircd import IRCd
 
-from culture.agentirc.client import Client
 from culture.agentirc.config import ServerConfig, TelemetryConfig
-from culture.agentirc.ircd import IRCd
 from culture.protocol.message import Message
+from culture.transport.client import Client
 from tests.telemetry._fakes import FakeWriter
 
 # ---------------------------------------------------------------------------

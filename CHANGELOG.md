@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.0.0] - 2026-05-04
+
+### Changed (breaking)
+
+- **Renamed `culture server` → `culture chat`.** The new noun fits what culture actually is — an agent chat mesh, not a generic server. The 7 culture-owned verbs (`start`, `stop`, `status`, `default`, `rename`, `archive`, `unarchive`) keep their behavior under the new noun. New agentirc verbs (`restart`, `link`, `logs`, `version`, `serve`) land under `culture chat` for free via a passthrough into `agentirc.cli.dispatch`. The legacy `culture server` keeps working through 9.x as a deprecation alias that prints a stderr warning and routes to the same handlers; removed in 10.0.0.
+- **Bundled IRCd deleted.** `culture/agentirc/{ircd,server_link,channel,events,room_store,thread_store,history_store,rooms_util,skill}.py`, `culture/agentirc/skills/`, `culture/agentirc/__main__.py` are gone. Culture now embeds `agentirc.ircd.IRCd` from the [`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI package directly (the path A2 set up). ~3,800 LOC of bundled fork removed.
+- **`python -m culture.agentirc` is removed.** Use `agentirc` (CLI) or `python -m agentirc` instead. Reachable through `culture chat <verb>` for the lifecycle verbs.
+- **`culture/agentirc/{client,remote_client}.py` moved to `culture/transport/`** (`git mv` preserves blame). Code that imported them under the old path needs to update — `culture/bots/*` and `culture/clients/*/daemon.py` are already updated.
+- **`parse_room_meta` moved to `culture/clients/shared/rooms.py`.** All four client daemons (`claude`, `codex`, `copilot`, `acp`) updated to import from the new location. The function lived in the bundled `culture/agentirc/rooms_util.py` before A3.
+- **Test harness migrated to `agentirc.ircd.IRCd`.** `tests/conftest.py`, `tests/telemetry/*`, and the bot/event/welcome/transport-tag tests now construct the public class instead of the bundled fork. Agentirc-internal tests (federation, rooms, threads, history, skills, events_*) deleted from culture's test tree — they live in agentirc's repo now.
+
+### Kept (transitional)
+
+- **`culture/agentirc/config.py`** remains as a re-export shim over `agentirc.config` through the 9.x line; removed in 10.0.0. Existing `from culture.agentirc.config import ServerConfig` keeps resolving.
+- **`culture/agentirc/__init__.py`** re-exports `ServerConfig` / `LinkConfig` / `TelemetryConfig` from the same shim, so `from culture.agentirc import ServerConfig` keeps working.
+- **`culture/agentirc/docs/`** is the source for the AgentIRC section of culture.dev — CI still copies it to `docs/agentirc/` before the Jekyll build. Can be revisited once culture's docs and agentirc's own docs visibly diverge.
+
+### Migration notes for users
+
+- Skills, scripts, and agent prompts that say `culture server` keep working with a stderr warning. Update them when you next touch them.
+- Code importing `culture.agentirc.{ircd,channel,events,...}` is broken. There is no replacement under `culture.*`; depend on `agentirc-cli` and import from `agentirc.*` directly.
+- Code importing `culture.agentirc.{client,remote_client}` — switch to `culture.transport.{client,remote_client}`.
+- Code importing `culture.agentirc.rooms_util.parse_room_meta` — switch to `culture.clients.shared.rooms.parse_room_meta`.
+- Code importing `culture.agentirc.config` — still works through the shim; remove in 10.0.0.
+
+### Notes
+
+- Final phase of the agentirc extraction. A1 (config dataclasses, 8.8.0, #309) and A2 (bot framework rewrite, 8.10.0, #319) preceded this. Spec: `docs/superpowers/specs/2026-04-30-agentirc-extraction-design.md`. Plan: `docs/superpowers/plans/2026-05-02-agentirc-extraction-track-a3.md` plus the verb-ownership and noun-rename decisions from this PR.
+- Pre-existing bot-load race ([#317](https://github.com/agentculture/culture/issues/317)) is independent of this PR; tracked for a follow-up patch.
+
 ## [8.10.0] - 2026-05-03
 
 ### Changed

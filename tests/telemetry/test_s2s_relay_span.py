@@ -10,9 +10,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from agentirc.protocol import Event, EventType
 from opentelemetry import trace as otel_trace
 
-from culture.agentirc.skill import Event, EventType
 from culture.telemetry.context import TRACEPARENT_TAG
 
 
