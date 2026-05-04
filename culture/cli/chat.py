@@ -476,13 +476,24 @@ def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> N
 
     write_pid(pid_name, os.getpid())
 
+    # The daemon child must report its actual outcome to the OS so service
+    # managers (systemd, monit, supervisord) can detect crashes and restart.
+    # Wrapping `asyncio.run(...)` in a `finally: os._exit(0)` masks every
+    # failure as success — pre-A3 bug surfaced by Qodo on PR #320.
+    exit_code = 0
     try:
         asyncio.run(
             _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
         )
+    except KeyboardInterrupt:
+        # Clean shutdown path — Ctrl-C from foreground / SIGINT.
+        pass
+    except Exception:  # noqa: BLE001 - daemon must convert crash to non-zero exit
+        logger.exception("daemon child crashed; exiting with non-zero status")
+        exit_code = 1
     finally:
         remove_pid(pid_name)
-        os._exit(0)
+        os._exit(exit_code)
 
 
 def _server_start(args: argparse.Namespace) -> None:
