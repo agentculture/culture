@@ -83,6 +83,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=os.path.expanduser("~/.culture/mesh.yaml"),
         help="Path to mesh.yaml",
     )
+    update_parser.add_argument(
+        "--upgrade-timeout",
+        type=int,
+        default=_UPGRADE_TIMEOUT_SECONDS,
+        metavar="SECONDS",
+        help=(
+            f"Max seconds to wait for the package upgrade " f"(default: {_UPGRADE_TIMEOUT_SECONDS})"
+        ),
+    )
 
     # -- console (deprecated) --------------------------------------------------
     console_parser = mesh_sub.add_parser(
@@ -374,28 +383,42 @@ def _find_upgrade_tool() -> tuple[str, list[str]] | None:
     return None
 
 
-_UPGRADE_TIMEOUT_SECONDS = 120
+_UPGRADE_TIMEOUT_SECONDS = 600
 _FALLBACK_START_TIMEOUT_SECONDS = 30
 
 
-def _run_upgrade(tool_name: str, cmd: list[str]) -> None:
-    """Run the upgrade subprocess and exit on failure or timeout."""
+def _upgrade_timeout_hint(tool_name: str, timeout_seconds: int) -> str:
+    """Build the multi-line hint shown after an upgrade timeout."""
+    direct_cmd = "uv tool upgrade culture" if tool_name == "uv" else "pip install --upgrade culture"
+    return (
+        f"{tool_name} upgrade timed out after {timeout_seconds}s.\n"
+        "What to do:\n"
+        f"  - Run `{direct_cmd}` directly — large dependency downloads can\n"
+        "    exceed the default ceiling, and running it yourself shows progress.\n"
+        "  - Or rerun: `culture mesh update --upgrade-timeout 1800`\n"
+        "  - Or skip the upgrade and just restart services:\n"
+        "    `culture mesh update --skip-upgrade`"
+    )
+
+
+def _run_upgrade(tool_name: str, cmd: list[str], timeout_seconds: int) -> None:
+    """Run the upgrade subprocess and exit on failure or timeout.
+
+    Stdout/stderr inherit the parent terminal so uv/pip progress is visible
+    in real time — without that, a slow download is indistinguishable from
+    a hang (see culture mesh update timeout hint).
+    """
     print(f"Upgrading via {tool_name}...")
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=_UPGRADE_TIMEOUT_SECONDS
-        )
+        result = subprocess.run(cmd, timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
+        print(_upgrade_timeout_hint(tool_name, timeout_seconds), file=sys.stderr)
+        sys.exit(1)
+    if result.returncode != 0:
         print(
-            f"{tool_name} upgrade timed out after {_UPGRADE_TIMEOUT_SECONDS}s — "
-            "rerun with --skip-upgrade to proceed without upgrading",
+            f"{tool_name} upgrade failed (exit {result.returncode})",
             file=sys.stderr,
         )
-        sys.exit(1)
-    if tool_name == "uv":
-        print(result.stdout.strip() if result.stdout else "")
-    if result.returncode != 0:
-        print(f"{tool_name} upgrade failed: {result.stderr}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -414,10 +437,19 @@ def _upgrade_culture_package(args: argparse.Namespace) -> bool:
         print("Neither uv nor pip found", file=sys.stderr)
         sys.exit(1)
 
-    _run_upgrade(*tool)
+    _run_upgrade(*tool, timeout_seconds=args.upgrade_timeout)
 
     culture_bin = shutil.which("culture") or "culture"
-    reexec_args = [culture_bin, "mesh", "update", "--skip-upgrade", "--config", args.config]
+    reexec_args = [
+        culture_bin,
+        "mesh",
+        "update",
+        "--skip-upgrade",
+        "--config",
+        args.config,
+        "--upgrade-timeout",
+        str(args.upgrade_timeout),
+    ]
     print("Re-executing with updated code...")
     if sys.platform == "win32":
         sys.exit(subprocess.run(reexec_args).returncode)

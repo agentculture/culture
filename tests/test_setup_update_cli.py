@@ -1,6 +1,7 @@
 # tests/test_setup_update_cli.py
 """Lightweight parser tests for setup and update subcommands."""
 
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -22,16 +23,26 @@ def test_setup_parser():
 
 
 def test_update_parser():
-    """update subcommand parses --dry-run, --skip-upgrade, --config."""
+    """update subcommand parses --dry-run, --skip-upgrade, --config, --upgrade-timeout."""
     p = _build_parser()
     args = p.parse_args(["mesh", "update", "--dry-run", "--skip-upgrade"])
     assert args.command == "mesh"
     assert args.mesh_command == "update"
     assert args.dry_run is True
     assert args.skip_upgrade is True
+    # default upgrade-timeout matches the constant in culture.cli.mesh
+    from culture.cli.mesh import _UPGRADE_TIMEOUT_SECONDS
+
+    assert args.upgrade_timeout == _UPGRADE_TIMEOUT_SECONDS
+    assert (
+        _UPGRADE_TIMEOUT_SECONDS >= 300
+    ), "default must be high enough to absorb a fresh major-version install"
 
     args = p.parse_args(["mesh", "update", "--config", "/tmp/mesh.yaml"])
     assert args.config == "/tmp/mesh.yaml"
+
+    args = p.parse_args(["mesh", "update", "--upgrade-timeout", "900"])
+    assert args.upgrade_timeout == 900
 
 
 def test_setup_in_dispatch():
@@ -120,6 +131,66 @@ def test_update_skips_server_without_config(
 
     mock_restart.assert_not_called()
     assert "no config found" in capsys.readouterr().err
+
+
+# ---- _run_upgrade tests ----
+
+
+def test_run_upgrade_streams_output():
+    """_run_upgrade must NOT capture output — uv/pip progress has to reach the terminal.
+
+    Capturing output is what made the bare 'culture mesh update' look like a
+    hang on slow links: the 73 MiB claude-agent-sdk download is silent for
+    ~2 minutes when stdout/stderr are swallowed. Guard against a regression.
+    """
+    from culture.cli.mesh import _run_upgrade
+
+    with patch(f"{_MESH_MOD}.subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        _run_upgrade("uv", ["uv", "tool", "upgrade", "culture"], timeout_seconds=600)
+
+    assert mock_run.call_count == 1
+    _args, kwargs = mock_run.call_args
+    assert (
+        "capture_output" not in kwargs
+    ), "subprocess.run must inherit stdout/stderr so progress is visible"
+    assert kwargs.get("timeout") == 600
+
+
+def test_run_upgrade_timeout_message_has_three_hints(capsys):
+    """On timeout, the hint must offer all three recovery paths.
+
+    Listing only --skip-upgrade leaves a user who genuinely wants the new
+    version with no path forward. The hint must also point at running uv/pip
+    directly and at extending the timeout.
+    """
+    from culture.cli.mesh import _run_upgrade
+
+    with patch(f"{_MESH_MOD}.subprocess.run") as mock_run:
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="uv", timeout=5)
+        with pytest.raises(SystemExit) as exc_info:
+            _run_upgrade("uv", ["uv", "tool", "upgrade", "culture"], timeout_seconds=5)
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "uv tool upgrade culture" in err  # direct-tool suggestion
+    assert "--upgrade-timeout" in err  # extend-timeout suggestion
+    assert "--skip-upgrade" in err  # skip suggestion
+    assert "timed out after 5s" in err
+
+
+def test_run_upgrade_timeout_message_uses_pip_when_pip_selected(capsys):
+    """The direct-tool hint should match whichever upgrader was picked."""
+    from culture.cli.mesh import _run_upgrade
+
+    with patch(f"{_MESH_MOD}.subprocess.run") as mock_run:
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="pip", timeout=5)
+        with pytest.raises(SystemExit):
+            _run_upgrade("pip", ["pip", "install", "--upgrade", "culture"], timeout_seconds=5)
+
+    err = capsys.readouterr().err
+    assert "pip install --upgrade culture" in err
+    assert "uv tool upgrade culture" not in err
 
 
 # ---- _resolve_mesh_for_server tests ----

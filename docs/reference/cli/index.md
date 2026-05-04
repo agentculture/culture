@@ -386,20 +386,32 @@ Upgrade the `culture` package and restart all running servers.
 culture mesh update                          # upgrade package + restart everything
 culture mesh update --dry-run                # preview steps without executing
 culture mesh update --skip-upgrade           # restart only, skip package upgrade
+culture mesh update --upgrade-timeout 1800   # allow up to 30 min for the upgrade
 culture mesh update --config /path/mesh.yaml
 ```
+
+uv/pip output streams to your terminal in real time, so the package upgrade
+shows download progress as it happens — a long-running upgrade is no longer
+indistinguishable from a hang.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dry-run` | off | Print each step without executing it |
 | `--skip-upgrade` | off | Skip the package upgrade step; just restart services |
+| `--upgrade-timeout SECONDS` | `600` | Max wait for the package upgrade step |
 | `--config PATH` | `~/.culture/mesh.yaml` | Path to `mesh.yaml` |
 
 Subprocess steps are bounded so a hung service unit cannot freeze the CLI: the
-package upgrade times out after 120s and aborts the command, while each
-service-restart command times out after 30s and the fallback
-`culture server start` step times out after 30s. Restart and fallback
-timeouts are reported on stderr, and the next step proceeds where applicable.
+package upgrade times out after `--upgrade-timeout` seconds (default 600) and
+aborts the command, while each service-restart command times out after 30s and
+the fallback `culture server start` step times out after 30s. Restart and
+fallback timeouts are reported on stderr, and the next step proceeds where
+applicable.
+
+When the package upgrade times out, the hint suggests three recovery paths:
+running `uv tool upgrade culture` (or `pip install --upgrade culture`)
+directly, rerunning with a larger `--upgrade-timeout`, or `--skip-upgrade` to
+restart services on the currently installed version.
 
 ## Bots
 
