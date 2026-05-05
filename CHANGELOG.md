@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.0.2] - 2026-05-05
+
+### Changed
+
+- **Restructured public-facing docs** — README leads with the canonical positioning paragraph; new `docs/culture/ecosystem-map.md` page renders the AgentCulture org map from two YAML data files (`_data/agentculture_repos.yml`, `_data/culture_subcommands.yml`).
+- **Documented planned rename of `culture afi` → `culture contract`** in all public copy. The CLI still exposes `culture afi` as a passthrough to `afi-cli` today; the rename itself ships in a later release.
+
+### Added
+
+- **Org-wide repo registry** at `_data/agentculture_repos.yml` with category, maturity, description, package, and docs link for every public repo in `agentculture/`.
+- **Subcommand registry** at `_data/culture_subcommands.yml` with `ready`/`planned` status and the sibling repo backing each `culture <verb>`.
+- **Reference doc** at `docs/resources/registry.md` documenting the schemas and naming steward + ghafi as registry-hygiene owners.
+
 ## [10.0.1] - 2026-05-05
 
 ### Changed
