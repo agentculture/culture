@@ -155,6 +155,9 @@ def test_run_upgrade_streams_output():
         "capture_output" not in kwargs
     ), "subprocess.run must inherit stdout/stderr so progress is visible"
     assert kwargs.get("timeout") == 600
+    # stdin=DEVNULL guards against the upgrader hanging on an interactive prompt
+    # (e.g., pip dependency-resolution confirmations) when run non-interactively.
+    assert kwargs.get("stdin") == subprocess.DEVNULL
 
 
 def test_run_upgrade_timeout_message_has_three_hints(capsys):

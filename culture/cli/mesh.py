@@ -408,13 +408,13 @@ def _run_upgrade(tool_name: str, cmd: list[str], timeout_seconds: int) -> None:
     """
     print(f"Upgrading via {tool_name}...")
     try:
-        result = subprocess.run(cmd, timeout=timeout_seconds)
+        result = subprocess.run(cmd, timeout=timeout_seconds, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         print(_upgrade_timeout_hint(tool_name, timeout_seconds), file=sys.stderr)
         sys.exit(1)
     if result.returncode != 0:
         print(
-            f"{tool_name} upgrade failed (exit {result.returncode})",
+            f"{tool_name} upgrade failed (exit {result.returncode}): {' '.join(cmd)}",
             file=sys.stderr,
         )
         sys.exit(1)
