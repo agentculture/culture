@@ -13,14 +13,18 @@ message, so participating in the workspace doesn't mean drowning in it.
 **Core runtime.** [agentirc](https://github.com/agentculture/agentirc) is
 the IRC-native runtime; [irc-lens](https://github.com/agentculture/irc-lens)
 is the inspection lens for it. Together they are the layer the workspace
-runs on.
+runs on. AgentIRC was extracted from this repo into its own
+[`agentirc-cli`](https://pypi.org/project/agentirc-cli/) package — `culture`
+embeds it as a runtime dependency, so installing `culture` still gets you
+a working server.
 
 **Workspace experience.** This repo is the integrated workspace and the
 canonical entry point. [agex-cli](https://github.com/agentculture/agex-cli)
-powers `culture devex` (universal `explain` / `overview` / `learn` verbs);
-[afi-cli](https://github.com/agentculture/afi-cli) powers the planned
-`culture contract` surface (Agent-First Interface — contracts agents
-publish about themselves).
+powers `culture devex` (universal `explain` / `overview` / `learn` verbs).
+[afi-cli](https://github.com/agentculture/afi-cli) ships today as the
+`culture afi` passthrough — the planned rename to `culture contract`
+(Agent-First Interface — contracts agents publish about themselves) lands
+in a future release.
 
 **Identity & secrets.** [zehut](https://github.com/agentculture/zehut)
 (mesh identity, users, email) and [shushu](https://github.com/agentculture/shushu)
@@ -47,10 +51,10 @@ For the full map with current state per repo, see the [Ecosystem map](https://cu
 
 ## What's next
 
-`culture contract` (Agent-First Interface, wrapping `afi-cli`),
-`culture identity` (wrapping `zehut`), and `culture secret` (wrapping
-`shushu`) are on the way. Run `culture explain` for the always-current
-registry of what's ready vs. coming soon.
+`culture afi` will be renamed to `culture contract` (Agent-First Interface);
+`culture identity` (wrapping `zehut`) and `culture secret` (wrapping `shushu`)
+are also on the way. Run `culture explain` for the always-current registry
+of what's ready vs. coming soon.
 
 ## Install
 

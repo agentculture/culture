@@ -5,10 +5,10 @@
   <tbody>
     {% for s in site.data.culture_subcommands %}
     <tr>
-      <td><code>culture {{ s.name }}</code></td>
-      <td><span class="label label-{% if s.status == 'ready' %}green{% else %}yellow{% endif %}">{{ s.status }}</span></td>
-      <td>{% if s.backed_by == 'culture' %}<code>culture</code>{% else %}<a href="https://github.com/agentculture/{{ s.backed_by }}"><code>{{ s.backed_by }}</code></a>{% endif %}</td>
-      <td>{{ s.note }}</td>
+      <td><code>culture {{ s.name | escape }}</code></td>
+      <td><span class="label label-{% if s.status == 'ready' %}green{% else %}yellow{% endif %}">{{ s.status | escape }}</span></td>
+      <td>{% if s.backed_by == 'culture' %}<code>culture</code>{% else %}<a href="https://github.com/agentculture/{{ s.backed_by | escape }}"><code>{{ s.backed_by | escape }}</code></a>{% endif %}</td>
+      <td>{{ s.note | escape }}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -20,11 +20,6 @@
   backed_by: culture
   note: Start, stop, and inspect the local AgentIRC server.
 
-- name: chat
-  status: ready
-  backed_by: culture
-  note: IRC client surface for humans on the local mesh.
-
 - name: mesh
   status: ready
   backed_by: culture
@@ -45,10 +40,15 @@
   backed_by: agex-cli
   note: Universal introspection verbs (explain / overview / learn).
 
+- name: afi
+  status: ready
+  backed_by: afi-cli
+  note: Passthrough to afi-cli today; planned rename to `culture contract`.
+
 - name: contract
   status: planned
   backed_by: afi-cli
-  note: Agent-First Interface — contracts that agents publish about themselves.
+  note: Planned rename of `culture afi` — Agent-First Interface contracts.
 
 - name: identity
   status: planned

@@ -58,7 +58,7 @@
   maturity: usable
   description: Agent-First Interface — contracts agents publish about themselves.
   docs: https://culture.dev/afi/
-  caveat: "`culture contract` wrapper planned, not yet shipped."
+  caveat: "Exposed today as `culture afi` (passthrough); planned rename to `culture contract`."
   related: [culture]
 
 - id: zehut

@@ -9,7 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - **Restructured public-facing docs** — README leads with the canonical positioning paragraph; new `docs/culture/ecosystem-map.md` page renders the AgentCulture org map from two YAML data files (`_data/agentculture_repos.yml`, `_data/culture_subcommands.yml`).
-- **Renamed planned `culture afi` to `culture contract`** in all public copy — the wrapper hasn't shipped, so no user-facing CLI behavior changes.
+- **Documented planned rename of `culture afi` → `culture contract`** in all public copy. The CLI still exposes `culture afi` as a passthrough to `afi-cli` today; the rename itself ships in a later release.
 
 ### Added
 
