@@ -45,9 +45,8 @@ NAME = "console"
 # request for help rather than a server name (common typo for `--help`).
 _IRC_LENS_VERBS = frozenset({"learn", "explain", "overview", "serve", "cli", "help"})
 
-# Culture-owned verbs (handled before passthrough). `stop` is reserved —
-# it shadows any culture server literally named "stop".
-_CULTURE_VERBS = frozenset({"stop"})
+# `stop` is the one culture-owned verb — handled before passthrough.
+# It shadows any culture server literally named "stop".
 
 # Per-port slot keys under ~/.culture/pids/. A `culture console` on port
 # 8765 owns `console-8765.{pid,port,json}`; a side-by-side run on 8766
@@ -122,6 +121,13 @@ def _normalise_argv(argv: list[str]) -> list[str]:
     return out
 
 
+def _coerce_int(value: str, fallback: int) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        return fallback
+
+
 def _parse_serve_argv(argv: list[str]) -> tuple[int, dict[str, Any]]:
     """Extract web_port and target identity from a serve argv.
 
@@ -131,42 +137,30 @@ def _parse_serve_argv(argv: list[str]) -> tuple[int, dict[str, Any]]:
     split); the caller (``dispatch``) overrides it from
     ``_build_serve_argv``'s resolved server when known.
     """
+    target: dict[str, Any] = {
+        "server_name": None,
+        "nick": None,
+        "host": "127.0.0.1",
+        "irc_port": 6667,
+        "web_port": _DEFAULT_WEB_PORT,
+    }
+    handlers: dict[str, Callable[[str], None]] = {
+        "--web-port": lambda v: target.__setitem__("web_port", _coerce_int(v, target["web_port"])),
+        "--port": lambda v: target.__setitem__("irc_port", _coerce_int(v, target["irc_port"])),
+        "--nick": lambda v: target.__setitem__("nick", v),
+        "--host": lambda v: target.__setitem__("host", v),
+    }
     norm = _normalise_argv(argv)
-    web_port = _DEFAULT_WEB_PORT
-    nick: str | None = None
-    host = "127.0.0.1"
-    irc_port = 6667
     i = 1  # skip the leading 'serve'
     while i < len(norm):
-        tok = norm[i]
+        handler = handlers.get(norm[i])
         nxt = norm[i + 1] if i + 1 < len(norm) else None
-        if tok == "--web-port" and nxt is not None:
-            try:
-                web_port = int(nxt)
-            except ValueError:
-                pass
-            i += 2
-        elif tok == "--nick" and nxt is not None:
-            nick = nxt
-            i += 2
-        elif tok == "--host" and nxt is not None:
-            host = nxt
-            i += 2
-        elif tok == "--port" and nxt is not None:
-            try:
-                irc_port = int(nxt)
-            except ValueError:
-                pass
+        if handler is not None and nxt is not None:
+            handler(nxt)
             i += 2
         else:
             i += 1
-    return web_port, {
-        "server_name": None,
-        "nick": nick,
-        "host": host,
-        "irc_port": irc_port,
-        "web_port": web_port,
-    }
+    return target["web_port"], target
 
 
 # --- port / fingerprint probes --------------------------------------------
@@ -188,7 +182,9 @@ def _looks_like_irc_lens(port: int) -> bool:
             f"http://127.0.0.1:{port}/", timeout=0.5
         ) as resp:
             body = resp.read(4096).decode("utf-8", errors="replace")
-    except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+    except (OSError, ValueError):
+        # OSError covers urllib.error.URLError and TimeoutError, both of
+        # which are OSError subclasses in modern Python.
         return False
     return "irc-lens" in body.lower()
 
@@ -550,9 +546,8 @@ def register(subparsers: "argparse._SubParsersAction") -> None:
 def dispatch(args: argparse.Namespace) -> None:
     raw = list(getattr(args, "console_args", []) or [])
     verb = next(iter(raw), None)
-    if verb in _CULTURE_VERBS:
-        if verb == "stop":
-            sys.exit(_cmd_stop(args))
+    if verb == "stop":
+        sys.exit(_cmd_stop(args))
     argv, server_name = _resolve_argv(raw)
     if argv and argv[0] == "serve":
         _passthrough.run(_make_serve_entry(server_name), argv)
