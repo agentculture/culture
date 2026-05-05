@@ -149,19 +149,34 @@ def _parse_serve_argv(argv: list[str]) -> tuple[int, dict[str, Any]]:
 # --- port / fingerprint probes --------------------------------------------
 
 
-def _port_in_use(host: str, port: int) -> bool:
+# Both probes target the local console only — irc-lens binds to
+# 127.0.0.1 by design (it's the developer's loopback web UI). Hardcoding
+# the host here means callers can't accidentally probe a remote address,
+# which keeps the cleartext-http GET below safe-by-construction: there
+# is no network path to MITM on loopback.
+_LOCAL_HOST = "127.0.0.1"
+
+
+def _port_in_use(port: int) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
-            return s.connect_ex((host, port)) == 0
+            return s.connect_ex((_LOCAL_HOST, port)) == 0
     except OSError:
         return False
 
 
-def _looks_like_irc_lens(host: str, port: int) -> bool:
-    """Best-effort fingerprint: GET / and look for irc-lens in the body."""
+def _looks_like_irc_lens(port: int) -> bool:
+    """Best-effort fingerprint: GET / and look for irc-lens in the body.
+
+    Loopback-only by construction (see ``_LOCAL_HOST``) — the
+    cleartext ``http://`` URL is intentional and not a transport-security
+    risk. ``# noqa: S310`` silences bandit's urllib-urlopen check;
+    ``# nosec B310`` mirrors it for tools that read the longer form.
+    """
+    url = f"http://{_LOCAL_HOST}:{port}/"
     try:
-        with urllib.request.urlopen(f"http://{host}:{port}/", timeout=0.5) as resp:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=0.5) as resp:  # noqa: S310 # nosec B310
             body = resp.read(4096).decode("utf-8", errors="replace")
     except (urllib.error.URLError, OSError, TimeoutError, ValueError):
         return False
@@ -263,7 +278,7 @@ def _check_port_conflict(web_port: int, target: dict[str, Any]) -> None:
     # Fingerprint a port that's bound but pidfile-less. If irc-lens shape,
     # tell the user what we see; otherwise let irc-lens emit its own bind
     # error (the right answer for foreign owners).
-    if _port_in_use("127.0.0.1", web_port) and _looks_like_irc_lens("127.0.0.1", web_port):
+    if _port_in_use(web_port) and _looks_like_irc_lens(web_port):
         print(_foreign_irc_lens_hint(web_port), file=sys.stderr)
         sys.exit(1)
 
