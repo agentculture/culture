@@ -149,34 +149,21 @@ def _parse_serve_argv(argv: list[str]) -> tuple[int, dict[str, Any]]:
 # --- port / fingerprint probes --------------------------------------------
 
 
-# Both probes target the local console only — irc-lens binds to
-# 127.0.0.1 by design (it's the developer's loopback web UI). Hardcoding
-# the host here means callers can't accidentally probe a remote address,
-# which keeps the cleartext-http GET below safe-by-construction: there
-# is no network path to MITM on loopback.
-_LOCAL_HOST = "127.0.0.1"
-
-
 def _port_in_use(port: int) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
-            return s.connect_ex((_LOCAL_HOST, port)) == 0
+            return s.connect_ex(("127.0.0.1", port)) == 0
     except OSError:
         return False
 
 
 def _looks_like_irc_lens(port: int) -> bool:
-    """Best-effort fingerprint: GET / and look for irc-lens in the body.
-
-    Loopback-only by construction (see ``_LOCAL_HOST``) — the
-    cleartext ``http://`` URL is intentional and not a transport-security
-    risk. ``# noqa: S310`` silences bandit's urllib-urlopen check;
-    ``# nosec B310`` mirrors it for tools that read the longer form.
-    """
-    url = f"http://{_LOCAL_HOST}:{port}/"
+    # http on loopback only — there is no MITM path to defend against.
     try:
-        with urllib.request.urlopen(url, timeout=0.5) as resp:  # noqa: S310 # nosec B310
+        with urllib.request.urlopen(  # noqa: S310 # nosec B310
+            f"http://127.0.0.1:{port}/", timeout=0.5
+        ) as resp:
             body = resp.read(4096).decode("utf-8", errors="replace")
     except (urllib.error.URLError, OSError, TimeoutError, ValueError):
         return False
