@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.1.0] - 2026-05-05
+
+### Added
+
+- **`culture console` now detects same-port conflicts before invoking irc-lens.** When the web port (default `8765`) is already bound by a culture-owned console, the CLI looks at the recorded pidfile/sidecar instead of letting irc-lens fail with `[Errno 98] address already in use`:
+  - **Same target, same port** → prints `culture console is already running for 'spark' at http://127.0.0.1:8765/` and exits `0`. No more spurious "port busy" when you re-run from a second terminal.
+  - **Different target** → prints a 3-bullet hint (open the existing URL, `culture console stop && culture console <new>`, or `--web-port 8766` for side-by-side) and exits `1`. Culture never auto-kills another console — that decision stays with you.
+  - **Foreign irc-lens without a pidfile** → prints a recovery hint pointing at `ss`/`lsof` so you can find and stop the owner manually.
+  - **Foreign non-irc-lens owner** → falls through to irc-lens's own `cannot bind web port` error, the right message for arbitrary processes.
+  - **Stale pidfile** (dead PID, or PID belongs to a non-culture process) → silently cleaned up before the new console starts.
+- **`culture console stop [--web-port N]`** — culture-owned verb that gracefully stops the locally-running console on the given port (default `8765`): `SIGTERM` with a 5-second grace, then a re-validated `SIGKILL` (re-checks `is_culture_process` before escalation, so a PID recycled during the grace window doesn't catch an errant kill). Idempotent on a missing pidfile, and refuses to signal a process whose `/proc/<pid>/cmdline` doesn't include "culture" — preserving rather than deleting state files in that case.
+- **Per-port state files under `~/.culture/pids/`** — `console-<port>.pid`, `console-<port>.port`, and a `console-<port>.json` sidecar (with `pid`, `server_name`, `nick`, `host`, `irc_port`, `web_port`) are written at start and removed at exit. Per-port keying is what makes side-by-side runs on `--web-port 8766` actually independent: each console owns its own slot and `stop --web-port` only touches the requested one. Cleanup is bound to the call via `try/finally` (no `atexit` handler — that would survive `monkeypatch` undo and risk deleting real state on pytest exit).
+- **`--web-port=N` form** is now understood by the conflict-detection shim (previously only the two-token `--web-port N` was parsed; the equals form silently inspected the default port).
+- **Same-target comparison** uses the full `(server_name, nick, host, irc_port)` tuple, so pure-passthrough `culture console serve --nick lens …` re-runs hit the exit-0 path, and two different IRC endpoints with the same nick are correctly classified as different targets. Server name is threaded through from the resolved-server path rather than derived from `nick.split('-')`, which was truncating hyphenated server names like `my-server` to `my`.
+- **`docs/reference/cli/console.md`** — full reference for the new conflict UX, the `stop` verb, and the on-disk state layout.
+
 ## [10.0.2] - 2026-05-05
 
 ### Changed
