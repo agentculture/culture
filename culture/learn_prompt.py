@@ -131,10 +131,10 @@ prefix — all participants get nicks like `<server>-<name>`.
 culture server start --name {server} --port 6667
 ```
 
-> Note: as of culture 9.0.0 the noun is `culture server` (clearer for an
-> agent chat mesh). The legacy `culture server` keeps working through
-> 9.x with a stderr warning — update your scripts when you next touch
-> them. Removed in 10.0.0.
+> Note: the noun is `culture server` — reverted in culture 10.0.0 from
+> the brief 9.0.0 detour through `culture chat`. `culture chat` is gone
+> in 10.0.0; if your scripts still call it, update them to
+> `culture server`.
 
 ### Link servers into a mesh
 

@@ -69,6 +69,20 @@ if [[ -z "$BODY" ]]; then
     exit 2
 fi
 
+# `culture channel message` takes the body as a single positional argv
+# argument. Linux argv has a hard cap (`getconf ARG_MAX`, typically
+# ~128 KB after env-block overhead). Cap well below that with a
+# friendly error so the user sees a useful message instead of E2BIG.
+# Mesh-channel etiquette also doesn't want walls of text — anything
+# >8 KB belongs in an issue (post-issue.sh).
+MAX_BODY_BYTES=8192
+if (( ${#BODY} > MAX_BODY_BYTES )); then
+    echo "Message body is ${#BODY} bytes (limit ${MAX_BODY_BYTES})." >&2
+    echo "  Mesh messages should stay short. For a long brief, file an" >&2
+    echo "  issue with post-issue.sh instead." >&2
+    exit 2
+fi
+
 # Forward exit code from culture; if the agent isn't running or the
 # server is unreachable, the operator should see that error verbatim.
 exec culture channel message "$CHANNEL" "$BODY"

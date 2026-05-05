@@ -12,6 +12,13 @@ usage() {
     exit 2
 }
 
+if ! command -v gh >/dev/null 2>&1; then
+    echo "post-issue: 'gh' (GitHub CLI) not found on PATH" >&2
+    echo "  Install from https://cli.github.com/ and run 'gh auth login'" >&2
+    echo "  before posting cross-repo issues." >&2
+    exit 127
+fi
+
 # `gh issue create --body "$LONG_STRING"` can hit the OS argv length limit
 # (typically ~128 KB) for the long self-contained briefs this skill is meant
 # to post. Stage the body to a tempfile and pass `--body-file` instead.

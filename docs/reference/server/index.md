@@ -67,8 +67,10 @@ culture server start --name spark --port 6667 \
 agentirc start --name spark --port 6667
 ```
 
-`culture server` is the canonical noun as of culture 9.0.0; `culture
-server` keeps working through 9.x with a stderr deprecation warning.
+`culture server` is the canonical noun as of culture 10.0.0 — reverted
+from the brief 9.0.0 detour through `culture chat`. `culture chat` was
+removed in 10.0.0; if you still see it in scripts, update them to
+`culture server`.
 
 ## Testing
 
