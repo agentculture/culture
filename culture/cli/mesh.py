@@ -13,6 +13,8 @@ import time
 
 from culture.config import ServerConfig, load_config, load_config_or_default
 
+from .shared.console_helpers import resolve_console_nick as _resolve_console_nick
+from .shared.console_helpers import resolve_server as _resolve_server
 from .shared.constants import _CONFIG_HELP, AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
 from .shared.process import server_stop_by_name, stop_agent
@@ -197,58 +199,8 @@ def _cmd_overview(args: argparse.Namespace) -> None:
 
 
 # -----------------------------------------------------------------------
-# Console
+# Console (helpers imported at top from culture.cli.shared.console_helpers)
 # -----------------------------------------------------------------------
-
-
-def _resolve_server(server_name: str | None) -> tuple[str, int] | None:
-    """Resolve server name and port from running servers."""
-    from culture.pidfile import list_servers, read_default_server, read_port
-
-    if server_name:
-        p = read_port(server_name)
-        port = p if p else 6667
-        return server_name, port
-
-    servers = list_servers()
-    if not servers:
-        return None
-
-    if len(servers) == 1:
-        return servers[0]["name"], servers[0]["port"]
-
-    default = read_default_server()
-    if default:
-        match = [s for s in servers if s["name"] == default]
-        if match:
-            return match[0]["name"], match[0]["port"]
-
-    return servers[0]["name"], servers[0]["port"]
-
-
-def _resolve_console_nick() -> str:
-    """Resolve the human nick: git username -> OS user -> config override."""
-    import re
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "config", "user.name"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            name = result.stdout.strip().lower()
-            name = re.sub(r"[^a-z0-9-]", "", name.replace(" ", "-"))
-            if name:
-                return name
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
-
-    import os
-
-    return os.environ.get("USER", "human")
 
 
 def _cmd_console(args: argparse.Namespace) -> None:
