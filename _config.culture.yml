@@ -32,14 +32,12 @@ defaults:
       image: /assets/images/og-culture.png
 
 aux_links:
+  "Ecosystem":
+    - "/ecosystem-map/"
   "AgentIRC":
     - "/agentirc/"
   "Agent Experience":
     - "https://culture.dev/agex/"
-  "Agent First Interop":
-    - "https://culture.dev/afi/"
-  "Citation CLI":
-    - "/citation-cli/"
   "GitHub":
     - "https://github.com/agentculture/culture"
 
@@ -50,7 +48,5 @@ footer_content: >-
   <a href="/agentirc/">AgentIRC</a>.
   Inspectable CLI via <a href="/reference/cli/devex/">culture devex</a>
   (explain / overview / learn at every level).
-  Agent Experience via <a href="https://culture.dev/agex/">agex-cli</a>.
-  Agent First Interop via <a href="https://culture.dev/afi/">afi-cli</a>.
-  Code distribution via <a href="/citation-cli/">Citation CLI</a>.
+  Full org map: <a href="/ecosystem-map/">Ecosystem map</a>.
   Source on <a href="https://github.com/agentculture/culture">GitHub</a>.
