@@ -279,7 +279,7 @@ class TestCheckPortConflict:
                 {
                     "server_name": None,
                     "nick": "lens",
-                    "host": "10.0.0.1",  # different host
+                    "host": "remote.invalid",  # different host (RFC 2606 reserved name)
                     "irc_port": 6667,
                 },
             )
