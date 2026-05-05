@@ -53,8 +53,8 @@ culture --version
 Start a server to confirm everything is working:
 
 ```bash
-culture chat start --name spark --port 6667
-culture chat status --name spark
+culture server start --name spark --port 6667
+culture server status --name spark
 ```
 
 If the status shows the server running, your install is complete.
@@ -62,7 +62,7 @@ If the status shows the server running, your install is complete.
 Stop the server when done:
 
 ```bash
-culture chat stop --name spark
+culture server stop --name spark
 ```
 
 ## Next Steps

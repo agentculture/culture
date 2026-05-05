@@ -20,28 +20,29 @@ full contract.
 
 Install: `uv tool install culture` or `pip install culture`
 
-## Chat (the IRC mesh)
+## Server (the IRC mesh)
 
-> **9.0.0 rename.** The noun is `culture chat` as of culture 9.0.0
-> (renamed from `culture server` for clarity). The legacy `culture
-> server <verb>` keeps working through 9.x as a deprecation alias that
-> prints a stderr warning and routes to the same handlers; removed in
-> 10.0.0.
+> **10.0.0 noun.** The IRC-mesh subcommand is `culture server` —
+> reverted in culture 10.0.0 from the brief 9.0.0 detour through
+> `culture chat`. Everything under this noun is server lifecycle
+> (`start` / `stop` / `status` / `default` / `rename` / `archive` /
+> `unarchive`) plus a passthrough to `agentirc-cli` for the verbs
+> below. `culture chat` no longer exists.
 >
 > **Forwarded verbs.** `restart`, `link`, `logs`, `version`, `serve`
 > are not implemented in culture — they pass through verbatim to
-> `agentirc-cli` (the underlying IRCd). Run `culture chat <verb>
+> `agentirc-cli` (the underlying IRCd). Run `culture server <verb>
 > --help` for the agentirc-side flags, or see the
 > [`agentirc-cli` documentation](https://github.com/agentculture/agentirc).
 
-### `culture chat start`
+### `culture server start`
 
 Start the IRC server as a background daemon.
 
 ```bash
-culture chat start --name spark --port 6667
-culture chat start --name spark --port 6667 --link thor:thor.local:6667:secret
-culture chat start --name spark --port 6667 --foreground
+culture server start --name spark --port 6667
+culture server start --name spark --port 6667 --link thor:thor.local:6667:secret
+culture server start --name spark --port 6667 --foreground
 ```
 
 | Flag | Default | Description |
@@ -62,43 +63,43 @@ To create a federated mesh, start servers with mutual `--link` flags:
 
 ```bash
 # Machine A
-culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
+culture server start --name spark --port 6667 --link thor:machineB:6667:secret
 
 # Machine B
-culture chat start --name thor --port 6667 --link spark:machineA:6667:secret
+culture server start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
-### `culture chat stop`
+### `culture server stop`
 
 ```bash
-culture chat stop --name spark
+culture server stop --name spark
 ```
 
 Sends SIGTERM, waits 5 seconds, then SIGKILL if needed.
 
-### `culture chat status`
+### `culture server status`
 
 ```bash
-culture chat status --name spark
+culture server status --name spark
 ```
 
-### `culture chat archive`
+### `culture server archive`
 
 Archive the server and cascade to all agents and bots.
 
 ```bash
-culture chat archive --name spark --reason "decommissioned"
+culture server archive --name spark --reason "decommissioned"
 ```
 
 Stops the server and all running agents, then sets `archived: true` on the server, all
 agents, and all bots owned by those agents.
 
-### `culture chat unarchive`
+### `culture server unarchive`
 
 Restore an archived server and all its agents and bots.
 
 ```bash
-culture chat unarchive --name spark
+culture server unarchive --name spark
 ```
 
 Clears the archived flag but does not start any services.
@@ -397,7 +398,7 @@ culture mesh update --config /path/mesh.yaml
 Subprocess steps are bounded so a hung service unit cannot freeze the CLI: the
 package upgrade times out after 120s and aborts the command, while each
 service-restart command times out after 30s and the fallback
-`culture chat start` step times out after 30s. Restart and fallback
+`culture server start` step times out after 30s. Restart and fallback
 timeouts are reported on stderr, and the next step proceeds where applicable.
 
 ## Bots

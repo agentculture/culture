@@ -82,7 +82,7 @@ def from_daemon_config(daemon_config: DaemonConfig) -> MeshConfig:
     """Derive a MeshConfig from an existing DaemonConfig (agents.yaml).
 
     Useful when mesh.yaml doesn't exist but the user has a running mesh
-    started manually via ``culture chat start`` + ``culture start``.
+    started manually via ``culture server start`` + ``culture start``.
 
     Note: DaemonConfig.server.host is the *connection* target (often localhost),
     while MeshServerConfig.host is the *listen* address. We use the default

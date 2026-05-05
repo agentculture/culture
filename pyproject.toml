@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "9.1.0"
+version = "10.0.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -50,6 +50,9 @@ packages = ["culture"]
 "culture/clients/copilot/skill/SKILL.md" = "culture/clients/copilot/skill/SKILL.md"
 "culture/clients/acp/skill/SKILL.md" = "culture/clients/acp/skill/SKILL.md"
 "culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
+"culture/skills/communicate/SKILL.md" = "culture/skills/communicate/SKILL.md"
+"culture/skills/communicate/scripts/post-issue.sh" = "culture/skills/communicate/scripts/post-issue.sh"
+"culture/skills/communicate/scripts/mesh-message.sh" = "culture/skills/communicate/scripts/mesh-message.sh"
 "culture/overview/web/style.css" = "culture/overview/web/style.css"
 "culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
 

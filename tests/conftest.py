@@ -123,7 +123,7 @@ async def server(tmp_path):
         ircd.config.port = ircd._server.sockets[0].getsockname()[1]
         # agentirc 9.6 ships a no-op stub BotManager; replace with culture's
         # so tests can use register_bot / on_event / etc. Mirrors what
-        # culture/cli/chat.py:_run_server does in production after A2.
+        # culture/cli/server.py:_run_server does in production.
         # load_system_bots() registers welcome / etc. without binding the
         # webhook port — tests don't want the listener.
         from culture.bots.bot_manager import BotManager as _CultureBotManager

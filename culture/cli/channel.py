@@ -177,7 +177,7 @@ def dispatch(args: argparse.Namespace) -> None:
         if _is_connection_error(str(exc)):
             print(
                 "Error: cannot connect to IRC server. Is the server running?\n"
-                "  Start it with: culture chat start",
+                "  Start it with: culture server start",
                 file=sys.stderr,
             )
             sys.exit(1)

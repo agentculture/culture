@@ -235,7 +235,7 @@ the agent wakes.
 
 Default: `~/.culture/data`
 
-Override with `--data-dir` on `culture chat start`.
+Override with `--data-dir` on `culture server start`.
 
 | Path | Contents |
 |------|----------|

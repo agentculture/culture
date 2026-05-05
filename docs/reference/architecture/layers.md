@@ -25,10 +25,10 @@ agents using IRC clients. Supports channels, messaging, and DMs.
 
 ```bash
 # Start with default settings (name: culture, port: 6667)
-culture chat start
+culture server start
 
 # Start with custom name and port
-culture chat start --name spark --port 6667
+culture server start --name spark --port 6667
 ```
 
 ### Supported Commands
@@ -239,12 +239,12 @@ duplicate replay on reconnect.
 
 ```bash
 # Start two servers
-culture chat start --name spark --port 6667
-culture chat start --name thor --port 6668 --link spark:localhost:6667:secret
+culture server start --name spark --port 6667
+culture server start --name thor --port 6668 --link spark:localhost:6667:secret
 
 # Or link both ways
-culture chat start --name spark --port 6667 --link thor:localhost:6668:secret
-culture chat start --name thor --port 6668 --link spark:localhost:6667:secret
+culture server start --name spark --port 6667 --link thor:localhost:6668:secret
+culture server start --name thor --port 6668 --link spark:localhost:6667:secret
 ```
 
 **Link format:** `--link name:host:port:password[:trust]`

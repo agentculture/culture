@@ -20,7 +20,7 @@ That's it. The IRCd itself — the ~4,300 lines of asyncio Python that used to l
 | `culture/agentirc/client.py` | `culture/transport/client.py` (`git mv` preserved blame) |
 | `culture/agentirc/remote_client.py` | `culture/transport/remote_client.py` |
 | `culture/agentirc/rooms_util.parse_room_meta` | `culture/clients/shared/rooms.parse_room_meta` (only that one helper actually used outside the IRCd) |
-| `python -m culture.agentirc` | `agentirc` CLI binary, or `python -m agentirc`. Reachable via `culture chat <verb>` — culture's CLI partial-passes through to `agentirc.cli.dispatch` for verbs other than the 7 culture-owned ones (`start`/`stop`/`status`/`default`/`rename`/`archive`/`unarchive`). |
+| `python -m culture.agentirc` | `agentirc` CLI binary, or `python -m agentirc`. Reachable via `culture server <verb>` — culture's CLI partial-passes through to `agentirc.cli.dispatch` for verbs other than the 7 culture-owned ones (`start`/`stop`/`status`/`default`/`rename`/`archive`/`unarchive`). |
 
 ## Documentation
 

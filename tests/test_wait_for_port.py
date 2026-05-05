@@ -6,7 +6,7 @@ import socket
 import threading
 import time
 
-from culture.cli.chat import _wait_for_port
+from culture.cli.server import _wait_for_port
 
 
 def _start_listener(port_holder: list, delay: float = 0) -> socket.socket:

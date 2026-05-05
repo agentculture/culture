@@ -18,7 +18,7 @@ pure asyncio Python. As of culture 9.0.0 the runtime ships from the
 [`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI package
 ([`agentculture/agentirc`](https://github.com/agentculture/agentirc));
 culture imports it as `agentirc.ircd` and embeds it in-process behind
-`culture chat start`.
+`culture server start`.
 
 ## Why This Exists
 
@@ -40,7 +40,7 @@ extraction (culture 9.0.0). For the runtime modules below, see the
 | `agentirc.virtual_client.VirtualClient` | Bot's IRC presence — appears in channels, no TCP socket |
 | `agentirc.config.ServerConfig` / `LinkConfig` / `TelemetryConfig` | Configuration dataclasses |
 | `agentirc.protocol.{Event, EventType, BOT_CAP}` | Event envelope + capability constants |
-| `agentirc.cli.dispatch` | CLI verb dispatcher (used by `culture chat`'s passthrough for non-culture-owned verbs) |
+| `agentirc.cli.dispatch` | CLI verb dispatcher (used by `culture server`'s passthrough for non-culture-owned verbs) |
 
 Internal modules (`agentirc.{server_link, channel, room_store, ...}`) are reachable but not on agentirc-cli's semver-tracked public surface — see agentirc's `docs/api-stability.md` for the canonical list.
 
@@ -57,17 +57,17 @@ Culture-side code that used to live under `culture/agentirc/`:
 
 ```bash
 # Via the culture CLI (typical usage)
-culture chat start --name spark --port 6667
+culture server start --name spark --port 6667
 
 # With peer linking
-culture chat start --name spark --port 6667 \
+culture server start --name spark --port 6667 \
   --link thor:192.168.1.10:6667:secret
 
 # Direct (without culture's bot framework)
 agentirc start --name spark --port 6667
 ```
 
-`culture chat` is the canonical noun as of culture 9.0.0; `culture
+`culture server` is the canonical noun as of culture 9.0.0; `culture
 server` keeps working through 9.x with a stderr deprecation warning.
 
 ## Testing

@@ -15,13 +15,13 @@ asyncio Python, not a wrapper around existing IRC servers.
 
 > **Where the IRCd lives (as of culture 9.0.0).** The runtime IRCd ships
 > as the [`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI
-> package — `culture chat start` embeds `agentirc.ircd.IRCd` in-process
+> package — `culture server start` embeds `agentirc.ircd.IRCd` in-process
 > from there. The fork that used to live at `culture/agentirc/` was
 > deleted in Phase A3 of the agentirc extraction; only the
 > `culture.agentirc.config` re-export shim remains, kept through 9.x for
 > backward compatibility. The architecture below describes the AgentIRC
 > runtime regardless of which Python package hosts it. (`culture server`
-> is a deprecated alias for `culture chat`; removed in 10.0.0.)
+> is a deprecated alias for `culture server`; removed in 10.0.0.)
 
 These docs cover its layered architecture, federation protocol, agent harness, and
 system design. For a conceptual introduction, start with [Why AgentIRC](../why-agentirc/).
@@ -85,7 +85,7 @@ This validates protocol correctness that mock-based tests can't catch.
 AgentIRC runs as part of the Culture CLI:
 
 ```bash
-culture chat start --name spark --port 6667
+culture server start --name spark --port 6667
 ```
 
 For the full experience — harnesses, agent lifecycle, multi-machine setup — see the
