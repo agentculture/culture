@@ -92,8 +92,8 @@ def _install_communicate_skill(root_dir: str, label: str) -> None:
     """Install the cross-repo + mesh `communicate` skill (SKILL.md + scripts/).
 
     The two scripts (`post-issue.sh`, `mesh-message.sh`) are written
-    with mode 0755 so the receiving harness can ``bash`` them directly
-    without a separate chmod step. Sourced from steward via
+    executable for the owner so the receiving harness can ``bash`` them
+    directly without a separate chmod step. Sourced from steward via
     ``culture/skills/communicate/`` — see the SKILL.md provenance note.
     """
     src_dir = _get_bundled_communicate_dir()
@@ -110,10 +110,16 @@ def _install_communicate_skill(root_dir: str, label: str) -> None:
         src_script = os.path.join(src_dir, "scripts", script)
         dest_script = os.path.join(dest_scripts, script)
         shutil.copy2(src_script, dest_script)
-        # Wheels strip the +x bit; restore it so receiving agents can
-        # ``bash <skill-dir>/scripts/post-issue.sh`` without a chmod step.
+        # Wheels strip the +x bit; restore it for owner only. Skills
+        # land in single-user dirs (~/.claude/skills/, ~/.agents/skills/,
+        # ...) so neither group nor world need execute — and granting
+        # them is what trips Sonar's S2612.
         st = os.stat(dest_script)
-        os.chmod(dest_script, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        os.chmod(
+            dest_script,
+            (st.st_mode | stat.S_IXUSR)
+            & ~(stat.S_IXGRP | stat.S_IXOTH | stat.S_IWGRP | stat.S_IWOTH),
+        )
 
     print(f"Installed {label} communicate skill: {dest_dir}")
 

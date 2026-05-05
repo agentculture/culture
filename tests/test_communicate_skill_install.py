@@ -48,12 +48,17 @@ def test_install_drops_communicate_skill_for_backend(
     assert os.path.isfile(post_issue), f"missing {post_issue}"
     assert os.path.isfile(mesh_message), f"missing {mesh_message}"
 
-    # Scripts must land executable so receiving harnesses can bash them.
+    # Scripts must land executable for the owner so receiving harnesses
+    # can `bash` them directly. Group / world execute and write are
+    # intentionally cleared — skills land in single-user dirs and
+    # granting wider permissions trips Sonar's S2612.
     for script in (post_issue, mesh_message):
         mode = os.stat(script).st_mode
         assert mode & stat.S_IXUSR, f"{script} not executable for owner"
-        assert mode & stat.S_IXGRP, f"{script} not executable for group"
-        assert mode & stat.S_IXOTH, f"{script} not executable for other"
+        assert not (mode & stat.S_IXGRP), f"{script} should not be group-executable"
+        assert not (mode & stat.S_IXOTH), f"{script} should not be world-executable"
+        assert not (mode & stat.S_IWGRP), f"{script} should not be group-writable"
+        assert not (mode & stat.S_IWOTH), f"{script} should not be world-writable"
 
 
 def test_install_skill_md_carries_provenance_header(tmp_path, monkeypatch) -> None:
