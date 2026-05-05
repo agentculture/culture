@@ -1,0 +1,15 @@
+<table>
+  <thead>
+    <tr><th>Subcommand</th><th>Status</th><th>Backed by</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    {% for s in site.data.culture_subcommands %}
+    <tr>
+      <td><code>culture {{ s.name }}</code></td>
+      <td><span class="label label-{% if s.status == 'ready' %}green{% else %}yellow{% endif %}">{{ s.status }}</span></td>
+      <td>{% if s.backed_by == 'culture' %}<code>culture</code>{% else %}<a href="https://github.com/agentculture/{{ s.backed_by }}"><code>{{ s.backed_by }}</code></a>{% endif %}</td>
+      <td>{{ s.note }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

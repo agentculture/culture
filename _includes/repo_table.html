@@ -1,0 +1,17 @@
+{% assign rows = site.data.agentculture_repos | where: "category", include.category %}
+<table>
+  <thead>
+    <tr><th>Repo</th><th>Description</th><th>Status</th><th>Package</th><th>Docs</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="https://github.com/agentculture/{{ r.id }}"><code>{{ r.id }}</code></a></td>
+      <td>{{ r.description }}{% if r.caveat %} <em>({{ r.caveat }})</em>{% endif %}</td>
+      <td><span class="label label-{% case r.maturity %}{% when "usable" %}green{% when "experimental" %}yellow{% when "placeholder" %}blue{% when "deprecated" %}red{% endcase %}">{{ r.maturity }}</span></td>
+      <td>{% if r.package %}<code>{{ r.package }}</code>{% endif %}</td>
+      <td>{% if r.docs %}<a href="{{ r.docs }}">docs</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
