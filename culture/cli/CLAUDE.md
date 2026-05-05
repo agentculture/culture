@@ -14,7 +14,8 @@ cli/
 ├── agent.py             # culture agent {create,join,start,stop,status,rename,...}
 ├── chat.py              # culture chat {start,stop,status,default,rename,archive,...,restart,link,logs,version,serve}
 ├── server.py            # culture server — deprecation alias for `culture chat` (9.x; removed in 10.0)
-├── mesh.py              # culture mesh {overview,setup,update,console}
+├── mesh.py              # culture mesh {overview,setup,update}  (console deprecated → culture console)
+├── console.py           # culture console — irc-lens passthrough (reactive web console)
 ├── channel.py           # culture channel {list,read,message,who,join,part,ask,...}
 ├── bot.py               # culture bot {create,start,stop,list,inspect,archive,...}
 ├── skills.py            # culture skills {install}

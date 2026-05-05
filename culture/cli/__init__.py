@@ -3,7 +3,8 @@
 Commands are organized into noun-based groups:
     culture agent    {create,join,start,stop,status,rename,assign,sleep,wake,learn,message,read,archive,unarchive,delete}
     culture chat     {start,stop,status,default,rename,archive,unarchive,restart,link,logs,version,serve}
-    culture mesh     {overview,setup,update,console}
+    culture console  {...irc-lens verbs and flags...}    # passthrough; reactive web console
+    culture mesh     {overview,setup,update,console}     # `console` here is deprecated; use `culture console`
     culture channel  {list,read,message,who}
 
     Deprecated (9.x; removed in 10.0):
@@ -26,9 +27,21 @@ import logging
 import sys
 
 from culture import __version__
-from culture.cli import afi, agent, bot, channel, chat, devex, introspect, mesh, server, skills
+from culture.cli import (
+    afi,
+    agent,
+    bot,
+    channel,
+    chat,
+    console,
+    devex,
+    introspect,
+    mesh,
+    server,
+    skills,
+)
 
-GROUPS = [agent, chat, server, mesh, channel, bot, skills, devex, afi, introspect]
+GROUPS = [agent, chat, server, mesh, channel, bot, skills, devex, afi, console, introspect]
 
 
 def _names_of(group) -> set[str]:

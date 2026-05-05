@@ -41,10 +41,14 @@ def test_learn_prompt_has_extended_agent_commands():
 
 
 def test_learn_prompt_has_mesh_observability():
-    """Issue #183: learn prompt should include mesh overview and console."""
+    """Issue #183: learn prompt should include mesh overview and the web console.
+
+    Updated 2026-05-05: `culture mesh console` is deprecated; the learn
+    prompt now references `culture console` (irc-lens passthrough).
+    """
     output = generate_learn_prompt(nick="spark-claude", server="spark")
     assert "culture mesh overview" in output
-    assert "culture mesh console" in output
+    assert "culture console" in output
 
 
 def test_learn_prompt_opencode_backend_normalized():

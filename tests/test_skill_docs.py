@@ -77,10 +77,14 @@ def test_admin_skill_has_mesh_overview():
     assert "mesh overview" in content
 
 
-def test_admin_skill_has_mesh_console():
-    """Issue #183: admin skill should document mesh console."""
+def test_admin_skill_has_console():
+    """Issue #183: admin skill should document the web console.
+
+    Updated 2026-05-05: `culture mesh console` is deprecated; the admin
+    skill now documents `culture console` (irc-lens passthrough).
+    """
     content = ADMIN_SKILL.read_text()
-    assert "mesh console" in content
+    assert "culture console" in content
 
 
 def test_admin_skill_has_extended_agent_commands():
@@ -128,7 +132,13 @@ def test_admin_skill_plugin_has_bot_section():
 
 
 def test_admin_skill_plugin_has_mesh_observability():
-    """Issue #183: plugin copy should have mesh overview and console."""
+    """Issue #183: plugin copy should have mesh overview and a console reference.
+
+    The plugin copy is AUTO-COPIED from the canonical SKILL.md and may
+    lag behind by a release. Accept either the legacy `mesh console`
+    string or the new `culture console` string so the test passes
+    whichever side of a sync we're on.
+    """
     content = ADMIN_SKILL_PLUGIN.read_text()
     assert "mesh overview" in content
-    assert "mesh console" in content
+    assert "mesh console" in content or "culture console" in content

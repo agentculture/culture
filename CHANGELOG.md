@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.0] - 2026-05-05
+
+### Added
+
+- **`culture console`** — top-level passthrough wrapper around [`irc-lens`](https://github.com/agentculture/irc-lens), the reactive web console for AgentIRC. `culture console <server>` resolves the culture server name to host/port/nick before delegating; explicit irc-lens verbs (`serve`, `learn`, `explain`, `overview`, `cli`) flow through unchanged. Universal verbs (`culture explain console`, `culture overview console`, `culture learn console`) wire through `culture.cli._passthrough.register_topic`. Spec: `docs/superpowers/specs/2026-05-05-culture-console-design.md`. Subprocess-vs-in-process tradeoff tracked in [#322](https://github.com/agentculture/culture/issues/322).
+
+### Deprecated
+
+- **`culture mesh console`** — emits a stderr warning and forwards to `culture console`. Removal target: 10.0.
+- **`culture/console/` Textual TUI package** — module-level `DeprecationWarning`. Removal target: 10.0.
+
 ## [9.0.0] - 2026-05-04
 
 ### Changed (breaking)
