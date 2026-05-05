@@ -91,36 +91,49 @@ fail:
 
 ## State files
 
-While `culture console` is running, three files exist under
-`~/.culture/pids/`:
+State is keyed per web port — running consoles side-by-side on
+different `--web-port` values keeps each instance's metadata
+independent. While a console is running on port `<P>`, three files
+exist under `~/.culture/pids/`:
 
 | File | Contents |
 |------|----------|
-| `console.pid` | PID of the current culture console process. |
-| `console.port` | Web port being served (default `8765`). |
-| `console.json` | Sidecar with `pid`, `server_name`, `nick`, `host`, `irc_port`, `web_port`. |
+| `console-<P>.pid` | PID of the culture console process bound to port `<P>`. |
+| `console-<P>.port` | The web port `<P>` (matches the filename, kept for `pidfile.list_servers()`-style symmetry). |
+| `console-<P>.json` | Sidecar with `pid`, `server_name`, `nick`, `host`, `irc_port`, `web_port`. |
 
-These are removed on graceful exit (`atexit`) and by `culture console
-stop`. They use the same `~/.culture/pids/` layout as servers and
-agents, so future tooling that inspects culture-owned daemons (e.g. the
-analogue of `pidfile.list_servers()`) can include the console for free.
+A console on the default port owns `console-8765.{pid,port,json}`; a
+side-by-side run on `--web-port 8766` owns `console-8766.*`.
+
+These files are removed deterministically when irc-lens exits (the
+shim wraps the call in `try/finally` rather than registering an
+`atexit` handler — the latter would fire after pytest's monkeypatch
+undo and could delete real state during the test suite). `culture
+console stop` also removes them.
 
 ## `culture console stop`
 
 ```bash
-culture console stop
+culture console stop                  # default --web-port 8765
+culture console stop --web-port 8766  # stop a side-by-side console
 ```
 
-- Reads `~/.culture/pids/console.pid`.
-- If absent: prints `no culture console running.` and exits `0`
-  (idempotent).
-- If the PID is dead or non-culture: cleans up state and refuses
-  to signal an unverifiable process.
-- Otherwise sends `SIGTERM`, waits up to 5 seconds, escalates to
-  `SIGKILL` if still alive. Removes state files on success.
+- Reads `~/.culture/pids/console-<P>.pid` for the requested port
+  (default `8765`).
+- **Absent slot** → prints `no culture console running on port <P>.`
+  and exits `0` (idempotent).
+- **PID is dead** → cleans up state files and exits `0`.
+- **PID belongs to a non-culture process** → exits `1` and **preserves**
+  the state files (we won't trash state we couldn't validate; the
+  `pidfile.is_culture_process` fail-closed comment in
+  `culture/pidfile.py` exists for exactly this case).
+- **Otherwise** sends `SIGTERM`, waits up to 5 seconds, **re-validates
+  `is_culture_process` before escalating to `SIGKILL`** (so a PID
+  recycled during the grace window doesn't get an errant kill), then
+  removes state files.
 
 `stop` does not affect the AgentIRC server or any agents — only the
-local console process.
+local console process for the requested port.
 
 ## See also
 
