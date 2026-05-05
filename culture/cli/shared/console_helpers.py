@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 
 from culture.pidfile import list_servers, read_default_server, read_port
 
@@ -17,12 +18,18 @@ from culture.pidfile import list_servers, read_default_server, read_port
 def resolve_server(server_name: str | None) -> tuple[str, int] | None:
     """Resolve a culture server name (or default) to ``(name, port)``.
 
-    Returns ``None`` when no culture servers are running.
+    Returns ``None`` when no culture servers are running, or when an
+    explicitly-named server isn't in the running set.
+
+    When multiple servers are running and no default is configured,
+    picks the first one and emits a stderr hint so the choice isn't
+    silent.
     """
     if server_name:
         p = read_port(server_name)
-        port = p if p else 6667
-        return server_name, port
+        if p is None:
+            return None
+        return server_name, p
 
     servers = list_servers()
     if not servers:
@@ -37,7 +44,14 @@ def resolve_server(server_name: str | None) -> tuple[str, int] | None:
         if match:
             return match[0]["name"], match[0]["port"]
 
-    return servers[0]["name"], servers[0]["port"]
+    pick = servers[0]
+    others = ", ".join(s["name"] for s in servers[1:])
+    print(
+        f"hint: no default server set; using {pick['name']!r} "
+        f"(others running: {others}; set with `culture server default <name>`)",
+        file=sys.stderr,
+    )
+    return pick["name"], pick["port"]
 
 
 def resolve_console_nick() -> str:

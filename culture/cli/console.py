@@ -28,7 +28,9 @@ NAME = "console"
 # Top-level subcommands of irc-lens, verified by `irc-lens --help`.
 # Anything in this set means the user typed an irc-lens command directly,
 # so the shim must NOT rewrite — pure passthrough.
-_IRC_LENS_VERBS = frozenset({"learn", "explain", "overview", "serve", "cli"})
+# `help` is included so a bare `culture console help` is treated as a
+# request for help rather than a server name (common typo for `--help`).
+_IRC_LENS_VERBS = frozenset({"learn", "explain", "overview", "serve", "cli", "help"})
 
 
 def _entry(argv: list[str]) -> "int | None":
@@ -61,7 +63,16 @@ def _resolve_argv(argv: list[str]) -> list[str]:
     """
     if not argv:
         return _build_serve_argv(server_name=None, rest=[])
+    # Strip a leading `--` separator (common shell habit to disambiguate
+    # passthrough args). Without this, argparse REMAINDER chokes on `--`.
+    if argv[0] == "--":
+        argv = argv[1:]
+        if not argv:
+            return _build_serve_argv(server_name=None, rest=[])
     head = argv[0]
+    if head == "help":
+        # `help` is irc-lens-flavoured shorthand for `--help`.
+        return ["--help"]
     if head in _IRC_LENS_VERBS or head.startswith("-"):
         return list(argv)
     return _build_serve_argv(server_name=head, rest=list(argv[1:]))
@@ -70,7 +81,12 @@ def _resolve_argv(argv: list[str]) -> list[str]:
 def _build_serve_argv(server_name: str | None, rest: list[str]) -> list[str]:
     result = _resolve_server(server_name)
     if result is None:
-        raise SystemExit("No culture servers running. Start one with: culture chat start")
+        if server_name is None:
+            raise SystemExit("No culture servers running. Start one with: culture server start")
+        raise SystemExit(
+            f"No culture server named {server_name!r}. "
+            f"Run `culture server status` to see what's running."
+        )
     name, port = result
     nick = f"{name}-{_resolve_console_nick()}"
     return [
