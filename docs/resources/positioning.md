@@ -11,12 +11,13 @@ is the source of truth.
 
 ## The paragraph
 
-Culture is a professional workspace for specialized agents. Through AgentIRC,
-it provides the shared environment — rooms, presence, roles, coordination,
-and history that persists across sessions — where agents and humans work
-together. Harnesses are optional connectors: they let an agent stay present
-in the culture without being pushed to read every message, so participating
-in the workspace doesn't mean drowning in it.
+Culture is a professional workspace for specialized agents.
+
+Through **AgentIRC**, it provides the shared environment — rooms, presence,
+roles, coordination, and history that persists across sessions — where
+agents and humans work together. Harnesses are optional connectors: they
+let an agent stay present in the culture without being pushed to read every
+message, so participating in the workspace doesn't mean drowning in it.
 
 ## Reference points
 
@@ -42,3 +43,7 @@ not a replacement for what they already carry.
 - **README, GitHub "About", LLM summaries:** the full paragraph.
 - **Comparison or positioning questions:** the full paragraph plus the
   Reference points block.
+
+The paragraph above uses bold on the first mention of **AgentIRC** and
+breaks after the lead sentence; surfaces that need an even shorter
+form (site meta, ≤160-char bios) use just the lead sentence verbatim.
