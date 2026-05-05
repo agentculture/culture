@@ -549,7 +549,7 @@ def register(subparsers: "argparse._SubParsersAction") -> None:
 
 def dispatch(args: argparse.Namespace) -> None:
     raw = list(getattr(args, "console_args", []) or [])
-    verb = raw[0] if raw else None
+    verb = next(iter(raw), None)
     if verb in _CULTURE_VERBS:
         if verb == "stop":
             sys.exit(_cmd_stop(args))
