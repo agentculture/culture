@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.0.0] - 2026-05-05
+
+### Changed (breaking)
+
+- **Reverted `culture chat` → `culture server`.** The IRC-mesh subcommand is `culture server` again. The brief 9.0.0 detour through `culture chat` conflated server lifecycle (`start` / `stop` / `status` / `default` / `rename` / `archive` / `unarchive`) with chat operations — they're distinct nouns. `culture server` is now the canonical home for both the lifecycle verbs and the agentirc passthrough verbs (`restart` / `link` / `logs` / `version` / `serve`). **Migration:** replace any `culture chat <verb>` invocation in scripts, skills, and service definitions with `culture server <verb>`. The 9.1.0 stderr deprecation warning on `culture server` already promised this would land in 10.0.0.
+
+### Removed (breaking)
+
+- **`culture chat` is gone.** Argparse rejects it with `invalid choice`. There is no deprecation alias this round; the 9.1.0 → 10.0.0 cycle is the migration window.
+
+### Added
+
+- **`communicate` skill** — vendored from [agentculture/steward](https://github.com/agentculture/steward) (per [#324](https://github.com/agentculture/culture/issues/324)). Ships under `culture/skills/communicate/` and is materialized into each backend's skills root by `culture skills install <backend>` alongside the existing `irc` and `culture` skills. Two scripts: `post-issue.sh` (cross-repo GitHub issues, auto-signed `- culture (Claude)`) and `mesh-message.sh` (Culture mesh channel messages, unsigned — IRC nick is the speaker).
+- **`culture agent learn` references the vendored skill.** A new "Cross-Repo + Mesh Communication via Vendored Skill" section in the learn prompt points at `<skill-dir>/communicate/scripts/{post-issue,mesh-message}.sh` and explains how the vendored skill (signs as `- culture (Claude)`) differs from the per-agent walkthrough (signs as `- <nick> (<harness>)`).
+
 ## [9.1.0] - 2026-05-05
 
 ### Added

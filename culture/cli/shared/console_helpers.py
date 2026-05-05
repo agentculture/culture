@@ -26,7 +26,7 @@ def resolve_server(server_name: str | None) -> tuple[str, int] | None:
     silent.
     """
     if server_name:
-        # pid/port files are keyed `server-<name>` (matches culture.cli.chat
+        # pid/port files are keyed `server-<name>` (matches culture.cli.server
         # in `pid_name = f"server-{args.name}"`). Looking up bare `<name>`
         # would always miss and silently fall back, sending users to the
         # wrong port — see qodo review on PR #323.

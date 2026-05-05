@@ -2,13 +2,10 @@
 
 Commands are organized into noun-based groups:
     culture agent    {create,join,start,stop,status,rename,assign,sleep,wake,learn,message,read,archive,unarchive,delete}
-    culture chat     {start,stop,status,default,rename,archive,unarchive,restart,link,logs,version,serve}
+    culture server   {start,stop,status,default,rename,archive,unarchive,restart,link,logs,version,serve}
     culture console  {...irc-lens verbs and flags...}    # passthrough; reactive web console
     culture mesh     {overview,setup,update,console}     # `console` here is deprecated; use `culture console`
     culture channel  {list,read,message,who}
-
-    Deprecated (9.x; removed in 10.0):
-    culture server   — alias for `culture chat` with a stderr warning
     culture bot      {create,start,stop,list,inspect,archive,unarchive}
     culture skills   {install}
     culture devex    {...developer-experience passthrough (powered by agex-cli)...}
@@ -32,7 +29,6 @@ from culture.cli import (
     agent,
     bot,
     channel,
-    chat,
     console,
     devex,
     introspect,
@@ -41,7 +37,7 @@ from culture.cli import (
     skills,
 )
 
-GROUPS = [agent, chat, server, mesh, channel, bot, skills, devex, afi, console, introspect]
+GROUPS = [agent, server, mesh, channel, bot, skills, devex, afi, console, introspect]
 
 
 def _names_of(group) -> set[str]:

@@ -92,6 +92,48 @@ def test_learn_prompt_signature_per_agent():
     assert "- dev-acp (ACP)" in output
 
 
+def test_learn_prompt_references_vendored_communicate_skill():
+    """The prompt surfaces the pre-installed `{skill_dir}/communicate/` skill.
+
+    Distinct from the per-agent walkthrough — this section points at the
+    skill that ships with `culture skills install` and signs as
+    `- culture (Claude)` for cross-repo posts on the platform's behalf.
+    """
+    output = generate_learn_prompt(nick="spark-claude", server="spark", backend="claude")
+    assert "## Cross-Repo + Mesh Communication via Vendored Skill" in output
+    # Both scripts are referenced with the per-backend installed path.
+    assert "~/.claude/skills/communicate/scripts/post-issue.sh" in output
+    assert "~/.claude/skills/communicate/scripts/mesh-message.sh" in output
+    # The vendored skill's signature is documented and contrasted with the
+    # per-agent walkthrough's signature.
+    assert "- culture (Claude)" in output
+
+
+def test_learn_prompt_vendored_communicate_path_per_backend():
+    """The vendored-skill section uses the harness-specific install path."""
+    cases = {
+        "claude": "~/.claude/skills/communicate/",
+        "codex": "~/.agents/skills/communicate/",
+        "acp": "~/.acp/skills/communicate/",
+        "copilot": "~/.copilot_skills/communicate/",
+    }
+    for backend, expected in cases.items():
+        output = generate_learn_prompt(nick=f"spark-{backend}", backend=backend)
+        section = output.split("## Cross-Repo + Mesh Communication via Vendored Skill", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        assert (
+            expected in section
+        ), f"Vendored-skill section for backend={backend} missing path {expected}"
+
+
+def test_learn_prompt_install_skills_lists_three_skills():
+    """Install-skills section now mentions three skills, including communicate."""
+    output = generate_learn_prompt(nick="spark-claude", server="spark", backend="claude")
+    assert "three skills" in output.lower()
+    # Communicate skill bullet must appear in the install list.
+    assert "Communicate skill" in output
+
+
 def test_learn_prompt_communicate_skill_section_is_harness_agnostic():
     """The communicate-skill walkthrough uses a generic project-relative placeholder.
 

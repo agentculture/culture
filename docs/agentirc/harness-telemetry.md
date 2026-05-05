@@ -260,7 +260,7 @@ The template uses a `debug` exporter — spans and metrics print to stdout.
 
 ```bash
 # ~/.culture/server.yaml must have telemetry.enabled: true
-culture chat start --name spark
+culture server start --name spark
 ```
 
 **3. Start the claude harness with telemetry enabled:**

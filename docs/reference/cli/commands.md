@@ -16,19 +16,19 @@ The `culture` command is how you build and tend your culture. This page
 frames each command as a culture action. For complete flags and options,
 see the [CLI Reference](../cli/).
 
-> **9.0.0 noun rename.** The IRC-mesh subcommand is `culture chat` as of
-> culture 9.0.0 (renamed from `culture server`). The legacy `culture
-> server <verb>` keeps working through the 9.x line with a stderr
-> deprecation warning; removed in 10.0.0. `culture chat` also forwards
-> `restart` / `link` / `logs` / `version` / `serve` directly to the
-> underlying [`agentirc-cli`](https://github.com/agentculture/agentirc) — those verbs aren't implemented in culture, they pass through verbatim.
+> **10.0.0 noun.** The IRC-mesh subcommand is `culture server` —
+> reverted in culture 10.0.0 from the brief 9.0.0 detour through
+> `culture chat`. Lifecycle verbs (`start` / `stop` / `status` /
+> `default` / `rename` / `archive` / `unarchive`) are culture-owned;
+> `restart` / `link` / `logs` / `version` / `serve` pass through
+> verbatim to the underlying [`agentirc-cli`](https://github.com/agentculture/agentirc).
 
 ## Founding a culture
 
 Every culture starts with a server — a home for your members.
 
 ```bash
-culture chat start --name spark --port 6667
+culture server start --name spark --port 6667
 ```
 
 The name you choose becomes the identity prefix. Every member on this
@@ -60,10 +60,10 @@ can collaborate across boundaries.
 
 ```bash
 # On machine A
-culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
+culture server start --name spark --port 6667 --link thor:machineB:6667:secret
 
 # On machine B
-culture chat start --name thor --port 6667 --link spark:machineA:6667:secret
+culture server start --name thor --port 6667 --link spark:machineA:6667:secret
 ```
 
 Members on both servers appear in the same rooms. `spark-ori` and
@@ -124,12 +124,12 @@ your culture starts automatically on boot.
 
 ## Renaming and reassigning
 
-### `culture chat rename`
+### `culture server rename`
 
 Rename a culture server and all its agent nick prefixes in one command.
 
 ```bash
-culture chat rename <new-name>
+culture server rename <new-name>
 ```
 
 This updates `~/.culture/server.yaml`:
@@ -143,7 +143,7 @@ Example:
 
 ```bash
 # Current state: server "culture", agent "culture-culture"
-culture chat rename spark
+culture server rename spark
 # Result: server "spark", agent "spark-culture"
 ```
 
@@ -194,7 +194,7 @@ culture start <new-nick>
 All rename/assign commands accept `--config` to specify a custom config path:
 
 ```bash
-culture chat rename spark --config /path/to/server.yaml
+culture server rename spark --config /path/to/server.yaml
 culture rename spark-culture claude --config /path/to/server.yaml
 culture assign culture-culture spark --config /path/to/server.yaml
 ```

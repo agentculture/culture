@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 import sys
 
 NAME = "skills"
 
 _SKILL_FILENAME = "SKILL.md"
+_COMMUNICATE_SCRIPTS = ("post-issue.sh", "mesh-message.sh")
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -79,6 +81,49 @@ def _install_admin_skill(root_dir: str, label: str) -> None:
     print(f"Installed {label} admin skill: {dest}")
 
 
+def _get_bundled_communicate_dir() -> str:
+    """Return the path to the bundled `communicate/` skill directory."""
+    import culture
+
+    return os.path.join(os.path.dirname(culture.__file__), "skills", "communicate")
+
+
+def _install_communicate_skill(root_dir: str, label: str) -> None:
+    """Install the cross-repo + mesh `communicate` skill (SKILL.md + scripts/).
+
+    The two scripts (`post-issue.sh`, `mesh-message.sh`) are written
+    executable for the owner so the receiving harness can ``bash`` them
+    directly without a separate chmod step. Sourced from steward via
+    ``culture/skills/communicate/`` — see the SKILL.md provenance note.
+    """
+    src_dir = _get_bundled_communicate_dir()
+    dest_dir = os.path.join(os.path.expanduser(root_dir), "communicate")
+    dest_scripts = os.path.join(dest_dir, "scripts")
+
+    os.makedirs(dest_scripts, exist_ok=True)
+
+    src_skill = os.path.join(src_dir, _SKILL_FILENAME)
+    dest_skill = os.path.join(dest_dir, _SKILL_FILENAME)
+    shutil.copy2(src_skill, dest_skill)
+
+    for script in _COMMUNICATE_SCRIPTS:
+        src_script = os.path.join(src_dir, "scripts", script)
+        dest_script = os.path.join(dest_scripts, script)
+        shutil.copy2(src_script, dest_script)
+        # Wheels strip the +x bit; restore it for owner only. Skills
+        # land in single-user dirs (~/.claude/skills/, ~/.agents/skills/,
+        # ...) so neither group nor world need execute — and granting
+        # them is what trips Sonar's S2612.
+        st = os.stat(dest_script)
+        os.chmod(
+            dest_script,
+            (st.st_mode | stat.S_IXUSR)
+            & ~(stat.S_IXGRP | stat.S_IXOTH | stat.S_IWGRP | stat.S_IWOTH),
+        )
+
+    print(f"Installed {label} communicate skill: {dest_dir}")
+
+
 def _install_skill_claude() -> None:
     """Install IRC skill for Claude Code."""
     src = _get_bundled_skill_path()
@@ -89,6 +134,7 @@ def _install_skill_claude() -> None:
     shutil.copy2(src, dest)
     print(f"Installed Claude Code messaging skill: {dest}")
     _install_admin_skill("~/.claude/skills", "Claude Code")
+    _install_communicate_skill("~/.claude/skills", "Claude Code")
 
 
 def _get_bundled_codex_skill_path() -> str:
@@ -109,6 +155,7 @@ def _install_skill_codex() -> None:
     shutil.copy2(src, dest)
     print(f"Installed Codex messaging skill: {dest}")
     _install_admin_skill("~/.agents/skills", "Codex")
+    _install_communicate_skill("~/.agents/skills", "Codex")
 
 
 def _get_bundled_copilot_skill_path() -> str:
@@ -129,6 +176,7 @@ def _install_skill_copilot() -> None:
     shutil.copy2(src, dest)
     print(f"Installed Copilot messaging skill: {dest}")
     _install_admin_skill("~/.copilot_skills", "Copilot")
+    _install_communicate_skill("~/.copilot_skills", "Copilot")
 
 
 def _get_bundled_acp_skill_path() -> str:
@@ -149,3 +197,4 @@ def _install_skill_acp() -> None:
     shutil.copy2(src, dest)
     print(f"Installed ACP messaging skill: {dest}")
     _install_admin_skill("~/.acp/skills", "ACP")
+    _install_communicate_skill("~/.acp/skills", "ACP")

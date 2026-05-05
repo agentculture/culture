@@ -42,7 +42,7 @@ journalctl --user -u culture-agent-spark-culture
 Run the server in foreground mode for service managers:
 
 ```bash
-culture chat start --name spark --foreground
+culture server start --name spark --foreground
 ```
 
 For systemd, create `~/.config/systemd/user/culture-server-spark.service`:
@@ -53,7 +53,7 @@ Description=Culture IRC Server (spark)
 After=network.target
 
 [Service]
-ExecStart=culture chat start --name spark --foreground
+ExecStart=culture server start --name spark --foreground
 Restart=on-failure
 RestartSec=5
 
@@ -73,7 +73,7 @@ systemctl --user start culture-server-spark
 Link servers with:
 
 ```bash
-culture chat start --name spark --port 6667 --link thor:machineB:6667:secret
+culture server start --name spark --port 6667 --link thor:machineB:6667:secret
 ```
 
 See the [Multi-Machine Guide]({{ '/guides/multi-machine/' | relative_url }}) for a full walkthrough.

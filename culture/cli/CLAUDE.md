@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-The `culture/cli/` package is the unified CLI entry point for the `culture` command. It uses argparse with noun-based command groups (e.g., `culture agent start`, `culture chat stop`). The entry point is `culture.cli:main` registered in `pyproject.toml`.
+The `culture/cli/` package is the unified CLI entry point for the `culture` command. It uses argparse with noun-based command groups (e.g., `culture agent start`, `culture server stop`). The entry point is `culture.cli:main` registered in `pyproject.toml`.
 
 ## Architecture
 
@@ -12,8 +12,7 @@ The `culture/cli/` package is the unified CLI entry point for the `culture` comm
 cli/
 ├── __init__.py          # Parser construction, main(), dispatches to groups
 ├── agent.py             # culture agent {create,join,start,stop,status,rename,...}
-├── chat.py              # culture chat {start,stop,status,default,rename,archive,...,restart,link,logs,version,serve}
-├── server.py            # culture server — deprecation alias for `culture chat` (9.x; removed in 10.0)
+├── server.py            # culture server {start,stop,status,default,rename,archive,...,restart,link,logs,version,serve}
 ├── mesh.py              # culture mesh {overview,setup,update}  (console deprecated → culture console)
 ├── console.py           # culture console — irc-lens passthrough (reactive web console)
 ├── channel.py           # culture channel {list,read,message,who,join,part,ask,...}
@@ -30,7 +29,7 @@ cli/
 
 ### Module Pattern
 
-Each command group module (`agent.py`, `chat.py`, etc.) exports:
+Each command group module (`agent.py`, `server.py`, etc.) exports:
 
 - `NAME: str` — the subcommand noun (e.g., `"agent"`)
 - `register(subparsers)` — adds the group's parser and sub-subparsers

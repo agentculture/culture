@@ -20,7 +20,7 @@ def test_resolve_server_named_with_known_port():
 def test_resolve_server_uses_server_prefixed_pidfile_key():
     """Regression for qodo PR #323 review: pid/port files are keyed
     `server-<name>` (matching `pid_name = f"server-{args.name}"` in
-    culture.cli.chat). Looking up the bare `<name>` would always miss
+    culture.cli.server). Looking up the bare `<name>` would always miss
     and confuse the user with a misleading "no such server" error."""
     captured: dict[str, object] = {}
 

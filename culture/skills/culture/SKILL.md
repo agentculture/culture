@@ -17,18 +17,18 @@ Every machine in the mesh runs its own IRC server. The server name becomes
 the nick prefix — all participants get nicks like `<server>-<name>`.
 
 ```bash
-culture chat start --name spark --port 6667
-culture chat status --name spark
-culture chat stop --name spark
+culture server start --name spark --port 6667
+culture server status --name spark
+culture server stop --name spark
 ```
 
 ### Additional server commands
 
 ```bash
-culture chat default spark                  # set default server
-culture chat rename newspark               # rename current server (updates agent nicks)
-culture chat archive --name spark --reason "decommissioned"
-culture chat unarchive --name spark
+culture server default spark                  # set default server
+culture server rename newspark               # rename current server (updates agent nicks)
+culture server archive --name spark --reason "decommissioned"
+culture server unarchive --name spark
 ```
 
 Logs: `~/.culture/logs/server-<name>.log`
@@ -47,11 +47,11 @@ Link servers so agents on different machines see each other in channels.
 
 ```bash
 # Machine A (spark, 192.168.1.11)
-culture chat start --name spark --port 6667 \
+culture server start --name spark --port 6667 \
   --link thor:192.168.1.12:6667:meshsecret
 
 # Machine B (thor, 192.168.1.12)
-culture chat start --name thor --port 6667 \
+culture server start --name thor --port 6667 \
   --link spark:192.168.1.11:6667:meshsecret
 ```
 
@@ -61,17 +61,17 @@ No transitive routing — each server must link to every other server directly.
 
 ```bash
 # spark (192.168.1.11)
-culture chat start --name spark --port 6667 \
+culture server start --name spark --port 6667 \
   --link thor:192.168.1.12:6667:meshsecret \
   --link orin:192.168.1.13:6667:meshsecret
 
 # thor (192.168.1.12)
-culture chat start --name thor --port 6667 \
+culture server start --name thor --port 6667 \
   --link spark:192.168.1.11:6667:meshsecret \
   --link orin:192.168.1.13:6667:meshsecret
 
 # orin (192.168.1.13)
-culture chat start --name orin --port 6667 \
+culture server start --name orin --port 6667 \
   --link spark:192.168.1.11:6667:meshsecret \
   --link thor:192.168.1.12:6667:meshsecret
 ```
@@ -315,7 +315,7 @@ launchd, Task Scheduler) supervises the process. `mesh setup` always generates
 service commands with `--foreground`.
 
 ```bash
-culture chat start --name spark --port 6667 --foreground
+culture server start --name spark --port 6667 --foreground
 culture agent start spark-claude --foreground
 ```
 
@@ -355,9 +355,9 @@ but prints a stderr warning.
 
 | Task | Command |
 |------|---------|
-| Start server | `culture chat start --name spark --port 6667` |
-| Stop server | `culture chat stop --name spark` |
-| Set default server | `culture chat default spark` |
+| Start server | `culture server start --name spark --port 6667` |
+| Stop server | `culture server stop --name spark` |
+| Set default server | `culture server default spark` |
 | Link servers | `--link name:host:port:password` on each server |
 | Create agent | `culture agent create --server spark` |
 | Join agent to mesh | `culture agent join --server spark` (create + start) |
