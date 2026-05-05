@@ -26,7 +26,11 @@ def resolve_server(server_name: str | None) -> tuple[str, int] | None:
     silent.
     """
     if server_name:
-        p = read_port(server_name)
+        # pid/port files are keyed `server-<name>` (matches culture.cli.chat
+        # in `pid_name = f"server-{args.name}"`). Looking up bare `<name>`
+        # would always miss and silently fall back, sending users to the
+        # wrong port — see qodo review on PR #323.
+        p = read_port(f"server-{server_name}")
         if p is None:
             return None
         return server_name, p

@@ -76,35 +76,64 @@ def _wait_for_port_or_proc_exit(host: str, port: int, proc, timeout: float = 15.
 
 @pytest.fixture
 def agentirc_server():
-    """Boot an in-process AgentIRC server on a free port."""
+    """Boot an in-process AgentIRC server on an OS-assigned port.
+
+    Uses ``port=0`` and reads back the actual bound port from the running
+    socket, mirroring ``tests/conftest.py``'s ``server`` fixture. Avoids
+    the TOCTOU race where ``_free_port()`` picks a port that another
+    process grabs before ``ircd.start()`` binds.
+    """
     pytest.importorskip("agentirc")
     from agentirc.config import ServerConfig
     from agentirc.ircd import IRCd
 
-    port = _free_port()
-    cfg = ServerConfig(name="lens-e2e", host="127.0.0.1", port=port)
+    cfg = ServerConfig(name="lens-e2e", host="127.0.0.1", port=0, webhook_port=0)
     server = IRCd(cfg)
-
-    loop = asyncio.new_event_loop()
-
-    async def _run():
-        await server.start()
 
     import threading
 
+    loop = asyncio.new_event_loop()
+    started = threading.Event()
+    start_error: list[Exception] = []
+
     def _runner():
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(_run())
+        try:
+            loop.run_until_complete(server.start())
+        except Exception as exc:  # noqa: BLE001 — surface to main thread
+            start_error.append(exc)
+            started.set()
+            return
+        # Read back the OS-assigned port so callers can connect.
+        cfg.port = server._server.sockets[0].getsockname()[1]
+        started.set()
         loop.run_forever()
 
     thread = threading.Thread(target=_runner, daemon=True)
     thread.start()
-    _wait_for_port("127.0.0.1", port)
+    if not started.wait(timeout=10):
+        raise RuntimeError("agentirc_server fixture: server.start() did not signal ready in 10s")
+    if start_error:
+        raise start_error[0]
 
-    yield port
+    yield cfg.port
 
+    # Clean teardown: stop the IRCd on its loop, then stop+close the loop
+    # and join the thread. Without this the server keeps sockets open and
+    # pytest-asyncio emits a ResourceWarning.
+    stop_done = threading.Event()
+
+    async def _stop():
+        try:
+            await server.stop()
+        finally:
+            stop_done.set()
+
+    asyncio.run_coroutine_threadsafe(_stop(), loop)
+    stop_done.wait(timeout=5)
     loop.call_soon_threadsafe(loop.stop)
-    thread.join(timeout=3)
+    thread.join(timeout=5)
+    loop.close()
 
 
 def test_culture_console_serve_drives_help_view(agentirc_server):
@@ -152,4 +181,12 @@ def test_culture_console_serve_drives_help_view(agentirc_server):
                 browser.close()
     finally:
         culture_proc.terminate()
-        culture_proc.wait(timeout=5)
+        try:
+            culture_proc.wait(timeout=5)
+        finally:
+            # Explicit pipe close — terminate()/wait() don't close the
+            # subprocess.PIPE handles, which surfaces as a
+            # ResourceWarning under pytest's strict warnings.
+            for stream in (culture_proc.stdout, culture_proc.stderr):
+                if stream is not None:
+                    stream.close()

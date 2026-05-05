@@ -18,8 +18,6 @@ import time
 from culture.cli.console import dispatch_resolved_argv as console_dispatch
 from culture.config import ServerConfig, load_config, load_config_or_default
 
-from .shared.console_helpers import resolve_console_nick as _resolve_console_nick
-from .shared.console_helpers import resolve_server as _resolve_server
 from .shared.constants import _CONFIG_HELP, AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
 from .shared.process import server_stop_by_name, stop_agent

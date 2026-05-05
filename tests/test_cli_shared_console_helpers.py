@@ -17,6 +17,22 @@ def test_resolve_server_named_with_known_port():
         assert resolve_server("spark") == ("spark", 7000)
 
 
+def test_resolve_server_uses_server_prefixed_pidfile_key():
+    """Regression for qodo PR #323 review: pid/port files are keyed
+    `server-<name>` (matching `pid_name = f"server-{args.name}"` in
+    culture.cli.chat). Looking up the bare `<name>` would always miss
+    and confuse the user with a misleading "no such server" error."""
+    captured: dict[str, object] = {}
+
+    def fake_read_port(key: str) -> int | None:
+        captured["key"] = key
+        return 7777 if key == "server-spark" else None
+
+    with patch("culture.cli.shared.console_helpers.read_port", side_effect=fake_read_port):
+        assert resolve_server("spark") == ("spark", 7777)
+    assert captured["key"] == "server-spark"
+
+
 def test_resolve_server_unknown_name_returns_none():
     """An explicitly-named server that isn't running returns None.
 
