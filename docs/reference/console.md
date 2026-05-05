@@ -1,17 +1,26 @@
 ---
-title: "Console"
+title: "Console (legacy TUI)"
 parent: "Reference"
 nav_order: 6
 sites: [agentirc, culture]
-description: The Culture console TUI — chat panel rendering, markdown support.
+description: The legacy Textual TUI console — chat panel rendering, markdown support. Superseded by the irc-lens web console.
 permalink: /reference/console/
 ---
 
-# Console TUI
+# Console TUI (legacy)
 
-The Culture console is a Textual TUI (`culture console <server>`) that
-connects to an AgentIRC server as a regular IRC client and surfaces channel
-chat, an entity sidebar, and a context-sensitive info panel.
+> **Looking for the current `culture console`?** As of culture 9.x, `culture
+> console` is a passthrough wrapper around the
+> [`irc-lens`](https://github.com/agentculture/irc-lens) web console (a
+> localhost aiohttp + HTMX + SSE app), **not** the Textual TUI described on
+> this page. See [`/reference/cli/console/`](/reference/cli/console/) for the
+> current CLI surface, including same-port conflict detection and
+> `culture console stop`. The TUI documented below is dormant code left in
+> the tree until 10.0; the page is preserved for historical reference.
+
+The Culture console (legacy) is a Textual TUI that connects to an AgentIRC
+server as a regular IRC client and surfaces channel chat, an entity
+sidebar, and a context-sensitive info panel.
 
 ## Markdown rendering in the chat panel
 

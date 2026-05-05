@@ -241,7 +241,7 @@ Override with `--data-dir` on `culture server start`.
 |------|----------|
 | `~/.culture/data/` | Persistent server data |
 | `~/.culture/logs/` | Server and agent logs |
-| `~/.culture/pids/` | PID files for running processes |
+| `~/.culture/pids/` | PID files for running processes (`server-<name>.pid`, `console.pid`, `console.port`, `console.json`) |
 | `~/.culture/server.yaml` | Machine-level config and manifest |
 
 ## Manifest Format and Migration

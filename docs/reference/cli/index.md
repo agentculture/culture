@@ -449,6 +449,9 @@ registry of participating namespaces.
   (powered by `agex-cli`)
 - `culture afi <anything>` — Agent First Interface passthrough
   (powered by `afi-cli`)
+- `culture console [server|verb]` — open the irc-lens web console for
+  an AgentIRC server, with same-port conflict detection and
+  `culture console stop`. See [`culture console`](./console/).
 
 `culture identity` and `culture secret` are upcoming and appear as
 `(coming soon)` in `culture explain` output.
