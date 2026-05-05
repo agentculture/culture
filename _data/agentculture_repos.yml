@@ -1,0 +1,110 @@
+# Schema:
+#   id           (required) repo name within agentculture/, e.g. "agentirc"
+#   category     (required) one of: core-runtime | workspace-experience |
+#                  identity-secrets | resident-culture | resident-domain |
+#                  org-site
+#   maturity     (required) one of: placeholder | experimental | usable |
+#                  deprecated
+#   description  (required) one short sentence (<=140 chars) — what it is,
+#                  not what it will be
+#   package      (optional) PyPI package name if applicable
+#   binary       (optional) CLI binary name if applicable
+#   docs         (optional) absolute URL — culture.dev page or repo README
+#   install      (optional) one-line install command
+#   caveat       (optional) one short sentence — a current public-facing
+#                  limitation a reader should know about
+#   related      (optional) list of other ids in this registry
+#
+# Adding a new sibling repo: append an entry following this schema.
+# Registry hygiene (drift between this file and `gh repo list agentculture
+# --visibility public`) is steward's remit; ghafi handles GitHub-side
+# mechanics. There is no CI gate.
+
+- id: agentirc
+  category: core-runtime
+  maturity: usable
+  description: The IRC-native runtime for persistent AI agents and humans in shared rooms.
+  package: agentirc-cli
+  binary: agentirc
+  docs: https://culture.dev/agentirc/
+  install: uv tool install agentirc-cli
+  caveat: Bot extension API still in phased rollout.
+  related: [culture, irc-lens]
+
+- id: irc-lens
+  category: core-runtime
+  maturity: experimental
+  description: Lens CLI for inspecting AgentIRC state and message flow.
+  related: [agentirc]
+
+- id: culture
+  category: workspace-experience
+  maturity: usable
+  description: The integrated workspace — CLI, harnesses, console, mesh.
+  package: culture
+  binary: culture
+  docs: https://culture.dev
+  install: uv tool install culture
+
+- id: agex-cli
+  category: workspace-experience
+  maturity: experimental
+  description: Improve an agent's developer experience; powers `culture devex`.
+  docs: https://culture.dev/agex/
+  related: [culture]
+
+- id: afi-cli
+  category: workspace-experience
+  maturity: usable
+  description: Agent-First Interface — contracts agents publish about themselves.
+  docs: https://culture.dev/afi/
+  caveat: "`culture contract` wrapper planned, not yet shipped."
+  related: [culture]
+
+- id: zehut
+  category: identity-secrets
+  maturity: experimental
+  description: Mesh identity — users, email, key management. ("zehut" = identity in Hebrew.)
+  caveat: "`culture identity` wrapper planned, not yet shipped."
+
+- id: shushu
+  category: identity-secrets
+  maturity: experimental
+  description: Credential and secret management. ("shushu" — like "hush".)
+  caveat: "`culture secret` wrapper planned, not yet shipped."
+
+- id: steward
+  category: resident-culture
+  maturity: experimental
+  description: Alignment hub for AgentCulture skills; maintains resident agents and registry hygiene.
+
+- id: ghafi
+  category: resident-culture
+  maturity: experimental
+  description: GitHub-side mechanics for the org — repo audits, PR ergonomics, registry reconciliation.
+  caveat: Rename in flight.
+
+- id: auntiepypi
+  category: resident-culture
+  maturity: experimental
+  description: PyPI mechanics — maintains, uses, and serves the CLI for managing PyPI packages for the org.
+
+- id: cfafi
+  category: resident-culture
+  maturity: experimental
+  description: Cloudflare-side mechanics for the org — DNS, edge, asset delivery for culture.dev.
+
+- id: office-agent
+  category: resident-domain
+  maturity: experimental
+  description: Office sits, meeting rooms, calendar coordination — example of a domain-serving agent.
+
+- id: tipalti
+  category: resident-domain
+  maturity: experimental
+  description: Tipalti integration — example of an external-service-serving agent.
+
+- id: landing-page
+  category: org-site
+  maturity: experimental
+  description: Org-level landing page for AgentCulture.

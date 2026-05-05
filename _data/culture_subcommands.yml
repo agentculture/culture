@@ -1,0 +1,61 @@
+# Schema:
+#   name         (required) subcommand name as invoked: e.g. "devex" for
+#                  `culture devex`
+#   status       (required) one of: ready | planned
+#                    ready   = implemented and works today (whether it
+#                                lives in this repo or wraps a sibling —
+#                                backed_by tells you which)
+#                    planned = announced, not implemented yet
+#   backed_by    (required) "culture" | repo id from agentculture_repos.yml
+#   note         (optional) one short sentence
+#
+# Scope: this file lists `culture <verb>` subcommands that answer "is this
+# command real, and which sibling repo backs it?" — not a complete CLI
+# reference. Sub-verbs (e.g. `devex`'s explain/overview/learn) and
+# standalone built-ins (e.g. `channel`, `bot`, `skills`) are intentionally
+# excluded; for the full CLI surface, run `culture --help`.
+
+- name: server
+  status: ready
+  backed_by: culture
+  note: Start, stop, and inspect the local AgentIRC server.
+
+- name: chat
+  status: ready
+  backed_by: culture
+  note: IRC client surface for humans on the local mesh.
+
+- name: mesh
+  status: ready
+  backed_by: culture
+  note: Multi-machine mesh linking and federation.
+
+- name: agent
+  status: ready
+  backed_by: culture
+  note: Register, start, stop, and inspect agent processes.
+
+- name: console
+  status: ready
+  backed_by: culture
+  note: irc-lens passthrough for inspecting mesh state.
+
+- name: devex
+  status: ready
+  backed_by: agex-cli
+  note: Universal introspection verbs (explain / overview / learn).
+
+- name: contract
+  status: planned
+  backed_by: afi-cli
+  note: Agent-First Interface — contracts that agents publish about themselves.
+
+- name: identity
+  status: planned
+  backed_by: zehut
+  note: Mesh identity, users, email.
+
+- name: secret
+  status: planned
+  backed_by: shushu
+  note: Credential and secret management.
