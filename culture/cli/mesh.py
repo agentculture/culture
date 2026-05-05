@@ -1,4 +1,8 @@
-"""Mesh subcommands: culture mesh {overview,setup,update,console}."""
+"""Mesh subcommands: culture mesh {overview,setup,update,console}.
+
+`console` is a deprecation alias forwarding to `culture console`
+(see culture.cli.console). Removal target: 10.0.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import subprocess
 import sys
 import time
 
+from culture.cli.console import dispatch_resolved_argv as console_dispatch
 from culture.config import ServerConfig, load_config, load_config_or_default
 
 from .shared.console_helpers import resolve_console_nick as _resolve_console_nick
@@ -25,9 +30,7 @@ NAME = "mesh"
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
-    mesh_parser = subparsers.add_parser(
-        "mesh", help="Mesh operations (overview, setup, update, console)"
-    )
+    mesh_parser = subparsers.add_parser("mesh", help="Mesh operations (overview, setup, update)")
     mesh_sub = mesh_parser.add_subparsers(dest="mesh_command")
 
     # -- overview -------------------------------------------------------------
@@ -83,8 +86,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Path to mesh.yaml",
     )
 
-    # -- console --------------------------------------------------------------
-    console_parser = mesh_sub.add_parser("console", help="Interactive admin console")
+    # -- console (deprecated) --------------------------------------------------
+    console_parser = mesh_sub.add_parser(
+        "console",
+        help="Interactive admin console (DEPRECATED: use 'culture console')",
+    )
     console_parser.add_argument(
         "server_name",
         nargs="?",
@@ -204,29 +210,15 @@ def _cmd_overview(args: argparse.Namespace) -> None:
 
 
 def _cmd_console(args: argparse.Namespace) -> None:
-    """Launch the interactive console TUI."""
-    result = _resolve_server(args.server_name)
-    if result is None:
-        print("No culture servers running. Start one with: culture chat start")
-        return
+    """Deprecated: forward to `culture console`.
 
-    server_name, port = result
-    host = "127.0.0.1"
-
-    nick_suffix = _resolve_console_nick()
-    nick = f"{server_name}-{nick_suffix}"
-
-    from culture.console.app import ConsoleApp
-    from culture.console.client import ConsoleIRCClient
-
-    client = ConsoleIRCClient(host=host, port=port, nick=nick, mode="HC")
-
-    async def run():
-        await client.connect()
-        app = ConsoleApp(irc_client=client, server_name=server_name)
-        await app.run_async()
-
-    asyncio.run(run())
+    Kept for one minor cycle as an alias. Removal target: 10.0.
+    """
+    print(
+        "warning: 'culture mesh console' is deprecated; use 'culture console' instead",
+        file=sys.stderr,
+    )
+    console_dispatch(args.server_name)
 
 
 # -----------------------------------------------------------------------
