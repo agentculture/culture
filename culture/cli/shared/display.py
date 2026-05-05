@@ -133,8 +133,13 @@ def print_agents_overview(
             print(f"{nick:<30} {status:<12} {pid_str:<10}")
 
 
-def _load_bot_configs() -> list:
-    """Load all valid bot configs from the bots directory."""
+def _load_bot_configs(*, show_archived: bool = False) -> list:
+    """Load valid bot configs from the bots directory.
+
+    Filters out archived bots by default (matching `culture bot list`) and
+    skips configs with empty names so malformed entries don't leak into the
+    UI.
+    """
     from culture.bots.config import BOTS_DIR, load_bot_config
 
     if not BOTS_DIR.is_dir():
@@ -145,15 +150,21 @@ def _load_bot_configs() -> list:
         if not yaml_path.is_file():
             continue
         try:
-            configs.append(load_bot_config(yaml_path))
+            config = load_bot_config(yaml_path)
         except Exception as exc:
             logger.warning("Failed to load bot config %s: %s", yaml_path, exc)
+            continue
+        if not config.name:
+            continue
+        if config.archived and not show_archived:
+            continue
+        configs.append(config)
     return configs
 
 
-def print_bot_listing() -> None:
+def print_bot_listing(*, show_archived: bool = False) -> None:
     """Print a table of configured bots (if any exist)."""
-    bot_configs = _load_bot_configs()
+    bot_configs = _load_bot_configs(show_archived=show_archived)
     if not bot_configs:
         return
     print()
@@ -161,4 +172,5 @@ def print_bot_listing() -> None:
     print("-" * 60)
     for bc in bot_configs:
         channels = ", ".join(bc.channels) if bc.channels else "-"
-        print(f"{bc.name:<30} {bc.trigger_type:<12} {channels}")
+        name = f"{bc.name} [archived]" if show_archived and bc.archived else bc.name
+        print(f"{name:<30} {bc.trigger_type:<12} {channels}")

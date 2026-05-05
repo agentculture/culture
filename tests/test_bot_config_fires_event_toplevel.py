@@ -112,3 +112,30 @@ def test_missing_fires_event_still_loads(tmp_path):
 
     cfg = load_bot_config(path)
     assert cfg.fires_event is None
+
+
+def test_top_level_deprecation_notice_logged_once_per_process(tmp_path, caplog):
+    """Loading the same bot twice should not double-log the deprecation INFO."""
+    import logging
+
+    from culture.bots.config import reset_fires_event_warning_state
+
+    path = _write_yaml(
+        tmp_path,
+        {
+            "bot": {"name": "spark-greeter", "owner": "spark"},
+            "trigger": {"type": "event", "filter": "type == 'user.join'"},
+            "output": {"channels": ["#general"], "template": "hi"},
+            "fires_event": {"type": "custom.greeted", "data": {}},
+        },
+    )
+
+    reset_fires_event_warning_state()
+    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+        load_bot_config(path)
+        first = len(caplog.records)
+        load_bot_config(path)
+        second = len(caplog.records)
+
+    assert first == 1
+    assert second == 1, "loading the same bot twice should log once"

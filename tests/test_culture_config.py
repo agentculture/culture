@@ -268,6 +268,110 @@ def test_resolve_agents_missing_culture_yaml(tmp_path):
     assert len(config.agents) == 0
 
 
+def test_resolve_agents_warning_message_includes_unregister_hint(tmp_path, caplog):
+    """Loader warnings tell the user the exact command to fix the manifest."""
+    import logging
+
+    from culture.config import (
+        ServerConfig,
+        ServerConnConfig,
+        reset_manifest_warning_state,
+        resolve_agents,
+    )
+
+    reset_manifest_warning_state()
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"ghost": str(tmp_path / "nonexistent")},
+    )
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        resolve_agents(config)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("culture agent unregister ghost" in m for m in messages)
+
+
+def test_resolve_agents_warns_once_per_process(tmp_path, caplog):
+    """Same broken manifest entry must not warn twice in one process."""
+    import logging
+
+    from culture.config import (
+        ServerConfig,
+        ServerConnConfig,
+        reset_manifest_warning_state,
+        resolve_agents,
+    )
+
+    reset_manifest_warning_state()
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"ghost": str(tmp_path / "nonexistent")},
+    )
+
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        resolve_agents(config)
+        first = len(caplog.records)
+        resolve_agents(config)
+        second = len(caplog.records)
+
+    assert first == 1
+    assert second == 1, "second resolve_agents should be silent"
+
+
+def test_resolve_agents_suffix_mismatch_warns_with_unregister_hint(tmp_path, caplog):
+    """When culture.yaml exists but doesn't declare the requested suffix, the
+    warning still tells the user how to clean up the stale entry."""
+    import logging
+
+    from culture.config import (
+        ServerConfig,
+        ServerConnConfig,
+        reset_manifest_warning_state,
+        resolve_agents,
+    )
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "culture.yaml").write_text("suffix: actual\nbackend: claude\n")
+
+    reset_manifest_warning_state()
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"expected": str(proj)},
+    )
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        resolve_agents(config)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("culture agent unregister expected" in m for m in messages)
+    assert config.agents == []
+
+
+def test_reset_manifest_warning_state_re_enables_warning(tmp_path, caplog):
+    """reset_manifest_warning_state lets a previously-warned entry warn again."""
+    import logging
+
+    from culture.config import (
+        ServerConfig,
+        ServerConnConfig,
+        reset_manifest_warning_state,
+        resolve_agents,
+    )
+
+    reset_manifest_warning_state()
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"ghost": str(tmp_path / "nonexistent")},
+    )
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        resolve_agents(config)
+        resolve_agents(config)
+        reset_manifest_warning_state()
+        resolve_agents(config)
+
+    assert len(caplog.records) == 2
+
+
 def test_resolve_agents_multi_agent_directory(tmp_path):
     """Two manifest entries pointing to same multi-agent directory."""
     from culture.config import ServerConfig, ServerConnConfig, resolve_agents

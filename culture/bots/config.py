@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 BOTS_DIR = Path(os.path.expanduser("~/.culture/bots"))
 BOT_CONFIG_FILE = "bot.yaml"
 
+# Dedup state: each bot with top-level `fires_event` should emit the
+# canonical-location notice at most once per process.
+_warned_top_level_fires_event: set[str] = set()
+
+
+def reset_fires_event_warning_state() -> None:
+    """Clear the per-process fires_event dedup set. Tests use this."""
+    _warned_top_level_fires_event.clear()
+
 
 @dataclass
 class EmitEventSpec:
@@ -81,11 +90,14 @@ def load_bot_config(path: Path) -> BotConfig:
             fe_data = {}
         fires_event = EmitEventSpec(type=fe_type, data=fe_data)
         if fires_event_from_top:
-            logger.info(
-                "Bot %s: top-level 'fires_event' accepted; "
-                "canonical location is under 'output:'",
-                bot_section.get("name", "<unknown>"),
-            )
+            bot_name = bot_section.get("name", "<unknown>")
+            if bot_name not in _warned_top_level_fires_event:
+                _warned_top_level_fires_event.add(bot_name)
+                logger.info(
+                    "Bot %s: top-level 'fires_event' accepted; "
+                    "canonical location is under 'output:'",
+                    bot_name,
+                )
 
     return BotConfig(
         name=bot_section.get("name", ""),

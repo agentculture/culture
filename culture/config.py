@@ -223,6 +223,26 @@ def load_server_config(path: str | Path) -> ServerConfig:
     )
 
 
+# Dedup state for manifest-load warnings: a CLI invocation calls
+# resolve_agents many times, but each broken (server, suffix) entry should
+# emit at most one warning per process.
+_warned_manifest_entries: set[tuple[str, str]] = set()
+
+
+def reset_manifest_warning_state() -> None:
+    """Clear the per-process manifest-warning dedup set. Tests use this."""
+    _warned_manifest_entries.clear()
+
+
+def _warn_manifest_entry_once(server_name: str, suffix: str, message: str, *args) -> None:
+    """Log a manifest-load warning at most once per (server, suffix) per process."""
+    key = (server_name, suffix)
+    if key in _warned_manifest_entries:
+        return
+    _warned_manifest_entries.add(key)
+    logger.warning(message, *args)
+
+
 def resolve_agents(config: ServerConfig) -> None:
     """Resolve agent configs from manifest paths."""
     config.agents = []
@@ -232,20 +252,28 @@ def resolve_agents(config: ServerConfig) -> None:
         try:
             agents = load_culture_yaml(directory, suffix=suffix)
         except FileNotFoundError:
-            logger.warning(
-                "culture.yaml missing for %s-%s at %s — skipping",
+            _warn_manifest_entry_once(
+                server_name,
+                suffix,
+                "culture.yaml missing for %s-%s at %s — run "
+                "'culture agent unregister %s' to remove this stale manifest entry",
                 server_name,
                 suffix,
                 directory,
+                suffix,
             )
             continue
         except ValueError as e:
-            logger.warning(
-                "Error loading %s-%s from %s: %s — skipping",
+            _warn_manifest_entry_once(
+                server_name,
+                suffix,
+                "Error loading %s-%s from %s: %s — run "
+                "'culture agent unregister %s' if this entry is stale",
                 server_name,
                 suffix,
                 directory,
                 e,
+                suffix,
             )
             continue
 
