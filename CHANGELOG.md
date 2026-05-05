@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.0.1] - 2026-05-05
+
+### Changed
+
+- **`culture mesh update` now streams uv/pip output** instead of capturing it. A long-running upgrade (e.g. fresh major-version install pulling in `claude-agent-sdk` ~73 MiB plus the OpenTelemetry stack) is no longer indistinguishable from a hang — uv's progress bars and download messages show through to the terminal in real time.
+- **Default upgrade timeout raised from 120s to 600s.** The old ceiling spuriously fired mid-download on slow links during major-version bumps even though the upgrade was making progress.
+
+### Added
+
+- **`culture mesh update --upgrade-timeout SECONDS`** flag to override the default 600s ceiling for sites with very slow or very fast networks.
+- **Expanded timeout hint.** When the upgrade does time out, the CLI now suggests three recovery paths instead of one: run `uv tool upgrade culture` (or `pip install --upgrade culture`) directly, rerun with a larger `--upgrade-timeout`, or `--skip-upgrade` to restart services without upgrading.
+
 ## [10.0.0] - 2026-05-05
 
 ### Changed (breaking)
