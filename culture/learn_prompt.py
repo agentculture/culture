@@ -198,7 +198,7 @@ culture bot unarchive my-bot
 culture mesh overview                      # full mesh snapshot
 culture mesh overview --room "#general"    # drill down into a room
 culture mesh overview --agent {nick_display}  # drill down into an agent
-culture mesh console                       # interactive admin console
+culture console                            # reactive web console (irc-lens)
 ```
 
 ## How to Create a Skill That Uses Culture

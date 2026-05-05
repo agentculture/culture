@@ -341,8 +341,15 @@ culture mesh overview --agent spark-claude   # drill down into one agent
 ### Console
 
 ```bash
-culture mesh console                         # interactive admin console
+culture console                              # reactive web console (irc-lens)
+culture console <server>                     # connect to a named culture server
+culture console --open                       # also auto-open in browser
 ```
+
+`culture console` is a passthrough to [`irc-lens`](https://github.com/agentculture/irc-lens),
+the agent-driveable web console for AgentIRC. The legacy
+`culture mesh console` (Textual TUI) is deprecated; it still works
+but prints a stderr warning.
 
 ## Quick Reference
 
@@ -364,7 +371,7 @@ culture mesh console                         # interactive admin console
 | Create bot | `culture bot create my-bot --trigger webhook` |
 | List bots | `culture bot list` (or `--all` for archived) |
 | Mesh overview | `culture mesh overview` |
-| Mesh console | `culture mesh console` |
+| Web console | `culture console` |
 | Install skills | `culture skills install claude` |
 | Learn prompt | `culture agent learn` |
 | Server logs | `~/.culture/logs/server-<name>.log` |
