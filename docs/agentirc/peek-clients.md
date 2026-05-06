@@ -17,7 +17,7 @@ The peek client nick is one of two shapes, both ending in `_peek`
 followed by 4 hex chars:
 
 | Shape | Example | When |
-|---|---|---|
+| --- | --- | --- |
 | `<server>-<agent>__peek<hex>` | `spark-claude__peek7aef` | `CULTURE_NICK` is set and shares the observer's server prefix (the common path: an agent daemon that fell back to peek) |
 | `<server>-_peek<hex>` | `spark-_peek7aef` | No `CULTURE_NICK`, or the parent is from a different server |
 

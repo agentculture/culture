@@ -21,6 +21,19 @@ RECV_TIMEOUT = 5.0
 REGISTER_TIMEOUT = 10.0
 
 
+def _sanitize_for_irc(value: str) -> str:
+    """Strip CR/LF and other ASCII control chars from an IRC field value.
+
+    ``parent_nick`` originates in the ``CULTURE_NICK`` environment variable;
+    a value containing ``\\r`` or ``\\n`` would close the current IRC
+    protocol line and let an attacker smuggle a second line of arbitrary
+    IRC commands into the registration handshake. Strip every C0 control
+    character (0x00–0x1F) plus ``\\x7f`` (DEL) so the value is safe to
+    interpolate into ``NICK`` and ``USER`` lines.
+    """
+    return "".join(ch for ch in value if 0x20 <= ord(ch) < 0x7F)
+
+
 class IRCObserver:
     """Ephemeral IRC connection for read-only CLI commands.
 
@@ -41,7 +54,16 @@ class IRCObserver:
         self.host = host
         self.port = port
         self.server_name = server_name
-        self.parent_nick = parent_nick
+        # CR/LF and other control chars in parent_nick (sourced from the
+        # CULTURE_NICK env var) would let a malformed value inject extra
+        # IRC protocol lines via the realname or NICK fields, so the
+        # value is sanitized once at construction time. Empty strings
+        # collapse to None so downstream attribution checks short-circuit.
+        if parent_nick:
+            cleaned = _sanitize_for_irc(parent_nick)
+            self.parent_nick: str | None = cleaned or None
+        else:
+            self.parent_nick = None
 
     def _parent_suffix(self) -> str | None:
         """Return the parent's agent suffix iff it's safe to embed in a nick.
@@ -50,21 +72,28 @@ class IRCObserver:
         a foreign server would otherwise produce a confusing
         ``<our-server>-<their-server>-<their-agent>__peek...`` mash-up
         that looks federated but isn't.
+
+        Uses an exact ``<server>-`` prefix match (not ``partition('-')``)
+        so server names that themselves contain hyphens — e.g.
+        ``my-server`` paired with parent ``my-server-claude`` — still
+        resolve to the right ``claude`` suffix.
         """
         if not self.parent_nick:
             return None
-        prefix, sep, agent = self.parent_nick.partition("-")
-        if not sep or prefix != self.server_name or not agent:
+        expected_prefix = f"{self.server_name}-"
+        if not self.parent_nick.startswith(expected_prefix):
             return None
-        return agent
+        agent = self.parent_nick[len(expected_prefix) :]
+        return agent or None
 
     def _temp_nick(self) -> str:
         """Generate a temporary nick with server prefix.
 
         Format: ``<server>-<agent>__peek<hex>`` when parent attribution is
-        available, else ``<server>-_peek<hex>``. The double-underscore
-        before ``peek`` is the protocol signal — bots filter on it to
-        avoid greeting transient peek joins.
+        available, else ``<server>-_peek<hex>``. Both shapes contain the
+        substring ``_peek`` (the legacy single-underscore is a substring
+        of the new ``__peek``) — that is what bots filter on, via
+        ``'_peek' in nick``, to avoid greeting transient peek joins.
         """
         suffix = secrets.token_hex(2)  # 4 hex chars
         agent = self._parent_suffix()

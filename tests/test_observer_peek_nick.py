@@ -42,10 +42,27 @@ def test_parent_on_same_server_attributes_in_nick():
 
 
 def test_parent_with_long_agent_name_is_kept_intact():
-    # Mesh nicks can be long (e.g. "spark-culture-greeter"). The agent
-    # part is everything after the first "-".
+    # Mesh nicks can have multiple hyphens in the agent part (e.g.
+    # "spark-culture-greeter"). The agent suffix is everything after the
+    # exact ``<server>-`` prefix, so "culture-greeter" stays intact.
     nick = _nick("spark-culture-greeter")
     assert re.fullmatch(r"spark-culture-greeter__peek[0-9a-f]{4}", nick), nick
+
+
+def test_hyphenated_server_name_resolves_correctly():
+    """Server names that themselves contain hyphens must still attribute.
+
+    Regression: an earlier implementation used ``parent_nick.partition('-')``
+    which would split ``my-server-claude`` into prefix ``my`` (wrong) and
+    drop attribution entirely. The current implementation uses an exact
+    ``<server>-`` prefix match, so the parent's agent suffix is everything
+    *after* the full server name.
+    """
+    obs = IRCObserver(
+        host="127.0.0.1", port=6667, server_name="my-server", parent_nick="my-server-claude"
+    )
+    nick = obs._temp_nick()
+    assert re.fullmatch(r"my-server-claude__peek[0-9a-f]{4}", nick), nick
 
 
 def test_cross_server_parent_falls_back_to_opaque():
@@ -69,9 +86,49 @@ def test_malformed_parent_falls_back_to_opaque(bad_parent: str):
     assert re.fullmatch(r"spark-_peek[0-9a-f]{4}", nick), nick
 
 
-def test_temp_nick_includes_4_hex_suffix_to_avoid_collisions():
-    seen = {_nick("spark-claude") for _ in range(20)}
-    assert len(seen) >= 18, "_peek suffix should rarely collide across 20 calls"
+def test_temp_nick_uses_4_hex_chars_from_secrets_token_hex(monkeypatch):
+    """Deterministic check that the suffix is exactly 4 hex chars from
+    ``secrets.token_hex(2)`` — replaces an earlier probabilistic
+    collision-rate test that could rarely flake under random luck.
+    """
+    import culture.observer as observer
+
+    calls: list[int] = []
+
+    def _fake_token_hex(n: int) -> str:
+        calls.append(n)
+        return "abcd"
+
+    monkeypatch.setattr(observer.secrets, "token_hex", _fake_token_hex)
+
+    nick = _nick("spark-claude")
+    assert calls == [2], "_temp_nick should call secrets.token_hex(2) exactly once"
+    assert nick == "spark-claude__peekabcd"
+
+
+def test_control_characters_in_parent_nick_are_stripped():
+    """CR/LF in CULTURE_NICK must not let an attacker inject IRC commands.
+
+    Regression for the security review on #329: a malformed env value like
+    ``spark-claude\\r\\nJOIN #danger`` would previously close the
+    ``USER`` realname line and inject a second IRC command. The
+    ``IRCObserver`` constructor now strips C0 controls (and DEL) so the
+    field is safe to interpolate verbatim into the protocol stream.
+    """
+    obs = IRCObserver(
+        host="127.0.0.1",
+        port=6667,
+        server_name="spark",
+        parent_nick="spark-claude\r\nJOIN #danger",
+    )
+    # \r\n was stripped, so the parent_nick is clean and the nick still
+    # attributes correctly.
+    assert obs.parent_nick == "spark-claudeJOIN #danger"
+    # The injected JOIN payload remains visible to operators (so they
+    # can investigate the malformed value), but it's now part of the
+    # nick string and cannot start a new IRC line.
+    assert "\r" not in obs.parent_nick
+    assert "\n" not in obs.parent_nick
 
 
 def test_peek_marker_is_present_in_every_form():
