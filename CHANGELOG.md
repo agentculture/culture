@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.2] - 2026-05-06
+
+### Added
+
+- version-bump skill: vendored from steward into .claude/skills/version-bump/ so script-form bump.py invocations resolve in-repo
+- cicd skill: add opt-in --push flag to create-pr-and-wait.sh that runs git push -u origin HEAD before gh pr create, eliminating the separate push step
+
+### Fixed
+
+- cicd skill: vendor pr-comments.sh, pr-reply.sh, pr-batch.sh from steward into .claude/skills/cicd/scripts/ (issue #318)
+- cicd skill: replace create-pr-and-wait.sh with steward version that uses --body-file + tempfile, fixing argv-truncation on large PR bodies
+- cicd skill: drop broken ~/.claude/skills/pr-review/ fallback branches in create-pr-and-wait.sh and wait-and-check.sh
+- cicd skill: update SKILL.md to reference project-local script paths everywhere
+
 ## [10.3.1] - 2026-05-06
 
 ### Changed

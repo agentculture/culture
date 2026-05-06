@@ -52,36 +52,12 @@ echo "Waiting ${WAIT_SECS}s before re-checking PR #${PR_NUM}..."
 sleep "$WAIT_SECS"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_COMMENTS="$SCRIPT_DIR/pr-comments.sh"
-# NOTE: the user's global skills dir still holds the trio
-# (pr-comments.sh / pr-reply.sh / pr-batch.sh) under the old `pr-review` name —
-# steward 0.7's rename is in-repo only. If the global ever moves to `cicd/`,
-# update this constant to match.
-GLOBAL_COMMENTS="$HOME/.claude/skills/pr-review/scripts/pr-comments.sh"
 
 REPO_ARG=()
 if [[ -n "$REPO" ]]; then
     REPO_ARG=(--repo "$REPO")
 fi
 
-if [[ -x "$PROJECT_COMMENTS" ]]; then
-    bash "$PROJECT_COMMENTS" "${REPO_ARG[@]}" "$PR_NUM"
-elif [[ -x "$GLOBAL_COMMENTS" ]]; then
-    bash "$GLOBAL_COMMENTS" "${REPO_ARG[@]}" "$PR_NUM"
-else
-    echo "Note: pr-comments.sh not found at $PROJECT_COMMENTS or $GLOBAL_COMMENTS — using inline gh api fallback." >&2
-    if [[ -z "$REPO" ]]; then
-        REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-    fi
-    echo "════════════════ INLINE REVIEW COMMENTS ════════════════"
-    gh api "repos/$REPO/pulls/$PR_NUM/comments" --paginate \
-        --jq '.[] | "── ID: \(.id) ── \(.user.login) on \(.path):\(.original_line // .line // "?") ──\n\(.body)\n"'
-    echo ""
-    echo "════════════════ ISSUE COMMENTS ════════════════"
-    gh api "repos/$REPO/issues/$PR_NUM/comments" --paginate \
-        --jq '.[] | "── ID: \(.id) ── \(.user.login) ──\n\(.body)\n"'
-    echo ""
-    echo "════════════════ TOP-LEVEL REVIEWS ════════════════"
-    gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
-        --jq '.[] | select((.body // "") != "") | "── ID: \(.id) ── \(.user.login) ── State: \(.state) ──\n\(.body)\n"'
-fi
+# pr-comments.sh is vendored next to this script — no per-user $HOME
+# fallback (would violate the skills-portability rule).
+bash "$SCRIPT_DIR/pr-comments.sh" "${REPO_ARG[@]}" "$PR_NUM"

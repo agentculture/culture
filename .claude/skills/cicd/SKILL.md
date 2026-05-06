@@ -66,7 +66,7 @@ commit and push to the same branch.
 3. Bump the version (required before PR):
 
    ```bash
-   echo '{"fixed":["..."]}' | python3 ~/.claude/skills/version-bump/scripts/bump.py patch
+   echo '{"fixed":["..."]}' | python3 .claude/skills/version-bump/scripts/bump.py patch
    ```
 
 4. Stage and commit:
@@ -81,7 +81,8 @@ commit and push to the same branch.
    )"
    ```
 
-5. Push:
+5. Push — pass `--push` to `create-pr-and-wait.sh` in Step 3 instead of
+   pushing manually. If you want to push without opening a PR yet, use:
 
    ```bash
    git push -u origin <branch-name>
@@ -89,13 +90,14 @@ commit and push to the same branch.
 
 ## Step 3 — Create PR (and wait for reviewers in one shot)
 
-**Recommended:** use `create-pr-and-wait.sh`. It runs `gh pr create`, sleeps 3
-minutes, then dumps all reviewer feedback in one invocation — no separate
-step 4. Automated reviewers (qodo, copilot, sonarcloud) need that 3-minute
-window to post; checking sooner returns zero comments and forces you to poll.
+**Recommended:** use `create-pr-and-wait.sh --push`. It pushes the current
+branch, runs `gh pr create`, sleeps 3 minutes, then dumps all reviewer
+feedback in one invocation — no separate step 4 and no separate `git push`.
+Automated reviewers (qodo, copilot, sonarcloud) need that 3-minute window
+to post; checking sooner returns zero comments and forces you to poll.
 
 ```bash
-bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh --push \
     --title "Short title" \
     --body-file /tmp/pr-body.md
 ```
@@ -103,7 +105,7 @@ bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
 Or pipe the body via heredoc on stdin:
 
 ```bash
-bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh --push \
     --title "Short title" <<'EOF'
 ## Summary
 - Bullet points describing changes
@@ -117,16 +119,19 @@ EOF
 
 The script prints the new PR URL on stdout, then sleeps 180s (override with
 `--wait SECS`), then runs `pr-comments.sh` so feedback lands in your output
-when control returns. Pass any extra `gh pr create` flags through positionally
-(e.g. `--base main --reviewer @user`).
+when control returns. The body always travels via `--body-file` to a tempfile,
+so large self-contained briefs don't hit the OS argv length limit (the
+failure mode that motivated issue #318). Pass any extra `gh pr create` flags
+through positionally (e.g. `--base main --reviewer @user`). Drop `--push` if
+you've already pushed the branch yourself.
 
 **If you must do it by hand** (e.g. PR was opened earlier and you only need
 to fetch feedback now):
 
 ```bash
-gh pr create --title "Short title" --body "$(cat /tmp/pr-body.md)"
+gh pr create --title "Short title" --body-file /tmp/pr-body.md
 sleep 180   # qodo/copilot/sonarcloud need ~3 min to post
-bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
+bash .claude/skills/cicd/scripts/pr-comments.sh <PR_NUMBER>
 ```
 
 Do **not** check for comments before the 3-minute mark. Empty comment lists
@@ -150,10 +155,10 @@ need a different duration. If the second window is also empty, fall back
 to polling:
 
 ```bash
-bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
+bash .claude/skills/cicd/scripts/pr-comments.sh <PR_NUMBER>
 # if still empty:
 sleep 60
-bash ~/.claude/skills/pr-review/scripts/pr-comments.sh <PR_NUMBER>
+bash .claude/skills/cicd/scripts/pr-comments.sh <PR_NUMBER>
 ```
 
 Three consecutive polls returning zero comments means reviewers are done /
@@ -187,7 +192,7 @@ Guidelines:
 Use batch mode to reply to all comments at once:
 
 ```bash
-bash ~/.claude/skills/pr-review/scripts/pr-batch.sh --resolve <PR_NUMBER> <<'EOF'
+bash .claude/skills/cicd/scripts/pr-batch.sh --resolve <PR_NUMBER> <<'EOF'
 {"comment_id": 123, "body": "Fixed -- changed X to Y.\n\n- Claude"}
 {"comment_id": 456, "body": "Intentional -- this follows the pattern in Z because...\n\n- Claude"}
 EOF
@@ -196,7 +201,7 @@ EOF
 Or reply to a single comment:
 
 ```bash
-bash ~/.claude/skills/pr-review/scripts/pr-reply.sh --resolve <PR_NUMBER> <COMMENT_ID> "Fixed -- updated.\n\n- Claude"
+bash .claude/skills/cicd/scripts/pr-reply.sh --resolve <PR_NUMBER> <COMMENT_ID> "Fixed -- updated.\n\n- Claude"
 ```
 
 **Important:**
@@ -228,13 +233,15 @@ CULTURE_NICK="<agent-nick>" culture channel message "#general" "PR #<N> — all 
 
 | Script | Location | Purpose |
 |--------|----------|---------|
-| `create-pr-and-wait.sh` | `.claude/skills/cicd/scripts/` (project) | `gh pr create` + `sleep 180` + `pr-comments.sh` in one invocation |
+| `create-pr-and-wait.sh` | `.claude/skills/cicd/scripts/` (project) | Optional `git push` (`--push`) + `gh pr create --body-file` + `sleep 180` + `pr-comments.sh` in one invocation |
 | `wait-and-check.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | `sleep 180` + `pr-comments.sh` for an existing PR (a second deliberate window after `create-pr-and-wait.sh` or after a follow-up push) |
-| `pr-comments.sh <PR>` | `~/.claude/skills/pr-review/scripts/` (global) | Fetch all review comments |
-| `pr-reply.sh [--resolve] <PR> <ID> "body"` | `~/.claude/skills/pr-review/scripts/` (global) | Reply to one comment |
-| `pr-batch.sh [--resolve] <PR> < jsonl` | `~/.claude/skills/pr-review/scripts/` (global) | Batch reply from JSONL stdin |
+| `pr-comments.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | Fetch all review comments |
+| `pr-reply.sh [--resolve] <PR> <ID> "body"` | `.claude/skills/cicd/scripts/` (project) | Reply to one comment |
+| `pr-batch.sh [--resolve] <PR> < jsonl` | `.claude/skills/cicd/scripts/` (project) | Batch reply from JSONL stdin |
 
-All scripts auto-detect `owner/repo` from the current git remote.
+All scripts auto-detect `owner/repo` from the current git remote. The trio
+(`pr-comments.sh`, `pr-reply.sh`, `pr-batch.sh`) is vendored from steward
+(the AgentCulture alignment hub) — re-cite from there if you need updates.
 
 ## Quick reference — full flow
 
@@ -242,13 +249,12 @@ All scripts auto-detect `owner/repo` from the current git remote.
 git checkout -b fix/my-fix
 # ... make changes ...
 uv run pytest tests/ -x -q
-echo '{"fixed":["desc"]}' | python3 ~/.claude/skills/version-bump/scripts/bump.py patch
+echo '{"fixed":["desc"]}' | python3 .claude/skills/version-bump/scripts/bump.py patch
 git add <files> && git commit -m "message"
-git push -u origin fix/my-fix
-bash .claude/skills/cicd/scripts/create-pr-and-wait.sh \
+bash .claude/skills/cicd/scripts/create-pr-and-wait.sh --push \
     --title "..." --body-file /tmp/pr-body.md
-# (waits 3 min, then dumps reviewer comments)
+# (pushes the branch, then waits 3 min, then dumps reviewer comments)
 # ... fix issues, commit, push ...
-bash ~/.claude/skills/pr-review/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed\n\n- Claude"}'
+bash .claude/skills/cicd/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed\n\n- Claude"}'
 # Wait for manual merge — never merge yourself
 ```
