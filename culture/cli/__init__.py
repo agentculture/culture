@@ -59,20 +59,46 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _maybe_forward_to_agentirc(argv: list[str]) -> int | None:
+    """Bypass argparse for ``culture server <forwarded-verb> ...`` calls.
+
+    Returns the exit code to propagate, or ``None`` if argparse should
+    handle the invocation. argparse's ``REMAINDER`` parser cannot capture
+    ``--help`` reliably (it leaks to the root parser as an unrecognized
+    argument), so the forwarded surface is short-circuited here before
+    argparse runs.
+    """
+    if len(argv) < 2 or argv[0] != "server":
+        return None
+    if argv[1] not in server._AGENTIRC_FORWARDED_VERBS:
+        return None
+    from agentirc.cli import dispatch as _agentirc_dispatch
+
+    return _agentirc_dispatch(argv[1:])
+
+
 def main() -> None:
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-
+    # Logging must be configured before any dispatch path runs — including
+    # the agentirc forwarder bypass below — so any logs emitted by
+    # agentirc.cli.dispatch land in culture's standard format rather than
+    # whatever default the importing process happens to have.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
     try:
+        forwarded = _maybe_forward_to_agentirc(sys.argv[1:])
+        if forwarded is not None:
+            sys.exit(forwarded)
+
+        parser = _build_parser()
+        args = parser.parse_args()
+
+        if args.command is None:
+            parser.print_help()
+            sys.exit(1)
+
         for group in GROUPS:
             if args.command in _names_of(group):
                 group.dispatch(args)

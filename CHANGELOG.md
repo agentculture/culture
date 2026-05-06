@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.2.1] - 2026-05-06
+
+### Fixed
+
+- **`culture server <forwarded-verb> --help` now reaches agentirc** (#332). Previously `culture server restart --help` (and `link`, `logs`, `version`, `serve`) errored with `culture: error: unrecognized arguments: --help` because argparse's `REMAINDER` subparser leaked `--help` back to the root parser instead of capturing it. The fix bypasses argparse entirely for the forwarded surface: a new `_maybe_forward_to_agentirc()` helper in `culture/cli/__init__.py` short-circuits `culture server <forwarded-verb> ...` straight into `agentirc.cli.dispatch` before parser construction. All five forwarded verbs now show their proper agentirc help banner. The existing `test_forwarded_verb_is_reachable` regression test was strengthened to assert exit 0 + agentirc banner content (the prior assertion was too lenient and silently accepted the bug).
+
 ## [10.2.0] - 2026-05-05
 
 ### Changed

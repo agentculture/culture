@@ -75,16 +75,25 @@ def test_forwarded_version_matches_agentirc() -> None:
 
 
 @pytest.mark.parametrize("verb", FORWARDED_VERBS)
-def test_forwarded_verb_is_reachable(verb: str) -> None:
-    """Each forwarded verb should be reachable; --help for those that
-    accept it should exit 0. agentirc-owned argparse may not accept
-    `--help` for every verb, so we only assert the verb is reachable
-    (no `Unknown server command` error)."""
-    _, out, err = _run([*CULTURE, verb, "--help"])
+def test_forwarded_verb_help_passes_through(verb: str) -> None:
+    """`culture server <forwarded-verb> --help` must dispatch to agentirc
+    and exit 0 with agentirc's help banner — not error out at culture's
+    root parser. Regression for #332: argparse's REMAINDER subparser was
+    leaking `--help` back to the root, producing
+    `culture: error: unrecognized arguments: --help`.
+    """
+    rc, out, err = _run([*CULTURE, verb, "--help"])
     combined = (out + "\n" + err).lower()
     assert (
         "unknown server command" not in combined
     ), f"forwarded verb {verb!r} not reaching agentirc.cli.dispatch"
+    assert rc == 0, f"culture server {verb} --help exited {rc}: stderr={err!r}"
+    assert (
+        "unrecognized arguments" not in err.lower()
+    ), f"culture server {verb} --help leaked --help to root parser: {err!r}"
+    assert (
+        f"agentirc {verb}" in out
+    ), f"culture server {verb} --help output did not look like agentirc help: {out!r}"
 
 
 def test_culture_chat_is_removed() -> None:
