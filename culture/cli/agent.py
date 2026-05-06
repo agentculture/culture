@@ -198,8 +198,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     unregister_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
 
     # -- migrate --------------------------------------------------------------
+    # Most repos have already migrated; the verb stays in the CLI surface
+    # for completeness but the help text now signals it's a one-time
+    # operation (#333 item 7).
     migrate_parser = agent_sub.add_parser(
-        "migrate", help="Migrate agents.yaml to server.yaml + culture.yaml"
+        "migrate",
+        help="Migrate legacy agents.yaml to server.yaml + culture.yaml (one-time, usually a no-op)",
     )
     migrate_parser.add_argument("--config", default=LEGACY_CONFIG, help="Legacy agents.yaml path")
 
@@ -844,20 +848,44 @@ def _cmd_assign(args: argparse.Namespace) -> None:
 
 
 def _resolve_ipc_targets(config, args, command_name: str) -> list:
-    """Resolve which agents to send IPC messages to."""
+    """Resolve which agents to send IPC messages to.
+
+    Errors flow through argparse's standard ``error: ...`` formatter on
+    stderr with exit code 2 — matching how missing positional args are
+    reported elsewhere in the CLI (#333 item 12).
+    """
     if args.nick and args.all:
-        print("Cannot specify both nick and --all", file=sys.stderr)
-        sys.exit(1)
+        _argparse_error(
+            f"culture agent {command_name}",
+            "cannot specify both <nick> and --all",
+        )
     if not args.nick and not args.all:
-        print(f"Usage: culture agent {command_name} <nick> or --all", file=sys.stderr)
-        sys.exit(1)
+        _argparse_error(
+            f"culture agent {command_name}",
+            "the following arguments are required: <nick> or --all",
+        )
     if args.all:
         return config.agents
     for a in config.agents:
         if a.nick == args.nick:
             return [a]
-    print(f"Agent '{args.nick}' not found in config", file=sys.stderr)
-    sys.exit(1)
+    _argparse_error(
+        f"culture agent {command_name}",
+        f"agent {args.nick!r} not found in config",
+    )
+    return []  # unreachable — _argparse_error sys.exits
+
+
+def _argparse_error(prog: str, message: str) -> None:
+    """Mimic ``argparse.ArgumentParser.error()`` for hand-rolled validation.
+
+    Writes ``<prog>: error: <message>`` to stderr and exits 2 — the same
+    exit code argparse uses for usage errors. Lets handlers like
+    ``agent sleep`` route bad-input errors through the standard
+    formatter instead of `print(..., file=stderr) + sys.exit(1)`.
+    """
+    print(f"{prog}: error: {message}", file=sys.stderr)
+    sys.exit(2)
 
 
 def _send_ipc(agent, msg_type: str, action_verb: str) -> None:
@@ -928,7 +956,16 @@ def _cmd_message(args: argparse.Namespace) -> None:
         sys.exit(1)
     config = load_config_or_default(args.config)
     if not config.get_agent(args.target):
-        print(f"Agent '{args.target}' not found in config", file=sys.stderr)
+        # The IRC server is the source of truth for who is on the mesh
+        # (especially with federation); local config can lag. Point the
+        # operator at the live source rather than failing on stale config
+        # alone (#333 item 11).
+        print(
+            f"Error: no agent named {args.target!r} in local config.\n"
+            f"  This may be stale — try 'culture channel who #general' to\n"
+            f"  list agents currently connected to the mesh.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     observer = get_observer(args.config)
     asyncio.run(observer.send_message(args.target, args.text))

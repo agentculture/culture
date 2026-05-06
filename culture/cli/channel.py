@@ -110,6 +110,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     message_parser.add_argument("target", help=_CHANNEL_HELP)
     message_parser.add_argument("text", help="Message text to send")
     message_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+    message_parser.add_argument(
+        "--create",
+        action="store_true",
+        help=(
+            "Allow sending to a channel that does not yet exist; the peek "
+            "client will create it on the fly. Without this flag a typo "
+            "channel name is rejected (see #331)."
+        ),
+    )
 
     # -- who ------------------------------------------------------------------
     who_parser = channel_sub.add_parser("who", help="List channel members")
@@ -278,6 +287,21 @@ def _interpret_escapes(text: str) -> str:
     return "".join(out)
 
 
+def _channel_exists(target: str, observer) -> bool:
+    """Return True iff ``target`` appears in the server's active channel list.
+
+    Tries the agent daemon first (via ``_try_ipc``) and falls back to a
+    fresh peek query when the daemon is unreachable. Used by
+    ``_cmd_message`` to refuse silent typo-creates (#331).
+    """
+    resp = _try_ipc("irc_channels")
+    if resp and resp.get("ok"):
+        channels = resp.get("data", {}).get("channels", [])
+    else:
+        channels = asyncio.run(observer.list_channels())
+    return target in channels
+
+
 def _cmd_message(args: argparse.Namespace) -> None:
     if not args.target.strip():
         print(_ERR_EMPTY_CHANNEL, file=sys.stderr)
@@ -295,6 +319,21 @@ def _cmd_message(args: argparse.Namespace) -> None:
             "Error: message text has no non-empty line after escape interpretation", file=sys.stderr
         )
         sys.exit(1)
+
+    # Reject typo channel sends (#331). A typo previously auto-created a
+    # dead channel that nobody else ever joined, while the CLI confidently
+    # printed "Sent to #...". Pass --create to opt back into the old
+    # behavior for bootstrap workflows.
+    if not getattr(args, "create", False):
+        observer = get_observer(args.config)
+        if not _channel_exists(target, observer):
+            print(
+                f"Error: channel {target!r} does not exist on the server.\n"
+                f"  Check 'culture channel list' for active channels, or pass\n"
+                f"  '--create' to bootstrap {target!r} via this send.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     resp = _try_ipc("irc_send", channel=target, message=text)
     if resp and resp.get("ok"):

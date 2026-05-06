@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.1] - 2026-05-06
+
+### Changed
+
+- **`culture channel message` no longer auto-creates channels on typo** (#331). `culture channel message '#nonexistnt' "..."` previously silently spawned an orphan channel that nobody else ever joined while confidently printing `Sent to #nonexistnt`. The CLI now refuses to send to channels not in the active list and points at `culture channel list` for verification. Pass `--create` to opt into the legacy behavior for bootstrap workflows (`culture channel message --create '#new-room' "kickoff"`).
+- **`culture agent message` no longer treats local config as the source of truth** (#333 item 11). The previous behavior refused to send when the target nick was missing from local `server.yaml`, which broke DMs to agents reachable via federation. The local-config gate is removed; the send is delegated to the IRC server, and `401 NOSUCHNICK` propagates if the nick truly isn't on the mesh.
+- **`culture agent sleep`/`wake` usage errors now use argparse formatting** (#333 item 12). Missing-arg, conflicting-arg, and unknown-nick errors previously went to stdout via `print()` + `sys.exit(1)`, inconsistent with every other CLI verb. They now write `culture agent sleep: error: ...` to stderr with rc 2, matching argparse's standard usage-error path.
+- **`culture agent migrate --help` text now signals it's a one-time op** (#333 item 7). Help reads `Migrate legacy agents.yaml to server.yaml + culture.yaml (one-time, usually a no-op)` instead of advertising it as routine. The verb stays in the CLI surface for completeness — most repos have already migrated.
+- **Channel-existence guard now uses the server-wide `LIST` query** (#341 review). Earlier draft of the #331 guard read the daemon's `irc_channels` IPC, which only returns the daemon's *joined* channels — false-rejecting valid channels the daemon hadn't joined. The guard now always uses the observer's `list_channels()` (a fresh peek `LIST`) regardless of IPC availability.
+
+### Deprecated
+
+- **`culture mesh console` is scheduled for removal** (#333 item 6). The verb has been marked DEPRECATED in `--help` since culture 8.x; use `culture console` instead. The deprecated verb will be removed in a future minor release.
+
 ## [10.3.0] - 2026-05-06
 
 ### Changed
