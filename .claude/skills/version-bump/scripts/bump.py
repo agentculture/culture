@@ -130,7 +130,7 @@ def update_changelog(project_root: Path, new: str, entries: dict) -> None:
 
     marker = "## ["
     idx = text.find(marker)
-    if idx > 0:
+    if idx >= 0:
         changelog.write_text(text[:idx] + new_entry + text[idx:])
         print(f"Updated CHANGELOG.md with [{new}]")
     else:

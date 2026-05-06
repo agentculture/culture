@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Create a PR, wait for automated reviewers (qodo, copilot, sonarcloud) to
 # post comments, then dump the feedback. Wraps the manual `gh pr create →
-# sleep 300 → pr-comments.sh` sequence into one invocation.
+# sleep 180 → pr-comments.sh` sequence into one invocation.
 #
 # culture-divergence: this script adds an opt-in `--push` flag (issue #318)
 # that runs `git push -u origin HEAD` before `gh pr create` so callers don't
@@ -44,8 +44,11 @@ set -euo pipefail
 #   *  Whatever `git push`, `gh pr create`, or the comment-fetch step returns.
 
 usage() {
+    # Exit code: 0 when invoked via --help (informational), 2 when the
+    # caller passed bad/missing args (real usage error).
+    local rc="${1:-2}"
     echo "Usage: create-pr-and-wait.sh [--push] --title TITLE [--body-file PATH | < stdin] [--wait SECS] [gh pr create flags...]" >&2
-    exit 2
+    exit "$rc"
 }
 
 require_value() {
@@ -67,7 +70,7 @@ while [[ $# -gt 0 ]]; do
         --body-file)  require_value "$@"; BODY_FILE="$2"; shift 2 ;;
         --wait)       require_value "$@"; WAIT_SECS="$2"; shift 2 ;;
         --push)       PUSH=true; shift ;;
-        -h|--help)    usage ;;
+        -h|--help)    usage 0 ;;
         *) PASSTHROUGH+=("$1"); shift ;;
     esac
 done
