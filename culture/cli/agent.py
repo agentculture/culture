@@ -742,7 +742,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
         return
 
     print_agents_overview(agents, args.full, show_archived_marker=show_all)
-    print_bot_listing()
+    print_bot_listing(show_archived=show_all)
 
 
 # -----------------------------------------------------------------------

@@ -224,3 +224,100 @@ def test_detail_shows_circuit_closed(capsys):
     out = _mock_agent_detail(agent, ipc_resp, capsys)
     assert "Status:     running" in out
     assert "Circuit:    closed" in out
+
+
+# --- print_bot_listing filtering parity with `culture bot list` ---
+
+
+def _write_bot_yaml(bots_dir, name, *, archived=False):
+    """Write a minimal bot.yaml under bots_dir/<name>/."""
+    bot_dir = bots_dir / name
+    bot_dir.mkdir(parents=True, exist_ok=True)
+    yaml_text = f"""\
+bot:
+  name: {name}
+  owner: spark
+  archived: {"true" if archived else "false"}
+trigger:
+  type: webhook
+output:
+  channels: ["#general"]
+  template: hi
+"""
+    (bot_dir / "bot.yaml").write_text(yaml_text)
+
+
+def _write_malformed_bot(bots_dir):
+    """Write a bot.yaml with an empty name — the malformed-row case."""
+    bot_dir = bots_dir / "broken"
+    bot_dir.mkdir(parents=True, exist_ok=True)
+    (bot_dir / "bot.yaml").write_text(
+        "bot:\n  name: ''\n  owner: spark\ntrigger:\n  type: webhook\n"
+    )
+
+
+def test_print_bot_listing_hides_archived_by_default(tmp_path, monkeypatch, capsys):
+    """`agent status` (show_archived=False) must not show archived bots."""
+    from culture.bots import config as bots_config
+    from culture.cli.shared.display import print_bot_listing
+
+    bots_dir = tmp_path / "bots"
+    _write_bot_yaml(bots_dir, "active-bot")
+    _write_bot_yaml(bots_dir, "old-bot", archived=True)
+    monkeypatch.setattr(bots_config, "BOTS_DIR", bots_dir)
+
+    print_bot_listing()
+    out = capsys.readouterr().out
+    assert "active-bot" in out
+    assert "old-bot" not in out
+
+
+def test_print_bot_listing_shows_archived_when_requested(tmp_path, monkeypatch, capsys):
+    """`agent status --all` (show_archived=True) shows archived bots with a marker."""
+    from culture.bots import config as bots_config
+    from culture.cli.shared.display import print_bot_listing
+
+    bots_dir = tmp_path / "bots"
+    _write_bot_yaml(bots_dir, "active-bot")
+    _write_bot_yaml(bots_dir, "old-bot", archived=True)
+    monkeypatch.setattr(bots_config, "BOTS_DIR", bots_dir)
+
+    print_bot_listing(show_archived=True)
+    out = capsys.readouterr().out
+    assert "active-bot" in out
+    assert "old-bot [archived]" in out
+
+
+def test_print_bot_listing_skips_malformed_entries(tmp_path, monkeypatch, capsys):
+    """Configs with empty names must not leak into the listing as blank rows."""
+    from culture.bots import config as bots_config
+    from culture.cli.shared.display import print_bot_listing
+
+    bots_dir = tmp_path / "bots"
+    _write_bot_yaml(bots_dir, "active-bot")
+    _write_malformed_bot(bots_dir)
+    monkeypatch.setattr(bots_config, "BOTS_DIR", bots_dir)
+
+    print_bot_listing()
+    out = capsys.readouterr().out
+    lines = [line for line in out.splitlines() if line.strip()]
+    # Header + separator + active-bot row only — no empty-name row.
+    assert any("active-bot" in line for line in lines)
+    assert not any(line.startswith(" ") and "webhook" in line for line in lines)
+
+
+def test_bot_list_also_skips_malformed_entries(tmp_path, monkeypatch):
+    """`culture bot list` must skip empty-name configs so its output stays in
+    parity with `agent status` / `print_bot_listing`."""
+    from culture.bots import config as bots_config
+    from culture.cli.bot import _load_and_filter_bots
+
+    bots_dir = tmp_path / "bots"
+    _write_bot_yaml(bots_dir, "active-bot")
+    _write_malformed_bot(bots_dir)
+    monkeypatch.setattr(bots_config, "BOTS_DIR", bots_dir)
+
+    args = argparse.Namespace(owner=None, all=False)
+    bots = _load_and_filter_bots(args)
+    names = [b.name for b in bots]
+    assert names == ["active-bot"]

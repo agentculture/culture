@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.2.0] - 2026-05-05
+
+### Changed
+
+- **Manifest-loader warnings now fire once per process and tell you how to fix them** (#328). Previously every `culture` CLI invocation re-emitted the full `culture.yaml missing for X — skipping` / `Error loading X — skipping` block, sometimes 4–8 times in a single command, drowning real output. Each broken `(server, suffix)` entry now warns at most once per process, and the message now ends with the exact remediation: `… run 'culture agent unregister <suffix>' to remove this stale manifest entry`. Test helpers `culture.config.reset_manifest_warning_state()` and `culture.bots.config.reset_fires_event_warning_state()` clear the dedup state when needed.
+- **`culture agent status` no longer leaks archived or malformed bots** (parts of #333). The bot table at the bottom of `agent status` reused a different code path from `culture bot list` and ignored the `archived` flag — so an archived `spark-culture-test-bot` and a malformed empty-name row were visible only there. `print_bot_listing` now accepts `show_archived` (threaded from `--all`), filters archived bots by default, and skips configs with empty names. The output matches `culture bot list`.
+- **`fires_event` deprecation INFO logs once per bot per process** instead of on every config load. Same dedup pattern as the manifest warnings.
+
 ## [10.1.0] - 2026-05-05
 
 ### Added

@@ -182,6 +182,8 @@ def _load_and_filter_bots(args) -> list:
             config = load_bot_config(yaml_path)
         except Exception:
             continue
+        if not config.name:
+            continue
         if _should_include_bot(config, args.owner, show_all):
             bots.append(config)
     return bots

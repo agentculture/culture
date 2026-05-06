@@ -112,3 +112,93 @@ def test_missing_fires_event_still_loads(tmp_path):
 
     cfg = load_bot_config(path)
     assert cfg.fires_event is None
+
+
+def test_top_level_deprecation_notice_logged_once_per_process(tmp_path, caplog):
+    """Loading the same bot twice should not double-log the deprecation INFO."""
+    import logging
+
+    from culture.bots.config import reset_fires_event_warning_state
+
+    path = _write_yaml(
+        tmp_path,
+        {
+            "bot": {"name": "spark-greeter", "owner": "spark"},
+            "trigger": {"type": "event", "filter": "type == 'user.join'"},
+            "output": {"channels": ["#general"], "template": "hi"},
+            "fires_event": {"type": "custom.greeted", "data": {}},
+        },
+    )
+
+    reset_fires_event_warning_state()
+    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+        load_bot_config(path)
+        first = len(caplog.records)
+        load_bot_config(path)
+        second = len(caplog.records)
+
+    assert first == 1
+    assert second == 1, "loading the same bot twice should log once"
+
+
+def test_top_level_deprecation_dedup_keyed_by_path_not_name(tmp_path, caplog):
+    """Two configs sharing `bot.name` each get their own deprecation notice."""
+    import logging
+
+    from culture.bots.config import reset_fires_event_warning_state
+
+    a_dir = tmp_path / "a"
+    a_dir.mkdir()
+    b_dir = tmp_path / "b"
+    b_dir.mkdir()
+    path_a = _write_yaml(
+        a_dir,
+        {
+            "bot": {"name": "spark-greeter", "owner": "spark"},
+            "trigger": {"type": "event", "filter": "type == 'user.join'"},
+            "output": {"channels": ["#general"], "template": "hi"},
+            "fires_event": {"type": "custom.greeted", "data": {}},
+        },
+    )
+    path_b = _write_yaml(
+        b_dir,
+        {
+            "bot": {"name": "spark-greeter", "owner": "spark"},
+            "trigger": {"type": "event", "filter": "type == 'user.join'"},
+            "output": {"channels": ["#general"], "template": "hi"},
+            "fires_event": {"type": "custom.greeted", "data": {}},
+        },
+    )
+
+    reset_fires_event_warning_state()
+    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+        load_bot_config(path_a)
+        load_bot_config(path_b)
+
+    assert len(caplog.records) == 2, "distinct config paths should each warn once"
+
+
+def test_top_level_deprecation_handles_unhashable_name(tmp_path, caplog):
+    """A malformed (non-string) `bot.name` must not crash the dedup path."""
+    import logging
+
+    from culture.bots.config import reset_fires_event_warning_state
+
+    path = tmp_path / "bot.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "bot": {"name": ["not", "a", "string"], "owner": "spark"},
+                "trigger": {"type": "event", "filter": "type == 'user.join'"},
+                "output": {"channels": ["#general"], "template": "hi"},
+                "fires_event": {"type": "custom.greeted", "data": {}},
+            }
+        )
+    )
+
+    reset_fires_event_warning_state()
+    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+        cfg = load_bot_config(path)
+
+    assert cfg.fires_event is not None
+    assert any("top-level 'fires_event'" in r.getMessage() for r in caplog.records)
