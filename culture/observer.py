@@ -21,17 +21,84 @@ RECV_TIMEOUT = 5.0
 REGISTER_TIMEOUT = 10.0
 
 
-class IRCObserver:
-    """Ephemeral IRC connection for read-only CLI commands."""
+def _sanitize_for_irc(value: str) -> str:
+    """Strip CR/LF and other ASCII control chars from an IRC field value.
 
-    def __init__(self, host: str, port: int, server_name: str):
+    ``parent_nick`` originates in the ``CULTURE_NICK`` environment variable;
+    a value containing ``\\r`` or ``\\n`` would close the current IRC
+    protocol line and let an attacker smuggle a second line of arbitrary
+    IRC commands into the registration handshake. Strip every C0 control
+    character (0x00–0x1F) plus ``\\x7f`` (DEL) so the value is safe to
+    interpolate into ``NICK`` and ``USER`` lines.
+    """
+    return "".join(ch for ch in value if 0x20 <= ord(ch) < 0x7F)
+
+
+class IRCObserver:
+    """Ephemeral IRC connection for read-only CLI commands.
+
+    When ``parent_nick`` is provided and shares this observer's server
+    prefix (e.g. ``spark-claude`` against an observer for ``spark``), the
+    transient nick reveals attribution as ``<server>-<agent>__peek<hex>``
+    so other agents can see who is acting on the mesh. Otherwise the
+    legacy opaque ``<server>-_peek<hex>`` shape is used.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        server_name: str,
+        parent_nick: str | None = None,
+    ):
         self.host = host
         self.port = port
         self.server_name = server_name
+        # CR/LF and other control chars in parent_nick (sourced from the
+        # CULTURE_NICK env var) would let a malformed value inject extra
+        # IRC protocol lines via the realname or NICK fields, so the
+        # value is sanitized once at construction time. Empty strings
+        # collapse to None so downstream attribution checks short-circuit.
+        if parent_nick:
+            cleaned = _sanitize_for_irc(parent_nick)
+            self.parent_nick: str | None = cleaned or None
+        else:
+            self.parent_nick = None
+
+    def _parent_suffix(self) -> str | None:
+        """Return the parent's agent suffix iff it's safe to embed in a nick.
+
+        Only attribute when the parent's server matches ours — a peek from
+        a foreign server would otherwise produce a confusing
+        ``<our-server>-<their-server>-<their-agent>__peek...`` mash-up
+        that looks federated but isn't.
+
+        Uses an exact ``<server>-`` prefix match (not ``partition('-')``)
+        so server names that themselves contain hyphens — e.g.
+        ``my-server`` paired with parent ``my-server-claude`` — still
+        resolve to the right ``claude`` suffix.
+        """
+        if not self.parent_nick:
+            return None
+        expected_prefix = f"{self.server_name}-"
+        if not self.parent_nick.startswith(expected_prefix):
+            return None
+        agent = self.parent_nick[len(expected_prefix) :]
+        return agent or None
 
     def _temp_nick(self) -> str:
-        """Generate a temporary nick with server prefix."""
+        """Generate a temporary nick with server prefix.
+
+        Format: ``<server>-<agent>__peek<hex>`` when parent attribution is
+        available, else ``<server>-_peek<hex>``. Both shapes contain the
+        substring ``_peek`` (the legacy single-underscore is a substring
+        of the new ``__peek``) — that is what bots filter on, via
+        ``'_peek' in nick``, to avoid greeting transient peek joins.
+        """
         suffix = secrets.token_hex(2)  # 4 hex chars
+        agent = self._parent_suffix()
+        if agent:
+            return f"{self.server_name}-{agent}__peek{suffix}"
         return f"{self.server_name}-_peek{suffix}"
 
     async def _process_registration_line(
@@ -58,8 +125,15 @@ class IRCObserver:
         )
 
         nick = self._temp_nick()
+        # Realname embeds the parent so WHOIS resolves attribution even
+        # when the nick was forced into the opaque legacy shape (e.g. a
+        # cross-server peek where _parent_suffix() declined to attribute).
+        if self.parent_nick:
+            realname = f"culture observer (parent={self.parent_nick})"
+        else:
+            realname = "culture observer"
         writer.write(f"NICK {nick}\r\n".encode())
-        writer.write("USER _peek 0 * :culture observer\r\n".encode())
+        writer.write(f"USER _peek 0 * :{realname}\r\n".encode())
         await writer.drain()
 
         buffer = ""

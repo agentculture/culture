@@ -59,12 +59,21 @@ async def ipc_shutdown(socket_path: str) -> bool:
 
 
 def get_observer(config_path: str):
-    """Create an IRCObserver from the config file."""
+    """Create an IRCObserver from the config file.
+
+    Reads ``CULTURE_NICK`` from the environment so the resulting peek
+    connection can name itself after the calling agent. The peek nick
+    only carries attribution when ``CULTURE_NICK`` belongs to the same
+    server as the observer; otherwise it falls back to the opaque
+    ``<server>-_peek<hex>`` form (see #329).
+    """
     from culture.observer import IRCObserver
 
     config = load_config_or_default(config_path)
+    parent = os.environ.get("CULTURE_NICK", "").strip() or None
     return IRCObserver(
         host=config.server.host,
         port=config.server.port,
         server_name=config.server.name,
+        parent_nick=parent,
     )
