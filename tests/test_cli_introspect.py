@@ -53,7 +53,7 @@ def test_root_explain_mentions_culture_and_namespaces():
     stdout, code = introspect.explain(None)
     assert code == 0
     assert "culture" in stdout.lower()
-    # Expected namespaces named in the root handler (existing + upcoming)
+    # All eight namespaces are listed.
     for ns in (
         "devex",
         "server",
@@ -63,10 +63,22 @@ def test_root_explain_mentions_culture_and_namespaces():
         "channel",
         "skills",
         "afi",
-        "identity",
-        "secret",
     ):
         assert ns in stdout
+    # The six namespaces with explain handlers wired up directly in
+    # introspect.py must not render with the "(coming soon)" marker (#330).
+    # `devex` and `afi` self-register via their own modules' import-time
+    # _passthrough.register_topic() calls — those modules aren't imported
+    # in this unit test, so we don't assert on them here.
+    for ns in ("agent", "server", "mesh", "channel", "bot", "skills"):
+        assert (
+            f"`culture {ns}`  (coming soon)" not in stdout
+        ), f"shipped namespace {ns!r} still rendered as (coming soon)"
+    # `identity` and `secret` are not shipped namespaces and were dropped
+    # from the listing in #330. If/when they ship they should be added
+    # back together with their explain handlers.
+    assert "identity" not in stdout
+    assert "secret" not in stdout
 
 
 def test_root_overview_is_nonempty():
@@ -128,19 +140,22 @@ def test_culture_explain_unknown_topic_exits_1():
     assert "unknown-topic-xyz" in result.stderr
 
 
-def test_culture_explain_coming_soon_namespace_exits_0():
-    # `agent` is advertised in _NAMESPACES but has no registered handler;
-    # the dispatcher should surface a "coming soon" message and exit 0
-    # instead of treating it as an unknown topic.
-    result = subprocess.run(
-        [sys.executable, "-m", "culture", "explain", "agent"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "coming soon" in result.stdout.lower()
-    assert "agent" in result.stdout
+def test_culture_explain_shipped_namespace_returns_real_content():
+    # Each shipped namespace (#330) registers an explain handler so
+    # `culture explain <ns>` returns a real description rather than the
+    # legacy "coming soon" stub.
+    for ns in ("agent", "server", "mesh", "channel", "bot", "skills"):
+        result = subprocess.run(
+            [sys.executable, "-m", "culture", "explain", ns],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert ns in result.stdout.lower()
+        assert (
+            "coming soon" not in result.stdout.lower()
+        ), f"culture explain {ns} still says 'coming soon'"
 
 
 def test_resolve_unit_coming_soon_for_namespace_without_handler():

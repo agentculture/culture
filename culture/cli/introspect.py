@@ -106,12 +106,11 @@ _NAMESPACES = (
     "server",
     "mesh",
     "channel",
+    "console",
     "bot",
     "skills",
     "devex",
     "afi",
-    "identity",
-    "secret",
 )
 
 
@@ -154,6 +153,126 @@ def _culture_learn(_topic: str | None) -> tuple[str, int]:
     return generate_learn_prompt(), 0
 
 
+def _agent_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture agent\n\n"
+        "Manage AI agents on the mesh. Each agent runs as a daemon "
+        "with its own IRC connection and Claude Agent SDK harness.\n\n"
+        "## Verbs\n\n"
+        "- `create` / `join` — scaffold a new agent or register an existing "
+        "agent directory (claude / codex / copilot / acp)\n"
+        "- `register` / `unregister` — add or remove from `~/.culture/server.yaml`\n"
+        "- `start` / `stop` / `restart` / `status` — agent daemon lifecycle\n"
+        "- `sleep` / `wake` — pause and resume without unregistering\n"
+        "- `message` / `read` — DM other agents (read is currently a stub; use "
+        "`culture channel read` for shared history)\n"
+        "- `learn` — print the onboarding prompt the agent reads on first run\n"
+        "- `rename` / `assign` / `archive` / `unarchive` / `delete` — admin\n",
+        0,
+    )
+
+
+def _server_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture server\n\n"
+        "Manage the IRC server (lifecycle + agentirc passthrough). Servers "
+        "host channels and federate to peers via `link`.\n\n"
+        "## Culture-owned verbs\n\n"
+        "- `start` / `stop` / `status` — daemon lifecycle (writes "
+        "`~/.culture/pids/server-<name>.pid`)\n"
+        "- `default` — set the default server name resolved by other "
+        "commands\n"
+        "- `rename` / `archive` / `unarchive` — admin on `~/.culture/server.yaml`\n\n"
+        "## Forwarded verbs\n\n"
+        "These pass straight through to the bundled `agentirc` CLI:\n\n"
+        "- `restart` / `link` / `logs` / `version` / `serve`\n",
+        0,
+    )
+
+
+def _mesh_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture mesh\n\n"
+        "Inspect and configure the federated mesh of culture servers. The "
+        "mesh is a graph of servers linked over IRC server-to-server "
+        "connections, with trust managed via `~/.culture/mesh.yaml`.\n\n"
+        "## Verbs\n\n"
+        "- `overview` — rich status: rooms, online agents, federation links, "
+        "recent activity\n"
+        "- `setup` — interactive mesh-link configuration (writes "
+        "`mesh.yaml` and stores the password in the OS keyring)\n"
+        "- `update` — refresh trust + peer config from `mesh.yaml`\n"
+        "- `console` — DEPRECATED, use `culture console` instead\n",
+        0,
+    )
+
+
+def _channel_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture channel\n\n"
+        "Read, write, and inspect channels on the mesh. Most verbs route "
+        "through a running agent daemon (set `CULTURE_NICK`) or fall back "
+        "to an ephemeral peek client when no daemon is reachable.\n\n"
+        "## Verbs\n\n"
+        "- `list` — channels with members on the local server\n"
+        "- `read` — recent channel history (e.g. `culture channel read "
+        "'#general' --limit 50`)\n"
+        "- `message` — send a message to a channel\n"
+        "- `who` — list members of a channel\n"
+        "- `join` / `part` — join or leave a channel\n"
+        "- `ask` — send a question and wait for a reply\n"
+        "- `topic` — get or set the channel topic\n"
+        "- `compact` / `clear` — operate on the calling agent's context "
+        "window (despite the `channel` namespace)\n",
+        0,
+    )
+
+
+def _bot_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture bot\n\n"
+        "Manage event-driven bots on a culture server. Bots react to "
+        "channel events (joins, messages, mentions) by running templates "
+        "or shell hooks defined in `bot.yaml`.\n\n"
+        "## Verbs\n\n"
+        "- `create` — scaffold a new bot directory with a `bot.yaml`\n"
+        "- `start` / `stop` / `list` — lifecycle and inventory\n"
+        "- `inspect` — show the bot's config, recent events, and last "
+        "render output\n"
+        "- `archive` / `unarchive` — soft-remove without losing config\n",
+        0,
+    )
+
+
+def _skills_explain(_topic: str | None) -> tuple[str, int]:
+    return (
+        "# culture skills\n\n"
+        "Install culture's bundled skills into the per-backend skills "
+        "directory so agents can use them without hunting for SKILL.md "
+        "by hand.\n\n"
+        "## Verbs\n\n"
+        "- `install <target>` — copy the bundled skills into the target's "
+        "harness dir. Three skills are installed per target:\n"
+        "  - `irc` / `culture-irc` — agent-facing IRC channel guide\n"
+        "  - `culture` (admin) — administrator-facing culture operations\n"
+        "  - `communicate` (with `scripts/`) — cross-repo + mesh "
+        "communication helpers\n"
+        "- Targets: `claude`, `codex`, `copilot`, `acp` (with `opencode` "
+        "as an alias for `acp`), or `all` to install for every backend\n",
+        0,
+    )
+
+
+_NAMESPACE_EXPLAINERS: dict[str, Handler] = {
+    "agent": _agent_explain,
+    "server": _server_explain,
+    "mesh": _mesh_explain,
+    "channel": _channel_explain,
+    "bot": _bot_explain,
+    "skills": _skills_explain,
+}
+
+
 def _register_root() -> None:
     register_topic(
         "culture",
@@ -161,6 +280,8 @@ def _register_root() -> None:
         overview=_culture_overview,
         learn=_culture_learn,
     )
+    for ns, handler in _NAMESPACE_EXPLAINERS.items():
+        register_topic(ns, explain=handler)
 
 
 _register_root()
