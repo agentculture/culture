@@ -46,6 +46,51 @@ async def test_welcome_bot_greets_on_join(server, make_client):
 
 
 # ---------------------------------------------------------------------------
+# test_welcome_bot_skips_peek_nicks (#334)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "peek_nick",
+    [
+        "testserv-_peek7aef",  # legacy opaque peek nick
+        "testserv-claude__peek1234",  # parent-attributed peek nick (#329)
+    ],
+)
+async def test_welcome_bot_skips_peek_nicks(server, make_client, peek_nick):
+    """The welcome bot must not greet transient peek-client joins (#334).
+
+    Every `culture channel message` call connects an ephemeral peek
+    client whose nick contains the `_peek` marker. Greeting them
+    produced 4 lines of bot chatter per real CLI message — a 5:1 noise
+    ratio that buried real conversation in `culture channel read`.
+    """
+    welcome_nick = f"system-{server.config.name}-welcome"
+    assert server.bot_manager.bots.get(welcome_nick) is not None
+
+    watcher = await make_client("testserv-watcher3", "watcher3")
+    await watcher.send("JOIN #lobby")
+    await watcher.recv_all(timeout=0.5)
+
+    await server.emit_event(
+        Event(
+            type=EventType.JOIN,
+            channel="#lobby",
+            nick=peek_nick,
+            data={"nick": peek_nick},
+        )
+    )
+
+    lines = await watcher.recv_all(timeout=0.5)
+    greeting = f"Welcome {peek_nick} to #lobby"
+    assert not any(greeting in line for line in lines), (
+        f"Welcome bot greeted peek nick {peek_nick!r} — should have been "
+        f"filtered out. Lines: {lines}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # test_welcome_bot_disabled
 # ---------------------------------------------------------------------------
 

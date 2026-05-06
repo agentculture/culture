@@ -5,7 +5,12 @@ bot:
 
 trigger:
   type: event
-  filter: "type == 'user.join'"
+  # Skip transient peek-client joins (#334). Peek nicks contain the
+  # `_peek` marker (or `__peek` when parent attribution is on, per #329).
+  # `'_peek' in nick` matches both forms, so this single check covers
+  # legacy and parent-attributed peek nicks. Greeting peek joins is what
+  # produced the 4-line bot spam per `culture channel message` call.
+  filter: "type == 'user.join' and not ('_peek' in nick)"
 
 output:
   template: "Welcome {event.nick} to {event.channel}"

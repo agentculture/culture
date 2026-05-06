@@ -22,16 +22,54 @@ REGISTER_TIMEOUT = 10.0
 
 
 class IRCObserver:
-    """Ephemeral IRC connection for read-only CLI commands."""
+    """Ephemeral IRC connection for read-only CLI commands.
 
-    def __init__(self, host: str, port: int, server_name: str):
+    When ``parent_nick`` is provided and shares this observer's server
+    prefix (e.g. ``spark-claude`` against an observer for ``spark``), the
+    transient nick reveals attribution as ``<server>-<agent>__peek<hex>``
+    so other agents can see who is acting on the mesh. Otherwise the
+    legacy opaque ``<server>-_peek<hex>`` shape is used.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        server_name: str,
+        parent_nick: str | None = None,
+    ):
         self.host = host
         self.port = port
         self.server_name = server_name
+        self.parent_nick = parent_nick
+
+    def _parent_suffix(self) -> str | None:
+        """Return the parent's agent suffix iff it's safe to embed in a nick.
+
+        Only attribute when the parent's server matches ours — a peek from
+        a foreign server would otherwise produce a confusing
+        ``<our-server>-<their-server>-<their-agent>__peek...`` mash-up
+        that looks federated but isn't.
+        """
+        if not self.parent_nick:
+            return None
+        prefix, sep, agent = self.parent_nick.partition("-")
+        if not sep or prefix != self.server_name or not agent:
+            return None
+        return agent
 
     def _temp_nick(self) -> str:
-        """Generate a temporary nick with server prefix."""
+        """Generate a temporary nick with server prefix.
+
+        Format: ``<server>-<agent>__peek<hex>`` when parent attribution is
+        available, else ``<server>-_peek<hex>``. The double-underscore
+        before ``peek`` is the protocol signal — bots filter on it to
+        avoid greeting transient peek joins.
+        """
         suffix = secrets.token_hex(2)  # 4 hex chars
+        agent = self._parent_suffix()
+        if agent:
+            return f"{self.server_name}-{agent}__peek{suffix}"
         return f"{self.server_name}-_peek{suffix}"
 
     async def _process_registration_line(
@@ -58,8 +96,15 @@ class IRCObserver:
         )
 
         nick = self._temp_nick()
+        # Realname embeds the parent so WHOIS resolves attribution even
+        # when the nick was forced into the opaque legacy shape (e.g. a
+        # cross-server peek where _parent_suffix() declined to attribute).
+        if self.parent_nick:
+            realname = f"culture observer (parent={self.parent_nick})"
+        else:
+            realname = "culture observer"
         writer.write(f"NICK {nick}\r\n".encode())
-        writer.write("USER _peek 0 * :culture observer\r\n".encode())
+        writer.write(f"USER _peek 0 * :{realname}\r\n".encode())
         await writer.drain()
 
         buffer = ""
