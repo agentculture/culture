@@ -78,23 +78,27 @@ def _maybe_forward_to_agentirc(argv: list[str]) -> int | None:
 
 
 def main() -> None:
-    forwarded = _maybe_forward_to_agentirc(sys.argv[1:])
-    if forwarded is not None:
-        sys.exit(forwarded)
-
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-
+    # Logging must be configured before any dispatch path runs — including
+    # the agentirc forwarder bypass below — so any logs emitted by
+    # agentirc.cli.dispatch land in culture's standard format rather than
+    # whatever default the importing process happens to have.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
     try:
+        forwarded = _maybe_forward_to_agentirc(sys.argv[1:])
+        if forwarded is not None:
+            sys.exit(forwarded)
+
+        parser = _build_parser()
+        args = parser.parse_args()
+
+        if args.command is None:
+            parser.print_help()
+            sys.exit(1)
+
         for group in GROUPS:
             if args.command in _names_of(group):
                 group.dispatch(args)

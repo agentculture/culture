@@ -88,12 +88,12 @@ def test_forwarded_verb_help_passes_through(verb: str) -> None:
         "unknown server command" not in combined
     ), f"forwarded verb {verb!r} not reaching agentirc.cli.dispatch"
     assert rc == 0, f"culture server {verb} --help exited {rc}: stderr={err!r}"
-    assert "unrecognized arguments" not in err.lower(), (
-        f"culture server {verb} --help leaked --help to root parser: " f"{err!r}"
-    )
-    assert f"agentirc {verb}" in out, (
-        f"culture server {verb} --help output did not look like " f"agentirc help: {out!r}"
-    )
+    assert (
+        "unrecognized arguments" not in err.lower()
+    ), f"culture server {verb} --help leaked --help to root parser: {err!r}"
+    assert (
+        f"agentirc {verb}" in out
+    ), f"culture server {verb} --help output did not look like agentirc help: {out!r}"
 
 
 def test_culture_chat_is_removed() -> None:
