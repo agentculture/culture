@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 BOTS_DIR = Path(os.path.expanduser("~/.culture/bots"))
 BOT_CONFIG_FILE = "bot.yaml"
 
-# Dedup state: each bot with top-level `fires_event` should emit the
-# canonical-location notice at most once per process.
+# Dedup state: each config file that uses top-level `fires_event` should emit
+# the canonical-location notice at most once per process. Keyed by resolved
+# path (not bot name) so configs that happen to share a name still each get a
+# notice, and malformed YAML names cannot raise TypeError on set membership.
 _warned_top_level_fires_event: set[str] = set()
 
 
@@ -90,9 +92,13 @@ def load_bot_config(path: Path) -> BotConfig:
             fe_data = {}
         fires_event = EmitEventSpec(type=fe_type, data=fe_data)
         if fires_event_from_top:
-            bot_name = bot_section.get("name", "<unknown>")
-            if bot_name not in _warned_top_level_fires_event:
-                _warned_top_level_fires_event.add(bot_name)
+            # Dedup by config path so two bots that happen to share `bot.name`
+            # each get their own deprecation notice, and a malformed `name`
+            # (e.g. a YAML list) cannot raise TypeError when used as a set key.
+            dedup_key = str(Path(path).resolve())
+            if dedup_key not in _warned_top_level_fires_event:
+                _warned_top_level_fires_event.add(dedup_key)
+                bot_name = bot_section.get("name", "<unknown>")
                 logger.info(
                     "Bot %s: top-level 'fires_event' accepted; "
                     "canonical location is under 'output:'",

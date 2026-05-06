@@ -304,3 +304,20 @@ def test_print_bot_listing_skips_malformed_entries(tmp_path, monkeypatch, capsys
     # Header + separator + active-bot row only — no empty-name row.
     assert any("active-bot" in line for line in lines)
     assert not any(line.startswith(" ") and "webhook" in line for line in lines)
+
+
+def test_bot_list_also_skips_malformed_entries(tmp_path, monkeypatch):
+    """`culture bot list` must skip empty-name configs so its output stays in
+    parity with `agent status` / `print_bot_listing`."""
+    from culture.bots import config as bots_config
+    from culture.cli.bot import _load_and_filter_bots
+
+    bots_dir = tmp_path / "bots"
+    _write_bot_yaml(bots_dir, "active-bot")
+    _write_malformed_bot(bots_dir)
+    monkeypatch.setattr(bots_config, "BOTS_DIR", bots_dir)
+
+    args = argparse.Namespace(owner=None, all=False)
+    bots = _load_and_filter_bots(args)
+    names = [b.name for b in bots]
+    assert names == ["active-bot"]
