@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.2.2] - 2026-05-06
+
+### Fixed
+
+- **`culture explain` no longer lists shipped namespaces as `(coming soon)`** (#330). Six namespaces (`agent`, `server`, `mesh`, `channel`, `bot`, `skills`) had no registered explain handler, so the dispatcher rendered them with the "(coming soon)" marker even though all six were fully shipped — confusing new agents reading `culture explain` during onboarding ("the CLI is mostly stubs"). Each shipped namespace now has a hand-curated explain handler in `culture/cli/introspect.py` that lists its main verbs and a one-paragraph summary. The unshipped `identity` and `secret` namespaces were dropped from `_NAMESPACES` until they actually exist on the CLI.
+
 ## [10.2.1] - 2026-05-06
 
 ### Fixed
