@@ -16,6 +16,7 @@ Two micro-fixes:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import subprocess
 import sys
 
@@ -117,6 +118,11 @@ def test_message_to_unknown_agent_attempts_send_not_local_config_error(monkeypat
 
     class _FakeObserver:
         async def send_message(self, target: str, text: str) -> None:
+            # `async def` is required because the real send_message is
+            # awaited by the caller via `asyncio.run(...)`. The trivial
+            # `await asyncio.sleep(0)` keeps the body honest about being
+            # async (and silences SonarCloud's python:S7503).
+            await asyncio.sleep(0)
             sent.append((target, text))
 
     monkeypatch.setattr(
@@ -149,7 +155,7 @@ def test_sleep_no_args_exits_2_through_real_cli():
         text=True,
         timeout=15,
     )
-    assert proc.returncode == 2, (
-        f"expected argparse-style rc 2, got {proc.returncode}: " f"stderr={proc.stderr!r}"
-    )
+    assert (
+        proc.returncode == 2
+    ), f"expected argparse-style rc 2, got {proc.returncode}: stderr={proc.stderr!r}"
     assert "error:" in proc.stderr.lower()

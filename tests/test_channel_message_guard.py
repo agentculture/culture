@@ -13,6 +13,7 @@ operators who genuinely want to bootstrap a channel can pass
 from __future__ import annotations
 
 import argparse
+import asyncio
 
 import pytest
 
@@ -36,9 +37,15 @@ class _FakeObserver:
         self.send_calls: list[tuple[str, str]] = []
 
     async def list_channels(self) -> list[str]:
+        # `async def` is required because the real list_channels is
+        # awaited via `asyncio.run(...)`. The trivial `await
+        # asyncio.sleep(0)` keeps the body honest about being async
+        # (and silences SonarCloud's python:S7503).
+        await asyncio.sleep(0)
         return list(self._channels)
 
     async def send_message(self, target: str, text: str) -> None:
+        await asyncio.sleep(0)
         self.send_calls.append((target, text))
 
 
