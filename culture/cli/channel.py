@@ -288,17 +288,19 @@ def _interpret_escapes(text: str) -> str:
 
 
 def _channel_exists(target: str, observer) -> bool:
-    """Return True iff ``target`` appears in the server's active channel list.
+    """Return True iff ``target`` appears in the server-wide active channel list.
 
-    Tries the agent daemon first (via ``_try_ipc``) and falls back to a
-    fresh peek query when the daemon is unreachable. Used by
-    ``_cmd_message`` to refuse silent typo-creates (#331).
+    Always uses the observer's ``list_channels()`` (a fresh peek LIST
+    query) rather than the daemon's ``irc_channels`` IPC. The IPC
+    response only carries the *joined* channels of the calling agent's
+    transport, so an existing channel the daemon hasn't joined would
+    appear non-existent and the guard would reject a perfectly valid
+    send. Server-wide LIST is the source of truth for "does this channel
+    exist on the server" (#341 review). The extra TCP roundtrip is fine
+    — the guard only fires on non-``--create`` message sends, not on
+    every send.
     """
-    resp = _try_ipc("irc_channels")
-    if resp and resp.get("ok"):
-        channels = resp.get("data", {}).get("channels", [])
-    else:
-        channels = asyncio.run(observer.list_channels())
+    channels = asyncio.run(observer.list_channels())
     return target in channels
 
 

@@ -954,19 +954,13 @@ def _cmd_message(args: argparse.Namespace) -> None:
     if not args.text.strip():
         print("Error: message text cannot be empty", file=sys.stderr)
         sys.exit(1)
-    config = load_config_or_default(args.config)
-    if not config.get_agent(args.target):
-        # The IRC server is the source of truth for who is on the mesh
-        # (especially with federation); local config can lag. Point the
-        # operator at the live source rather than failing on stale config
-        # alone (#333 item 11).
-        print(
-            f"Error: no agent named {args.target!r} in local config.\n"
-            f"  This may be stale — try 'culture channel who #general' to\n"
-            f"  list agents currently connected to the mesh.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # The IRC server (especially with federation) is the source of truth
+    # for who is reachable on the mesh — not the local config. The
+    # previous local-config gate blocked DMs to agents on federated peers
+    # that we hadn't manually registered. The send now goes through
+    # unconditionally; if the target nick is unknown to the server, the
+    # IRC ``401 NOSUCHNICK`` numeric propagates through the observer
+    # rather than being short-circuited by stale config. (#333 item 11.)
     observer = get_observer(args.config)
     asyncio.run(observer.send_message(args.target, args.text))
     print(f"Sent to {args.target}")

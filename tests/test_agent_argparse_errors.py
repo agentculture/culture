@@ -102,27 +102,38 @@ def test_sleep_unknown_nick_uses_argparse_error_format(capsys):
 # ---------------------------------------------------------------------------
 
 
-def test_message_to_unknown_agent_points_at_live_mesh(monkeypatch, capsys):
-    """The DM error for an unknown nick must hint at `culture channel who`,
-    not stake its claim on the local config alone (#333 item 11)."""
+def test_message_to_unknown_agent_attempts_send_not_local_config_error(monkeypatch, capsys):
+    """`culture agent message` must not short-circuit on local-config absence.
+
+    Issue #333 item 11: the IRC server (with federation) is the source of
+    truth for who is reachable on the mesh. The previous behavior errored
+    out when the target nick wasn't in the local ``server.yaml`` even
+    though that agent might be present on a federated peer. The new
+    behavior delegates the existence check to the server: send goes
+    through, and the IRC ``401 NOSUCHNICK`` numeric propagates if the
+    nick truly isn't there.
+    """
+    sent: list[tuple[str, str]] = []
+
+    class _FakeObserver:
+        async def send_message(self, target: str, text: str) -> None:
+            sent.append((target, text))
 
     monkeypatch.setattr(
         agent,
         "load_config_or_default",
         lambda _path: _FakeConfig(agents=[]),
     )
-    args = _ns(target="spark-nonexistent", text="hi", config="~/.culture/server.yaml")
+    monkeypatch.setattr(agent, "get_observer", lambda _path: _FakeObserver())
+    args = _ns(target="spark-federated-peer", text="hi", config="~/.culture/server.yaml")
 
-    with pytest.raises(SystemExit) as ei:
-        agent._cmd_message(args)
+    # No early SystemExit — the send goes through despite local config
+    # not knowing about the target.
+    agent._cmd_message(args)
 
-    assert ei.value.code == 1
-    err = capsys.readouterr().err
-    assert "spark-nonexistent" in err
-    # The new framing must explicitly mention the live source of truth.
-    assert "culture channel who" in err
-    # And must not pretend local config is the only source of truth.
-    assert "not found in config" not in err.lower() or "stale" in err.lower()
+    assert sent == [("spark-federated-peer", "hi")]
+    out = capsys.readouterr().out
+    assert "Sent to spark-federated-peer" in out
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,6 @@ operators who genuinely want to bootstrap a channel can pass
 from __future__ import annotations
 
 import argparse
-import sys
 
 import pytest
 
