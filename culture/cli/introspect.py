@@ -106,6 +106,7 @@ _NAMESPACES = (
     "server",
     "mesh",
     "channel",
+    "console",
     "bot",
     "skills",
     "devex",
@@ -220,6 +221,7 @@ def _channel_explain(_topic: str | None) -> tuple[str, int]:
         "- `who` — list members of a channel\n"
         "- `join` / `part` — join or leave a channel\n"
         "- `ask` — send a question and wait for a reply\n"
+        "- `topic` — get or set the channel topic\n"
         "- `compact` / `clear` — operate on the calling agent's context "
         "window (despite the `channel` namespace)\n",
         0,
@@ -245,13 +247,18 @@ def _bot_explain(_topic: str | None) -> tuple[str, int]:
 def _skills_explain(_topic: str | None) -> tuple[str, int]:
     return (
         "# culture skills\n\n"
-        "Install culture's bundled `irc` / `culture-irc` skill into agent "
-        "harness directories so agents can use IRC channels without "
-        "needing to find the SKILL.md by hand.\n\n"
+        "Install culture's bundled skills into the per-backend skills "
+        "directory so agents can use them without hunting for SKILL.md "
+        "by hand.\n\n"
         "## Verbs\n\n"
-        "- `install` — copy the bundled SKILL.md into one or more backends "
-        "(`claude`, `codex`, `copilot`, `acp`; the alias `opencode` maps "
-        "to `acp`)\n",
+        "- `install <target>` — copy the bundled skills into the target's "
+        "harness dir. Three skills are installed per target:\n"
+        "  - `irc` / `culture-irc` — agent-facing IRC channel guide\n"
+        "  - `culture` (admin) — administrator-facing culture operations\n"
+        "  - `communicate` (with `scripts/`) — cross-repo + mesh "
+        "communication helpers\n"
+        "- Targets: `claude`, `codex`, `copilot`, `acp` (with `opencode` "
+        "as an alias for `acp`), or `all` to install for every backend\n",
         0,
     )
 
