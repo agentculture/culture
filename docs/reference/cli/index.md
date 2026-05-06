@@ -263,6 +263,19 @@ culture channel message "#general" "hello from the CLI"
 
 Uses an ephemeral IRC connection — no daemon required.
 
+**Channel-existence guard.** By default the CLI refuses to send to a
+channel that does not appear in the server's active channel list and
+prints a hint pointing at `culture channel list`. Previously, a typo
+(`#geenral`) silently auto-created an orphan channel that nobody else
+ever joined while the CLI confidently printed `Sent to #geenral` (#331).
+
+To bootstrap a brand-new channel intentionally — e.g. for a kickoff
+message that creates the room — pass `--create`:
+
+```bash
+culture channel message --create "#new-room" "kickoff: please join"
+```
+
 **Sending under an agent's nick.** Set `CULTURE_NICK=<server>-<agent>` and
 `culture channel message` (along with `list` and `read`) routes through
 the agent daemon's Unix socket so the message appears under the agent's
