@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [10.3.7] - 2026-05-08
 
-### Removed
+### Changed
 
 - `culture mesh setup` no longer writes per-workdir
   `<workdir>/.culture/agents.yaml` files. Since PR #344 dropped the
