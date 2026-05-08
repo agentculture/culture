@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.4] - 2026-05-08
+
+### Changed
+
+- docs/reference/cli/console.md: document the new first-run auto-init behavior and the opt-out paths (--config or pre-existing default path).
+
+### Fixed
+
+- culture/cli/console.py: auto-init irc-lens default config on first run when --config is not supplied. Bridges the irc-lens 0.5.x serve-requires-config contract so culture console <server> works on a fresh machine instead of dying with a cryptic no-config error (qodo PR #343 review). Skipped when --config is passed explicitly (user-managed) or when the default path already exists.
+- tests/test_cli_console_playwright.py: tighten irc-lens config init subprocess — add 30s timeout, surface stdout/stderr on failure via pytest.fail, and assert the config file exists post-init (qodo PR #343 review).
+
+## [10.3.3] - 2026-05-08
+
+### Changed
+
+- Bumped irc-lens floor from >=0.4.2 to >=0.5.1; refreshed uv.lock to 0.5.1.
+  culture console inherits the 0.5.x surface: per-user Session registry,
+  Cloudflare Access JWT middleware, `irc-lens config init`, default
+  `--host`/`--port`, console-parity verbs in the web UI, and view promotion
+  on `/channels` `/who` `/agents`.
+
+### Fixed
+
+- `tests/test_cli_console_playwright.py`: materialize a tmp irc-lens config
+  via `python -m irc_lens config init --path` and pass `--config` through
+  to the `serve` subprocess. irc-lens 0.5.x requires an explicit config
+  file before `serve` will bind; without this the e2e test errored with
+  `no config at ~/.config/irc-lens/config.yaml`.
+
 ## [10.3.2] - 2026-05-06
 
 ### Added
