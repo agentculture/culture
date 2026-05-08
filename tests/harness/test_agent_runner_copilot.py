@@ -254,3 +254,39 @@ async def test_execute_single_turn_no_metrics_no_recording(metrics_reader):
     # No metric data should be recorded for llm_calls
     calls_val = _get_metric_value(metrics_reader, "culture.harness.llm.calls")
     assert calls_val is None
+
+
+@pytest.mark.asyncio
+async def test_execute_single_turn_outer_timeout_fires_on_wedged_send_and_wait(
+    metrics_reader, registry
+):
+    """Outer asyncio.wait_for safety net: if send_and_wait hangs, restart cleanly."""
+    import asyncio
+
+    runner = CopilotAgentRunner(
+        model="gpt-4.1",
+        directory=tempfile.mkdtemp(prefix="culture-test-copilot-"),
+        metrics=registry,
+        nick="spark-copilot",
+        on_turn_error=AsyncMock(),
+        turn_timeout_seconds=0.05,
+    )
+    runner._session = AsyncMock()
+
+    async def _hang_send(*a, **kw):
+        # Coroutine that awaits a never-resolving future — bypasses the
+        # SDK's own 120s inner timeout so we can verify the outer wrap
+        # is what catches it.
+        await asyncio.Future()
+
+    runner._session.send_and_wait = _hang_send
+
+    await runner._execute_single_turn("hello")
+
+    runner.on_turn_error.assert_awaited_once()
+    calls_val = _get_metric_value(
+        metrics_reader,
+        "culture.harness.llm.calls",
+        {"backend": "copilot", "model": "gpt-4.1", "outcome": "timeout"},
+    )
+    assert calls_val == 1

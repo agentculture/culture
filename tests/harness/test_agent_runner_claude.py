@@ -447,3 +447,70 @@ async def test_process_turn_records_zero_token_usage(metrics_reader, registry):
     ]
     assert len(output_dps) == 1, "Expected exactly one data point for tokens.output with zero value"
     assert output_dps[0].value == 0
+
+
+@pytest.mark.asyncio
+async def test_process_turn_timeout_records_timeout_outcome_and_calls_on_exit(
+    metrics_reader, registry
+):
+    """Wedged SDK stream: outer asyncio.wait_for fires, outcome=timeout, on_exit(1)."""
+    import asyncio
+
+    on_exit = AsyncMock()
+    runner = AgentRunner(
+        model="claude-opus-4-6",
+        directory=tempfile.mkdtemp(prefix="culture-test-claude-"),
+        on_exit=on_exit,
+        metrics=registry,
+        nick="spark-claude",
+        turn_timeout_seconds=0.05,
+    )
+
+    async def _hanging_query(**kwargs):
+        # Never yields — simulates a wedged SDK stream (the failure
+        # mode that motivated issue #349).
+        await asyncio.Future()
+        yield  # unreachable, but makes this a valid async generator
+
+    with patch("culture.clients.claude.agent_runner.query", _hanging_query):
+        result = await runner._process_turn("hello")
+
+    assert result is False, "timed-out turn must return False so _run_loop exits"
+    on_exit.assert_awaited_once_with(1)
+
+    calls_val = _get_metric_value(
+        metrics_reader,
+        "culture.harness.llm.calls",
+        {"backend": "claude", "model": "claude-opus-4-6", "outcome": "timeout"},
+    )
+    assert calls_val == 1, "metric must record outcome=timeout for the wedged turn"
+
+
+@pytest.mark.asyncio
+async def test_process_turn_timeout_disabled_when_zero(metrics_reader, registry):
+    """turn_timeout_seconds=0 disables the wrap; success path still works."""
+    on_exit = AsyncMock()
+    runner = AgentRunner(
+        model="claude-opus-4-6",
+        directory=tempfile.mkdtemp(prefix="culture-test-claude-"),
+        on_exit=on_exit,
+        metrics=registry,
+        nick="spark-claude",
+        turn_timeout_seconds=0,
+    )
+
+    sdk = sys.modules["claude_agent_sdk"]
+    fake_result = sdk.ResultMessage(
+        session_id="sid-1",
+        is_error=False,
+        usage={"input_tokens": 10, "output_tokens": 20},
+    )
+
+    async def _fast_query(**kwargs):
+        yield fake_result
+
+    with patch("culture.clients.claude.agent_runner.query", _fast_query):
+        result = await runner._process_turn("hello")
+
+    assert result is True, "disabled-timeout path must complete normally"
+    on_exit.assert_not_awaited()

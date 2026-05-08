@@ -45,6 +45,7 @@ class ACPAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -55,6 +56,12 @@ class ACPAgentRunner:
         self.on_turn_error = on_turn_error
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net for the whole prompt round-trip (send +
+        # busy-poll). The inner 300s on _send_request stays — it
+        # bounds individual JSON-RPC requests; this fires if the
+        # busy-flag never clears (the failure mode that motivated
+        # issue #349).
+        self._turn_timeout = turn_timeout_seconds
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -455,9 +462,17 @@ class ACPAgentRunner:
         ):
             try:
                 self._busy = True
-                resp = await self._send_prompt_with_retry(text)
-                await self._handle_prompt_result(resp)
-            except TimeoutError:  # bubbles from _send_prompt_with_retry's retry-then-fail
+                if self._turn_timeout > 0:
+                    async with asyncio.timeout(self._turn_timeout):
+                        resp = await self._send_prompt_with_retry(text)
+                        await self._handle_prompt_result(resp)
+                else:
+                    resp = await self._send_prompt_with_retry(text)
+                    await self._handle_prompt_result(resp)
+            except TimeoutError:
+                # Both _send_prompt_with_retry's inner 300s retry-then-fail
+                # and the outer asyncio.timeout above raise TimeoutError
+                # (asyncio.TimeoutError is a TimeoutError alias in 3.11+).
                 outcome = "timeout"
                 logger.exception("ACP turn timeout")
                 if self.on_turn_error:

@@ -231,3 +231,50 @@ async def test_execute_single_prompt_no_metrics_no_recording(metrics_reader):
     # No metric data should be recorded for llm_calls
     calls_val = _get_metric_value(metrics_reader, "culture.harness.llm.calls")
     assert calls_val is None
+
+
+@pytest.mark.asyncio
+async def test_execute_single_prompt_outer_timeout_fires_on_busy_poll_wedge(
+    metrics_reader, registry
+):
+    """Outer asyncio.timeout safety net: if the busy-poll never completes, restart."""
+    import asyncio
+
+    runner = ACPAgentRunner(
+        model="anthropic/claude-sonnet-4-6",
+        directory=tempfile.mkdtemp(prefix="culture-test-acp-"),
+        metrics=registry,
+        nick="spark-acp",
+        on_turn_error=AsyncMock(),
+        turn_timeout_seconds=0.05,
+    )
+    runner._session_id = "test-session-id"
+
+    # _send_prompt_with_retry returns immediately (no inner timeout
+    # fires); _handle_prompt_result hangs on a never-resolving future,
+    # which is the failure mode that motivated issue #349.
+    async def _hanging_handle(_self, _resp):
+        # Patched onto the class — descriptor protocol binds self,
+        # so the signature has to match an instance method.
+        await asyncio.Future()
+
+    with patch.object(
+        ACPAgentRunner,
+        "_send_prompt_with_retry",
+        new_callable=AsyncMock,
+        return_value={"result": {}},
+    ):
+        with patch.object(ACPAgentRunner, "_handle_prompt_result", _hanging_handle):
+            await runner._execute_single_prompt("hello")
+
+    runner.on_turn_error.assert_awaited_once()
+    calls_val = _get_metric_value(
+        metrics_reader,
+        "culture.harness.llm.calls",
+        {
+            "backend": "acp",
+            "model": "anthropic/claude-sonnet-4-6",
+            "outcome": "timeout",
+        },
+    )
+    assert calls_val == 1

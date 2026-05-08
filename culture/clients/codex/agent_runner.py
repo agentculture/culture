@@ -35,6 +35,7 @@ class CodexAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -44,6 +45,10 @@ class CodexAgentRunner:
         self.on_turn_error = on_turn_error
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net for the whole turn (request + completion
+        # event). Replaces the previous hardcoded 300s on the event
+        # wait alone. Non-positive disables the wrap.
+        self._turn_timeout = turn_timeout_seconds
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -359,19 +364,31 @@ class CodexAgentRunner:
         ):
             self._turn_done.clear()
             try:
-                await self._send_request(
-                    "turn/start",
-                    {
-                        "threadId": self._thread_id,
-                        "input": [{"type": "text", "text": text}],
-                    },
-                )
-                # Wait for turn/completed notification via the event
-                async with asyncio.timeout(300):
+                # Outer wrap covers both _send_request and the
+                # turn/completed event wait, so a wedged request also
+                # times out (previously only the event wait was bounded).
+                if self._turn_timeout > 0:
+                    async with asyncio.timeout(self._turn_timeout):
+                        await self._send_request(
+                            "turn/start",
+                            {
+                                "threadId": self._thread_id,
+                                "input": [{"type": "text", "text": text}],
+                            },
+                        )
+                        await self._turn_done.wait()
+                else:
+                    await self._send_request(
+                        "turn/start",
+                        {
+                            "threadId": self._thread_id,
+                            "input": [{"type": "text", "text": text}],
+                        },
+                    )
                     await self._turn_done.wait()
             except asyncio.TimeoutError:
                 outcome = "timeout"
-                logger.warning("Codex turn timed out after 300s")
+                logger.warning("Codex turn timed out after %ss", self._turn_timeout)
                 self._turn_done.set()
                 if self.on_turn_error:
                     await maybe_await(self.on_turn_error())

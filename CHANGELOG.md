@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.8] - 2026-05-08
+
+### Added
+
+- `turn_timeout_seconds` field on the `culture.yaml` `AgentConfig`
+  schema (default `600`). Each backend's `agent_runner.py` wraps
+  turn execution in `asyncio.wait_for` / `asyncio.timeout`. On
+  expiry the runner records `outcome=timeout` and exits 1, letting
+  the existing crash-recovery in `daemon._on_agent_exit` +
+  `_delayed_restart` (5 s delay, max 3 in 300 s) handle restart
+  cleanly. Set `0` to disable. Closes #349.
+- All four backends (claude, codex, copilot, acp) plus
+  `packages/agent-harness/` template grew the field. Claude
+  previously had no timeout — the bug. Codex previously hardcoded
+  300 s on the event-wait alone; the wrap is now config-driven and
+  covers `_send_request` too. Copilot keeps its inner 120 s on
+  `send_and_wait` and adds the outer wrap. ACP keeps the inner
+  300 s on `_send_request` and adds an outer wrap covering the
+  whole prompt round-trip including the busy-poll.
+- `docs/reference/server/config.md`: new `turn_timeout_seconds` row
+  in the `culture.yaml` fields table.
+- `tests/harness/test_agent_runner_*.py`: 5 new tests across the
+  four backends covering timeout-fires-on-wedge (claude, codex,
+  copilot, acp) and timeout-disabled-when-zero (claude) paths.
+
 ## [10.3.7] - 2026-05-08
 
 ### Changed

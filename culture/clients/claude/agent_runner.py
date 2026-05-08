@@ -70,6 +70,7 @@ class AgentRunner:
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -78,6 +79,10 @@ class AgentRunner:
         self.on_message = on_message
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net: if the SDK stream wedges, asyncio.wait_for
+        # raises TimeoutError → on_exit(1) → daemon crash recovery
+        # restarts the runner. Non-positive disables the wrap.
+        self._turn_timeout = turn_timeout_seconds
 
         self._session_id: str | None = None
         self._task: asyncio.Task | None = None
@@ -154,6 +159,27 @@ class AgentRunner:
             msg_dict = self._assistant_to_dict(msg)
             await self.on_message(msg_dict)
 
+    async def _stream_turn(self, prompt: str) -> dict | None:
+        """Run the SDK stream for one turn; return usage dict or None.
+
+        Wrapped by ``_process_turn`` in ``asyncio.wait_for`` so a wedged
+        SDK iteration cannot block the prompt queue forever.
+        """
+        usage_dict: dict | None = None
+        async for message in query(
+            prompt=prompt,
+            options=self._make_options(),
+        ):
+            if isinstance(message, ResultMessage):
+                self._handle_result_message(message)
+                # Extract usage if exposed by SDK; some ResultMessages have it
+                u = getattr(message, "usage", None)
+                if u is not None:
+                    usage_dict = _extract_usage(u)
+            elif isinstance(message, AssistantMessage):
+                await self._handle_assistant_message(message)
+        return usage_dict
+
     async def _process_turn(self, prompt: str) -> bool:
         """Run a single conversation turn. Returns False if a fatal error occurred."""
         tracer = _otel_trace.get_tracer(_HARNESS_TRACER_NAME)
@@ -170,18 +196,22 @@ class AgentRunner:
             },
         ):
             try:
-                async for message in query(
-                    prompt=prompt,
-                    options=self._make_options(),
-                ):
-                    if isinstance(message, ResultMessage):
-                        self._handle_result_message(message)
-                        # Extract usage if exposed by SDK; some ResultMessages have it
-                        u = getattr(message, "usage", None)
-                        if u is not None:
-                            usage_dict = _extract_usage(u)
-                    elif isinstance(message, AssistantMessage):
-                        await self._handle_assistant_message(message)
+                if self._turn_timeout > 0:
+                    usage_dict = await asyncio.wait_for(
+                        self._stream_turn(prompt),
+                        timeout=self._turn_timeout,
+                    )
+                else:
+                    usage_dict = await self._stream_turn(prompt)
+            except asyncio.TimeoutError:
+                outcome = "timeout"
+                failed = True
+                logger.warning(
+                    "SDK turn exceeded turn_timeout_seconds=%s; signalling restart",
+                    self._turn_timeout,
+                )
+                if not self._stopping and self.on_exit:
+                    await self.on_exit(1)
             except Exception:
                 outcome = "error"
                 failed = True
