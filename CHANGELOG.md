@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.4.0] - 2026-05-09
+
+### Added
+
+- Dynamic per-target attention bands (HOT/WARM/COOL/IDLE) for agent polling. Direct stimuli (@mention, DM) promote to HOT; ambient channel traffic in active threads promotes one band warmer (capped at WARM); quiet targets decay one band per hold window down to IDLE. New `attention:` config block in `~/.culture/server.yaml` with per-agent overrides in `culture.yaml`. (#345)
+- Pure `AttentionTracker` state machine in `packages/agent-harness/attention.py`, cited byte-identically into all four backends.
+- New transport callbacks `IRCTransport.on_ambient` and `IRCTransport.on_outgoing` for ambient-message and outgoing-send hooks.
+- OTel counters `culture.attention.transitions` and `culture.attention.polls` with cause/band/agent/target attributes.
+
+### Changed
+
+- Daemon poll loop is now tick-driven (`attention.tick_s`, default 5s) when `attention.enabled: true` (default). Falls back to fixed-interval `_legacy_poll_loop` when `attention.enabled: false`.
+- Legacy `poll_interval` migrates into `attention.bands.idle.interval_s` when no `attention:` block is configured; HOT/WARM/COOL also clamp to ≤ `poll_interval` so quiet channels never poll slower than the legacy default. Existing deployments get faster polling when tagged for free.
+- `IRCTransport._detect_and_fire_mention` now returns `bool` so the privmsg handler routes ambient-vs-direct paths correctly without double-firing.
+
 ## [10.3.9] - 2026-05-08
 
 ### Changed
