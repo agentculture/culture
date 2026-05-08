@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.5] - 2026-05-08
+
+### Fixed
+
+- `culture/cli/mesh.py`: stop generating systemd units that pin
+  `--config <workdir>/.culture/agents.yaml`. Three call sites
+  (`_install_mesh_services`, `_cmd_update`'s service rewrite,
+  `_cmd_update`'s service-fallback restart helper) emitted `ExecStart`
+  pointing at a path culture migrated away from when per-directory
+  `culture.yaml` became the format. On real deployments the daemon
+  exited 1 immediately and systemd respawned every 5s — restart
+  counters reached 38000+. Now generated units are
+  `culture agent start <nick> --foreground`, with `--config` defaulting
+  to `~/.culture/server.yaml` via argparse. New regression test in
+  `tests/test_setup_update_cli.py` asserts the absence of `--config`
+  and any `.culture/agents.yaml` token in the generated agent argv.
+  Recovery runbook for stale pre-10.3.5 units at
+  `docs/reference/cli/agent-systemd.md`.
+
 ## [10.3.4] - 2026-05-08
 
 ### Changed
