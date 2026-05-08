@@ -18,6 +18,7 @@ from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.copilot.agent_runner import CopilotAgentRunner
 from culture.clients.copilot.config import AgentConfig, DaemonConfig
+from culture.clients.copilot.constants import DEFAULT_TURN_TIMEOUT_SECONDS
 from culture.clients.copilot.ipc import make_response
 from culture.clients.copilot.irc_transport import IRCTransport
 from culture.clients.copilot.message_buffer import MessageBuffer
@@ -382,7 +383,9 @@ class CopilotDaemon:
             on_turn_error=self._on_turn_error,
             metrics=self._metrics,
             nick=self.agent.nick,
-            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
+            turn_timeout_seconds=getattr(
+                self.agent, "turn_timeout_seconds", DEFAULT_TURN_TIMEOUT_SECONDS
+            ),
         )
         await self._agent_runner.start()
         logger.info("CopilotAgentRunner started for %s", self.agent.nick)

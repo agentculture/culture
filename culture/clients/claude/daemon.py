@@ -11,6 +11,7 @@ from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.claude.agent_runner import AgentRunner
 from culture.clients.claude.config import AgentConfig, DaemonConfig
+from culture.clients.claude.constants import DEFAULT_TURN_TIMEOUT_SECONDS
 from culture.clients.claude.ipc import make_response
 from culture.clients.claude.irc_transport import IRCTransport
 from culture.clients.claude.message_buffer import MessageBuffer
@@ -332,7 +333,9 @@ class AgentDaemon:
             on_message=self._on_agent_message,
             metrics=self._metrics,
             nick=self.agent.nick,
-            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
+            turn_timeout_seconds=getattr(
+                self.agent, "turn_timeout_seconds", DEFAULT_TURN_TIMEOUT_SECONDS
+            ),
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
+from culture.clients.codex import constants as _codex_const
 from culture.clients.codex.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class CodexAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
-        turn_timeout_seconds: float = 600.0,
+        turn_timeout_seconds: float = _codex_const.DEFAULT_TURN_TIMEOUT_SECONDS,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -146,7 +147,7 @@ class CodexAgentRunner:
             return
         try:
             self._process.terminate()
-            async with asyncio.timeout(5):
+            async with asyncio.timeout(_codex_const.PROCESS_TERMINATE_GRACE_SECONDS):
                 await self._process.wait()
         except (asyncio.TimeoutError, ProcessLookupError):
             try:
@@ -204,7 +205,7 @@ class CodexAgentRunner:
         await self._process.stdin.drain()
 
         try:
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(_codex_const.INNER_REQUEST_TIMEOUT_SECONDS):
                 return await future
         except (asyncio.TimeoutError, asyncio.CancelledError):
             self._pending.pop(req_id, None)
@@ -240,7 +241,7 @@ class CodexAgentRunner:
         if not self._process:
             return -1
         try:
-            async with asyncio.timeout(5):
+            async with asyncio.timeout(_codex_const.PROCESS_TERMINATE_GRACE_SECONDS):
                 return await self._process.wait()
         except asyncio.TimeoutError:
             try:
@@ -248,7 +249,7 @@ class CodexAgentRunner:
             except ProcessLookupError:
                 pass
             try:
-                async with asyncio.timeout(1):
+                async with asyncio.timeout(_codex_const.PROCESS_KILL_GRACE_SECONDS):
                     return await self._process.wait()
             except asyncio.TimeoutError:
                 return -1
@@ -368,8 +369,8 @@ class CodexAgentRunner:
         """Log the cause + elapsed, fire on_turn_error, terminate subprocess.
 
         ``elapsed_s`` (vs the two budgets) tells the operator which
-        timeout actually fired: ~30 s ⇒ inner ``_send_request``;
-        ~``self._turn_timeout`` ⇒ outer wrap.
+        timeout actually fired: ~``_codex_const.INNER_REQUEST_TIMEOUT_SECONDS`` ⇒
+        inner ``_send_request``; ~``self._turn_timeout`` ⇒ outer wrap.
 
         Subprocess termination is what reaches crash recovery: the
         read-loop sees EOF, ``_cleanup_codex_process`` calls
@@ -378,10 +379,11 @@ class CodexAgentRunner:
         """
         if self._turn_timeout > 0:
             budgets = (
-                f"outer turn_timeout_seconds={self._turn_timeout}s, " "inner _send_request 30s"
+                f"outer turn_timeout_seconds={self._turn_timeout}s, "
+                f"inner _send_request {_codex_const.INNER_REQUEST_TIMEOUT_SECONDS}s"
             )
         else:
-            budgets = "inner _send_request 30s (outer disabled)"
+            budgets = f"inner _send_request {_codex_const.INNER_REQUEST_TIMEOUT_SECONDS}s (outer disabled)"
         logger.warning(
             "Codex turn timed out after %.1fs (budgets: %s); terminating "
             "subprocess so cleanup → on_exit fires for crash recovery",

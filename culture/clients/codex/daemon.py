@@ -18,6 +18,7 @@ from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.codex.agent_runner import CodexAgentRunner
 from culture.clients.codex.config import AgentConfig, DaemonConfig
+from culture.clients.codex.constants import DEFAULT_TURN_TIMEOUT_SECONDS
 from culture.clients.codex.ipc import make_response
 from culture.clients.codex.irc_transport import IRCTransport
 from culture.clients.codex.message_buffer import MessageBuffer
@@ -382,7 +383,9 @@ class CodexDaemon:
             on_turn_error=self._on_turn_error,
             metrics=self._metrics,
             nick=self.agent.nick,
-            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
+            turn_timeout_seconds=getattr(
+                self.agent, "turn_timeout_seconds", DEFAULT_TURN_TIMEOUT_SECONDS
+            ),
         )
         await self._agent_runner.start()
         logger.info("CodexAgentRunner started for %s", self.agent.nick)
