@@ -57,7 +57,11 @@ attention:
 ```
 
 Per-agent values shallow-merge over daemon defaults: any band you specify
-replaces that band's spec; unspecified bands inherit.
+replaces that band's spec; unspecified bands inherit. The merge is performed
+by `resolve_attention_config(daemon_cfg, agent_cfg) -> AttentionConfig`
+exported from each backend's `config.py` (and the reference at
+`packages/agent-harness/config.py`); call it directly if you need the
+effective config for a given agent at runtime.
 
 ### Disabling
 
@@ -78,7 +82,24 @@ tagged.
 
 ## Observability
 
-Each band transition is logged at INFO and emitted as an OTel counter:
+### Logging
+
+Each band transition is logged at INFO with the format:
+
+```text
+attention: agent=<nick> target=<channel-or-dm> band=<from>→<to> cause=<cause>
+```
+
+For example:
+
+```text
+attention: agent=spark-culture target=#dev-chat band=COOL→HOT cause=direct
+attention: agent=spark-culture target=#dev-chat band=HOT→WARM cause=decay
+```
+
+Use this pattern for grep-based alerting or for log dashboards.
+
+### OTel metrics
 
 ```text
 culture.attention.transitions{agent, target, from_band, to_band, cause}
@@ -86,6 +107,20 @@ culture.attention.polls{agent, target, band}
 ```
 
 `cause ∈ {direct, ambient, decay, manual}`.
+
+## Extending the transport
+
+Two transport callbacks are wired by the daemon and may also be wired by
+custom transports or harnesses outside the four shipped backends:
+
+| Callback | Signature | Fired when |
+|----------|-----------|------------|
+| `IRCTransport.on_ambient` | `(target: str, sender: str, text: str) -> None` | A non-mention PRIVMSG arrives in a channel where the agent is participating. The daemon gates it through the `thread_window_s` predicate before promoting the band. |
+| `IRCTransport.on_outgoing` | `(target: str, line: str) -> None` | After a successful `send_privmsg`. The daemon uses this to record "I spoke on T" and open the thread window. |
+
+Both default to `None`; the daemon assigns them in `start()` after constructing
+the transport. Custom callers can assign their own handlers to track or react
+to these events independently.
 
 ## Future: agent-controlled attention
 

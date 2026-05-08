@@ -216,6 +216,7 @@ agents:
 | `icon` | `null` | Optional display icon (emoji) |
 | `archived` | `false` | Set by `culture agent archive`; hides from listings |
 | `turn_timeout_seconds` | `600` | Outer safety-net timeout for one SDK turn. On expiry the runner exits 1 and crash-recovery restarts it. Set to `0` to disable. |
+| `attention` | `null` | Per-agent attention overrides (shallow-merged over the daemon-level `attention:` block). Stored internally as `attention_overrides`. See [Dynamic Attention Levels](../../attention.md) for the schema. |
 
 Backend-specific fields (e.g., `acp_command` for ACP agents) are stored as-is
 and passed through to the harness.
