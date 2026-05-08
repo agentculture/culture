@@ -136,9 +136,27 @@ def agentirc_server():
     loop.close()
 
 
-def test_culture_console_serve_drives_help_view(agentirc_server):
+def test_culture_console_serve_drives_help_view(agentirc_server, tmp_path):
     irc_port = agentirc_server
     web_port = _free_port()
+
+    # irc-lens 0.5.x requires an explicit config file. Materialize a
+    # starter dev-mode config in tmp so the serve subprocess doesn't try
+    # to read ~/.config/irc-lens/config.yaml.
+    config_path = tmp_path / "irc-lens-config.yaml"
+    init_rc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "irc_lens",
+            "config",
+            "init",
+            "--path",
+            str(config_path),
+        ],
+        capture_output=True,
+    ).returncode
+    assert init_rc == 0, "irc-lens config init failed"
 
     culture_proc = subprocess.Popen(
         [
@@ -147,6 +165,8 @@ def test_culture_console_serve_drives_help_view(agentirc_server):
             "culture",
             "console",
             "serve",
+            "--config",
+            str(config_path),
             "--host",
             "127.0.0.1",
             "--port",

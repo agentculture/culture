@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.3] - 2026-05-08
+
+### Changed
+
+- Bumped irc-lens floor from >=0.4.2 to >=0.5.1; refreshed uv.lock to 0.5.1.
+  culture console inherits the 0.5.x surface: per-user Session registry,
+  Cloudflare Access JWT middleware, `irc-lens config init`, default
+  `--host`/`--port`, console-parity verbs in the web UI, and view promotion
+  on `/channels` `/who` `/agents`.
+
+### Fixed
+
+- `tests/test_cli_console_playwright.py`: materialize a tmp irc-lens config
+  via `python -m irc_lens config init --path` and pass `--config` through
+  to the `serve` subprocess. irc-lens 0.5.x requires an explicit config
+  file before `serve` will bind; without this the e2e test errored with
+  `no config at ~/.config/irc-lens/config.yaml`.
+
 ## [10.3.2] - 2026-05-06
 
 ### Added

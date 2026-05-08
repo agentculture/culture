@@ -606,7 +606,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "10.3.2"
+version = "10.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -658,7 +658,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'" },
-    { name = "irc-lens", specifier = ">=0.4.2,<1.0" },
+    { name = "irc-lens", specifier = ">=0.5.1,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
     { name = "opentelemetry-api", specifier = ">=1.25" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.25" },
@@ -1040,16 +1040,17 @@ wheels = [
 
 [[package]]
 name = "irc-lens"
-version = "0.4.2"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "jinja2" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/bc/90595ed1a3e9a8548b0ed2b4b083116d83548c1b3ed727e552fcd1cd3011/irc_lens-0.4.2.tar.gz", hash = "sha256:a15a3e642c2af9db8130de74f498a372612ab4b98ac9359ffea3e4e8aa223dd3", size = 267349, upload-time = "2026-04-29T09:55:50.982Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/37/04578842566f3817b20042c2fc9a8fd299c7fed5d8bf6056b3f4740345a8/irc_lens-0.5.1.tar.gz", hash = "sha256:27a5c8d84d454980ecbbf709c5573b95eb7d1667c37e1ecdd97c890d1aca175b", size = 384592, upload-time = "2026-05-08T12:10:14.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0e/d9/131485d74473bde56928d76581d8453fdb3112b1cb27884733263ef328b5/irc_lens-0.4.2-py3-none-any.whl", hash = "sha256:b7357eaf65501c12c75d53235e8e2f658745b5928a0af0e23b81e6fa7674d6ff", size = 147059, upload-time = "2026-04-29T09:55:49.672Z" },
+    { url = "https://files.pythonhosted.org/packages/23/bd/e1ddae6bcd5589f6328736b208034f971ae459023528e8eaec3118d3bbbb/irc_lens-0.5.1-py3-none-any.whl", hash = "sha256:2b6effffed184608eda9574026bd1be9e6a2b6d80701fa6eea5f83c1a94ef190", size = 165543, upload-time = "2026-05-08T12:10:15.45Z" },
 ]
 
 [[package]]
