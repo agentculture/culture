@@ -170,6 +170,26 @@ def test_set_band_manual_override():
     assert t.snapshot()["#a"].band == Band.IDLE
 
 
+def test_seed_creates_idle_state_so_target_is_polled():
+    """A seeded channel must be returned by due_targets even before any
+    stimulus arrives — otherwise the daemon would never poll quiet channels
+    (regression flagged on PR #356)."""
+    t = AttentionTracker(_cfg())
+    t.seed("#dev")
+    assert t.snapshot()["#dev"].band == Band.IDLE
+    # Never polled -> always due on first call
+    assert t.due_targets(now=0.0) == ["#dev"]
+
+
+def test_seed_is_idempotent():
+    t = AttentionTracker(_cfg())
+    t.on_direct("#dev", now=10.0)
+    assert t.snapshot()["#dev"].band == Band.HOT
+    # seed() must not reset existing state
+    t.seed("#dev")
+    assert t.snapshot()["#dev"].band == Band.HOT
+
+
 def test_paused_handled_by_caller_not_tracker():
     """The tracker doesn't know about pause — the daemon decides whether to
     consult `due_targets`. We just confirm `due_targets` is a pure read-and-

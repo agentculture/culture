@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "10.4.0"
+version = "10.4.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"

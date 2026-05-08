@@ -192,7 +192,12 @@ def _build_attention_config(raw: dict, legacy_poll_interval: int) -> AttentionCo
     # never accidentally gets *slower* polling than they had — preserves
     # monotonicity for legacy poll_interval values smaller than the default
     # COOL/WARM intervals.
-    if "attention" not in raw and "poll_interval" in raw:
+    if "attention" not in raw:
+        # Legacy migration: when no ``attention`` block is configured, the
+        # legacy poll_interval (default 60s if unset) drives IDLE polling so
+        # operators upgrading from the previous release see no slowdown.
+        # HOT/WARM/COOL also clamp to <= legacy so they never poll slower
+        # than the legacy default.
         legacy = legacy_poll_interval
         for band in (Band.HOT, Band.WARM, Band.COOL):
             spec = bands[band]

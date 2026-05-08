@@ -196,6 +196,13 @@ class AttentionTracker:
         state = self._get_or_init(target)
         state.last_poll_at = now
 
+    def seed(self, target: str) -> None:
+        """Ensure ``target`` has tracker state at IDLE so the poll loop will
+        consider it. Called by the daemon for each configured channel at
+        startup so quiet channels are still polled at their IDLE cadence
+        even before any stimulus arrives."""
+        self._get_or_init(target)
+
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------

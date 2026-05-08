@@ -391,12 +391,20 @@ class AgentDaemon:
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)
 
     def _init_attention(self) -> None:
-        """Build the AttentionTracker from merged config. Called once at start."""
+        """Build the AttentionTracker from merged config. Called once at start.
+
+        Seeds the tracker with all configured ``agent.channels`` so quiet
+        channels still get polled at their IDLE cadence even before any
+        stimulus arrives (otherwise ``due_targets`` would return ``[]``
+        forever and behave worse than the legacy fixed-interval poll).
+        """
         attention_cfg = resolve_attention_config(self.config, self.agent)
         self._attention_enabled = attention_cfg.enabled
         self._attention = AttentionTracker(
             attention_cfg, on_transition=self._on_attention_transition
         )
+        for channel in self.agent.channels:
+            self._attention.seed(channel)
 
     def _on_attention_transition(self, target: str, prev: Band, new: Band, cause: str) -> None:
         """Logging + OTel counter hook for attention band transitions."""

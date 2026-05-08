@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.4.1] - 2026-05-09
+
+### Fixed
+
+- Quiet channels never polled when attention enabled — daemon now seeds the AttentionTracker with all configured `agent.channels` at startup so they are due at their IDLE cadence even before any stimulus arrives (#345 / PR #356).
+- Default `poll_interval` regression — configs that omit both `attention:` and `poll_interval` now correctly use the legacy 60s default for IDLE polling, not the new 600s default. HOT/WARM/COOL still clamp to ≤ legacy. (#345 / PR #356)
+
 ## [10.4.0] - 2026-05-09
 
 ### Added

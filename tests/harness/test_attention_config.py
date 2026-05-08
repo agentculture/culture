@@ -31,6 +31,22 @@ def test_no_attention_block_uses_defaults_with_legacy_poll_interval(tmp_path):
     assert cfg.attention.bands[Band.HOT].interval_s == 30
 
 
+def test_no_attention_no_poll_interval_uses_legacy_default_60(tmp_path):
+    """Configs that omit both ``attention:`` and ``poll_interval`` must use
+    the legacy 60s default for IDLE polling — not the new 600s IDLE default
+    — so existing deployments don't silently get 10x slower steady-state
+    polling (regression flagged on PR #356)."""
+    cfg_path = _write_yaml(tmp_path, {"agents": []})
+    cfg = load_config(cfg_path)
+    assert cfg.attention.enabled is True
+    assert cfg.attention.bands[Band.IDLE].interval_s == 60
+    # HOT also clamped to legacy (since 30s < 60s, HOT keeps default 30s)
+    assert cfg.attention.bands[Band.HOT].interval_s == 30
+    # WARM/COOL clamp to 60 (defaults are 120/300, both > 60)
+    assert cfg.attention.bands[Band.WARM].interval_s == 60
+    assert cfg.attention.bands[Band.COOL].interval_s == 60
+
+
 def test_attention_disabled_falls_back_to_legacy_poll_interval(tmp_path):
     cfg_path = _write_yaml(
         tmp_path,
