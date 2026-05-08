@@ -1,3 +1,8 @@
+"""JSON line-framing helpers for harness IPC (whispers and responses).
+
+Shared harness module — see docs/architecture/shared-vs-cited.md.
+"""
+
 from __future__ import annotations
 
 import json

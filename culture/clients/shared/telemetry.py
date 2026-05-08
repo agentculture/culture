@@ -35,8 +35,8 @@ from opentelemetry.trace import Tracer
 
 logger = logging.getLogger(__name__)
 
-# Module-level tracer name — cited backends replace "culture.harness" with
-# "culture.harness.<backend>" to match their service.name.
+# Generic tracer name; per-backend identity flows through OTel Resource
+# service.name (set per-backend via TelemetryConfig.service_name).
 _HARNESS_TRACER_NAME = "culture.harness"
 
 # Module-level globals — mirrors the server-side tracing.py / metrics.py pattern.
