@@ -10,7 +10,12 @@ import time
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.claude.agent_runner import AgentRunner
-from culture.clients.claude.config import AgentConfig, DaemonConfig
+from culture.clients.claude.attention import AttentionTracker, Band
+from culture.clients.claude.config import (
+    AgentConfig,
+    DaemonConfig,
+    resolve_attention_config,
+)
 from culture.clients.claude.constants import DEFAULT_TURN_TIMEOUT_SECONDS
 from culture.clients.claude.ipc import make_response
 from culture.clients.claude.irc_transport import IRCTransport
@@ -80,6 +85,11 @@ class AgentDaemon:
         self._status_query_response: str = ""
         self._last_activity_text: str = ""
 
+        # Attention state — initialized by _init_attention(), called from start()
+        self._attention: AttentionTracker | None = None
+        self._attention_enabled: bool = False
+        self._last_engaged_at: dict[str, float] = {}
+
         # Background tasks (prevent GC of fire-and-forget tasks)
         self._background_tasks: set[asyncio.Task] = set()
 
@@ -141,6 +151,8 @@ class AgentDaemon:
             metrics=self._metrics,
             backend="claude",
         )
+        self._transport.on_ambient = self._on_ambient
+        self._transport.on_outgoing = self._on_outgoing
         await self._transport.connect()
 
         # 3. Webhook client (uses transport for IRC-based alerts)
@@ -177,7 +189,10 @@ class AgentDaemon:
         # 7. Sleep scheduler background task
         self._sleep_task = asyncio.create_task(self._sleep_scheduler())
 
-        # 8. Channel poll background task
+        # 8. Initialize attention state machine (#345)
+        self._init_attention()
+
+        # 9. Channel poll background task
         self._poll_task = asyncio.create_task(self._poll_loop())
 
         logger.info("AgentDaemon started for %s (socket=%s)", self.agent.nick, self._socket_path)
@@ -263,7 +278,42 @@ class AgentDaemon:
                 logger.exception("Sleep scheduler error")
 
     async def _poll_loop(self) -> None:
-        """Background task that periodically checks channels for unread messages."""
+        """Background task: tick-driven when attention.enabled, else legacy fixed-interval."""
+        if not self._attention_enabled:
+            await self._legacy_poll_loop()
+            return
+        attention_cfg = resolve_attention_config(self.config, self.agent)
+        tick_s = attention_cfg.tick_s
+        while True:
+            try:
+                await asyncio.sleep(tick_s)
+                if self._paused or not self._agent_runner or not self._agent_runner.is_running():
+                    continue
+                now = time.monotonic()
+                due = self._attention.due_targets(now) if self._attention else []
+                for target in due:
+                    self._send_channel_poll(target)
+                    if self._attention is not None:
+                        self._attention.mark_polled(target, now)
+                        if self._metrics is not None and getattr(
+                            self._metrics, "attention_polls", None
+                        ):
+                            band = self._attention.snapshot()[target].band
+                            self._metrics.attention_polls.add(
+                                1,
+                                attributes={
+                                    "agent": self.agent.nick,
+                                    "target": target,
+                                    "band": band.name,
+                                },
+                            )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Poll loop error")
+
+    async def _legacy_poll_loop(self) -> None:
+        """Fixed-interval polling. Used when attention.enabled is false."""
         interval = self.config.poll_interval
         if interval <= 0:
             return
@@ -340,11 +390,65 @@ class AgentDaemon:
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)
 
+    def _init_attention(self) -> None:
+        """Build the AttentionTracker from merged config. Called once at start."""
+        attention_cfg = resolve_attention_config(self.config, self.agent)
+        self._attention_enabled = attention_cfg.enabled
+        self._attention = AttentionTracker(
+            attention_cfg, on_transition=self._on_attention_transition
+        )
+
+    def _on_attention_transition(self, target: str, prev: Band, new: Band, cause: str) -> None:
+        """Logging + OTel counter hook for attention band transitions."""
+        logger.info(
+            "attention: agent=%s target=%s band=%s→%s cause=%s",
+            self.agent.nick,
+            target,
+            prev.name,
+            new.name,
+            cause,
+        )
+        if self._metrics is not None and getattr(self._metrics, "attention_transitions", None):
+            self._metrics.attention_transitions.add(
+                1,
+                attributes={
+                    "agent": self.agent.nick,
+                    "target": target,
+                    "from_band": prev.name,
+                    "to_band": new.name,
+                    "cause": cause,
+                },
+            )
+
+    def _on_ambient(self, target: str, sender: str, text: str) -> None:
+        """Ambient stimulus — only counts if the agent has engagement on this target."""
+        if self._attention is None:
+            return
+        now = time.monotonic()
+        thread_window_s = resolve_attention_config(self.config, self.agent).thread_window_s
+        last = self._last_engaged_at.get(target, 0.0)
+        if last == 0.0 or (now - last) > thread_window_s:
+            return
+        self._attention.on_ambient(target, now)
+
+    def _on_outgoing(self, target: str, line: str) -> None:
+        """Track that the agent has spoken on this target — opens the thread window."""
+        self._last_engaged_at[target] = time.monotonic()
+
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
 
         When the mention is inside a thread, provides thread-scoped context.
+
+        Attention state is updated unconditionally — even when paused — so
+        the agent is correctly warm on resume. Only the prompt-building/
+        relay path is gated by ``_paused``.
         """
+        now = time.monotonic()
+        self._last_engaged_at[target] = now
+        if self._attention is not None:
+            self._attention.on_direct(target, now)
+
         if self._paused:
             return
         if not (self._agent_runner and self._agent_runner.is_running()):

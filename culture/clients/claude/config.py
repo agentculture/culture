@@ -8,6 +8,24 @@ from pathlib import Path
 
 import yaml
 
+from culture.clients.claude.attention import (
+    AttentionConfig,
+    Band,
+    BandSpec,
+    default_bands,
+)
+
+
+# YAML representer for Band so asdict(DaemonConfig) round-trips through
+# yaml.dump → yaml.safe_load. Without this, Band keys serialize as
+# python/object/apply tags that SafeLoader rejects.
+def _band_yaml_representer(dumper, band):  # type: ignore[no-untyped-def]
+    return dumper.represent_str(band.name.lower())
+
+
+yaml.SafeDumper.add_representer(Band, _band_yaml_representer)
+yaml.Dumper.add_representer(Band, _band_yaml_representer)
+
 
 @dataclass
 class ServerConnConfig:
@@ -66,6 +84,9 @@ class AgentConfig:
     archived: bool = False
     archived_at: str = ""
     archived_reason: str = ""
+    # Per-agent attention overrides; merged shallowly over daemon defaults.
+    # None means "inherit fully."
+    attention_overrides: dict | None = None
 
 
 @dataclass
@@ -102,12 +123,79 @@ class DaemonConfig:
     sleep_start: str = "23:00"
     sleep_end: str = "08:00"
     agents: list[AgentConfig] = field(default_factory=list)
+    attention: AttentionConfig = field(default_factory=AttentionConfig)
 
     def get_agent(self, nick: str) -> AgentConfig | None:
         for agent in self.agents:
             if agent.nick == nick:
                 return agent
         return None
+
+
+_BAND_NAMES = {
+    "hot": Band.HOT,
+    "warm": Band.WARM,
+    "cool": Band.COOL,
+    "idle": Band.IDLE,
+}
+
+
+def _parse_bands(raw_bands: dict, defaults: dict[Band, BandSpec]) -> dict[Band, BandSpec]:
+    """Shallow-merge raw band dict over defaults. Validates each entry."""
+    result = dict(defaults)
+    for name, raw_spec in (raw_bands or {}).items():
+        if name not in _BAND_NAMES:
+            raise ValueError(f"unknown band name: {name!r}")
+        band = _BAND_NAMES[name]
+        interval_s = raw_spec.get("interval_s")
+        hold_s = raw_spec.get("hold_s")
+        if interval_s is None or interval_s <= 0:
+            raise ValueError(f"band {name}: interval_s must be > 0, got {interval_s!r}")
+        if band == Band.IDLE:
+            if hold_s is not None:
+                hold_s = None
+        else:
+            if hold_s is None or hold_s <= 0:
+                raise ValueError(f"band {name}: hold_s must be > 0, got {hold_s!r}")
+        result[band] = BandSpec(interval_s=interval_s, hold_s=hold_s)
+    return result
+
+
+def _validate_attention(cfg: AttentionConfig) -> None:
+    """Monotonicity, tick range. Raises ValueError on violation."""
+    intervals = [cfg.bands[b].interval_s for b in (Band.HOT, Band.WARM, Band.COOL, Band.IDLE)]
+    if intervals != sorted(intervals):
+        raise ValueError(
+            f"attention bands must be monotonic (HOT<=WARM<=COOL<=IDLE); "
+            f"got intervals {intervals}"
+        )
+    if cfg.tick_s <= 0:
+        raise ValueError(f"attention.tick_s must be > 0, got {cfg.tick_s!r}")
+    if cfg.tick_s > min(intervals):
+        raise ValueError(
+            f"attention.tick_s ({cfg.tick_s}) must be <= "
+            f"smallest band interval ({min(intervals)})"
+        )
+
+
+def _build_attention_config(raw: dict, legacy_poll_interval: int) -> AttentionConfig:
+    raw_attention = raw.get("attention") or {}
+    bands = _parse_bands(raw_attention.get("bands", {}), default_bands())
+    if "attention" not in raw and "poll_interval" in raw:
+        legacy = legacy_poll_interval
+        for band in (Band.HOT, Band.WARM, Band.COOL):
+            spec = bands[band]
+            if spec.interval_s > legacy:
+                bands[band] = BandSpec(interval_s=legacy, hold_s=spec.hold_s)
+        bands[Band.IDLE] = BandSpec(interval_s=legacy, hold_s=None)
+    cfg = AttentionConfig(
+        enabled=raw_attention.get("enabled", True),
+        tick_s=raw_attention.get("tick_s", 5),
+        thread_window_s=raw_attention.get("thread_window_s", 1800),
+        bands=bands,
+    )
+    _validate_attention(cfg)
+    return cfg
 
 
 def load_config(path: str | Path) -> DaemonConfig:
@@ -121,13 +209,21 @@ def load_config(path: str | Path) -> DaemonConfig:
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
     telemetry = TelemetryConfig(**raw.get("telemetry", {}))
 
+    legacy_poll_interval = raw.get("poll_interval", 60)
+    attention = _build_attention_config(raw, legacy_poll_interval)
+
     agents = []
     known_agent_fields = {f.name for f in AgentConfig.__dataclass_fields__.values()}
     for agent_raw in raw.get("agents", []):
         # Strip unknown fields (e.g. acp_command from ACP backend configs)
         # so multi-backend configs don't crash on load.
+        # Accept both human-written ``attention:`` (YAML schema) and
+        # round-tripped ``attention_overrides:`` (asdict() serialization);
+        # prefer ``attention`` if both present.
+        per_agent_attention = agent_raw.pop("attention", agent_raw.pop("attention_overrides", None))
         filtered = {k: v for k, v in agent_raw.items() if k in known_agent_fields}
-        agents.append(AgentConfig(**filtered))
+        filtered.pop("attention_overrides", None)
+        agents.append(AgentConfig(**filtered, attention_overrides=per_agent_attention))
 
     return DaemonConfig(
         server=server,
@@ -135,11 +231,28 @@ def load_config(path: str | Path) -> DaemonConfig:
         webhooks=webhooks,
         telemetry=telemetry,
         buffer_size=raw.get("buffer_size", 500),
-        poll_interval=raw.get("poll_interval", 60),
+        poll_interval=legacy_poll_interval,
         sleep_start=raw.get("sleep_start", "23:00"),
         sleep_end=raw.get("sleep_end", "08:00"),
         agents=agents,
+        attention=attention,
     )
+
+
+def resolve_attention_config(daemon_cfg: DaemonConfig, agent_cfg: AgentConfig) -> AttentionConfig:
+    """Merge per-agent attention overrides over daemon defaults."""
+    if not agent_cfg.attention_overrides:
+        return daemon_cfg.attention
+    raw = agent_cfg.attention_overrides
+    bands = _parse_bands(raw.get("bands", {}), daemon_cfg.attention.bands)
+    merged = AttentionConfig(
+        enabled=raw.get("enabled", daemon_cfg.attention.enabled),
+        tick_s=raw.get("tick_s", daemon_cfg.attention.tick_s),
+        thread_window_s=raw.get("thread_window_s", daemon_cfg.attention.thread_window_s),
+        bands=bands,
+    )
+    _validate_attention(merged)
+    return merged
 
 
 def sanitize_agent_name(dirname: str) -> str:

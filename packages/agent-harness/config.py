@@ -14,6 +14,17 @@ from attention import (  # noqa: E402  # pylint: disable=import-error
     default_bands,
 )
 
+
+# YAML representer for Band so asdict(DaemonConfig) round-trips through
+# yaml.dump → yaml.safe_load. Without this, Band keys serialize as
+# python/object/apply tags that SafeLoader rejects.
+def _band_yaml_representer(dumper, band):  # type: ignore[no-untyped-def]
+    return dumper.represent_str(band.name.lower())
+
+
+yaml.SafeDumper.add_representer(Band, _band_yaml_representer)
+yaml.Dumper.add_representer(Band, _band_yaml_representer)
+
 # Bare-name import works when this directory is on sys.path (the test
 # context). On citation into culture/clients/<backend>/, replace with
 # the absolute backend-prefixed path (e.g.
@@ -214,8 +225,10 @@ def load_config(path: str | Path) -> DaemonConfig:
 
     agents = []
     for agent_raw in raw.get("agents", []):
-        # Pop attention before passing to AgentConfig so we control its name.
-        per_agent_attention = agent_raw.pop("attention", None)
+        # Accept both human-written ``attention:`` (YAML schema) and
+        # round-tripped ``attention_overrides:`` (asdict() serialization);
+        # prefer ``attention`` if both present.
+        per_agent_attention = agent_raw.pop("attention", agent_raw.pop("attention_overrides", None))
         agents.append(AgentConfig(**agent_raw, attention_overrides=per_agent_attention))
 
     return DaemonConfig(
