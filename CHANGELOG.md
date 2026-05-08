@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.4.2] - 2026-05-09
+
+### Changed
+
+- Refactored `_poll_loop` and `_parse_bands` to drop SonarCloud cognitive complexity below 15 (from 21 and 17 respectively). `_poll_loop` now delegates to `_tick_attention_poll` and `_poll_due_target` helpers; `_parse_bands` extracts a `_parse_band_entry` helper for the per-band parse + validate. No behavioral change. Propagated to all four backends. (#345 / PR #356)
+
+### Fixed
+
+- Replaced floating-point equality (`last == 0.0`) in `_on_ambient` with a membership check (`target not in self._last_engaged_at`). Cleaner intent and silences SonarCloud S1244. Propagated to all four backends. (#345 / PR #356)
+
 ## [10.4.1] - 2026-05-09
 
 ### Fixed

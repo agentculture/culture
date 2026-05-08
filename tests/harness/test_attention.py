@@ -49,8 +49,10 @@ def test_direct_stimulus_promotes_idle_to_hot():
     t.on_direct("#dev", now=10.0)
     state = t.snapshot()["#dev"]
     assert state.band == Band.HOT
-    assert state.last_promote_at == 10.0
-    assert state.last_stimulus_at == 10.0
+    # Stored value is read back unchanged (no arithmetic), but use approx
+    # so SonarCloud's S1244 (no float equality) doesn't flag.
+    assert state.last_promote_at == pytest.approx(10.0)
+    assert state.last_stimulus_at == pytest.approx(10.0)
 
 
 def test_ambient_one_step_warmer_capped_at_warm():
@@ -141,7 +143,8 @@ def test_clock_jump_backward_is_clamped():
 
 def test_due_targets_returns_targets_overdue_for_their_interval():
     t = AttentionTracker(_cfg())
-    t.on_direct("#a", now=0.0)  # HOT, interval_s=30
+    # HOT band -> 30s interval by default
+    t.on_direct("#a", now=0.0)
     # Never been polled -> due immediately at any now
     assert t.due_targets(now=0.0) == ["#a"]
     t.mark_polled("#a", now=0.0)

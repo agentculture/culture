@@ -298,30 +298,39 @@ class CopilotDaemon:
         while True:
             try:
                 await asyncio.sleep(tick_s)
-                if self._paused or not self._agent_runner or not self._agent_runner.is_running():
-                    continue
-                now = time.monotonic()
-                due = self._attention.due_targets(now) if self._attention else []
-                for target in due:
-                    self._send_channel_poll(target)
-                    if self._attention is not None:
-                        self._attention.mark_polled(target, now)
-                        if self._metrics is not None and getattr(
-                            self._metrics, "attention_polls", None
-                        ):
-                            band = self._attention.snapshot()[target].band
-                            self._metrics.attention_polls.add(
-                                1,
-                                attributes={
-                                    "agent": self.agent.nick,
-                                    "target": target,
-                                    "band": band.name,
-                                },
-                            )
+                self._tick_attention_poll()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("Poll loop error")
+
+    def _tick_attention_poll(self) -> None:
+        """One poll-loop iteration when attention is enabled. Helper for _poll_loop."""
+        if self._paused or not self._agent_runner or not self._agent_runner.is_running():
+            return
+        if self._attention is None:
+            return
+        now = time.monotonic()
+        for target in self._attention.due_targets(now):
+            self._poll_due_target(target, now)
+
+    def _poll_due_target(self, target: str, now: float) -> None:
+        """Poll one target and emit the OTel polls counter. Helper for _tick_attention_poll."""
+        self._send_channel_poll(target)
+        if self._attention is None:
+            return
+        self._attention.mark_polled(target, now)
+        if self._metrics is None or not getattr(self._metrics, "attention_polls", None):
+            return
+        band = self._attention.snapshot()[target].band
+        self._metrics.attention_polls.add(
+            1,
+            attributes={
+                "agent": self.agent.nick,
+                "target": target,
+                "band": band.name,
+            },
+        )
 
     async def _legacy_poll_loop(self) -> None:
         """Fixed-interval polling. Used when attention.enabled is false."""
@@ -480,12 +489,11 @@ class CopilotDaemon:
 
     def _on_ambient(self, target: str, sender: str, text: str) -> None:
         """Ambient stimulus — only counts if the agent has engagement on this target."""
-        if self._attention is None:
+        if self._attention is None or target not in self._last_engaged_at:
             return
         now = time.monotonic()
         thread_window_s = resolve_attention_config(self.config, self.agent).thread_window_s
-        last = self._last_engaged_at.get(target, 0.0)
-        if last == 0.0 or (now - last) > thread_window_s:
+        if (now - self._last_engaged_at[target]) > thread_window_s:
             return
         self._attention.on_ambient(target, now)
 

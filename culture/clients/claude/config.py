@@ -140,24 +140,28 @@ _BAND_NAMES = {
 }
 
 
+def _parse_band_entry(name: str, raw_spec: dict) -> tuple[Band, BandSpec]:
+    """Parse and validate a single band entry. Helper for _parse_bands."""
+    if name not in _BAND_NAMES:
+        raise ValueError(f"unknown band name: {name!r}")
+    band = _BAND_NAMES[name]
+    interval_s = raw_spec.get("interval_s")
+    if interval_s is None or interval_s <= 0:
+        raise ValueError(f"band {name}: interval_s must be > 0, got {interval_s!r}")
+    if band == Band.IDLE:
+        return band, BandSpec(interval_s=interval_s, hold_s=None)
+    hold_s = raw_spec.get("hold_s")
+    if hold_s is None or hold_s <= 0:
+        raise ValueError(f"band {name}: hold_s must be > 0, got {hold_s!r}")
+    return band, BandSpec(interval_s=interval_s, hold_s=hold_s)
+
+
 def _parse_bands(raw_bands: dict, defaults: dict[Band, BandSpec]) -> dict[Band, BandSpec]:
     """Shallow-merge raw band dict over defaults. Validates each entry."""
     result = dict(defaults)
     for name, raw_spec in (raw_bands or {}).items():
-        if name not in _BAND_NAMES:
-            raise ValueError(f"unknown band name: {name!r}")
-        band = _BAND_NAMES[name]
-        interval_s = raw_spec.get("interval_s")
-        hold_s = raw_spec.get("hold_s")
-        if interval_s is None or interval_s <= 0:
-            raise ValueError(f"band {name}: interval_s must be > 0, got {interval_s!r}")
-        if band == Band.IDLE:
-            if hold_s is not None:
-                hold_s = None
-        else:
-            if hold_s is None or hold_s <= 0:
-                raise ValueError(f"band {name}: hold_s must be > 0, got {hold_s!r}")
-        result[band] = BandSpec(interval_s=interval_s, hold_s=hold_s)
+        band, spec = _parse_band_entry(name, raw_spec)
+        result[band] = spec
     return result
 
 
