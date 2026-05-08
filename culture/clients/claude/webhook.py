@@ -59,6 +59,7 @@ class WebhookClient:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=10)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
 
         await asyncio.to_thread(_post)

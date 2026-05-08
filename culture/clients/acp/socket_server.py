@@ -44,9 +44,12 @@ class SocketServer:
 
         If no clients are connected yet, the whisper sits in the queue and
         will be delivered to the first client that completes its handshake.
+        This avoids race conditions in tests where send_whisper is called
+        shortly after open_unix_connection.
         """
         whisper = make_whisper(message, whisper_type)
         data = encode_message(whisper)
+        # If there are already connected clients, send immediately.
         if self._clients:
             for writer in list(self._clients):
                 try:
@@ -55,6 +58,7 @@ class SocketServer:
                 except OSError:
                     self._clients.remove(writer)
         else:
+            # No clients yet — queue for delivery when one connects.
             await self._whisper_queue.put(data)
 
     async def _handle_client(
