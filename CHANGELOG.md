@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.7] - 2026-05-08
+
+### Changed
+
+- `culture mesh setup` no longer writes per-workdir
+  `<workdir>/.culture/agents.yaml` files. Since PR #344 dropped the
+  legacy `--config` pin from generated systemd units, those files
+  were orphan writes that confused operators inspecting them.
+  Companion cleanup: `_generate_agent_configs` (was at
+  `culture/cli/mesh.py:260-296`), its call from `_cmd_setup`, and
+  the `CULTURE_DIR` / `AGENTS_YAML` constants in
+  `culture/cli/shared/constants.py` are gone. Closes #347.
+
 ## [10.3.6] - 2026-05-08
 
 ### Added

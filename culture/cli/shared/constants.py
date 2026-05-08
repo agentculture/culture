@@ -14,8 +14,6 @@ _BOT_NAME_HELP = "Bot name"
 
 DEFAULT_CHANNEL = "#general"
 NO_AGENTS_MSG = "No agents configured"
-CULTURE_DIR = ".culture"
-AGENTS_YAML = "agents.yaml"
 
 DEFAULT_SERVER_CONFIG = os.path.expanduser("~/.culture/server.yaml")
 LEGACY_CONFIG = os.path.expanduser("~/.culture/agents.yaml")
