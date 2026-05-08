@@ -17,6 +17,10 @@ from claude_agent_sdk import (
 )
 from opentelemetry import trace as _otel_trace
 
+from culture.clients.claude.constants import (
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+    STOP_GRACE_SECONDS,
+)
 from culture.clients.claude.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
@@ -70,7 +74,7 @@ class AgentRunner:
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
-        turn_timeout_seconds: float = 600.0,
+        turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -112,7 +116,7 @@ class AgentRunner:
         self._prompt_queue.put_nowait("")
         if self._task and not self._task.done():
             try:
-                async with asyncio.timeout(5.0):
+                async with asyncio.timeout(STOP_GRACE_SECONDS):
                     await asyncio.shield(self._task)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._task.cancel()

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.9] - 2026-05-08
+
+### Changed
+
+- Pulled `agent_runner` timeout magic numbers (600 / 120 / 30 /
+  300 / 5 / 1) into per-backend `constants.py` modules + a
+  project-wide `culture/_constants.py` for the cross-backend
+  default. Behavior is byte-identical; first step toward a
+  YAML-driven runtime config so users can override these via
+  `~/.culture/server.yaml` (follow-up).
+- New files: `culture/_constants.py`,
+  `culture/clients/{claude,codex,copilot,acp}/constants.py`,
+  `packages/agent-harness/constants.py`.
+- Edited 8 source files (4 `agent_runner.py` + 4 `daemon.py`)
+  plus `culture/config.py` and `packages/agent-harness/config.py`
+  to import named constants instead of carrying literals.
+
 ## [10.3.8] - 2026-05-08
 
 ### Added

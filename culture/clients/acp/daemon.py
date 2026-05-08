@@ -21,6 +21,7 @@ from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.acp.agent_runner import ACPAgentRunner
 from culture.clients.acp.config import AgentConfig, DaemonConfig
+from culture.clients.acp.constants import DEFAULT_TURN_TIMEOUT_SECONDS
 from culture.clients.acp.ipc import make_response
 from culture.clients.acp.irc_transport import IRCTransport
 from culture.clients.acp.message_buffer import MessageBuffer
@@ -401,7 +402,9 @@ class ACPDaemon:
             on_turn_error=self._on_turn_error,
             metrics=self._metrics,
             nick=self.agent.nick,
-            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
+            turn_timeout_seconds=getattr(
+                self.agent, "turn_timeout_seconds", DEFAULT_TURN_TIMEOUT_SECONDS
+            ),
         )
         # Absorb the system prompt response without relaying to IRC
         self._mention_targets.append(None)

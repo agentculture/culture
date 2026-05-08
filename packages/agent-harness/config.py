@@ -8,6 +8,15 @@ from pathlib import Path
 
 import yaml
 
+# Bare-name import works when this directory is on sys.path (the test
+# context). On citation into culture/clients/<backend>/, replace with
+# the absolute backend-prefixed path (e.g.
+# `from culture.clients.<backend>.constants import ...`), matching
+# the BACKEND-placeholder pattern in this file's daemon.py sibling.
+from constants import (  # noqa: E402,F401  # pylint: disable=import-error
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+)
+
 
 @dataclass
 class ServerConnConfig:
@@ -59,7 +68,9 @@ class AgentConfig:
     system_prompt: str = ""
     icon: str | None = None
     # Outer safety-net timeout for one SDK turn. 0 disables.
-    turn_timeout_seconds: float = 600.0
+    # Default lives in this module's constants.py so cited backends
+    # inherit the convention.
+    turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS
 
 
 @dataclass

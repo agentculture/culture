@@ -13,6 +13,10 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
+from culture.clients.copilot.constants import (
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+    INNER_SDK_TIMEOUT_SECONDS,
+)
 from culture.clients.copilot.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
@@ -35,7 +39,7 @@ class CopilotAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
-        turn_timeout_seconds: float = 600.0,
+        turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -208,11 +212,13 @@ class CopilotAgentRunner:
                     # restart cleanly.
                     if self._turn_timeout > 0:
                         response = await asyncio.wait_for(
-                            self._session.send_and_wait(text, timeout=120.0),
+                            self._session.send_and_wait(text, timeout=INNER_SDK_TIMEOUT_SECONDS),
                             timeout=self._turn_timeout,
                         )
                     else:
-                        response = await self._session.send_and_wait(text, timeout=120.0)
+                        response = await self._session.send_and_wait(
+                            text, timeout=INNER_SDK_TIMEOUT_SECONDS
+                        )
                     await self._handle_turn_response(response)
                 except asyncio.TimeoutError:
                     outcome = "timeout"

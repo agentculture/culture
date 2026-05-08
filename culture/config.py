@@ -16,6 +16,8 @@ from pathlib import Path
 import yaml
 from agentirc.config import TelemetryConfig
 
+from culture._constants import DEFAULT_TURN_TIMEOUT_SECONDS
+
 logger = logging.getLogger("culture")
 
 
@@ -78,7 +80,8 @@ class AgentConfig:
     # Outer safety-net timeout for one SDK turn. 0 disables.
     # Backends may have their own SDK-tuned inner timeouts; this wraps
     # them so a wedged stream cannot block _run_loop indefinitely.
-    turn_timeout_seconds: float = 600.0
+    # Default lives in culture/_constants.py for cross-backend reuse.
+    turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS
     extras: dict = field(default_factory=dict)
 
     # Computed at load time, not stored in YAML
