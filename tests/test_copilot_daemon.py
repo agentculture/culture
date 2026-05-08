@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from culture.clients.copilot.attention import AttentionConfig
 from culture.clients.copilot.config import (
     AgentConfig,
     DaemonConfig,
@@ -14,6 +13,7 @@ from culture.clients.copilot.config import (
     WebhookConfig,
 )
 from culture.clients.copilot.daemon import CopilotDaemon
+from culture.clients.shared.attention import AttentionConfig
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_copilot_daemon_ipc_irc_send(server, make_client):
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
 
-    from culture.clients.copilot.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     sock_path = os.path.join(sock_dir, "culture-testserv-copilot.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)

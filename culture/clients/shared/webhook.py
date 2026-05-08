@@ -1,3 +1,9 @@
+"""HTTP webhook client for harness alert events.
+
+Shared harness module — imported by every backend.
+See docs/architecture/shared-vs-cited.md.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +13,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
-from culture.clients.acp.config import WebhookConfig
+from culture.clients.shared.webhook_types import WebhookConfig
 
 logger = logging.getLogger(__name__)
 

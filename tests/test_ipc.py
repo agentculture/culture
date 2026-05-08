@@ -1,6 +1,6 @@
 import uuid
 
-from culture.clients.claude.ipc import (
+from culture.clients.shared.ipc import (
     MSG_TYPE_RESPONSE,
     MSG_TYPE_WHISPER,
     decode_message,

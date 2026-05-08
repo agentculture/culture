@@ -17,20 +17,20 @@ from collections import deque
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.copilot.agent_runner import CopilotAgentRunner
-from culture.clients.copilot.attention import AttentionTracker, Band
 from culture.clients.copilot.config import (
     AgentConfig,
     DaemonConfig,
     resolve_attention_config,
 )
 from culture.clients.copilot.constants import DEFAULT_TURN_TIMEOUT_SECONDS
-from culture.clients.copilot.ipc import make_response
-from culture.clients.copilot.irc_transport import IRCTransport
-from culture.clients.copilot.message_buffer import MessageBuffer
-from culture.clients.copilot.socket_server import SocketServer
 from culture.clients.copilot.supervisor import CopilotSupervisor
-from culture.clients.copilot.telemetry import init_harness_telemetry
-from culture.clients.copilot.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.attention import AttentionTracker, Band
+from culture.clients.shared.ipc import make_response
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.clients.shared.socket_server import SocketServer
+from culture.clients.shared.telemetry import init_harness_telemetry
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
 logger = logging.getLogger(__name__)

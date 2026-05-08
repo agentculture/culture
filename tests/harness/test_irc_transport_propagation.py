@@ -1,4 +1,4 @@
-"""Tests for traceparent inject/extract in packages/agent-harness/irc_transport.py.
+"""Tests for traceparent inject/extract in culture/clients/shared/irc_transport.py.
 
 Verifies:
 - Outbound lines carry @culture.dev/traceparent= when a span is active.
@@ -17,20 +17,12 @@ no real sockets are needed.  All tests are async (pytest-asyncio).
 from __future__ import annotations
 
 import asyncio
-import sys
-import types
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Patch the BACKEND placeholder import before importing irc_transport.
-# The reference module contains ``from culture.clients.BACKEND.message_buffer
-# import MessageBuffer`` — we inject a mock module so the import succeeds.
-# ---------------------------------------------------------------------------
-
-# Build a minimal fake MessageBuffer to satisfy the import.
-_fake_mb_module = types.ModuleType("culture.clients.BACKEND.message_buffer")
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.protocol.message import Message
 
 
 class _FakeMessageBuffer:
@@ -42,22 +34,6 @@ class _FakeMessageBuffer:
     def add(self, *args, **kwargs):
         """Stub for SDK type."""
 
-
-_fake_mb_module.MessageBuffer = _FakeMessageBuffer  # type: ignore[attr-defined]
-
-# Inject into sys.modules BEFORE importing irc_transport.
-sys.modules.setdefault("culture.clients.BACKEND", types.ModuleType("culture.clients.BACKEND"))
-sys.modules.setdefault(
-    "culture.clients.BACKEND.message_buffer",
-    _fake_mb_module,
-)
-
-# Now import irc_transport from the harness reference.
-# conftest.py has already inserted packages/agent-harness into sys.path.
-# pylint: disable=import-error,wrong-import-position
-from irc_transport import IRCTransport  # noqa: E402
-
-from culture.protocol.message import Message  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,4 +1,4 @@
-"""Unit tests for packages/agent-harness/telemetry.py.
+"""Unit tests for culture/clients/shared/telemetry.py.
 
 Tests are isolated — no IRCd, no real OTLP exporter. Each test resets all
 global OTEL provider state via ``reset_for_tests()`` before and after so
@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-# Imported via sys.path set in conftest.py
+# config is still cited per backend; imported via sys.path set in conftest.py.
 # pylint: disable=import-error
 from config import AgentConfig, DaemonConfig, ServerConnConfig, TelemetryConfig
 from opentelemetry import metrics as otel_metrics
@@ -19,7 +19,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
-from telemetry import (
+
+from culture.clients.shared.telemetry import (
     HarnessMetricsRegistry,
     init_harness_telemetry,
     record_llm_call,
@@ -145,7 +146,7 @@ def test_init_reinit_with_real_provider_shuts_down_old():
     )
     otel_metrics.set_meter_provider(first_provider)
 
-    import telemetry as _tel_module
+    from culture.clients.shared import telemetry as _tel_module
 
     _tel_module._meter_provider = first_provider
 
@@ -216,7 +217,7 @@ def test_init_with_metrics_reader_records_calls(harness_metrics_reader):
 
 def test_reset_for_tests_clears_globals(disabled_config):
     """After reset_for_tests() all module globals are None and OTEL unset."""
-    import telemetry as _tel_module
+    from culture.clients.shared import telemetry as _tel_module
 
     init_harness_telemetry(disabled_config)
 

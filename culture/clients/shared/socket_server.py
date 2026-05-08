@@ -1,3 +1,9 @@
+"""Unix-domain socket server for harness IPC.
+
+Shared harness module — imported by every backend.
+See docs/architecture/shared-vs-cited.md.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,7 +11,7 @@ import logging
 import os
 from typing import Any, Awaitable, Callable
 
-from culture.clients.copilot.ipc import decode_message, encode_message, make_response, make_whisper
+from culture.clients.shared.ipc import decode_message, encode_message, make_response, make_whisper
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,6 @@ or ``yaml.safe_load`` (YAML files) so that backend-specific SDK requirements
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
@@ -29,105 +28,9 @@ import yaml
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _HARNESS_REF = _REPO_ROOT / "packages" / "agent-harness"
 _CLIENTS = _REPO_ROOT / "culture" / "clients"
+_SHARED = _CLIENTS / "shared"
 
 BACKENDS = ["claude", "codex", "copilot", "acp"]
-
-# ---------------------------------------------------------------------------
-# Normalization helpers for test 1
-# ---------------------------------------------------------------------------
-
-_TRACER_NAME_LINE_RE = re.compile(r'^_HARNESS_TRACER_NAME\s*=\s*"culture\.harness(\.\w+)?"')
-_CITATION_LINE_RE = re.compile(r"^This is the \w+ citation of the reference module in$")
-_CITATION_PATH_LINE_RE = re.compile(r"^``packages/agent-harness/telemetry\.py``\.$")
-
-
-def _normalize_telemetry(text: str) -> list[str]:
-    """Return the lines of a telemetry.py source after stripping backend-specific lines.
-
-    Stripped lines:
-    1. The ``_HARNESS_TRACER_NAME = "culture.harness..."`` assignment line.
-    2. The per-backend citation sentence: "This is the X citation of the
-       reference module in" (only present in cited copies).
-    3. The path line that follows it: "``packages/agent-harness/telemetry.py``."
-    4. A blank line that immediately follows lines 2+3 (the blank that separates
-       the citation note from the "Backend-specific edit sites" heading).
-
-    After these four categories of lines are removed, both the reference and any
-    citation should produce an identical line list.
-    """
-    lines = text.splitlines()
-    result: list[str] = []
-    skip_next_blank = False
-
-    for line in lines:
-        stripped = line.strip()
-
-        # Strip the tracer-name assignment (both reference and citations have it,
-        # but with different values).
-        if _TRACER_NAME_LINE_RE.match(stripped):
-            continue
-
-        # Strip citation-identity lines present only in cited copies.
-        if _CITATION_LINE_RE.match(stripped):
-            skip_next_blank = True
-            continue
-        if _CITATION_PATH_LINE_RE.match(stripped):
-            continue
-
-        # Strip the blank line that follows the citation block inside the docstring.
-        if skip_next_blank and stripped == "":
-            skip_next_blank = False
-            continue
-        skip_next_blank = False
-
-        result.append(line)
-
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Test 1: telemetry.py byte-parity (after normalization)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("backend", BACKENDS)
-def test_telemetry_py_byte_parity(backend: str) -> None:
-    """After stripping the documented edit sites, each citation must equal the reference.
-
-    This test enforces the citation-parity invariant described in Plan 5 §8 and
-    the CLAUDE.md all-backends rule.  Any addition to a backend's telemetry.py
-    beyond the two documented edit sites (``_HARNESS_TRACER_NAME`` and the
-    citation-identifier docstring lines) will cause this test to fail.
-    """
-    ref_path = _HARNESS_REF / "telemetry.py"
-    backend_path = _CLIENTS / backend / "telemetry.py"
-
-    assert ref_path.exists(), f"Reference missing: {ref_path}"
-    assert backend_path.exists(), f"Citation missing for {backend}: {backend_path}"
-
-    ref_lines = _normalize_telemetry(ref_path.read_text(encoding="utf-8"))
-    backend_lines = _normalize_telemetry(backend_path.read_text(encoding="utf-8"))
-
-    if ref_lines != backend_lines:
-        # Build a concise diff to pin down the exact divergence in the failure message.
-        diff_lines: list[str] = []
-        max_lines = max(len(ref_lines), len(backend_lines))
-        for i in range(max_lines):
-            ref_line = ref_lines[i] if i < len(ref_lines) else "<missing>"
-            be_line = backend_lines[i] if i < len(backend_lines) else "<missing>"
-            if ref_line != be_line:
-                diff_lines.append(f"  line {i + 1}:")
-                diff_lines.append(f"    ref:     {ref_line!r}")
-                diff_lines.append(f"    {backend}: {be_line!r}")
-
-        divergence = "\n".join(diff_lines)
-        pytest.fail(
-            f"telemetry.py citation drift detected for backend '{backend}'.\n"
-            f"Normalized text differs from the reference after stripping documented edit sites.\n"
-            f"Diverging lines:\n{divergence}\n\n"
-            f"Fix: update culture/clients/{backend}/telemetry.py to match "
-            f"packages/agent-harness/telemetry.py (keeping only the two documented edit sites)."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +200,7 @@ def _ast_finds_import_of(tree: ast.Module, name: str, from_module_suffix: str) -
     """Return True if the AST has a top-level ``from X import ... name ...`` statement.
 
     ``from_module_suffix`` is matched as a suffix of the module path (e.g.
-    ``"telemetry"`` matches ``from culture.clients.claude.telemetry import ...``).
+    ``"telemetry"`` matches ``from culture.clients.shared.telemetry import ...``).
     ``name`` must appear in the imported names.
     """
     for node in ast.walk(tree):
@@ -311,17 +214,21 @@ def _ast_finds_import_of(tree: ast.Module, name: str, from_module_suffix: str) -
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_agent_runner_py_imports_record_llm_call(backend: str) -> None:
-    """agent_runner.py must import ``record_llm_call`` from the backend's telemetry module.
+    """agent_runner.py must import ``record_llm_call`` from the shared telemetry module.
 
     This test catches backends where someone reverted to a lazy/local import or
     removed the ``record_llm_call`` import entirely.
+
+    Telemetry was lifted into ``culture/clients/shared/telemetry.py`` — the
+    expected import path is now ``culture.clients.shared.telemetry`` for every
+    backend (``agent_runner.py`` itself remains per-backend).
     """
     runner_path = _CLIENTS / backend / "agent_runner.py"
     assert runner_path.exists(), f"agent_runner.py missing for {backend}: {runner_path}"
 
     tree = ast.parse(runner_path.read_text(encoding="utf-8"), filename=str(runner_path))
 
-    expected_module = f"culture.clients.{backend}.telemetry"
+    expected_module = "culture.clients.shared.telemetry"
     found = _ast_finds_import_of(tree, "record_llm_call", expected_module)
     assert found, (
         f"agent_runner.py for {backend} does not import 'record_llm_call' "
@@ -331,23 +238,24 @@ def test_agent_runner_py_imports_record_llm_call(backend: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5: agent_runner.py imports _HARNESS_TRACER_NAME from the backend's telemetry
+# Test 5: agent_runner.py imports _HARNESS_TRACER_NAME from the shared telemetry
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_agent_runner_py_imports_harness_tracer_name(backend: str) -> None:
-    """agent_runner.py must import ``_HARNESS_TRACER_NAME`` from the backend's telemetry module.
+    """agent_runner.py must import ``_HARNESS_TRACER_NAME`` from the shared telemetry module.
 
-    This ensures the agent runner references the backend-specific tracer name
-    constant rather than hard-coding a string literal.
+    This ensures the agent runner references the shared tracer name constant
+    rather than hard-coding a string literal. After the shared-harness move,
+    the import path is ``culture.clients.shared.telemetry`` for every backend.
     """
     runner_path = _CLIENTS / backend / "agent_runner.py"
     assert runner_path.exists(), f"agent_runner.py missing for {backend}: {runner_path}"
 
     tree = ast.parse(runner_path.read_text(encoding="utf-8"), filename=str(runner_path))
 
-    expected_module = f"culture.clients.{backend}.telemetry"
+    expected_module = "culture.clients.shared.telemetry"
     found = _ast_finds_import_of(tree, "_HARNESS_TRACER_NAME", expected_module)
     assert found, (
         f"agent_runner.py for {backend} does not import '_HARNESS_TRACER_NAME' "
@@ -373,25 +281,27 @@ def _ast_init_params(tree: ast.Module, class_name: str) -> set[str]:
     return set()
 
 
-@pytest.mark.parametrize("backend", BACKENDS)
-def test_irc_transport_py_constructor_accepts_telemetry_kwargs(backend: str) -> None:
+def test_irc_transport_py_constructor_accepts_telemetry_kwargs() -> None:
     """IRCTransport.__init__ must accept ``tracer``, ``metrics``, and ``backend`` parameters.
 
     Presence is required; defaults are not checked (any default is acceptable).
-    This test fails if someone removes these parameters or forgets to add them
-    when creating a new backend.
+    This test fails if someone removes these parameters from the shared transport.
+
+    irc_transport.py was lifted into ``culture/clients/shared/`` — there is now
+    a single source file rather than a per-backend copy, so this test is no
+    longer parametrized over backends.
     """
-    transport_path = _CLIENTS / backend / "irc_transport.py"
-    assert transport_path.exists(), f"irc_transport.py missing for {backend}: {transport_path}"
+    transport_path = _SHARED / "irc_transport.py"
+    assert transport_path.exists(), f"shared irc_transport.py missing: {transport_path}"
 
     tree = ast.parse(transport_path.read_text(encoding="utf-8"), filename=str(transport_path))
 
     params = _ast_init_params(tree, "IRCTransport")
-    assert params, f"IRCTransport class or __init__ not found in {backend}/irc_transport.py"
+    assert params, f"IRCTransport class or __init__ not found in {transport_path}"
 
     missing_params = _REQUIRED_TRANSPORT_PARAMS - params
     assert not missing_params, (
-        f"IRCTransport.__init__ in {backend}/irc_transport.py is missing "
+        f"IRCTransport.__init__ in {transport_path} is missing "
         f"parameter(s): {sorted(missing_params)}.\n"
         f"Required: {sorted(_REQUIRED_TRANSPORT_PARAMS)}.\n"
         f"Found: {sorted(params)}."

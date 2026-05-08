@@ -19,7 +19,7 @@ def agent_socket_path(nick: str) -> str:
 
 async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
     """Send an IPC request via Unix socket and return the response."""
-    from culture.clients.claude.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     try:
         reader, writer = await asyncio.wait_for(

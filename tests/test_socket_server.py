@@ -4,8 +4,8 @@ import tempfile
 
 import pytest
 
-from culture.clients.claude.ipc import decode_message, encode_message, make_request
-from culture.clients.claude.socket_server import SocketServer
+from culture.clients.shared.ipc import decode_message, encode_message, make_request
+from culture.clients.shared.socket_server import SocketServer
 
 
 @pytest.mark.asyncio

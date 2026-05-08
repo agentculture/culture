@@ -427,7 +427,7 @@ def _collect_bots() -> list[BotInfo]:
 
 async def _enrich_via_ipc(agents: dict[str, Agent], server_name: str) -> None:
     """Enrich local agents with daemon IPC status data."""
-    from culture.clients.claude.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     socket_pattern = os.path.join(culture_runtime_dir(), "culture-*.sock")
 

@@ -20,20 +20,20 @@ from collections import deque
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.acp.agent_runner import ACPAgentRunner
-from culture.clients.acp.attention import AttentionTracker, Band
 from culture.clients.acp.config import (
     AgentConfig,
     DaemonConfig,
     resolve_attention_config,
 )
 from culture.clients.acp.constants import DEFAULT_TURN_TIMEOUT_SECONDS
-from culture.clients.acp.ipc import make_response
-from culture.clients.acp.irc_transport import IRCTransport
-from culture.clients.acp.message_buffer import MessageBuffer
-from culture.clients.acp.socket_server import SocketServer
 from culture.clients.acp.supervisor import Supervisor, make_sdk_evaluate_fn
-from culture.clients.acp.telemetry import init_harness_telemetry
-from culture.clients.acp.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.attention import AttentionTracker, Band
+from culture.clients.shared.ipc import make_response
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.clients.shared.socket_server import SocketServer
+from culture.clients.shared.telemetry import init_harness_telemetry
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
 logger = logging.getLogger(__name__)

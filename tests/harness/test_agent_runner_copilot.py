@@ -73,7 +73,7 @@ _stub_copilot_sdk()
 
 # Now safe to import
 from culture.clients.copilot.agent_runner import CopilotAgentRunner  # noqa: E402
-from culture.clients.copilot.telemetry import (  # noqa: E402
+from culture.clients.shared.telemetry import (  # noqa: E402
     HarnessMetricsRegistry,
     _build_registry,
     reset_for_tests,

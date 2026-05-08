@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from culture.clients.codex.attention import (
+from culture.clients.shared.attention import (
     AttentionConfig,
     Band,
     BandSpec,

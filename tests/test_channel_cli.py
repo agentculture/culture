@@ -17,7 +17,7 @@ from culture.cli.channel import (
     register,
 )
 from culture.cli.shared.ipc import ipc_request
-from culture.clients.claude.ipc import encode_message, make_response
+from culture.clients.shared.ipc import encode_message, make_response
 
 # ---------------------------------------------------------------------------
 # Helpers

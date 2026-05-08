@@ -35,8 +35,8 @@ async def test_transport_negotiates_message_tags(server, make_client):
     """
     from agentirc.protocol import Event, EventType
 
-    from culture.clients.claude.irc_transport import IRCTransport
-    from culture.clients.claude.message_buffer import MessageBuffer
+    from culture.clients.shared.irc_transport import IRCTransport
+    from culture.clients.shared.message_buffer import MessageBuffer
 
     buf = MessageBuffer()
     transport = IRCTransport(

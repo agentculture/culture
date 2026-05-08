@@ -19,10 +19,10 @@ from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
 from culture.clients.acp import constants as _acp_const
-from culture.clients.acp.telemetry import _HARNESS_TRACER_NAME, record_llm_call
+from culture.clients.shared.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
-    from culture.clients.acp.telemetry import HarnessMetricsRegistry
+    from culture.clients.shared.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 

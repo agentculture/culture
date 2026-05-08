@@ -7,7 +7,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
-from attention import (  # noqa: E402  # pylint: disable=import-error
+
+# Attention was lifted into culture/clients/shared/ — every backend (and the
+# reference here) imports from the shared location.
+from culture.clients.shared.attention import (
     AttentionConfig,
     Band,
     BandSpec,

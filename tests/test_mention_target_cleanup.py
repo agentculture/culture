@@ -10,13 +10,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from culture.clients.acp.attention import AttentionConfig
 from culture.clients.acp.config import (
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
 )
 from culture.clients.acp.daemon import ACPDaemon
+from culture.clients.shared.attention import AttentionConfig
 
 
 def _make_daemon(server_port: int) -> ACPDaemon:

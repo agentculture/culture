@@ -5,8 +5,8 @@ import tempfile
 
 import pytest
 
-from culture.clients.claude.ipc import encode_message, make_response, make_whisper
 from culture.clients.claude.skill.irc_client import SkillClient
+from culture.clients.shared.ipc import encode_message, make_response, make_whisper
 
 
 @pytest.mark.asyncio

@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from culture.clients.acp.agent_runner import ACPAgentRunner
-from culture.clients.acp.telemetry import (
+from culture.clients.shared.telemetry import (
     HarnessMetricsRegistry,
     _build_registry,
     reset_for_tests,
