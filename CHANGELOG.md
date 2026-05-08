@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.4.3] - 2026-05-09
+
+### Fixed
+
+- Tests that explicitly used `poll_interval=N` to drive the legacy fast poll loop (test_poll_loop, test_acp_daemon, test_codex_daemon, test_copilot_daemon, test_mention_target_cleanup) hung under the new attention defaults because the tick-based loop fires every 5s, slower than their <2s timing assumptions. Each affected DaemonConfig now also passes `attention=AttentionConfig(enabled=False)` so they continue to exercise the legacy poll path. (#345 / PR #356)
+
 ## [10.4.2] - 2026-05-09
 
 ### Changed

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from culture.clients.copilot.attention import AttentionConfig
 from culture.clients.copilot.config import (
     AgentConfig,
     DaemonConfig,
@@ -152,6 +153,10 @@ def _make_copilot_daemon(server_port: int) -> CopilotDaemon:
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server_port),
         poll_interval=0,
+        # Disable attention so the legacy poll loop honors poll_interval=0
+        # (which exits immediately). New attention defaults would otherwise
+        # tick every 5s and poll seeded channels at IDLE cadence.
+        attention=AttentionConfig(enabled=False),
     )
     agent = AgentConfig(
         nick="testserv-copilot",

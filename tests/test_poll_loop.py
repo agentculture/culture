@@ -4,12 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from culture.clients.claude.attention import AttentionConfig
 from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
 )
 from culture.clients.claude.daemon import AgentDaemon
+
+# These tests exercise the legacy fixed-interval poll loop. The new
+# attention-driven loop ticks every ``attention.tick_s`` seconds (default 5s),
+# which would never satisfy the sub-2s timing assertions below, so we
+# explicitly opt every DaemonConfig in this file into the legacy path.
+_LEGACY_ATTENTION = AttentionConfig(enabled=False)
 
 
 def _inject_fake_runner(daemon):
@@ -28,6 +35,7 @@ async def test_poll_loop_sends_prompt_on_unread(server, make_client):
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         poll_interval=1,  # 1 second for fast testing
+        attention=_LEGACY_ATTENTION,
     )
     agent = AgentConfig(nick="testserv-bot", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
@@ -60,6 +68,7 @@ async def test_poll_loop_skips_when_paused(server, make_client):
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         poll_interval=1,
+        attention=_LEGACY_ATTENTION,
     )
     agent = AgentConfig(nick="testserv-bot", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
@@ -96,6 +105,7 @@ async def test_poll_loop_skips_empty_buffer(server):
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         poll_interval=1,
+        attention=_LEGACY_ATTENTION,
     )
     agent = AgentConfig(nick="testserv-bot", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
@@ -116,6 +126,7 @@ async def test_poll_loop_disabled_with_zero_interval(server):
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         poll_interval=0,
+        attention=_LEGACY_ATTENTION,
     )
     agent = AgentConfig(nick="testserv-bot", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
