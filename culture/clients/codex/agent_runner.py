@@ -388,14 +388,21 @@ class CodexAgentRunner:
                     await self._turn_done.wait()
             except asyncio.TimeoutError:
                 outcome = "timeout"
-                # Either the inner _send_request 30 s or the outer
-                # turn_timeout fired — log both budgets so the cause is
-                # diagnosable from the journal alone.
+                # Either the inner _send_request 30 s budget or the
+                # outer turn_timeout fired. Distinguish via the
+                # configured outer value so the journal tells the
+                # operator which budget to tune.
+                if self._turn_timeout > 0:
+                    cause = (
+                        f"outer turn_timeout_seconds={self._turn_timeout}s "
+                        "or inner _send_request budget 30s"
+                    )
+                else:
+                    cause = "inner _send_request budget 30s (outer disabled)"
                 logger.warning(
-                    "Codex turn timed out (inner request budget 30s, outer "
-                    "turn_timeout_seconds=%ss); terminating subprocess so "
+                    "Codex turn timed out (%s); terminating subprocess so "
                     "cleanup → on_exit fires for crash recovery",
-                    self._turn_timeout,
+                    cause,
                 )
                 self._turn_done.set()
                 if self.on_turn_error:
