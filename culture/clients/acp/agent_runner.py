@@ -18,12 +18,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from opentelemetry import trace as _otel_trace
 
 from culture.aio import maybe_await
-from culture.clients.acp.constants import (
-    DEFAULT_TURN_TIMEOUT_SECONDS,
-    INNER_REQUEST_TIMEOUT_SECONDS,
-    PROCESS_KILL_GRACE_SECONDS,
-    PROCESS_TERMINATE_GRACE_SECONDS,
-)
+from culture.clients.acp import constants as _C
 from culture.clients.acp.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
@@ -51,7 +46,7 @@ class ACPAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
-        turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS,
+        turn_timeout_seconds: float = _C.DEFAULT_TURN_TIMEOUT_SECONDS,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -63,7 +58,7 @@ class ACPAgentRunner:
         self._metrics = metrics
         self._nick = nick
         # Outer safety net for the whole prompt round-trip (send +
-        # busy-poll). The inner INNER_REQUEST_TIMEOUT_SECONDS on
+        # busy-poll). The inner _C.INNER_REQUEST_TIMEOUT_SECONDS on
         # _send_request stays — it bounds individual JSON-RPC
         # requests; this fires if the busy-flag never clears (the
         # failure mode that motivated issue #349).
@@ -200,7 +195,7 @@ class ACPAgentRunner:
             return
         try:
             self._process.terminate()
-            async with asyncio.timeout(PROCESS_TERMINATE_GRACE_SECONDS):
+            async with asyncio.timeout(_C.PROCESS_TERMINATE_GRACE_SECONDS):
                 await self._process.wait()
         except (asyncio.TimeoutError, ProcessLookupError):
             try:
@@ -295,7 +290,7 @@ class ACPAgentRunner:
         if not self._process:
             return -1
         try:
-            async with asyncio.timeout(PROCESS_TERMINATE_GRACE_SECONDS):
+            async with asyncio.timeout(_C.PROCESS_TERMINATE_GRACE_SECONDS):
                 return await self._process.wait()
         except asyncio.TimeoutError:
             try:
@@ -303,7 +298,7 @@ class ACPAgentRunner:
             except ProcessLookupError:
                 pass
             try:
-                async with asyncio.timeout(PROCESS_KILL_GRACE_SECONDS):
+                async with asyncio.timeout(_C.PROCESS_KILL_GRACE_SECONDS):
                     return await self._process.wait()
             except asyncio.TimeoutError:
                 return -1
@@ -430,7 +425,7 @@ class ACPAgentRunner:
             return await self._send_request(
                 "session/prompt",
                 prompt_params,
-                timeout=INNER_REQUEST_TIMEOUT_SECONDS,
+                timeout=_C.INNER_REQUEST_TIMEOUT_SECONDS,
             )
         except TimeoutError:
             logger.warning(
@@ -440,7 +435,7 @@ class ACPAgentRunner:
             return await self._send_request(
                 "session/prompt",
                 prompt_params,
-                timeout=INNER_REQUEST_TIMEOUT_SECONDS,
+                timeout=_C.INNER_REQUEST_TIMEOUT_SECONDS,
             )
 
     async def _handle_prompt_result(self, resp: dict) -> None:
