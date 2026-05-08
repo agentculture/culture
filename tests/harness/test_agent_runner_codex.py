@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from opentelemetry import metrics as otel_metrics
@@ -246,6 +246,11 @@ async def test_execute_single_turn_honors_configured_turn_timeout(metrics_reader
         turn_timeout_seconds=0.05,
     )
     runner._thread_id = "test-thread-id"
+    # Attach a fake subprocess so the timeout handler exercises the
+    # terminate path that triggers _cleanup_codex_process → on_exit.
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    runner._process = fake_process
 
     # _send_request returns immediately without firing _turn_done; the
     # wait below would block forever without the outer timeout.
@@ -258,6 +263,7 @@ async def test_execute_single_turn_honors_configured_turn_timeout(metrics_reader
         await runner._execute_single_turn("hello")
 
     runner.on_turn_error.assert_awaited_once()
+    fake_process.terminate.assert_called_once()
     calls_val = _get_metric_value(
         metrics_reader,
         "culture.harness.llm.calls",

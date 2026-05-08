@@ -474,9 +474,23 @@ class ACPAgentRunner:
                 # and the outer asyncio.timeout above raise TimeoutError
                 # (asyncio.TimeoutError is a TimeoutError alias in 3.11+).
                 outcome = "timeout"
-                logger.exception("ACP turn timeout")
+                logger.exception(
+                    "ACP turn timeout (turn_timeout_seconds=%ss); "
+                    "terminating subprocess so cleanup → on_exit fires "
+                    "for crash recovery",
+                    self._turn_timeout,
+                )
                 if self.on_turn_error:
                     await maybe_await(self.on_turn_error())
+                # Terminate the wedged subprocess so the read-loop EOF
+                # triggers _cleanup_process → on_exit(returncode) →
+                # daemon._on_agent_exit → _delayed_restart. Without
+                # this, ACP timeouts never reach crash recovery.
+                if self._process is not None and self._process.returncode is None:
+                    try:
+                        self._process.terminate()
+                    except ProcessLookupError:
+                        pass
             except Exception:
                 outcome = "error"
                 logger.exception("ACP turn error")

@@ -388,10 +388,28 @@ class CodexAgentRunner:
                     await self._turn_done.wait()
             except asyncio.TimeoutError:
                 outcome = "timeout"
-                logger.warning("Codex turn timed out after %ss", self._turn_timeout)
+                # Either the inner _send_request 30 s or the outer
+                # turn_timeout fired — log both budgets so the cause is
+                # diagnosable from the journal alone.
+                logger.warning(
+                    "Codex turn timed out (inner request budget 30s, outer "
+                    "turn_timeout_seconds=%ss); terminating subprocess so "
+                    "cleanup → on_exit fires for crash recovery",
+                    self._turn_timeout,
+                )
                 self._turn_done.set()
                 if self.on_turn_error:
                     await maybe_await(self.on_turn_error())
+                # Terminate the wedged subprocess. The read-loop sees
+                # EOF, _cleanup_codex_process runs, and the daemon's
+                # _on_agent_exit schedules _delayed_restart. Without
+                # this, on_exit is never called and the agent stays
+                # stuck.
+                if self._process is not None and self._process.returncode is None:
+                    try:
+                        self._process.terminate()
+                    except ProcessLookupError:
+                        pass
             except Exception:
                 outcome = "error"
                 logger.exception("Codex turn error")

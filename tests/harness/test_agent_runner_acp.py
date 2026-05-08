@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from opentelemetry import metrics as otel_metrics
@@ -249,6 +249,11 @@ async def test_execute_single_prompt_outer_timeout_fires_on_busy_poll_wedge(
         turn_timeout_seconds=0.05,
     )
     runner._session_id = "test-session-id"
+    # Attach a fake subprocess so the timeout handler exercises the
+    # terminate path that triggers _cleanup_process → on_exit.
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    runner._process = fake_process
 
     # _send_prompt_with_retry returns immediately (no inner timeout
     # fires); _handle_prompt_result hangs on a never-resolving future,
@@ -268,6 +273,7 @@ async def test_execute_single_prompt_outer_timeout_fires_on_busy_poll_wedge(
             await runner._execute_single_prompt("hello")
 
     runner.on_turn_error.assert_awaited_once()
+    fake_process.terminate.assert_called_once()
     calls_val = _get_metric_value(
         metrics_reader,
         "culture.harness.llm.calls",
