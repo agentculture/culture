@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.4.3] - 2026-05-09
+
+### Fixed
+
+- Tests that explicitly used `poll_interval=N` to drive the legacy fast poll loop (test_poll_loop, test_acp_daemon, test_codex_daemon, test_copilot_daemon, test_mention_target_cleanup) hung under the new attention defaults because the tick-based loop fires every 5s, slower than their <2s timing assumptions. Each affected DaemonConfig now also passes `attention=AttentionConfig(enabled=False)` so they continue to exercise the legacy poll path. (#345 / PR #356)
+
+## [10.4.2] - 2026-05-09
+
+### Changed
+
+- Refactored `_poll_loop` and `_parse_bands` to drop SonarCloud cognitive complexity below 15 (from 21 and 17 respectively). `_poll_loop` now delegates to `_tick_attention_poll` and `_poll_due_target` helpers; `_parse_bands` extracts a `_parse_band_entry` helper for the per-band parse + validate. No behavioral change. Propagated to all four backends. (#345 / PR #356)
+
+### Fixed
+
+- Replaced floating-point equality (`last == 0.0`) in `_on_ambient` with a membership check (`target not in self._last_engaged_at`). Cleaner intent and silences SonarCloud S1244. Propagated to all four backends. (#345 / PR #356)
+
+## [10.4.1] - 2026-05-09
+
+### Fixed
+
+- Quiet channels never polled when attention enabled — daemon now seeds the AttentionTracker with all configured `agent.channels` at startup so they are due at their IDLE cadence even before any stimulus arrives (#345 / PR #356).
+- Default `poll_interval` regression — configs that omit both `attention:` and `poll_interval` now correctly use the legacy 60s default for IDLE polling, not the new 600s default. HOT/WARM/COOL still clamp to ≤ legacy. (#345 / PR #356)
+
+## [10.4.0] - 2026-05-09
+
+### Added
+
+- Dynamic per-target attention bands (HOT/WARM/COOL/IDLE) for agent polling. Direct stimuli (@mention, DM) promote to HOT; ambient channel traffic in active threads promotes one band warmer (capped at WARM); quiet targets decay one band per hold window down to IDLE. New `attention:` config block in `~/.culture/server.yaml` with per-agent overrides in `culture.yaml`. (#345)
+- Pure `AttentionTracker` state machine in `packages/agent-harness/attention.py`, cited byte-identically into all four backends.
+- New transport callbacks `IRCTransport.on_ambient` and `IRCTransport.on_outgoing` for ambient-message and outgoing-send hooks.
+- OTel counters `culture.attention.transitions` and `culture.attention.polls` with cause/band/agent/target attributes.
+
+### Changed
+
+- Daemon poll loop is now tick-driven (`attention.tick_s`, default 5s) when `attention.enabled: true` (default). Falls back to fixed-interval `_legacy_poll_loop` when `attention.enabled: false`.
+- Legacy `poll_interval` migrates into `attention.bands.idle.interval_s` when no `attention:` block is configured; HOT/WARM/COOL also clamp to ≤ `poll_interval` so quiet channels never poll slower than the legacy default. Existing deployments get faster polling when tagged for free.
+- `IRCTransport._detect_and_fire_mention` now returns `bool` so the privmsg handler routes ambient-vs-direct paths correctly without double-firing.
+
 ## [10.3.9] - 2026-05-08
 
 ### Changed

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from culture.clients.acp.attention import AttentionConfig
 from culture.clients.acp.config import (
     AgentConfig,
     DaemonConfig,
@@ -166,6 +167,10 @@ async def test_acp_poll_loop_uses_fire_and_forget(server, make_client):
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         poll_interval=1,
+        # This test exercises the legacy fire-and-forget poll loop. The
+        # new attention loop ticks every 5s by default, which would never
+        # fire within the 1.5s wait below.
+        attention=AttentionConfig(enabled=False),
     )
     agent = AgentConfig(nick="testserv-opencode", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()

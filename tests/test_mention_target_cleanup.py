@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from culture.clients.acp.attention import AttentionConfig
 from culture.clients.acp.config import (
     AgentConfig,
     DaemonConfig,
@@ -22,6 +23,8 @@ def _make_daemon(server_port: int) -> ACPDaemon:
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server_port),
         poll_interval=0,
+        # Disable attention so the legacy poll loop honors poll_interval=0.
+        attention=AttentionConfig(enabled=False),
     )
     agent = AgentConfig(
         nick="testserv-bot",

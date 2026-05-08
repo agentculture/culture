@@ -57,6 +57,8 @@ sys.modules.setdefault(
 # pylint: disable=import-error,wrong-import-position
 from irc_transport import IRCTransport  # noqa: E402
 
+from culture.protocol.message import Message  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -445,3 +447,75 @@ async def test_send_raw_direct_carries_traceparent(harness_tracing_exporter):
         "@culture.dev/traceparent=00-"
     ), f"send_raw() direct call must inject traceparent; got: {line!r}"
     assert "PRIVMSG #x :hi" in line, f"Expected PRIVMSG body preserved; got: {line!r}"
+
+
+# ---------------------------------------------------------------------------
+# Attention callbacks (#345): on_ambient / on_outgoing
+# ---------------------------------------------------------------------------
+
+
+def _priv(sender: str, target: str, text: str) -> Message:
+    """Build a synthetic PRIVMSG Message for the privmsg handler tests."""
+    return Message(
+        prefix=f"{sender}!~{sender}@host",
+        command="PRIVMSG",
+        params=[target, text],
+    )
+
+
+def test_on_ambient_fires_for_non_mention_privmsg():
+    received: list[tuple[str, str, str]] = []
+    transport = _make_transport()
+    transport.nick = "thor-claude"
+    transport.on_ambient = lambda t, s, x: received.append((t, s, x))
+    transport.on_mention = lambda t, s, x: None
+
+    transport._on_privmsg(_priv("alice", "#dev", "hello world"))
+    assert received == [("#dev", "alice", "hello world")]
+
+
+def test_on_ambient_does_not_fire_for_mentions():
+    received_ambient: list = []
+    received_mention: list = []
+    transport = _make_transport()
+    transport.nick = "thor-claude"
+    transport.on_ambient = lambda t, s, x: received_ambient.append((t, s, x))
+    transport.on_mention = lambda t, s, x: received_mention.append((t, s, x))
+
+    transport._on_privmsg(_priv("alice", "#dev", "hello @thor-claude"))
+    assert received_ambient == []
+    assert received_mention == [("#dev", "alice", "hello @thor-claude")]
+
+
+def test_on_ambient_does_not_fire_for_dm():
+    """A DM is always direct (target == own nick)."""
+    received_ambient: list = []
+    transport = _make_transport()
+    transport.nick = "thor-claude"
+    transport.on_ambient = lambda t, s, x: received_ambient.append((t, s, x))
+    transport.on_mention = lambda *_: None
+
+    transport._on_privmsg(_priv("alice", "thor-claude", "psst"))
+    assert received_ambient == []
+
+
+def test_on_ambient_skips_system_messages():
+    received_ambient: list = []
+    transport = _make_transport()
+    transport.nick = "thor-claude"
+    transport.on_ambient = lambda t, s, x: received_ambient.append((t, s, x))
+
+    transport._on_privmsg(_priv("system-thor", "#dev", "user.join alice"))
+    assert received_ambient == []
+
+
+@pytest.mark.asyncio
+async def test_on_outgoing_fires_after_send():
+    received: list = []
+    transport = _make_transport()
+    transport.nick = "thor-claude"
+    transport.on_outgoing = lambda t, line: received.append((t, line))
+    _inject_rw(transport)  # capture writer so send_privmsg can complete
+
+    await transport.send_privmsg("#dev", "hi")
+    assert received == [("#dev", "hi")]
