@@ -18,7 +18,7 @@ import time
 from culture.cli.console import dispatch_resolved_argv as console_dispatch
 from culture.config import ServerConfig, load_config, load_config_or_default
 
-from .shared.constants import _CONFIG_HELP, AGENTS_YAML, CULTURE_DIR, DEFAULT_CONFIG
+from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
 from .shared.process import server_stop_by_name, stop_agent
 
@@ -257,45 +257,6 @@ def _store_mesh_credentials(mesh) -> None:
                 )
 
 
-def _generate_agent_configs(mesh, server_name: str) -> None:
-    """Generate agents.yaml for each agent workdir defined in the mesh config."""
-    from culture.clients.claude.config import AgentConfig as BaseAgentConfig
-    from culture.clients.claude.config import (
-        DaemonConfig,
-        ServerConnConfig,
-        save_config,
-    )
-
-    workdir_agents: dict[str, list] = {}
-    for agent in mesh.agents:
-        workdir = os.path.expanduser(agent.workdir)
-        workdir_agents.setdefault(workdir, []).append(agent)
-
-    for workdir, agents in workdir_agents.items():
-        os.makedirs(workdir, exist_ok=True)
-        config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
-
-        agent_configs = []
-        for a in agents:
-            full_nick = f"{server_name}-{a.nick}"
-            agent_configs.append(
-                BaseAgentConfig(
-                    nick=full_nick,
-                    agent=a.type,
-                    directory=workdir,
-                    channels=a.channels,
-                )
-            )
-
-        daemon_config = DaemonConfig(
-            server=ServerConnConfig(name=server_name, host="localhost", port=mesh.server.port),
-            agents=agent_configs,
-        )
-        save_config(config_path, daemon_config)
-        print(f"  Wrote {config_path}")
-
-
 def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path: str) -> None:
     """Install auto-start service entries for the server and all agents."""
     from culture.persistence import install_service
@@ -354,8 +315,6 @@ def _cmd_setup(args: argparse.Namespace) -> None:
         return
 
     _store_mesh_credentials(mesh)
-
-    _generate_agent_configs(mesh, server_name)
 
     culture_bin = shutil.which("culture") or "culture"
     _install_mesh_services(mesh, server_name, culture_bin, args.config)
