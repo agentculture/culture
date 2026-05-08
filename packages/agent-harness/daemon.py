@@ -23,7 +23,12 @@ from typing import Any
 # These imports point to YOUR backend's copies of these files:
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
-from culture.clients.BACKEND.config import AgentConfig, DaemonConfig
+from culture.clients.BACKEND.attention import AttentionTracker, Band
+from culture.clients.BACKEND.config import (
+    AgentConfig,
+    DaemonConfig,
+    resolve_attention_config,
+)
 from culture.clients.BACKEND.ipc import make_response
 from culture.clients.BACKEND.irc_transport import IRCTransport
 from culture.clients.BACKEND.message_buffer import MessageBuffer
@@ -103,6 +108,11 @@ class AgentDaemon:
         self._status_query_response: str = ""
         self._last_activity_text: str = ""
 
+        # Attention state — initialized by _init_attention(), called from start()
+        self._attention: AttentionTracker | None = None
+        self._attention_enabled: bool = False
+        self._last_engaged_at: dict[str, float] = {}
+
         # IPC dispatch table — maps message type → bound handler method
         self._ipc_dispatch: dict = {
             "irc_send": self._ipc_irc_send,
@@ -130,6 +140,28 @@ class AgentDaemon:
         """Register an external stop event for coordinated shutdown."""
         self._stop_event = event
 
+    def _init_attention(self) -> None:
+        """Build the AttentionTracker from merged config. Called once at start."""
+        attention_cfg = resolve_attention_config(self.config, self.agent)
+        self._attention_enabled = attention_cfg.enabled
+        self._attention = AttentionTracker(
+            attention_cfg, on_transition=self._on_attention_transition
+        )
+
+    def _on_attention_transition(self, target: str, prev: Band, new: Band, cause: str) -> None:
+        """Logging hook for attention band transitions.
+
+        OTel metrics are emitted from here once Task 5 wires them up.
+        """
+        logger.info(
+            "attention: agent=%s target=%s band=%s→%s cause=%s",
+            self.agent.nick,
+            target,
+            prev.name,
+            new.name,
+            cause,
+        )
+
     async def start(self) -> None:
         """Start all daemon components."""
         # 0. OTEL telemetry (if telemetry.enabled, installs SDK providers; else no-op).
@@ -151,6 +183,8 @@ class AgentDaemon:
             metrics=self._metrics,
             backend="BACKEND",  # Tasks 4–7 will replace this with claude/codex/copilot/acp
         )
+        self._transport.on_ambient = self._on_ambient
+        self._transport.on_outgoing = self._on_outgoing
         await self._transport.connect()
 
         # 3. Webhook client
@@ -173,7 +207,10 @@ class AgentDaemon:
         # 6. Sleep scheduler background task
         self._sleep_task = asyncio.create_task(self._sleep_scheduler())
 
-        # 7. Channel poll background task
+        # 7. Initialize attention state machine (#345)
+        self._init_attention()
+
+        # 8. Channel poll background task
         self._poll_task = asyncio.create_task(self._poll_loop())
 
     async def stop(self) -> None:
@@ -262,7 +299,30 @@ class AgentDaemon:
                 logger.exception("Sleep scheduler error")
 
     async def _poll_loop(self) -> None:
-        """Background task that periodically checks channels for unread messages."""
+        """Background task: tick-driven when attention.enabled, else legacy fixed-interval."""
+        if not self._attention_enabled:
+            await self._legacy_poll_loop()
+            return
+        attention_cfg = resolve_attention_config(self.config, self.agent)
+        tick_s = attention_cfg.tick_s
+        while True:
+            try:
+                await asyncio.sleep(tick_s)
+                if self._paused or not self._agent_runner or not self._agent_runner.is_running():
+                    continue
+                now = time.monotonic()
+                due = self._attention.due_targets(now) if self._attention else []
+                for target in due:
+                    self._send_channel_poll(target)
+                    if self._attention is not None:
+                        self._attention.mark_polled(target, now)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Poll loop error")
+
+    async def _legacy_poll_loop(self) -> None:
+        """Fixed-interval polling. Used when attention.enabled is false."""
         interval = self.config.poll_interval
         if interval <= 0:
             return
@@ -334,7 +394,16 @@ class AgentDaemon:
         """Called when the agent is @mentioned. Sends prompt to runner.
 
         When the mention is inside a thread, provides thread-scoped context.
+
+        Attention state is updated unconditionally — even when paused — so
+        the agent is correctly warm on resume. Only the prompt-building/
+        relay path is gated by ``_paused``.
         """
+        now = time.monotonic()
+        self._last_engaged_at[target] = now
+        if self._attention is not None:
+            self._attention.on_direct(target, now)
+
         if self._paused:
             return
         self._last_activation = time.time()
@@ -345,6 +414,26 @@ class AgentDaemon:
         # Queue the prompt to your agent runner here:
         # await self._agent_runner.send_prompt(prompt)
         logger.info("@mention prompt (%d chars) from %s in %s", len(prompt), sender, target)
+
+    def _on_ambient(self, target: str, sender: str, text: str) -> None:
+        """Ambient stimulus — only counts if the agent has engagement on this target.
+
+        Engagement = "I have spoken or been mentioned on T within the
+        thread_window_s window." Updates tracker state even while paused
+        (same reasoning as ``_on_mention``).
+        """
+        if self._attention is None:
+            return
+        now = time.monotonic()
+        thread_window_s = resolve_attention_config(self.config, self.agent).thread_window_s
+        last = self._last_engaged_at.get(target, 0.0)
+        if last == 0.0 or (now - last) > thread_window_s:
+            return
+        self._attention.on_ambient(target, now)
+
+    def _on_outgoing(self, target: str, line: str) -> None:
+        """Track that the agent has spoken on this target — opens the thread window."""
+        self._last_engaged_at[target] = time.monotonic()
 
     def _build_channel_prompt(self, target: str, sender: str, text: str) -> str:
         """Build a prompt for a channel @mention, including thread context if present."""
