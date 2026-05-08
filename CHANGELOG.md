@@ -20,7 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   to `~/.culture/server.yaml` via argparse. New regression test in
   `tests/test_setup_update_cli.py` asserts the absence of `--config`
   and any `.culture/agents.yaml` token in the generated agent argv.
-  Recovery runbook for stale 10.3.x units at
+  Recovery runbook for stale pre-10.3.5 units at
   `docs/reference/cli/agent-systemd.md`.
 
 ## [10.3.4] - 2026-05-08

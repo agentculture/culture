@@ -26,9 +26,9 @@ argparse default — `~/.culture/server.yaml`, the manifest the rest of
 the CLI uses. Anything specified in that manifest (workdir, channels,
 backend) is what the daemon reads.
 
-## Recovering from stale 10.3.x units
+## Recovering from stale pre-10.3.5 units
 
-Up to and including culture 10.3.5, the unit generator pinned a legacy
+Before culture 10.3.5, the unit generator pinned a legacy
 `--config <workdir>/.culture/agents.yaml` path that culture had
 already migrated away from. On machines where that per-workdir file no
 longer exists, the daemon exited 1 immediately, systemd restarted it 5
