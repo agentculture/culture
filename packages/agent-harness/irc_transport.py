@@ -58,6 +58,8 @@ class IRCTransport:
         self.channels = list(channels)
         self.buffer = buffer
         self.on_mention = on_mention
+        self.on_ambient: Callable[[str, str, str], None] | None = None
+        self.on_outgoing: Callable[[str, str], None] | None = None
         self.tags = tags or []
         self.on_roominvite = on_roominvite
         self.icon = icon
@@ -149,6 +151,8 @@ class IRCTransport:
                     self.buffer.add(target, self.nick, line)
                 else:
                     self.buffer.add(f"DM:{target}", self.nick, line)
+                if self.on_outgoing:
+                    self.on_outgoing(target, line)
 
     async def send_thread_create(self, channel: str, thread_name: str, text: str) -> None:
         lines = [l for l in text.splitlines() if l]
@@ -349,21 +353,32 @@ class IRCTransport:
             self.buffer.add(target, sender, text)
         else:
             self.buffer.add(f"DM:{sender}", sender, text)
-        self._detect_and_fire_mention(target, sender, text)
+        was_mention = self._detect_and_fire_mention(target, sender, text)
+        # Ambient: a channel message that did NOT directly address us.
+        # DMs are always direct — they go through the mention path above.
+        if not was_mention and target.startswith("#") and self.on_ambient:
+            self.on_ambient(target, sender, text)
 
-    def _detect_and_fire_mention(self, target: str, sender: str, text: str) -> None:
-        """Check if the message mentions this agent and fire the callback."""
-        if not self.on_mention:
-            return
+    def _detect_and_fire_mention(self, target: str, sender: str, text: str) -> bool:
+        """Check if the message mentions this agent and fire the callback.
+
+        Returns True if a mention was detected, regardless of whether
+        ``on_mention`` is wired. The caller uses the return value to
+        decide whether to fire ``on_ambient`` for the same message.
+        """
         # DMs always activate (target is the agent's own nick)
         if target == self.nick:
-            self.on_mention(target, sender, text)
-            return
+            if self.on_mention:
+                self.on_mention(target, sender, text)
+            return True
         short = self.nick.split("-", 1)[1] if "-" in self.nick else None
         if re.search(rf"@{re.escape(self.nick)}\b", text) or (
             short and re.search(rf"@{re.escape(short)}\b", text)
         ):
-            self.on_mention(target, sender, text)
+            if self.on_mention:
+                self.on_mention(target, sender, text)
+            return True
+        return False
 
     def _on_notice(self, msg: Message) -> None:
         if len(msg.params) < 2:
