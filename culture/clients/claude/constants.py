@@ -1,18 +1,10 @@
-"""Claude backend timeout constants.
-
-Cross-backend defaults are imported from ``culture._constants``;
-claude-specific values live here. Step one toward YAML-driven runtime
-config — call sites import names from this module instead of carrying
-literals.
-"""
+"""Claude backend timeout constants. See `culture/_constants.py` for cross-backend defaults."""
 
 from __future__ import annotations
 
-from culture._constants import DEFAULT_TURN_TIMEOUT_SECONDS
+from culture._constants import (  # noqa: F401  # pylint: disable=unused-import
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+)
 
-__all__ = ["DEFAULT_TURN_TIMEOUT_SECONDS", "STOP_GRACE_SECONDS"]
-
-
-# Time AgentRunner.stop() waits for the run-loop to finish after
-# enqueueing the sentinel. Beyond this, the task is cancelled.
+# AgentRunner.stop() grace period before the run-loop task is cancelled.
 STOP_GRACE_SECONDS: float = 5.0
