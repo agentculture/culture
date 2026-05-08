@@ -615,6 +615,7 @@ def test_cli_create_replaces_archived_agent(monkeypatch):
     from culture.config import load_config
 
     tmpdir = tempfile.mkdtemp()
+    original_cwd = os.getcwd()
     try:
         # _create_acp_config / _create_default_config use os.getcwd() for the
         # new agent's `directory`, and _save_agent_to_directory then writes a
@@ -662,6 +663,9 @@ def test_cli_create_replaces_archived_agent(monkeypatch):
         assert agent.backend == "acp"
         assert agent.archived is False
     finally:
+        # Restore cwd before rmtree so we're not deleting the directory we're
+        # standing in (Windows refuses, POSIX leaves a stale cwd).
+        os.chdir(original_cwd)
         shutil.rmtree(tmpdir)
 
 
