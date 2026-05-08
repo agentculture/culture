@@ -247,12 +247,14 @@ async def test_execute_single_turn_honors_configured_turn_timeout(metrics_reader
     )
     runner._thread_id = "test-thread-id"
 
-    async def _fake_send_request(method, params):
-        # Return immediately without firing _turn_done — the wait below
-        # would block forever without the outer timeout.
-        return {"result": {}}
-
-    with patch.object(runner, "_send_request", side_effect=_fake_send_request):
+    # _send_request returns immediately without firing _turn_done; the
+    # wait below would block forever without the outer timeout.
+    with patch.object(
+        runner,
+        "_send_request",
+        new_callable=AsyncMock,
+        return_value={"result": {}},
+    ):
         await runner._execute_single_turn("hello")
 
     runner.on_turn_error.assert_awaited_once()
