@@ -74,6 +74,12 @@ class HarnessMetricsRegistry:
     llm_calls: Counter
     """Per-LLM-call count by backend/model/outcome."""
 
+    attention_transitions: Counter
+    """Per attention-band transition count, attributes: agent, target, from_band, to_band, cause."""
+
+    attention_polls: Counter
+    """Per channel-poll count, attributes: agent, target, band."""
+
 
 def reset_for_tests() -> None:
     """Reset module state so each test gets a fresh provider. Test-only.
@@ -147,6 +153,14 @@ def _build_registry(meter: Meter) -> HarnessMetricsRegistry:
         llm_calls=meter.create_counter(
             "culture.harness.llm.calls",
             description="Per-LLM-call count by backend/model/outcome",
+        ),
+        attention_transitions=meter.create_counter(
+            "culture.attention.transitions",
+            description="Attention band transitions (agent, target, from_band, to_band, cause)",
+        ),
+        attention_polls=meter.create_counter(
+            "culture.attention.polls",
+            description="Channel polls fired by the daemon (agent, target, band)",
         ),
     )
 

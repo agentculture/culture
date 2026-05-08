@@ -149,10 +149,7 @@ class AgentDaemon:
         )
 
     def _on_attention_transition(self, target: str, prev: Band, new: Band, cause: str) -> None:
-        """Logging hook for attention band transitions.
-
-        OTel metrics are emitted from here once Task 5 wires them up.
-        """
+        """Logging + OTel counter hook for attention band transitions."""
         logger.info(
             "attention: agent=%s target=%s band=%s→%s cause=%s",
             self.agent.nick,
@@ -161,6 +158,17 @@ class AgentDaemon:
             new.name,
             cause,
         )
+        if self._metrics is not None and getattr(self._metrics, "attention_transitions", None):
+            self._metrics.attention_transitions.add(
+                1,
+                attributes={
+                    "agent": self.agent.nick,
+                    "target": target,
+                    "from_band": prev.name,
+                    "to_band": new.name,
+                    "cause": cause,
+                },
+            )
 
     async def start(self) -> None:
         """Start all daemon components."""
@@ -316,6 +324,18 @@ class AgentDaemon:
                     self._send_channel_poll(target)
                     if self._attention is not None:
                         self._attention.mark_polled(target, now)
+                        if self._metrics is not None and getattr(
+                            self._metrics, "attention_polls", None
+                        ):
+                            band = self._attention.snapshot()[target].band
+                            self._metrics.attention_polls.add(
+                                1,
+                                attributes={
+                                    "agent": self.agent.nick,
+                                    "target": target,
+                                    "band": band.name,
+                                },
+                            )
             except asyncio.CancelledError:
                 raise
             except Exception:
