@@ -638,10 +638,10 @@ class TestRunServeCleanup:
 
 class TestArgvHasFlag:
     def test_long_form_present(self):
-        assert console._argv_has_flag(["serve", "--config", "/tmp/x.yaml"], "--config")
+        assert console._argv_has_flag(["serve", "--config", "cfg.yaml"], "--config")
 
     def test_equals_form_present(self):
-        assert console._argv_has_flag(["serve", "--config=/tmp/x.yaml"], "--config")
+        assert console._argv_has_flag(["serve", "--config=cfg.yaml"], "--config")
 
     def test_absent(self):
         assert not console._argv_has_flag(["serve", "--host", "127.0.0.1"], "--config")
@@ -687,7 +687,7 @@ class TestRunServeAutoInitsConfig:
         argv = [
             "serve",
             "--config",
-            "/tmp/custom.yaml",
+            "cfg.yaml",
             "--host",
             "127.0.0.1",
             "--port",
@@ -706,7 +706,7 @@ class TestRunServeAutoInitsConfig:
     def test_auto_init_skipped_when_user_passed_config_equals_form(self, pid_dir):
         argv = [
             "serve",
-            "--config=/tmp/custom.yaml",
+            "--config=cfg.yaml",
             "--host",
             "127.0.0.1",
             "--port",
