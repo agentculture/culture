@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.6] - 2026-05-08
+
+### Added
+
+- Track repo-root `culture.yaml` as the canonical declaration of
+  culture's persistence agent (`<server>-culture`). Mirrors the
+  pattern already established at `packages/agent-harness/` and
+  `culture/clients/<backend>/`. The `system_prompt` was rewritten to
+  be host-agnostic (`<server>-culture`, "this repo's working
+  directory") so the file ports cleanly across hosts.
+- `docs/reference/server/config.md`: new subsection on the repo-root
+  vs sub-directory `culture.yaml` convention, explaining that
+  `culture.yaml` at repo root is tracked alongside `CLAUDE.md` and
+  declares intent (registration is still explicit via
+  `culture agent register`).
+- `.gitignore`: exclude `/culture.yaml.*-bak` per-host backups
+  (e.g. `culture.yaml.daria-acp-bak` from the cleanup runbook in
+  10.3.5's recovery docs).
+
+### Fixed
+
+- `tests/test_archive.py::test_cli_create_replaces_archived_agent`:
+  add `monkeypatch.chdir(tmpdir)` so the test no longer leaks
+  `os.getcwd()` into `_create_acp_config`. Without the fix, running
+  the suite from the repo root caused `_save_agent_to_directory` to
+  overwrite the real `culture.yaml` at the project root with a
+  multi-agent merge (the new tracked file made the regression
+  impossible to ignore).
+
 ## [10.3.5] - 2026-05-08
 
 ### Fixed

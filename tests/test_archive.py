@@ -601,7 +601,7 @@ def test_create_blocked_by_active_agent():
 # -----------------------------------------------------------------------
 
 
-def test_cli_create_replaces_archived_agent():
+def test_cli_create_replaces_archived_agent(monkeypatch):
     """culture agent create replaces an archived agent via the CLI path."""
     from culture.cli import _build_parser
     from culture.cli.agent import _cmd_create
@@ -615,7 +615,13 @@ def test_cli_create_replaces_archived_agent():
     from culture.config import load_config
 
     tmpdir = tempfile.mkdtemp()
+    original_cwd = os.getcwd()
     try:
+        # _create_acp_config / _create_default_config use os.getcwd() for the
+        # new agent's `directory`, and _save_agent_to_directory then writes a
+        # culture.yaml there. Without chdir, this test corrupts the real
+        # culture.yaml at whatever directory pytest was invoked from.
+        monkeypatch.chdir(tmpdir)
         path = os.path.join(tmpdir, "agents.yaml")
         save_config(
             path,
@@ -657,6 +663,9 @@ def test_cli_create_replaces_archived_agent():
         assert agent.backend == "acp"
         assert agent.archived is False
     finally:
+        # Restore cwd before rmtree so we're not deleting the directory we're
+        # standing in (Windows refuses, POSIX leaves a stale cwd).
+        os.chdir(original_cwd)
         shutil.rmtree(tmpdir)
 
 

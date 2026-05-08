@@ -146,6 +146,23 @@ At startup, `culture agent start` reads this manifest, loads each directory's
 
 Each agent has a `culture.yaml` in its working directory.
 
+### Repo-root vs sub-directory
+
+A `culture.yaml` file is interpreted relative to the directory it lives
+in — that directory becomes the agent's working directory. Most repos
+put one at the repo root: it's the canonical declaration of the
+persistence agent for that repo, tracked in git alongside `CLAUDE.md`.
+The culture repo itself follows this pattern at `culture.yaml`, and
+additionally tracks per-backend declarations at
+`packages/agent-harness/culture.yaml` and
+`culture/clients/<backend>/culture.yaml` for the citation-pattern
+harness agents.
+
+The file declares *intent* — what agent should run if registered.
+Registration is still explicit: run `culture agent register <workdir>`
+from a clone to add the entry to your local `~/.culture/server.yaml`
+manifest, then `culture agent start <server>-<suffix>` to bring it up.
+
 ### Single-agent (flat format)
 
 ```yaml
