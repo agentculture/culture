@@ -414,6 +414,41 @@ def _invoke_irc_lens(argv: list[str]) -> "int | None":
     return main(argv)
 
 
+def _argv_has_flag(argv: list[str], flag: str) -> bool:
+    """Return True iff ``flag`` (or ``flag=value``) appears in ``argv``.
+
+    Used to detect a user-supplied ``--config`` so the auto-init below
+    only runs when the user is relying on irc-lens's default path.
+    """
+    for tok in argv:
+        if tok == flag or tok.startswith(f"{flag}="):
+            return True
+    return False
+
+
+def _ensure_default_irc_lens_config() -> None:
+    """Auto-initialize irc-lens's default config if it's missing.
+
+    irc-lens 0.5.x's ``serve`` requires an explicit config file; on a
+    fresh machine the user otherwise hits a cryptic
+    ``no config at ~/.config/irc-lens/config.yaml`` error. This bridge
+    makes ``culture console <server>`` and bare-passthrough
+    ``culture console serve …`` (without ``--config``) succeed on
+    first-run by writing a starter dev-mode config to the default path.
+    The user keeps full control: if they pass ``--config``, this
+    function is bypassed entirely (the caller checks the flag first).
+    """
+    try:
+        from irc_lens.config import default_config_path
+    except ImportError:  # pragma: no cover — declared dep
+        return
+    path = default_config_path()
+    if path.exists():
+        return
+    # Delegate to irc-lens's own init so the schema stays owned upstream.
+    _invoke_irc_lens(["config", "init", "--path", str(path)])
+
+
 def _run_serve(argv: list[str], server_name: str | None) -> "int | None":
     """Wrap ``_invoke_irc_lens`` with conflict detection + state cleanup.
 
@@ -426,6 +461,8 @@ def _run_serve(argv: list[str], server_name: str | None) -> "int | None":
     if server_name is not None:
         target["server_name"] = server_name
     _check_port_conflict(web_port, target)
+    if not _argv_has_flag(argv, "--config"):
+        _ensure_default_irc_lens_config()
     _register_state(web_port, target)
     try:
         return _invoke_irc_lens(argv)

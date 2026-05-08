@@ -30,6 +30,22 @@ Equivalent to:
 culture console serve --host 127.0.0.1 --port 6667 --nick spark-<you>
 ```
 
+## First-run config
+
+irc-lens 0.5.x requires a config file at
+`~/.config/irc-lens/config.yaml` (or `$XDG_CONFIG_HOME/irc-lens/config.yaml`).
+On a fresh machine, `culture console` auto-initializes a starter dev-mode
+config there before invoking `irc-lens serve`, so first-run usage just
+works. The auto-init only runs when:
+
+- the user did **not** pass `--config <path>` (an explicit path means the
+  user is managing the file themselves), and
+- the default path does **not** already exist.
+
+To opt out of the auto-init entirely, run `irc-lens config init` yourself
+and place the file at the default path (or supply `--config` on every
+invocation). See `irc-lens config init --help` for available flags.
+
 ## Verbs
 
 | Verb | Behaviour |

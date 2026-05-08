@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.3.4] - 2026-05-08
+
+### Changed
+
+- docs/reference/cli/console.md: document the new first-run auto-init behavior and the opt-out paths (--config or pre-existing default path).
+
+### Fixed
+
+- culture/cli/console.py: auto-init irc-lens default config on first run when --config is not supplied. Bridges the irc-lens 0.5.x serve-requires-config contract so culture console <server> works on a fresh machine instead of dying with a cryptic no-config error (qodo PR #343 review). Skipped when --config is passed explicitly (user-managed) or when the default path already exists.
+- tests/test_cli_console_playwright.py: tighten irc-lens config init subprocess — add 30s timeout, surface stdout/stderr on failure via pytest.fail, and assert the config file exists post-init (qodo PR #343 review).
+
 ## [10.3.3] - 2026-05-08
 
 ### Changed

@@ -581,6 +581,7 @@ class TestRunServeCleanup:
         argv = ["serve", "--host", "127.0.0.1", "--port", "6667", "--nick", "spark-ada"]
         with (
             patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config"),
             patch.object(console, "_invoke_irc_lens", return_value=0) as mock_lens,
         ):
             rc = console._run_serve(argv, server_name="spark")
@@ -594,6 +595,7 @@ class TestRunServeCleanup:
         argv = ["serve", "--host", "127.0.0.1", "--port", "6667", "--nick", "spark-ada"]
         with (
             patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config"),
             patch.object(console, "_invoke_irc_lens", side_effect=SystemExit(1)),
             pytest.raises(SystemExit),
         ):
@@ -614,6 +616,7 @@ class TestRunServeCleanup:
         ]
         with (
             patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config"),
             patch.object(console, "_invoke_irc_lens", return_value=0),
         ):
             console._run_serve(argv, server_name="my-server")
@@ -623,6 +626,7 @@ class TestRunServeCleanup:
         # wrote the right server_name by re-running with cleanup disabled:
         with (
             patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config"),
             patch.object(console, "_invoke_irc_lens", return_value=0),
             patch.object(console, "_cleanup_state"),
         ):
@@ -630,3 +634,90 @@ class TestRunServeCleanup:
         sidecar = json.loads((pid_dir / "console-8765.json").read_text())
         assert sidecar["server_name"] == "my-server"
         assert sidecar["nick"] == "my-server-ada"
+
+
+class TestArgvHasFlag:
+    def test_long_form_present(self):
+        assert console._argv_has_flag(["serve", "--config", "/tmp/x.yaml"], "--config")
+
+    def test_equals_form_present(self):
+        assert console._argv_has_flag(["serve", "--config=/tmp/x.yaml"], "--config")
+
+    def test_absent(self):
+        assert not console._argv_has_flag(["serve", "--host", "127.0.0.1"], "--config")
+
+    def test_substring_does_not_match(self):
+        # `--config-path` should not match `--config`.
+        assert not console._argv_has_flag(["serve", "--config-path", "x"], "--config")
+
+
+class TestEnsureDefaultIrcLensConfig:
+    def test_skips_when_default_path_exists(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("placeholder")
+        with (
+            patch("irc_lens.config.default_config_path", return_value=cfg),
+            patch.object(console, "_invoke_irc_lens") as mock_lens,
+        ):
+            console._ensure_default_irc_lens_config()
+        mock_lens.assert_not_called()
+
+    def test_initializes_when_default_path_missing(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        with (
+            patch("irc_lens.config.default_config_path", return_value=cfg),
+            patch.object(console, "_invoke_irc_lens") as mock_lens,
+        ):
+            console._ensure_default_irc_lens_config()
+        mock_lens.assert_called_once_with(["config", "init", "--path", str(cfg)])
+
+
+class TestRunServeAutoInitsConfig:
+    def test_auto_init_runs_when_no_config_flag(self, pid_dir):
+        argv = ["serve", "--host", "127.0.0.1", "--port", "6667", "--nick", "spark-ada"]
+        with (
+            patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config") as mock_ensure,
+            patch.object(console, "_invoke_irc_lens", return_value=0),
+        ):
+            console._run_serve(argv, server_name="spark")
+        mock_ensure.assert_called_once()
+
+    def test_auto_init_skipped_when_user_passed_config(self, pid_dir):
+        argv = [
+            "serve",
+            "--config",
+            "/tmp/custom.yaml",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "6667",
+            "--nick",
+            "spark-ada",
+        ]
+        with (
+            patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config") as mock_ensure,
+            patch.object(console, "_invoke_irc_lens", return_value=0),
+        ):
+            console._run_serve(argv, server_name="spark")
+        mock_ensure.assert_not_called()
+
+    def test_auto_init_skipped_when_user_passed_config_equals_form(self, pid_dir):
+        argv = [
+            "serve",
+            "--config=/tmp/custom.yaml",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "6667",
+            "--nick",
+            "spark-ada",
+        ]
+        with (
+            patch.object(console, "_check_port_conflict"),
+            patch.object(console, "_ensure_default_irc_lens_config") as mock_ensure,
+            patch.object(console, "_invoke_irc_lens", return_value=0),
+        ):
+            console._run_serve(argv, server_name="spark")
+        mock_ensure.assert_not_called()

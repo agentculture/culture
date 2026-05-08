@@ -142,21 +142,37 @@ def test_culture_console_serve_drives_help_view(agentirc_server, tmp_path):
 
     # irc-lens 0.5.x requires an explicit config file. Materialize a
     # starter dev-mode config in tmp so the serve subprocess doesn't try
-    # to read ~/.config/irc-lens/config.yaml.
+    # to read ~/.config/irc-lens/config.yaml. Bound on a 30s timeout and
+    # surface stdout/stderr if the init fails so CI doesn't hang or
+    # produce a one-line failure with no diagnostics.
     config_path = tmp_path / "irc-lens-config.yaml"
-    init_rc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "irc_lens",
-            "config",
-            "init",
-            "--path",
-            str(config_path),
-        ],
-        capture_output=True,
-    ).returncode
-    assert init_rc == 0, "irc-lens config init failed"
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "irc_lens",
+                "config",
+                "init",
+                "--path",
+                str(config_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+    except subprocess.CalledProcessError as exc:
+        pytest.fail(
+            "irc-lens config init failed (rc=%s)\nstdout:\n%s\nstderr:\n%s"
+            % (
+                exc.returncode,
+                exc.stdout.decode("utf-8", errors="replace") if exc.stdout else "",
+                exc.stderr.decode("utf-8", errors="replace") if exc.stderr else "",
+            )
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("irc-lens config init hung past 30s timeout")
+    assert config_path.exists(), f"irc-lens config init did not create {config_path}"
 
     culture_proc = subprocess.Popen(
         [
