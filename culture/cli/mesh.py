@@ -307,16 +307,17 @@ def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
-        workdir = os.path.expanduser(agent.workdir)
-        agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
+        # No --config: defer to `culture agent start`'s argparse default
+        # (DEFAULT_CONFIG = ~/.culture/server.yaml — the manifest the rest
+        # of the CLI treats as source of truth). Pinning a per-workdir
+        # legacy path here crashlooped real deployments when culture
+        # migrated to per-directory culture.yaml.
         agent_cmd = [
             culture_bin,
             "agent",
             "start",
             full_nick,
             "--foreground",
-            "--config",
-            agent_config_path,
         ]
         agent_svc = f"culture-agent-{full_nick}"
         path = install_service(agent_svc, agent_cmd, f"culture agent {full_nick}")
@@ -547,16 +548,14 @@ def _restart_mesh_services(
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
-        workdir = os.path.expanduser(agent.workdir)
-        agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
+        # See _install_mesh_services for the rationale behind omitting
+        # --config; this restart path mirrors that contract.
         agent_cmd = [
             culture_bin,
             "agent",
             "start",
             full_nick,
             "--foreground",
-            "--config",
-            agent_config_path,
         ]
         install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture agent {full_nick}")
 
@@ -591,15 +590,14 @@ def _restart_mesh_services(
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         agent_svc = f"culture-agent-{full_nick}"
-        workdir = os.path.expanduser(agent.workdir)
-        agent_config_path = os.path.join(workdir, CULTURE_DIR, AGENTS_YAML)
+        # Same contract as the install path: rely on the argparse
+        # default (~/.culture/server.yaml) instead of pinning a stale
+        # per-workdir path.
         agent_fallback = [
             culture_bin,
             "agent",
             "start",
             full_nick,
-            "--config",
-            agent_config_path,
         ]
         _restart_single_service(agent_svc, agent_fallback, restart_service)
 

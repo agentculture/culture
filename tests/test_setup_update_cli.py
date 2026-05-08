@@ -218,6 +218,72 @@ def test_resolve_uses_mesh_yaml_when_name_matches(tmp_path):
     assert len(result.server.links) == 1
 
 
+# ---- _install_mesh_services regression tests ----
+#
+# Regression guard for the 10.3.x crashloop bug: systemd units used to
+# pin --config <workdir>/.culture/agents.yaml — a layout culture
+# migrated away from. On a real machine the units crashed 38000+ times
+# under systemd's restart-on-failure policy because the path didn't
+# exist. The fix drops --config so `culture agent start` falls through
+# to its argparse default (~/.culture/server.yaml).
+
+
+def _captured_install_calls(install_mock) -> list:
+    """Pull (svc_name, command, description) tuples out of a mocked
+    install_service callable. install_service is called as
+    install_service(name, command, description) — extract the kwargs
+    or positional args uniformly."""
+    out = []
+    for call in install_mock.call_args_list:
+        args, kwargs = call
+        if len(args) >= 3:
+            out.append((args[0], args[1], args[2]))
+        else:
+            out.append((kwargs["name"], kwargs["command"], kwargs.get("description", "")))
+    return out
+
+
+def test_install_mesh_services_omits_legacy_config_path():
+    """Generated agent unit ExecStart must not pin <workdir>/.culture/agents.yaml.
+
+    The systemd unit body should only carry `culture agent start <nick>
+    --foreground`; any --config token would re-introduce the crashloop
+    when the legacy per-workdir layout doesn't exist.
+    """
+    from culture.cli.mesh import _install_mesh_services
+
+    mesh = MeshConfig(
+        server=MeshServerConfig(name="spark", host="127.0.0.1", port=6667),
+        agents=[
+            MeshAgentConfig(nick="claude", workdir="/home/u/work"),
+            MeshAgentConfig(nick="codex", workdir="/home/u/work2"),
+        ],
+    )
+
+    # install_service is imported inside the function (`from
+    # culture.persistence import install_service`), so patch the source
+    # module rather than the attribute on culture.cli.mesh.
+    with (
+        patch("culture.persistence.install_service") as mock_install,
+        patch(f"{_MESH_MOD}.build_server_start_cmd", return_value=["culture", "server", "start"]),
+    ):
+        _install_mesh_services(mesh, "spark", "/usr/bin/culture", "/etc/mesh.yaml")
+
+    calls = _captured_install_calls(mock_install)
+    agent_calls = [c for c in calls if c[0].startswith("culture-agent-")]
+    assert len(agent_calls) == 2, f"expected 2 agent units, got {len(agent_calls)}"
+    for svc_name, command, _desc in agent_calls:
+        assert "--config" not in command, (
+            f"{svc_name} ExecStart still carries --config: {command}. "
+            "Regression: the legacy <workdir>/.culture/agents.yaml pin must stay out."
+        )
+        assert not any(
+            ".culture/agents.yaml" in tok for tok in command
+        ), f"{svc_name} ExecStart references the legacy agents.yaml path: {command}"
+        # Sanity: the command is still a valid agent-start invocation.
+        assert "agent" in command and "start" in command and "--foreground" in command
+
+
 def test_resolve_rebuilds_from_agents_yaml_preserving_links(tmp_path):
     """When mesh.yaml has wrong name, rebuild from agents.yaml and keep links."""
     from culture.cli.mesh import _resolve_mesh_for_server
