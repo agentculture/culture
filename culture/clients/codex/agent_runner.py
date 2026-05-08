@@ -35,6 +35,7 @@ class CodexAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -44,6 +45,10 @@ class CodexAgentRunner:
         self.on_turn_error = on_turn_error
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net for the whole turn (request + completion
+        # event). Replaces the previous hardcoded 300s on the event
+        # wait alone. Non-positive disables the wrap.
+        self._turn_timeout = turn_timeout_seconds
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -344,6 +349,54 @@ class CodexAgentRunner:
                 self._process.stdin.write(line.encode())
                 await self._process.stdin.drain()
 
+    async def _send_turn_and_wait(self, text: str) -> None:
+        """Send turn/start and wait for the turn/completed event.
+
+        Pulled out of `_execute_single_turn` so the outer-timeout
+        branch and the disabled-timeout branch share one body.
+        """
+        await self._send_request(
+            "turn/start",
+            {
+                "threadId": self._thread_id,
+                "input": [{"type": "text", "text": text}],
+            },
+        )
+        await self._turn_done.wait()
+
+    async def _handle_turn_timeout(self, elapsed_s: float) -> None:
+        """Log the cause + elapsed, fire on_turn_error, terminate subprocess.
+
+        ``elapsed_s`` (vs the two budgets) tells the operator which
+        timeout actually fired: ~30 s ⇒ inner ``_send_request``;
+        ~``self._turn_timeout`` ⇒ outer wrap.
+
+        Subprocess termination is what reaches crash recovery: the
+        read-loop sees EOF, ``_cleanup_codex_process`` calls
+        ``on_exit(returncode)``, and the daemon's ``_on_agent_exit``
+        schedules ``_delayed_restart``.
+        """
+        if self._turn_timeout > 0:
+            budgets = (
+                f"outer turn_timeout_seconds={self._turn_timeout}s, " "inner _send_request 30s"
+            )
+        else:
+            budgets = "inner _send_request 30s (outer disabled)"
+        logger.warning(
+            "Codex turn timed out after %.1fs (budgets: %s); terminating "
+            "subprocess so cleanup → on_exit fires for crash recovery",
+            elapsed_s,
+            budgets,
+        )
+        self._turn_done.set()
+        if self.on_turn_error:
+            await maybe_await(self.on_turn_error())
+        if self._process is not None and self._process.returncode is None:
+            try:
+                self._process.terminate()
+            except ProcessLookupError:
+                pass
+
     async def _execute_single_turn(self, text: str) -> None:
         """Send one turn request and wait for completion."""
         start_perf = time.perf_counter()
@@ -359,22 +412,17 @@ class CodexAgentRunner:
         ):
             self._turn_done.clear()
             try:
-                await self._send_request(
-                    "turn/start",
-                    {
-                        "threadId": self._thread_id,
-                        "input": [{"type": "text", "text": text}],
-                    },
-                )
-                # Wait for turn/completed notification via the event
-                async with asyncio.timeout(300):
-                    await self._turn_done.wait()
+                if self._turn_timeout > 0:
+                    # Outer wrap covers both _send_request and the
+                    # turn/completed wait, so a wedged request also
+                    # times out (pre-PR only the wait was bounded).
+                    async with asyncio.timeout(self._turn_timeout):
+                        await self._send_turn_and_wait(text)
+                else:
+                    await self._send_turn_and_wait(text)
             except asyncio.TimeoutError:
                 outcome = "timeout"
-                logger.warning("Codex turn timed out after 300s")
-                self._turn_done.set()
-                if self.on_turn_error:
-                    await maybe_await(self.on_turn_error())
+                await self._handle_turn_timeout(time.perf_counter() - start_perf)
             except Exception:
                 outcome = "error"
                 logger.exception("Codex turn error")

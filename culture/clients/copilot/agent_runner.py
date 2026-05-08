@@ -35,6 +35,7 @@ class CopilotAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -45,6 +46,10 @@ class CopilotAgentRunner:
         self.on_turn_error = on_turn_error
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net wrapping send_and_wait. The inner 120s
+        # is the SDK's own timeout for normal slow-but-progressing
+        # turns; this fires if the SDK hangs without firing its own.
+        self._turn_timeout = turn_timeout_seconds
 
         self._isolated_home: str | None = None
         self._client: Any = None
@@ -196,7 +201,18 @@ class CopilotAgentRunner:
                 },
             ):
                 try:
-                    response = await self._session.send_and_wait(text, timeout=120.0)
+                    # Outer safety net: if send_and_wait's own 120s
+                    # timeout doesn't fire (SDK ignores it, hangs
+                    # before that, or wedges in a different layer),
+                    # this wraps the whole turn so the runner can
+                    # restart cleanly.
+                    if self._turn_timeout > 0:
+                        response = await asyncio.wait_for(
+                            self._session.send_and_wait(text, timeout=120.0),
+                            timeout=self._turn_timeout,
+                        )
+                    else:
+                        response = await self._session.send_and_wait(text, timeout=120.0)
                     await self._handle_turn_response(response)
                 except asyncio.TimeoutError:
                     outcome = "timeout"

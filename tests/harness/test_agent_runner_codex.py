@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from opentelemetry import metrics as otel_metrics
@@ -227,3 +227,46 @@ async def test_execute_single_turn_no_metrics_no_recording(metrics_reader):
     # No metric data should be recorded for llm_calls
     calls_val = _get_metric_value(metrics_reader, "culture.harness.llm.calls")
     assert calls_val is None
+
+
+@pytest.mark.asyncio
+async def test_execute_single_turn_honors_configured_turn_timeout(metrics_reader, registry):
+    """turn_timeout_seconds replaces the previous hardcoded 300s.
+
+    Build a runner with a tiny timeout, leave _turn_done unset, and let
+    the outer asyncio.timeout fire — outcome must be "timeout" and the
+    on_turn_error callback must be awaited.
+    """
+    runner = CodexAgentRunner(
+        model="gpt-5.4",
+        directory=tempfile.mkdtemp(prefix="culture-test-codex-"),
+        metrics=registry,
+        nick="spark-codex",
+        on_turn_error=AsyncMock(),
+        turn_timeout_seconds=0.05,
+    )
+    runner._thread_id = "test-thread-id"
+    # Attach a fake subprocess so the timeout handler exercises the
+    # terminate path that triggers _cleanup_codex_process → on_exit.
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    runner._process = fake_process
+
+    # _send_request returns immediately without firing _turn_done; the
+    # wait below would block forever without the outer timeout.
+    with patch.object(
+        runner,
+        "_send_request",
+        new_callable=AsyncMock,
+        return_value={"result": {}},
+    ):
+        await runner._execute_single_turn("hello")
+
+    runner.on_turn_error.assert_awaited_once()
+    fake_process.terminate.assert_called_once()
+    calls_val = _get_metric_value(
+        metrics_reader,
+        "culture.harness.llm.calls",
+        {"backend": "codex", "model": "gpt-5.4", "outcome": "timeout"},
+    )
+    assert calls_val == 1

@@ -332,6 +332,7 @@ class AgentDaemon:
             on_message=self._on_agent_message,
             metrics=self._metrics,
             nick=self.agent.nick,
+            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)

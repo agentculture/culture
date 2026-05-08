@@ -45,6 +45,7 @@ class ACPAgentRunner:
         on_turn_error: Callable[[], Awaitable[None] | None] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        turn_timeout_seconds: float = 600.0,
     ) -> None:
         self.model = model
         self.directory = directory
@@ -55,6 +56,12 @@ class ACPAgentRunner:
         self.on_turn_error = on_turn_error
         self._metrics = metrics
         self._nick = nick
+        # Outer safety net for the whole prompt round-trip (send +
+        # busy-poll). The inner 300s on _send_request stays — it
+        # bounds individual JSON-RPC requests; this fires if the
+        # busy-flag never clears (the failure mode that motivated
+        # issue #349).
+        self._turn_timeout = turn_timeout_seconds
 
         self._isolated_home: str | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -455,13 +462,35 @@ class ACPAgentRunner:
         ):
             try:
                 self._busy = True
-                resp = await self._send_prompt_with_retry(text)
-                await self._handle_prompt_result(resp)
-            except TimeoutError:  # bubbles from _send_prompt_with_retry's retry-then-fail
+                if self._turn_timeout > 0:
+                    async with asyncio.timeout(self._turn_timeout):
+                        resp = await self._send_prompt_with_retry(text)
+                        await self._handle_prompt_result(resp)
+                else:
+                    resp = await self._send_prompt_with_retry(text)
+                    await self._handle_prompt_result(resp)
+            except TimeoutError:
+                # Both _send_prompt_with_retry's inner 300s retry-then-fail
+                # and the outer asyncio.timeout above raise TimeoutError
+                # (asyncio.TimeoutError is a TimeoutError alias in 3.11+).
                 outcome = "timeout"
-                logger.exception("ACP turn timeout")
+                logger.exception(
+                    "ACP turn timeout (turn_timeout_seconds=%ss); "
+                    "terminating subprocess so cleanup → on_exit fires "
+                    "for crash recovery",
+                    self._turn_timeout,
+                )
                 if self.on_turn_error:
                     await maybe_await(self.on_turn_error())
+                # Terminate the wedged subprocess so the read-loop EOF
+                # triggers _cleanup_process → on_exit(returncode) →
+                # daemon._on_agent_exit → _delayed_restart. Without
+                # this, ACP timeouts never reach crash recovery.
+                if self._process is not None and self._process.returncode is None:
+                    try:
+                        self._process.terminate()
+                    except ProcessLookupError:
+                        pass
             except Exception:
                 outcome = "error"
                 logger.exception("ACP turn error")

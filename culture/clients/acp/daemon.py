@@ -401,6 +401,7 @@ class ACPDaemon:
             on_turn_error=self._on_turn_error,
             metrics=self._metrics,
             nick=self.agent.nick,
+            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
         )
         # Absorb the system prompt response without relaying to IRC
         self._mention_targets.append(None)

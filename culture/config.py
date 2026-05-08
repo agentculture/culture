@@ -75,6 +75,10 @@ class AgentConfig:
     archived: bool = False
     archived_at: str = ""
     archived_reason: str = ""
+    # Outer safety-net timeout for one SDK turn. 0 disables.
+    # Backends may have their own SDK-tuned inner timeouts; this wraps
+    # them so a wedged stream cannot block _run_loop indefinitely.
+    turn_timeout_seconds: float = 600.0
     extras: dict = field(default_factory=dict)
 
     # Computed at load time, not stored in YAML

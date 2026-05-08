@@ -382,6 +382,7 @@ class CodexDaemon:
             on_turn_error=self._on_turn_error,
             metrics=self._metrics,
             nick=self.agent.nick,
+            turn_timeout_seconds=getattr(self.agent, "turn_timeout_seconds", 600.0),
         )
         await self._agent_runner.start()
         logger.info("CodexAgentRunner started for %s", self.agent.nick)

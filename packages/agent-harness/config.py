@@ -58,6 +58,8 @@ class AgentConfig:
     thinking: str = "medium"
     system_prompt: str = ""
     icon: str | None = None
+    # Outer safety-net timeout for one SDK turn. 0 disables.
+    turn_timeout_seconds: float = 600.0
 
 
 @dataclass
