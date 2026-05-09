@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.4] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_agent_runner.py` extended with two new tests for Phase 0a Task 8 narrowing follow-up — pre-handover integration coverage of the timeout path on the codex and copilot backends: `test_codex_agent_runner_records_timeout_outcome` (fakes `asyncio.create_subprocess_exec`, hangs `_read_loop`, monkeypatches `CodexAgentRunner._send_request` so `turn/start` returns but `turn/completed` never fires; outer `asyncio.timeout` wraps the wedged `_turn_done.wait()` and triggers `outcome=timeout` on `culture.harness.llm.calls`) and `test_copilot_agent_runner_records_timeout_outcome` (post-`daemon.start()` mutation of `daemon._agent_runner._session.send_and_wait` to a never-resolving coroutine; `asyncio.wait_for` fires its outer timeout). Replaces the integration-shaped portion of the harness unit tests in `tests/harness/test_agent_runner_{codex,copilot}.py` (which move to cultureagent in Phase 1). Adds `_build_codex_daemon` and `_build_copilot_daemon` helpers parallel to the existing claude `_build_daemon`, plus a per-file `copilot` SDK stub at module top mirroring `tests/harness/test_agent_runner_copilot.py:32-69` so CI works without the `copilot` package installed.
+
 ## [10.6.3] - 2026-05-09
 
 ### Fixed
