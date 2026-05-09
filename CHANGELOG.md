@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.5] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_agent_runner.py` extended with `test_acp_agent_runner_records_timeout_outcome` — final piece of the Phase 0a Task 8 narrowing follow-up (after PR #374 covered codex + copilot). The wedge mirrors `tests/harness/test_agent_runner_acp.py:237-286`: fakes `asyncio.create_subprocess_exec` (returns a `_FakeACPProcess` stand-in), hangs `_read_loop`/`_stderr_loop` so no `session/update` notifications arrive, monkeypatches `_send_request` to fake `initialize`/`session/new` so `runner.start()` succeeds, then patches `_send_prompt_with_retry` to return immediately and `_handle_prompt_result` to hang on `Event().wait()` — the busy-poll wedge that the outer `asyncio.timeout` defends against (issue #349's failure mode). Adds `_build_acp_daemon` helper and `_FakeACPProcess` class parallel to the codex ones. Replaces the integration-shaped portion of the harness unit test (which moves to cultureagent in Phase 1). Closes Phase 0a Task 8 — all four backends (claude/codex/copilot/acp) now have integration coverage on the timeout outcome.
+
 ## [10.6.4] - 2026-05-09
 
 ### Added
