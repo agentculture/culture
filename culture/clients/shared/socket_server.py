@@ -57,7 +57,9 @@ class SocketServer:
         data = encode_message(whisper)
         # If there are already connected clients, send immediately.
         if self._clients:
-            for writer in list(self._clients):
+            # Snapshot — the except branch removes failed writers from
+            # self._clients, which would corrupt iteration without a copy.
+            for writer in self._clients[:]:
                 try:
                     writer.write(data)
                     await writer.drain()

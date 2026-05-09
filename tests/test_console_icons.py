@@ -145,20 +145,11 @@ def test_acp_agent_config_from_yaml_with_icon():
 
 def _make_transport(backend: str, icon=None):
     """Build an IRCTransport for the given backend with a mock MessageBuffer."""
-    if backend == "claude":
-        from culture.clients.shared.irc_transport import IRCTransport
-        from culture.clients.shared.message_buffer import MessageBuffer
-    elif backend == "codex":
-        from culture.clients.shared.irc_transport import IRCTransport
-        from culture.clients.shared.message_buffer import MessageBuffer
-    elif backend == "copilot":
-        from culture.clients.shared.irc_transport import IRCTransport
-        from culture.clients.shared.message_buffer import MessageBuffer
-    elif backend == "acp":
-        from culture.clients.shared.irc_transport import IRCTransport
-        from culture.clients.shared.message_buffer import MessageBuffer
-    else:
+    if backend not in ("claude", "codex", "copilot", "acp"):
         raise ValueError(f"unknown backend: {backend}")
+
+    from culture.clients.shared.irc_transport import IRCTransport
+    from culture.clients.shared.message_buffer import MessageBuffer
 
     buf = MessageBuffer(max_per_channel=10)
     transport = IRCTransport(
