@@ -177,6 +177,19 @@ uv run coverage report --include='culture/clients/shared/*,culture/clients/*/dae
 
 ## Closeout (post-merge)
 
-> _To be filled by Task 9 closeout PR._
->
-> Phase 0a complete on YYYY-MM-DD. Final overall coverage: NN.N% (project-wide), NN.N% (`culture/clients/` scope). Gate flipped via PR #XXX. Ready to kick off Phase 0b (cultureagent buildup brief).
+Phase 0a complete on **2026-05-09**. Final measured coverage:
+
+- **Project-wide:** **56.96%** (vs 56.86% baseline — barely moved because harness unit tests still cover the same code paths; they delete in Phase 1).
+- **`culture/clients/shared/`:** **80%** (vs ~58% baseline — **+22pp**, Phase 0a's real delivery).
+- **`culture/clients/claude/`:** **72%** (vs ~85% baseline — measurement appears tighter under the post-Phase-0a full-suite run; the audit's 85% figure may have been optimistic).
+- **`culture/clients/{codex,copilot,acp}/`:** ~43% each (essentially unchanged — Task 7 dropped, Task 8 narrowed to claude only).
+
+Gate stays at **`fail_under = 56`** (matching `floor(56.96)`); SonarCloud gate kept at default Path B. See [`docs/coverage-baseline.md`](../../coverage-baseline.md) for the full per-domain table and follow-up list.
+
+Phase 0a's six integration-test PRs (#364, #365, #366, #367, #368, #369) all merged. Ready to kick off Phase 0b (cultureagent buildup brief — separate writing-plans session).
+
+**Audit-driven follow-ups** (out of Phase 0a; tracked for the cutover and beyond):
+
+- **Task 8.5 — skill_client integration test.** Audit row #20's "ALREADY COVERED" assumed `test_integration_layer5.py` was sufficient; actual integration-only coverage of `culture/clients/claude/skill/irc_client.py` is 54%, below the in-repo plan's 80% threshold. A small `tests/test_integration_skill_client.py` is needed before Phase 1 deletes `tests/test_skill_client.py`.
+- **Cross-backend integration timeout tests** for `codex`, `copilot`, `acp` (Task 8 narrowing).
+- **Product fix — `AgentDaemon.stop()` should cancel/await `_background_tasks`** (PR #369 review #2 follow-up — currently mitigated test-locally by monkeypatching `_on_agent_exit`).

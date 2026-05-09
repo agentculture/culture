@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.0] - 2026-05-09
+
+### Added
+
+- Phase 0a closeout — coverage baseline doc updated with measured per-domain numbers and a closeout section. Audit doc footer filled with final percentages and follow-up list. `culture/clients/shared/` covered to 80% (+22pp via Phase 0a integration tests #364–#369); project-wide at 56.96% (gate stays at 56 since unit tests still cover the same paths; they delete in Phase 1).
+
+### Changed
+
+- `pyproject.toml`'s `[tool.coverage.report]` comment refreshed to reflect Phase 0a closeout. `fail_under` value unchanged at **56** (matches `floor(56.96)` measured project-wide); the project-wide number didn't move materially because the harness unit tests still cover the same code paths the new integration tests exercise.
+- `docs/coverage-baseline.md`: per-domain table now shows measured-actuals; closeout section appended; SonarCloud project-key reference updated from legacy `OriNachum_culture` to current `agentculture_culture`.
+
 ## [10.5.12] - 2026-05-09
 
 ### Added
