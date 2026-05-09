@@ -163,14 +163,25 @@ async def test_close_fails_pending_requests(server, tmp_path, monkeypatch):
     config, agent, sock_dir = _make_daemon_setup(server, tmp_path)
     daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=True)
     await daemon.start()
+
+    # Test-scoped unblock signal — set in finally so the daemon's
+    # SocketServer per-client handler task can unwind before
+    # daemon.stop() runs. Without this, SocketServer.stop() doesn't
+    # cancel in-flight _handle_client tasks (its scope is closing
+    # writers + the server, not handler awaits), so a never-returning
+    # handler would leak a pending task past test teardown.
+    unblock = asyncio.Event()
+
+    async def _never_responds(_req_id, _msg):
+        await unblock.wait()
+        # Returning None is fine — the skill's request future has
+        # already been resolved with ConnectionError by close().
+
+    daemon._ipc_dispatch["irc_send"] = _never_responds
+
     try:
         await _wait_for_daemon_joined(server, "#general", agent.nick)
         skill = await _connect_skill(sock_dir)
-
-        async def _never_responds(_req_id, _msg):
-            await asyncio.Event().wait()  # cancellation-friendly hang
-
-        daemon._ipc_dispatch["irc_send"] = _never_responds
 
         send_task = asyncio.create_task(skill.irc_send("#general", "stuck"))
         # Wait until the request has been written and registered in
@@ -184,4 +195,5 @@ async def test_close_fails_pending_requests(server, tmp_path, monkeypatch):
         with pytest.raises(ConnectionError, match="SkillClient closed|Connection lost"):
             await send_task
     finally:
+        unblock.set()  # let the daemon's IPC handler return cleanly
         await daemon.stop()
