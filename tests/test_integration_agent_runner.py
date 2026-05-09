@@ -81,9 +81,12 @@ async def test_claude_agent_runner_records_timeout_outcome(
 
     # Hanging async generator — never yields, never returns. Mirrors the
     # production failure mode that motivated issue #349 (the per-turn
-    # timeout that this whole code path defends against).
+    # timeout that this whole code path defends against). Use Event().wait()
+    # rather than `await asyncio.Future()` so cancellation propagates
+    # cleanly — a bare Future left pending on cancel emits "Future was
+    # destroyed but it is pending" warnings.
     async def _hanging_query(**_kwargs):
-        await asyncio.Future()
+        await asyncio.Event().wait()
         yield  # pragma: no cover  -- unreachable, marks this an async generator
 
     monkeypatch.setattr(
@@ -92,7 +95,6 @@ async def test_claude_agent_runner_records_timeout_outcome(
         raising=True,
     )
 
-    # Late import so the stub is in place before AgentDaemon binds.
     from culture.clients.claude.daemon import AgentDaemon
 
     agent_dir = tmp_path / "agent"
@@ -114,6 +116,19 @@ async def test_claude_agent_runner_records_timeout_outcome(
     sock_dir = tmp_path / "sock"
     sock_dir.mkdir()
     daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
+
+    # Stub out the daemon's on-exit hook before start: the timeout path
+    # calls `on_exit(1)`, which schedules `_delayed_restart` onto
+    # `_background_tasks`. AgentDaemon.stop() doesn't cancel these, so
+    # the sleeping restart task would outlive the test and emit
+    # pending-task warnings (and could compete for ports/sockets in a
+    # later test). The metric is recorded BEFORE on_exit fires, so the
+    # assertion still holds without scheduling a restart.
+    async def _no_restart(_exit_code: int) -> None:
+        return
+
+    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
+
     await daemon.start()
     try:
         # daemon.start spawned AgentRunner; queue a prompt so _run_loop
