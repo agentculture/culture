@@ -5,6 +5,9 @@ set -euo pipefail
 #   1. Inline review comments (with thread resolve status)
 #   2. Issue comments (qodo summaries, sonarcloud, etc.)
 #   3. Top-level reviews with a non-empty body (copilot overview, etc.)
+#   4. SonarCloud new issues (silently skipped if project isn't on SonarCloud).
+#      Project key is derived as `<owner>_<repo>`; override with
+#      SONAR_PROJECT_KEY=<key> for non-standard naming.
 #
 # Usage: pr-comments.sh [--repo OWNER/REPO] PR_NUMBER
 
@@ -98,3 +101,28 @@ echo "$REVIEWS_WITH_BODY" | jq -r '
   (.body | split("\n") | if length > 10 then .[:10] + ["... (truncated)"] else . end | join("\n")),
   ""
 '
+
+# ── Section 4: SonarCloud new issues ──────────────────────────────────────
+# Public API; no auth needed for public projects. Project key defaults to
+# the GitHub `<owner>_<repo>` convention; override with SONAR_PROJECT_KEY.
+SONAR_KEY="${SONAR_PROJECT_KEY:-${REPO%%/*}_${REPO##*/}}"
+SONAR_RAW=$(curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_KEY}&pullRequest=${PR_NUMBER}&ps=100" 2>/dev/null || echo '{}')
+
+if echo "$SONAR_RAW" | jq -e 'has("issues")' >/dev/null 2>&1; then
+    SONAR_COUNT=$(echo "$SONAR_RAW" | jq '.issues | length')
+    echo ""
+    echo "════════════════ SONARCLOUD NEW ISSUES ($SONAR_COUNT) ════════════════"
+    if [[ "$SONAR_COUNT" -gt 0 ]]; then
+        echo "$SONAR_RAW" | jq -r '
+          .issues[] |
+          "──────────────────────────────────────────────────",
+          "[\(.severity)] [\(.rule)] \(.component | sub("^[^:]+:"; "")):\(.line // "?")",
+          (.message | if length > 200 then .[:200] + "…" else . end),
+          ""
+        '
+    fi
+else
+    echo ""
+    echo "════════════════ SONARCLOUD NEW ISSUES ════════════════"
+    echo "(project key '${SONAR_KEY}' not registered on sonarcloud.io — section skipped)"
+fi

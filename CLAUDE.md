@@ -78,7 +78,7 @@ Before the first push on a branch that adds public API surface (new exceptions, 
 - Push to GitHub for agentic code review
 - Pull review comments, address feedback, push fixes
 - Reply to comments after pushing, resolve threads
-- **Before declaring the PR ready**, check SonarCloud for the branch via the `/sonarclaude` skill. SonarCloud findings do not always arrive as inline PR comments, so an all-green `gh pr checks` + all-resolved threads is not sufficient.
+- **Before declaring the PR ready**, confirm SonarCloud is clean. The `pr-comments.sh` script in the `/cicd` skill prints SonarCloud's new issues as section 4 of its output, so a fresh run after your last fix-push (via `wait-and-check.sh` or `pr-comments.sh` directly) is what tells you whether the gate is green. Don't rely solely on `gh pr checks` + resolved threads — SonarCloud findings don't always arrive as inline PR comments.
 
 ## Testing
 
