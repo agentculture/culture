@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.10] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_webhook.py` — Phase 0a Task 5: end-to-end integration coverage for webhook HTTP fanout. Daemon configured with `WebhookConfig(url=<local-capture>)`, real human IRC client, then `skill.irc_ask("#general", ...)` IPC call fires the `agent_question` `AlertEvent`. A stdlib `HTTPServer` thread captures the JSON POST and the test asserts the payload shape (`{"content": "[QUESTION] [testserv-bot] asked in #general: ..."}`). Adopts Tasks 2/3/4 hardening (`tmp_path`, monkeypatched `PID_DIR`, bounded `_wait_for_daemon_joined` and `_wait_for_capture` polls). Lifts `culture/clients/shared/webhook.py` coverage to 89% from this file alone. The harness unit test in `tests/test_webhook.py` will move to cultureagent in Phase 1; the IRC alert channel path is already covered at integration shape by `tests/test_integration_layer5.py::test_webhook_fires_on_question`, so no daemon-level duplicate.
+
 ## [10.5.9] - 2026-05-09
 
 ### Added
