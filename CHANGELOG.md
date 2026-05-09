@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.6] - 2026-05-09
+
+### Fixed
+
+- Phase 0a plan Task 2 (attention) — replaced fictional `Band.ACTIVE_RECENT`/`Band.PASSIVE` constants and `daemon.attention.current_band()` with real API: `Band.HOT`/`WARM`/`COOL`/`IDLE` from `culture/clients/shared/attention.py`, `daemon._attention.snapshot()`, `attention_overrides: dict | None` on `DaemonConfig`. Original snippet would have failed at write time (Qodo bug #1 on PR #363).
+- Phase 0a plan Task 7 (supervisor) — **dropped entirely**. Original framing ("kill the daemon, observe restart") was based on a misreading of `culture/clients/<backend>/supervisor.py`, which is the LLM verdict evaluator (`Supervisor` class with `evaluate()`, `SupervisorVerdict.parse()`, `make_sdk_evaluate_fn`), not a process supervisor. Unit tests in `tests/test_supervisor.py` are the right shape and move to cultureagent in Phase 1. Audit row #10 updated from ADD integration → ACCEPT (12/7/1/1 split). Audit recommendation #2 (parameterize Task 7) marked moot. Spec's behavior list updated to match. (Qodo bug #2 on PR #363.)
+- Phase 0a plan Task 9 Step 0a — `--cov=culture/clients/claude/skill/irc_client` (broken — missing `.py`, mixed-form path) → `--cov=culture.clients.claude.skill.irc_client` (dotted module form, consistent with the rest of the plan). (Qodo bug #3 on PR #363.)
+- Phase 0a plan Task 9 Step 7 — branch name `chore/coverage-gate-95-percent` and commit/PR title containing "95% coverage gate" were stale from before the ratchet-from-locked-baseline reframing. Updated to `chore/coverage-gate-phase0a-closeout` and "ratchet pytest fail_under to post-Phase-0a measured floor", consistent with Step 2's branch name and Task 9's stated goal. (Qodo bug #4 on PR #363.)
+
+## [10.5.5] - 2026-05-09
+
+### Added
+
+- `docs/superpowers/specs/2026-05-09-cultureagent-extraction-design.md` — design spec for extracting culture's agent harness into a sibling `cultureagent` repo. Mirrors the agentirc extraction pattern at the next layer of the stack (B re-export shim end-state, three-phase rollout, brief-only cross-repo handoff).
+- `docs/superpowers/plans/2026-05-09-cultureagent-extraction-phase-0a.md` — implementation plan for Phase 0a (pre-cutover test reinforcement). Nine tasks: audit, seven integration tests across attention/message buffer/IRC transport/webhook/telemetry/supervisor/agent_runner, then a closeout that ratchets `[tool.coverage.report] fail_under` toward the post-Phase-0a measured floor.
+- `docs/superpowers/notes/2026-05-09-cultureagent-coverage-audit.md` — Phase 0a coverage audit. 21 gap rows with line-range mappings; baseline 56.86% project-wide, 15.95% integration-only.
+
+### Changed
+
+- Audit doc updated post-PR-#362: added a "Status update" header section, replaced TL;DR top-line/secondary findings with RESOLVED-in-#362 annotations, marked Recommendations #1, #3 as resolved (SonarCloud scanner wired; threshold scoping resolved with locked-floor-and-ratchet shape), marked Recommendations #2, #4, #5 as APPLIED IN THIS PR.
+- Phase 0a plan updated:
+  - Task 6 (telemetry) — replaced fuzzy `"send" in n.lower()` substring assertions with exact-name assertions and a Step 1.5 that reads `culture/clients/shared/telemetry.py` for canonical constant names. Implements audit recommendation #4.
+  - Task 7 (supervisor restart) — parameterized over all 4 backends (claude/codex/copilot/acp) via a `BACKEND_MODULES` dict mirroring Task 8, so non-claude supervisors don't stay at 0% under integration-only. Implements audit recommendation #2.
+  - Task 9 (closeout) — added Step 0a row #20 verification (re-measures `irc_client.py` coverage; if <80% adds Task 8.5 before the gate flip, per audit recommendation #5). Dropped the "wire SonarCloud first" prerequisite (now resolved by PR #362). Updated threshold language from `--cov-fail-under=95` to the ratchet-from-locked-baseline shape that PR #362 actually shipped.
+- Spec Phase 0a closeout language reconciled with PR #362: `fail_under = 56` is the locked baseline, ratchets toward ~73 project-wide / ~85 on `culture/clients/`. `--cov-fail-under` is enforced via `[tool.coverage.report]`, not a separate workflow flag.
+
 ## [10.5.4] - 2026-05-09
 
 ### Fixed
