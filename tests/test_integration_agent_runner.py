@@ -298,6 +298,16 @@ async def test_daemon_stop_handles_shutdown_from_within_tracked_task(
     assert daemon._transport is not None
     assert daemon._socket_server is not None
 
+    # Schedule a non-current background task so stop()'s cancel loop has
+    # something to actually cancel and gather. Without this the test only
+    # exercises the snapshot/filter; the cancel + gather lines don't run.
+    async def _sleeper():
+        await asyncio.sleep(60)
+
+    sleeper_task = asyncio.create_task(_sleeper())
+    daemon._background_tasks.add(sleeper_task)
+    sleeper_task.add_done_callback(daemon._background_tasks.discard)
+
     # Trigger the IPC shutdown path: synchronous method that creates a
     # _graceful_shutdown task and adds it to _background_tasks. With no
     # _stop_event registered, _graceful_shutdown awaits self.stop().
