@@ -14,6 +14,7 @@ file; no daemon-level duplicate here.
 import asyncio
 import json
 import os
+import queue
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -47,33 +48,24 @@ async def _wait_for_daemon_joined(server, channel, nick, timeout=5.0):
             await asyncio.sleep(0.05)
 
 
-async def _wait_for_capture(received, count, timeout=5.0):
-    """Bounded poll on the shared ``received`` list until ``count`` POSTs
-    land. Replaces racy fixed-sleep loops — webhook fanout runs the HTTP
-    POST via ``asyncio.to_thread`` so it lands shortly after the IPC
-    response, but ordering vs. the test's next line isn't guaranteed."""
-    async with asyncio.timeout(timeout):
-        while True:
-            if len(received) >= count:
-                return
-            await asyncio.sleep(0.05)
-
-
 def _make_capture_server():
     """Build a stdlib ``HTTPServer`` on a random port that captures POSTed
-    JSON bodies into a list. Returns ``(httpd, received_list, port)``.
+    JSON bodies into a thread-safe ``queue.SimpleQueue``. Returns
+    ``(httpd, received_queue, port)``.
 
     Uses stdlib instead of aiohttp.web to match the existing pattern in
-    ``tests/test_webhook.py`` — keeps style consistent and avoids
-    dragging another dep style into the test surface for one POST.
+    ``tests/test_webhook.py``. The capture queue replaces a plain list
+    so the cross-thread handle-thread → asyncio-test handoff is
+    explicitly synchronized (CPython's GIL makes a list "work" today
+    but the queue removes the implicit reliance on it).
     """
-    received: list = []
+    received: queue.SimpleQueue = queue.SimpleQueue()
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             length = int(self.headers["Content-Length"])
             body = json.loads(self.rfile.read(length))
-            received.append(body)
+            received.put(body)
             self.send_response(200)
             self.end_headers()
 
@@ -112,10 +104,18 @@ async def test_irc_ask_triggers_http_webhook_post(server, make_client, tmp_path,
             skill = SkillClient(sock_path)
             await skill.connect()
             try:
-                # irc_ask fires agent_question webhook (default in WebhookConfig.events)
-                result = await skill.irc_ask("#general", "what cmake flags?", timeout=1)
+                # irc_ask fires agent_question webhook (default in WebhookConfig.events).
+                # Bound the IPC call ourselves: skill.irc_ask's `timeout` is
+                # echoed in the IPC message but the daemon ignores it, and
+                # SkillClient._request awaits the response with no deadline.
+                async with asyncio.timeout(5.0):
+                    result = await skill.irc_ask("#general", "what cmake flags?", timeout=1)
                 assert result["ok"]
-                await _wait_for_capture(received, 1)
+                # Block until the capture server's handler thread has put
+                # one body on the queue, with an explicit timeout. The
+                # queue handoff replaces a polled-list pattern that
+                # implicitly relied on CPython's GIL for visibility.
+                payload = await asyncio.to_thread(received.get, True, 5.0)
             finally:
                 await skill.close()
         finally:
@@ -125,10 +125,10 @@ async def test_irc_ask_triggers_http_webhook_post(server, make_client, tmp_path,
         server_thread.join(timeout=2.0)
         httpd.server_close()
 
-    assert len(received) == 1
-    payload = received[0]
     # Webhook payload shape from culture/clients/shared/webhook.py:_http_post
     assert "content" in payload
     assert "[QUESTION]" in payload["content"]
     assert "testserv-bot" in payload["content"]
     assert "what cmake flags?" in payload["content"]
+    # No further POSTs expected — the agent_question event fires once per ask.
+    assert received.empty()
