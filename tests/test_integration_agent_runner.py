@@ -37,9 +37,22 @@ import pytest
 
 
 def _stub_copilot_sdk():
-    if importlib.util.find_spec("copilot") is not None:
+    # If copilot is already in sys.modules (real install or a sibling test's
+    # stub), don't override — a sibling stub may lack `__spec__`, which would
+    # make find_spec() raise ValueError, so check sys.modules first.
+    if "copilot" in sys.modules:
         return
+    # Check distribution availability without importing. ValueError can fire
+    # if find_spec encounters a malformed entry; treat as "install our stub".
+    try:
+        if importlib.util.find_spec("copilot") is not None:
+            return
+    except (ValueError, ImportError):
+        pass
     mod = types.ModuleType("copilot")
+    # Set __spec__ so consumers calling find_spec("copilot") later don't
+    # raise ValueError on this stub.
+    mod.__spec__ = importlib.util.spec_from_loader("copilot", loader=None)
 
     class CopilotClient:
         def __init__(self, config=None):  # noqa: ARG002
