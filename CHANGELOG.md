@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.3] - 2026-05-09
+
+### Added
+
+- `workflow.sh` consolidated entry point in `.claude/skills/cicd/scripts/` — single dispatcher for `lint`, `open-pr`, `poll`, `poll-readiness`, `wait-after-push`, `await`, `reply`. Vendored verbatim from steward 0.7's cicd skill.
+- `portability-lint.sh` — catches absolute `/home/<user>/` paths and per-user dotfile references in committed docs/configs. Default mode lints the current diff only, so existing leaks in culture's docs are grandfathered; new leaks fail the lint.
+- `pr-status.sh` — one-shot PR overview: state, CI checks, review-bot pipeline, SonarCloud quality gate + issue count, inline-thread resolved tally.
+- `poll-readiness.sh` — wait until automated reviewers (qodo) finish posting, the PR closes, or an iteration cap is hit. Used by `workflow.sh await`.
+- `_resolve-nick.sh` — resolves the agent nick from `<repo-root>/culture.yaml` (first agent's `suffix`) with a fallback to the repo basename. Used by `pr-reply.sh` to auto-sign replies as `- <nick> (Claude)`.
+
+### Changed
+
+- `pr-reply.sh` re-cited from steward verbatim. Replies now auto-sign as `- <nick> (Claude)` (e.g. `- culture (Claude)`) via `_resolve-nick.sh`. Drops the previous `# culture-divergence:` that hard-coded `- Claude` — the divergence is resolved upstream now.
+- `.claude/skills/cicd/SKILL.md` Step 8 updated for the new auto-signing behavior: reply bodies should NOT include a `- Claude` signature (the script appends `- <nick> (Claude)` automatically). Script reference table adds the four new scripts.
+
 ## [10.5.2] - 2026-05-09
 
 ### Added
