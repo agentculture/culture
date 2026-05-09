@@ -31,18 +31,36 @@ def _redirect_pidfile(monkeypatch, tmp_path):
     monkeypatch.setattr("culture.pidfile.PID_DIR", str(tmp_path / "pids"))
 
 
-async def _wait_for_buffer_total(daemon, channel, expected_total, timeout=5.0):
-    """Poll until ``daemon._buffer`` has ingested ``expected_total`` messages on
-    ``channel``. Replaces fixed ``asyncio.sleep`` waits — PRIVMSG → transport
-    → buffer ingestion is asynchronous, so a bounded poll is deterministic
-    instead of racy. ``_totals`` is the lifetime add count, never decreases,
-    so ``>=`` is the correct comparator."""
+async def _wait_for_daemon_joined(server, channel, nick, timeout=5.0):
+    """Poll until the daemon's IRC nick appears in ``server.channels[channel].members``.
+
+    ``AgentDaemon.start()`` returns once the transport task has been spawned, but
+    the IRC welcome (001) → JOIN handshake completes asynchronously after that.
+    Flooding before the daemon is in the channel means the server delivers no
+    PRIVMSGs to it. The most deterministic readiness signal is the server's own
+    membership view (the server processes JOIN synchronously on receipt).
+    """
     async with asyncio.timeout(timeout):
         while True:
-            if (
-                daemon._buffer is not None
-                and daemon._buffer._totals.get(channel, 0) >= expected_total
-            ):
+            ch = server.channels.get(channel)
+            # ``ch.members`` is a set of Client objects, not nicks.
+            if ch is not None and any(getattr(m, "nick", None) == nick for m in ch.members):
+                return
+            await asyncio.sleep(0.05)
+
+
+async def _wait_for_buffer_delta(daemon, channel, baseline, expected_delta, timeout=5.0):
+    """Poll until ``daemon._buffer`` has ingested ``expected_delta`` *additional*
+    messages on ``channel`` since ``baseline`` was captured.
+
+    ``_totals`` is a lifetime counter that may already be non-zero before the
+    flood (e.g. from system messages or prior test setup), so a baseline-relative
+    comparison is required — an absolute ``>= expected`` check can return early.
+    """
+    target = baseline + expected_delta
+    async with asyncio.timeout(timeout):
+        while True:
+            if daemon._buffer is not None and daemon._buffer._totals.get(channel, 0) >= target:
                 return
             await asyncio.sleep(0.05)
 
@@ -68,14 +86,24 @@ async def test_buffer_drops_oldest_on_overflow(server, make_client, tmp_path, mo
     daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=True)
     await daemon.start()
     try:
+        # Wait for daemon to actually join #general — start() returns before
+        # the IRC welcome → JOIN handshake completes. Flooding before this
+        # window means the server has no member to deliver PRIVMSGs to.
+        await _wait_for_daemon_joined(server, "#general", agent.nick)
+
         human = await make_client(nick="testserv-ori", user="ori")
         await human.send("JOIN #general")
         await human.recv_all(timeout=0.3)
 
+        # Capture the lifetime add count *now*, before the flood. _totals is
+        # never reset, so comparing against an absolute target (>= FLOOD_COUNT)
+        # races with any pre-flood traffic on the channel.
+        baseline = daemon._buffer._totals.get("#general", 0)
+
         for i in range(FLOOD_COUNT):
             await human.send(f"PRIVMSG #general :flood-msg-{i:04d}")
 
-        await _wait_for_buffer_total(daemon, "#general", FLOOD_COUNT)
+        await _wait_for_buffer_delta(daemon, "#general", baseline, FLOOD_COUNT)
 
         # MessageBuffer.read advances a per-channel cursor; only the first
         # call after the flood returns the retained slice. Subsequent reads
