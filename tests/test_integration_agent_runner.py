@@ -19,8 +19,6 @@ follow-up.
 """
 
 import asyncio
-import sys
-import types
 
 import pytest
 
@@ -51,64 +49,6 @@ def _invalidate_harness_telemetry_cache():
     harness_tel._registry = None
 
 
-def _stub_claude_sdk_if_needed():
-    """Insert minimal ``claude_agent_sdk`` stubs into ``sys.modules`` so CI
-    runs without the real SDK installed. Mirrors the stub block in
-    ``tests/harness/test_agent_runner_claude.py``."""
-    if "claude_agent_sdk" in sys.modules:
-        return
-    mod = types.ModuleType("claude_agent_sdk")
-
-    class _Base:
-        pass
-
-    class AssistantMessage(_Base):
-        def __init__(self, model="stub", content=None):
-            self.model = model
-            self.content = content or []
-
-    class ResultMessage(_Base):
-        def __init__(self, session_id="sid", is_error=False, result="", usage=None):
-            self.session_id = session_id
-            self.is_error = is_error
-            self.result = result
-            self.usage = usage
-
-    class ClaudeAgentOptions(_Base):
-        def __init__(self, **kwargs):
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-
-    class TextBlock(_Base):
-        pass
-
-    class ThinkingBlock(_Base):
-        pass
-
-    class ToolUseBlock(_Base):
-        pass
-
-    class ToolResultBlock(_Base):
-        pass
-
-    async def query(**kwargs):
-        # Default stub yields nothing; tests patch this with their own
-        # variant. ``if False: yield`` makes this a valid async
-        # generator (S5797 / S3626 dance).
-        if False:
-            yield  # pragma: no cover
-
-    mod.AssistantMessage = AssistantMessage
-    mod.ResultMessage = ResultMessage
-    mod.ClaudeAgentOptions = ClaudeAgentOptions
-    mod.TextBlock = TextBlock
-    mod.ThinkingBlock = ThinkingBlock
-    mod.ToolUseBlock = ToolUseBlock
-    mod.ToolResultBlock = ToolResultBlock
-    mod.query = query
-    sys.modules["claude_agent_sdk"] = mod
-
-
 async def _wait_for_timeout_metric(metrics_reader, timeout=10.0):
     """Bounded poll until ``culture.harness.llm.calls`` has a data point
     with ``outcome=timeout``. Returns the data point. Replaces fixed
@@ -136,7 +76,6 @@ async def test_claude_agent_runner_records_timeout_outcome(
     """A wedged claude SDK call exceeds ``turn_timeout_seconds``;
     AgentRunner's timeout path records ``outcome=timeout`` on the
     ``culture.harness.llm.calls`` counter."""
-    _stub_claude_sdk_if_needed()
     _redirect_pidfile(monkeypatch, tmp_path)
     _invalidate_harness_telemetry_cache()
 

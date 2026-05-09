@@ -1,22 +1,96 @@
 # tests/conftest.py
 import asyncio
+import sys
+import types
 from unittest.mock import patch
 
-import pytest
-import pytest_asyncio
-from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig
-from agentirc.ircd import IRCd
-from opentelemetry import metrics as otel_metrics
-from opentelemetry import trace
-from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+# ---------------------------------------------------------------------------
+# Stub claude_agent_sdk into sys.modules at conftest collection time.
+#
+# Several test modules (`tests/harness/test_agent_runner_claude.py`,
+# `tests/test_integration_agent_runner.py`, etc.) install their own stub
+# at the top of the file with `if "claude_agent_sdk" in sys.modules:
+# return`. Under pytest-xdist, if a sibling test module imports
+# `culture.clients.claude.daemon` first (which transitively does
+# `from claude_agent_sdk import ...`), the real SDK lands in sys.modules
+# and the per-file stub guards skip — leaving the harness tests bound to
+# the real `ResultMessage` (which has stricter required-positional args
+# than the stub's ``session_id="sid-1", is_error=False, ...`` shape).
+#
+# Installing the stub here, before any test module imports, is the
+# only place that reliably wins the race across xdist worker orderings.
+# Tests never call the real SDK — everyone either stubs `query` /
+# `send_request` etc., or sets `skip_claude=True` on AgentDaemon — so
+# replacing the SDK module is transparent.
+# ---------------------------------------------------------------------------
 
-from culture.telemetry.metrics import reset_for_tests as _reset_metrics
-from culture.telemetry.tracing import reset_for_tests as _reset_telemetry
+
+def _stub_claude_sdk_at_conftest_import():
+    if "claude_agent_sdk" in sys.modules:
+        return
+    mod = types.ModuleType("claude_agent_sdk")
+
+    class _Base:
+        pass
+
+    class AssistantMessage(_Base):
+        def __init__(self, model="stub-model", content=None):
+            self.model = model
+            self.content = content or []
+
+    class ResultMessage(_Base):
+        def __init__(self, session_id="sid-1", is_error=False, result="", usage=None):
+            self.session_id = session_id
+            self.is_error = is_error
+            self.result = result
+            self.usage = usage
+
+    class ClaudeAgentOptions(_Base):
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class _Block(_Base):
+        pass
+
+    async def query(**kwargs):
+        # Default stub: empty stream. Tests patch this with their own
+        # `_fake_query` / `_hanging_query` via monkeypatch on
+        # ``culture.clients.claude.agent_runner.query``.
+        if False:
+            yield  # pragma: no cover  -- marks this an async generator
+
+    mod.AssistantMessage = AssistantMessage
+    mod.ResultMessage = ResultMessage
+    mod.ClaudeAgentOptions = ClaudeAgentOptions
+    mod.TextBlock = _Block
+    mod.ThinkingBlock = _Block
+    mod.ToolUseBlock = _Block
+    mod.ToolResultBlock = _Block
+    mod.query = query
+    sys.modules["claude_agent_sdk"] = mod
+
+
+_stub_claude_sdk_at_conftest_import()
+
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig  # noqa: E402
+from agentirc.ircd import IRCd  # noqa: E402
+from opentelemetry import metrics as otel_metrics  # noqa: E402
+from opentelemetry import trace  # noqa: E402
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider  # noqa: E402
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
+from opentelemetry.sdk.resources import Resource  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
+    InMemorySpanExporter,
+)
+
+from culture.telemetry.metrics import reset_for_tests as _reset_metrics  # noqa: E402
+from culture.telemetry.tracing import reset_for_tests as _reset_telemetry  # noqa: E402
 
 # Test-only link password — not a real credential (S2068)
 TEST_LINK_PASSWORD = "testlink123"
