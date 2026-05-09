@@ -248,28 +248,51 @@ async def test_claude_agent_runner_records_error_outcome(
         await daemon.stop()
 
 
+_DAEMON_BACKENDS = [
+    ("claude", "AgentDaemon", "skip_claude"),
+    ("codex", "CodexDaemon", "skip_codex"),
+    ("copilot", "CopilotDaemon", "skip_copilot"),
+    ("acp", "ACPDaemon", "skip_agent"),  # ACP uses skip_agent, not skip_acp
+]
+
+
+@pytest.mark.parametrize("backend, daemon_cls_name, skip_flag", _DAEMON_BACKENDS)
 @pytest.mark.asyncio
-async def test_daemon_stop_handles_shutdown_from_within_tracked_task(server, tmp_path, monkeypatch):
-    """Regression: ``_ipc_shutdown`` (sync) schedules ``_graceful_shutdown``
-    onto ``_background_tasks``, and that task awaits ``self.stop()`` when no
-    external ``_stop_event`` is registered. ``stop()``'s cancel loop must
-    exclude ``asyncio.current_task()`` — otherwise the running shutdown task
-    cancels itself, aborting teardown before transport/socket cleanup.
-    Surfaced by Qodo on PR #373.
+async def test_daemon_stop_handles_shutdown_from_within_tracked_task(
+    server, tmp_path, monkeypatch, backend, daemon_cls_name, skip_flag
+):
+    """Regression (all four backends): ``_ipc_shutdown`` (sync) schedules
+    ``_graceful_shutdown`` onto ``_background_tasks``, and that task awaits
+    ``self.stop()`` when no external ``_stop_event`` is registered.
+    ``stop()``'s cancel loop must exclude ``asyncio.current_task()`` —
+    otherwise the running shutdown task cancels itself, aborting teardown
+    before transport/socket cleanup. Surfaced by Qodo on PR #373.
+
+    Parametrized over all backends because the cancel-loop block was added
+    identically to all four daemons (cite-don't-import twin code) and the
+    self-cancellation hazard is structural to every backend.
     """
+    import importlib
+
     _redirect_pidfile(monkeypatch, tmp_path)
-    from culture.clients.claude.daemon import AgentDaemon
+    daemon_mod = importlib.import_module(f"culture.clients.{backend}.daemon")
+    config_mod = importlib.import_module(f"culture.clients.{backend}.config")
+    daemon_cls = getattr(daemon_mod, daemon_cls_name)
+    daemon_config_cls = config_mod.DaemonConfig
+    agent_config_cls = config_mod.AgentConfig
+    server_conn_cls = config_mod.ServerConnConfig
+    webhook_cls = config_mod.WebhookConfig
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
     sock_dir = tmp_path / "sock"
     sock_dir.mkdir()
-    config = DaemonConfig(
-        server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
-        webhooks=WebhookConfig(url=None),
+    config = daemon_config_cls(
+        server=server_conn_cls(host="127.0.0.1", port=server.config.port),
+        webhooks=webhook_cls(url=None),
     )
-    agent = AgentConfig(nick="testserv-bot", directory=str(agent_dir), channels=["#general"])
-    daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=True)
+    agent = agent_config_cls(nick="testserv-bot", directory=str(agent_dir), channels=["#general"])
+    daemon = daemon_cls(config, agent, socket_dir=str(sock_dir), **{skip_flag: True})
 
     await daemon.start()
     assert daemon._transport is not None
