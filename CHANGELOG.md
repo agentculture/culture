@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.6] - 2026-05-09
+
+### Fixed
+
+- Phase 0a plan Task 2 (attention) — replaced fictional `Band.ACTIVE_RECENT`/`Band.PASSIVE` constants and `daemon.attention.current_band()` with real API: `Band.HOT`/`WARM`/`COOL`/`IDLE` from `culture/clients/shared/attention.py`, `daemon._attention.snapshot()`, `attention_overrides: dict | None` on `DaemonConfig`. Original snippet would have failed at write time (Qodo bug #1 on PR #363).
+- Phase 0a plan Task 7 (supervisor) — **dropped entirely**. Original framing ("kill the daemon, observe restart") was based on a misreading of `culture/clients/<backend>/supervisor.py`, which is the LLM verdict evaluator (`Supervisor` class with `evaluate()`, `SupervisorVerdict.parse()`, `make_sdk_evaluate_fn`), not a process supervisor. Unit tests in `tests/test_supervisor.py` are the right shape and move to cultureagent in Phase 1. Audit row #10 updated from ADD integration → ACCEPT (12/7/1/1 split). Audit recommendation #2 (parameterize Task 7) marked moot. Spec's behavior list updated to match. (Qodo bug #2 on PR #363.)
+- Phase 0a plan Task 9 Step 0a — `--cov=culture/clients/claude/skill/irc_client` (broken — missing `.py`, mixed-form path) → `--cov=culture.clients.claude.skill.irc_client` (dotted module form, consistent with the rest of the plan). (Qodo bug #3 on PR #363.)
+- Phase 0a plan Task 9 Step 7 — branch name `chore/coverage-gate-95-percent` and commit/PR title containing "95% coverage gate" were stale from before the ratchet-from-locked-baseline reframing. Updated to `chore/coverage-gate-phase0a-closeout` and "ratchet pytest fail_under to post-Phase-0a measured floor", consistent with Step 2's branch name and Task 9's stated goal. (Qodo bug #4 on PR #363.)
+
 ## [10.5.5] - 2026-05-09
 
 ### Added

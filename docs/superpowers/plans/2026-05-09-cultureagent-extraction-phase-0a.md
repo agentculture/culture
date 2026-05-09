@@ -28,7 +28,7 @@
 | `tests/test_integration_irc_transport.py` | IRCv3 tag propagation + reconnect |
 | `tests/test_integration_webhook.py` | HTTP fanout + IRC alert channel |
 | `tests/test_integration_telemetry.py` | Counter + span emission during real ops |
-| `tests/test_integration_supervisor.py` | Restart-on-crash via real subprocess |
+| ~~`tests/test_integration_supervisor.py`~~ | **REMOVED.** Original framing (subprocess kill + restart) was a misread; `supervisor.py` is the LLM verdict evaluator. See Task 7 banner. |
 | `tests/test_integration_agent_runner.py` | Per-backend timeout, parameterized over 4 backends |
 
 **Modified:**
@@ -116,7 +116,7 @@ Create `docs/superpowers/notes/2026-05-09-cultureagent-coverage-audit.md` with t
 | IRC alert channel | tests/harness/test_webhook_config_shared.py | culture/clients/shared/webhook.py L150-L180 | **ADD integration** (Task 5) |
 | Telemetry counters | tests/harness/test_telemetry_module.py | culture/clients/shared/telemetry.py L30-L80 | **ADD integration** (Task 6) |
 | Daemon telemetry spans | tests/harness/test_daemon_telemetry.py | culture/clients/<backend>/daemon.py span emission sites | **ADD integration** (Task 6) |
-| Supervisor restart-on-crash | tests/test_supervisor.py | culture/clients/<backend>/supervisor.py L60-L120 | **ADD integration** (Task 7) |
+| ~~Supervisor restart-on-crash~~ — misread (supervisor.py is the LLM verdict evaluator) | tests/test_supervisor.py | culture/clients/<backend>/supervisor.py (verdict + whisper logic) | **ACCEPT** — unit tests are the right shape; move to cultureagent in Phase 1 |
 | agent_runner timeout (4 backends) | tests/harness/test_agent_runner_*.py | culture/clients/<backend>/agent_runner.py timeout paths | **ADD integration** (Task 8, parameterized) |
 | All-backends parity | tests/harness/test_all_backends_parity.py | (asserts byte-equivalence of cited files) | **ACCEPT** — moves to cultureagent; no integration analog |
 | Daemon config validation | tests/test_daemon_config.py | culture/clients/<backend>/config.py | **ACCEPT** — schema-level, unit tests in cultureagent are sufficient |
@@ -197,7 +197,7 @@ from culture.clients.shared.attention import Band
 
 @pytest.mark.asyncio
 async def test_mention_bumps_attention_band(server, make_client):
-    """A direct mention bumps the agent's attention band to ACTIVE_RECENT."""
+    """A direct mention bumps the agent's per-target attention band to HOT."""
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         webhooks=WebhookConfig(url=None),
@@ -208,30 +208,39 @@ async def test_mention_bumps_attention_band(server, make_client):
     await daemon.start()
     await asyncio.sleep(0.5)
     try:
-        # Baseline: agent should start in IDLE
-        assert daemon.attention.current_band() == Band.IDLE
-
         human = await make_client(nick="testserv-ori", user="ori")
         await human.send("JOIN #general")
         await human.recv_all(timeout=0.3)
         await human.send("PRIVMSG #general :testserv-bot are you there?")
         await asyncio.sleep(0.5)
 
-        # Direct mention should bump to ACTIVE_RECENT
-        assert daemon.attention.current_band() == Band.ACTIVE_RECENT
+        # AttentionTracker is a private daemon attribute named `_attention`.
+        # snapshot() returns dict[target -> TargetState], TargetState.band is
+        # the current band. Bands: HOT, WARM, COOL, IDLE (see
+        # culture/clients/shared/attention.py). A direct mention should
+        # leave #general at Band.HOT (the on_direct() path).
+        snapshot = daemon._attention.snapshot()
+        assert "#general" in snapshot, f"saw targets: {list(snapshot)}"
+        assert snapshot["#general"].band == Band.HOT
     finally:
         await daemon.stop()
 
 
 @pytest.mark.asyncio
-async def test_attention_decays_after_idle_window(server, make_client):
-    """Without further mentions, attention decays to lower band after idle window."""
-    # Set short attention windows for test speed
+async def test_attention_decays_after_hold_window(server, make_client):
+    """Without further mentions, attention decays through the band ladder."""
+    # Override per-band hold/interval seconds via attention_overrides so the
+    # decay completes within test runtime. Default Band.HOT has hold_s=120.
+    # Read culture/clients/shared/attention.py BandSpec defaults and shape
+    # the override to fit (e.g., {"#general": {"HOT": {"hold_s": 1, "interval_s": 1}}}).
+    # The exact key shape lives in _build_attention_config in clients/<backend>/config.py.
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
         webhooks=WebhookConfig(url=None),
-        attention_active_window_seconds=1,
-        attention_passive_window_seconds=2,
+        attention_overrides={
+            # SHAPE — verify against config.py at write time.
+            "default": {"HOT": {"hold_s": 1, "interval_s": 1}},
+        },
     )
     agent = AgentConfig(nick="testserv-bot", directory="/tmp", channels=["#general"])
     sock_dir = tempfile.mkdtemp()
@@ -245,28 +254,35 @@ async def test_attention_decays_after_idle_window(server, make_client):
         await human.send("PRIVMSG #general :testserv-bot ping")
         await asyncio.sleep(0.5)
 
-        assert daemon.attention.current_band() == Band.ACTIVE_RECENT
-        await asyncio.sleep(1.5)  # past active window, into passive
-        # Decay step is triggered on next attention check
-        assert daemon.attention.current_band() in (Band.PASSIVE, Band.IDLE)
-        await asyncio.sleep(2.5)  # past passive window, into idle
-        assert daemon.attention.current_band() == Band.IDLE
+        snapshot = daemon._attention.snapshot()
+        assert snapshot["#general"].band == Band.HOT
+
+        # Wait past HOT.hold_s; decay one step (HOT → WARM).
+        await asyncio.sleep(2.0)
+        # _apply_decay runs lazily on next snapshot/due_targets call, so
+        # touch the tracker to advance state. Read attention.py for the
+        # canonical "trigger decay" entrypoint at write time.
+        snapshot = daemon._attention.snapshot()
+        assert snapshot["#general"].band < Band.HOT  # any band lower than HOT
     finally:
         await daemon.stop()
 
 
 @pytest.mark.asyncio
 async def test_dynamic_attention_levels_per_channel(server, make_client):
-    """Different channels can carry different attention configs (dynamic levels)."""
-    # NOTE: fill in real config field name from culture/clients/shared/attention.py.
-    # The test must drive different bands in two channels via different mention
-    # patterns, then assert daemon.attention.band_for_channel(channel) returns
-    # different values. Refer to harness/test_attention_config.py for the unit
-    # test that this integration test replaces.
-    pytest.skip("Fill in based on AttentionConfig surface in shared/attention.py")
+    """Different channels can carry different attention overrides."""
+    # `attention_overrides` is `dict | None` on DaemonConfig. The accepted
+    # shape is built by _build_attention_config in
+    # culture/clients/<backend>/config.py — read it at write time, then
+    # construct two channels with different per-band hold_s and assert
+    # the snapshot reflects different decay rates.
+    pytest.skip(
+        "Fill in based on _build_attention_config shape in clients/<backend>/config.py "
+        "and AttentionConfig in culture/clients/shared/attention.py"
+    )
 ```
 
-**Note:** the third test starts as `pytest.skip` because the config-field naming for dynamic levels needs to be read from `culture/clients/shared/attention.py` at write time. Replace the skip with the real assertion before the test PR is opened. If the surface is too complex to integration-test, file an issue and accept the loss in the audit doc.
+**API verification before write:** the snippet above grounds itself in the real `AttentionTracker` surface (`Band.HOT`/`WARM`/`COOL`/`IDLE`, `on_direct`/`on_ambient`/`snapshot`, private `daemon._attention`, `attention_overrides: dict | None` on `DaemonConfig`). The `attention_overrides` value shape is built by `_build_attention_config` in `culture/clients/<backend>/config.py` — read it before write to confirm the exact key structure used in `test_attention_decays_after_hold_window`. The third test stays as `pytest.skip` until that shape is verified.
 
 - [ ] **Step 3: Run the test**
 
@@ -739,147 +755,16 @@ bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integrat
 
 ---
 
-## Task 7: Per-backend supervisor restart-on-crash integration test (parameterized)
+## Task 7: ~~Supervisor restart-on-crash integration test~~ — REMOVED (post-#363 review)
 
-**Files:**
-- Create: `tests/test_integration_supervisor.py`
+> **Status: REMOVED.** The original Task 7 was based on a misreading of `culture/clients/<backend>/supervisor.py` — that module is the **LLM verdict evaluator** (`Supervisor` class with `evaluate()`, `SupervisorVerdict.parse()`, `make_sdk_evaluate_fn`), **not a process supervisor**. The "kill the daemon, observe restart" framing doesn't match what the code does.
+>
+> The unit tests in `tests/test_supervisor.py` (verdict parsing, rolling window, whisper-on-correction, escalation, SDK evaluate-fn wrapping) are the right shape for this module. Per the audit's test-movement rule ("unit tests follow the code"), they move to cultureagent in Phase 1; no integration substitute is needed.
+>
+> Audit row #10 is updated from **ADD integration** to **ACCEPT**. Audit recommendation #2 (parameterize Task 7 over 4 backends) is **moot** — Task 7 is dropped. The four-backend parameterization pattern lives in Task 8 (agent_runner) instead.
+>
+> Task numbering preserved (no Task 8 → 7 renumber) to keep cross-references in the audit and spec stable.
 
-Per audit recommendation #2, this test parameterizes over all four backends. Without parameterization, codex/copilot/acp `supervisor.py` stays at 0% under integration-only after Phase 0a closes (today's full-suite shows ~38–45% on the non-claude supervisors; integration-only drops them to 0%).
-
-- [ ] **Step 1: Branch and write test**
-
-```bash
-git checkout main && git pull --quiet
-git checkout -b test/integration-supervisor
-```
-
-```python
-"""End-to-end supervisor restart — kill the daemon, observe the supervisor
-restart it. Parameterized over all four backends. Replaces
-tests/test_supervisor.py at the integration layer.
-
-This test launches the supervisor as a real subprocess (matching how
-`culture agent start` invokes it) so the integration covers the full
-process-management chain, not just an in-process supervisor object."""
-
-import asyncio
-import json
-import os
-import signal
-import subprocess
-import sys
-import tempfile
-import time
-
-import pytest
-
-
-# Constant locations for Phase 1 retargeting (mirrors Task 8's BACKEND_MODULES):
-BACKEND_MODULES = {
-    "claude": "culture.clients.claude",
-    "codex": "culture.clients.codex",
-    "copilot": "culture.clients.copilot",
-    "acp": "culture.clients.acp",
-}
-
-
-@pytest.mark.parametrize("backend", list(BACKEND_MODULES.keys()))
-@pytest.mark.asyncio
-async def test_supervisor_restarts_killed_daemon(backend, server, tmp_path):
-    """When the daemon process is killed, the supervisor relaunches it."""
-    # NOTE: read culture/cli/agent.py for how `culture agent start` builds the
-    # supervisor invocation. Replicate the subprocess args here. The supervisor
-    # writes a PID file; assert (a) the original daemon PID, (b) that PID dies,
-    # (c) a NEW daemon PID appears in the PID file within the restart window.
-    backend_module = BACKEND_MODULES[backend]
-    sock_dir = tempfile.mkdtemp()
-    pid_file = tmp_path / "supervisor.pid"
-    daemon_pid_file = tmp_path / "daemon.pid"
-    config_file = tmp_path / "agent.yaml"
-    config_file.write_text(
-        f"""
-nick: testserv-bot-{backend}
-directory: /tmp
-channels: ["#general"]
-server:
-  host: 127.0.0.1
-  port: {server.config.port}
-"""
-    )
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            f"{backend_module}.supervisor",
-            "--config",
-            str(config_file),
-            "--socket-dir",
-            sock_dir,
-            "--daemon-pid-file",
-            str(daemon_pid_file),
-        ],
-        env={**os.environ, "PYTHONUNBUFFERED": "1"},
-    )
-    try:
-        # Wait for daemon to start
-        for _ in range(50):
-            if daemon_pid_file.exists():
-                break
-            await asyncio.sleep(0.1)
-        assert daemon_pid_file.exists(), \
-            f"[{backend}] supervisor never wrote daemon PID file"
-        original_pid = int(daemon_pid_file.read_text().strip())
-        assert original_pid > 0
-
-        # Kill the daemon
-        os.kill(original_pid, signal.SIGKILL)
-
-        # Wait for restart
-        new_pid = original_pid
-        for _ in range(100):
-            await asyncio.sleep(0.1)
-            if daemon_pid_file.exists():
-                new_pid = int(daemon_pid_file.read_text().strip())
-                if new_pid != original_pid:
-                    break
-        else:
-            pytest.fail(f"[{backend}] supervisor did not restart daemon within 10s")
-
-        assert new_pid != original_pid
-        # Verify the new PID is alive
-        os.kill(new_pid, 0)  # raises if not alive
-    finally:
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=2)
-```
-
-**Critical for Phase 1:** the `BACKEND_MODULES` dict at the top of this file uses `culture.clients.<backend>` paths. In the Phase 1 cutover PR, those become `cultureagent.clients.<backend>`. The dict-at-the-top pattern (mirrored in Task 8) makes that one-line retargeting trivial.
-
-- [ ] **Step 2: Run + verify**
-
-```bash
-uv run pytest tests/test_integration_supervisor.py -v --timeout=30
-```
-
-Expected: pass within ~15-20 seconds (multiple restart cycles take time).
-
-- [ ] **Step 3: Bump, format, commit, push, PR**
-
-```bash
-python3 .claude/skills/version-bump/scripts/bump.py patch
-uv run black tests/test_integration_supervisor.py
-uv run isort tests/test_integration_supervisor.py
-git add tests/test_integration_supervisor.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
-git commit -m "test: integration coverage for supervisor restart-on-crash"
-git push -u origin test/integration-supervisor
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for supervisor restart"
-```
-
----
 
 ## Task 8: Per-backend agent_runner integration test
 
@@ -982,7 +867,7 @@ Per audit recommendation #5 (row #20: `tests/test_skill_client.py` had unique co
 ```bash
 mkdir -p /tmp/culture-tests
 uv run pytest tests/test_integration_*.py \
-    --cov=culture/clients/claude/skill/irc_client \
+    --cov=culture.clients.claude.skill.irc_client \
     --cov-report=term \
     -q 2>&1 | tee /tmp/culture-tests/skill-client-final.log
 grep -E "irc_client.py|TOTAL" /tmp/culture-tests/skill-client-final.log
@@ -1048,9 +933,9 @@ Expected: PASS. If it fails, you cannot land this PR — back to gate analysis.
 
 ```bash
 git add .github/workflows/tests.yml pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
-git commit -m "ci: enforce 95% coverage gate via pytest + SonarCloud"
-git push -u origin chore/coverage-gate-95-percent
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a closeout: 95% coverage gate"
+git commit -m "ci: ratchet pytest fail_under to post-Phase-0a measured floor"
+git push -u origin chore/coverage-gate-phase0a-closeout
+bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a closeout: ratchet fail_under to post-Phase-0a floor"
 ```
 
 The PR description should call out the SonarCloud gate change explicitly so reviewers know the out-of-tree action is part of the change.

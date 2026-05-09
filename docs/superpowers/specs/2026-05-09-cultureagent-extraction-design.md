@@ -167,7 +167,7 @@ Behaviors needing integration coverage (audit may find more):
 - IRC transport tag propagation, reconnect — `tests/test_irc_transport.py`, `test_irc_transport_tags.py`
 - Webhook fanout (HTTP + IRC alert) — `tests/test_webhook.py`, `test_webhook_config_shared.py`
 - Telemetry counter emission — `tests/harness/test_daemon_telemetry.py`, `test_telemetry_module.py`
-- Supervisor restart-on-crash — `tests/test_supervisor.py`
+- ~~Supervisor restart-on-crash — `tests/test_supervisor.py`~~ — **dropped post-#363 review.** `supervisor.py` is the LLM verdict evaluator (`Supervisor` class with `evaluate()`, `SupervisorVerdict.parse()`, `make_sdk_evaluate_fn`), not a process supervisor. Unit tests are the right shape; no integration substitute. Moves to cultureagent in Phase 1.
 - Per-backend agent_runner timeout, parity — `tests/harness/test_agent_runner_*.py`, `test_all_backends_parity.py`
 
 Each new integration test stays in culture forever. Multiple small culture PRs are fine; this phase doesn't need to ship as one PR.
