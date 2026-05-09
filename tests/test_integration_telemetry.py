@@ -24,6 +24,7 @@ from culture.clients.claude.config import (
     WebhookConfig,
 )
 from culture.clients.claude.daemon import AgentDaemon
+from culture.clients.shared import telemetry as harness_tel
 from culture.clients.shared.attention import Band
 
 CONNECT_SPAN = "harness.irc.connect"
@@ -34,6 +35,29 @@ def _redirect_pidfile(monkeypatch, tmp_path):
     """Redirect ``culture.pidfile.PID_DIR`` so daemons don't write into the
     real ``~/.culture/pids`` from a unit test."""
     monkeypatch.setattr("culture.pidfile.PID_DIR", str(tmp_path / "pids"))
+
+
+def _invalidate_harness_telemetry_cache():
+    """Force the next ``init_harness_telemetry`` to re-init from the current
+    OTel globals.
+
+    ``culture.clients.shared.telemetry`` keeps module-level
+    ``_initialized_for`` / ``_tracer`` / ``_registry`` so the function is
+    idempotent in production. Under pytest-xdist a sibling worker can
+    cache the registry against a previous test's no-op providers; without
+    invalidation the new test then routes spans/metrics nowhere. We only
+    clear the cache keys (NOT the OTel globals) — the conftest
+    ``tracing_exporter`` / ``metrics_reader`` fixtures own the globals and
+    have already installed their providers by the time the test body
+    runs, so ``trace.get_tracer`` / ``metrics.get_meter`` resolve to them.
+
+    Calling ``harness_tel.reset_for_tests()`` would also work but it
+    additionally clears OTel's own globals (and on `--xdist` workers can
+    race with the fixture's setup), so we use the narrower cache poke.
+    """
+    harness_tel._initialized_for = None
+    harness_tel._tracer = None
+    harness_tel._registry = None
 
 
 async def _wait_for_daemon_joined(server, channel, nick, timeout=5.0):
@@ -72,14 +96,7 @@ async def test_daemon_connect_emits_harness_irc_connect_span(
     """``daemon.start()`` → ``IRCTransport._do_connect`` emits the connect
     span with the configured backend/nick/server attrs."""
     _redirect_pidfile(monkeypatch, tmp_path)
-    # NOTE: deliberately do NOT call harness telemetry's reset_for_tests
-    # here — it shuts down the MeterProvider that the conftest
-    # tracing_exporter / metrics_reader fixtures installed, and
-    # reinstalling the captured provider afterwards doesn't undo the
-    # shutdown. The conftest fixtures' own _reset_telemetry() /
-    # _reset_metrics() calls clear server-side globals; init_harness_
-    # telemetry then picks up the test fixture's providers via
-    # trace.get_tracer() / metrics.get_meter() proxy resolution.
+    _invalidate_harness_telemetry_cache()
 
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -115,6 +132,7 @@ async def test_attention_transition_emits_counter(
     ``to_band=HOT``, ``cause=direct`` attributes (and matching
     ``agent``/``target``)."""
     _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
 
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
