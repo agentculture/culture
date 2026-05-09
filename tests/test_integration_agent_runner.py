@@ -1,0 +1,144 @@
+"""End-to-end agent_runner timeout behavior — claude backend.
+
+Drives the full daemon → AgentRunner → ``_run_loop`` → ``_process_turn``
+chain with a hanging SDK and a short per-turn timeout, then asserts the
+``culture.harness.llm.calls`` counter records ``outcome=timeout``.
+Replaces the integration-shaped portion of
+``tests/harness/test_agent_runner_claude.py``'s timeout test (the
+harness unit test moves to cultureagent in Phase 1).
+
+**Other backends (codex, copilot, acp):** the audit's "parameterize
+over 4 backends" ask is acknowledged but narrowed for this PR. Each
+backend has a different SDK injection point (subprocess, sessions, ACP
+SDK), so adding all four in one PR would mix scope and risk per-backend
+flakiness. The harness unit tests in
+``tests/harness/test_agent_runner_{codex,copilot,acp}.py`` already
+cover the timeout path at unit shape and ship to cultureagent in
+Phase 1; the cross-backend integration coverage is tracked as a
+follow-up.
+"""
+
+import asyncio
+
+import pytest
+
+from culture.clients.claude.config import (
+    AgentConfig,
+    DaemonConfig,
+    ServerConnConfig,
+    WebhookConfig,
+)
+from culture.clients.shared import telemetry as harness_tel
+
+
+def _redirect_pidfile(monkeypatch, tmp_path):
+    """Redirect ``culture.pidfile.PID_DIR`` so daemons don't write into the
+    real ``~/.culture/pids`` from a unit test."""
+    monkeypatch.setattr("culture.pidfile.PID_DIR", str(tmp_path / "pids"))
+
+
+def _invalidate_harness_telemetry_cache():
+    """Clear the harness telemetry module cache so ``init_harness_telemetry``
+    re-resolves the OTel globals (which the conftest fixtures own).
+    Same helper rationale as Task 6 — see
+    ``tests/test_integration_telemetry.py`` for the longer note on why
+    this is the narrow safe poke vs ``harness_tel.reset_for_tests()``.
+    """
+    harness_tel._initialized_for = None
+    harness_tel._tracer = None
+    harness_tel._registry = None
+
+
+async def _wait_for_timeout_metric(metrics_reader, timeout=10.0):
+    """Bounded poll until ``culture.harness.llm.calls`` has a data point
+    with ``outcome=timeout``. Returns the data point. Replaces fixed
+    sleeps; the timeout path runs through ``record_llm_call`` after the
+    SDK wait_for fires, but ordering vs. the test's next line isn't
+    guaranteed."""
+    async with asyncio.timeout(timeout):
+        while True:
+            data = metrics_reader.get_metrics_data()
+            for rm in data.resource_metrics:
+                for sm in rm.scope_metrics:
+                    for metric in sm.metrics:
+                        if metric.name != "culture.harness.llm.calls":
+                            continue
+                        for dp in metric.data.data_points:
+                            if dp.attributes.get("outcome") == "timeout":
+                                return dp
+            await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+async def test_claude_agent_runner_records_timeout_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """A wedged claude SDK call exceeds ``turn_timeout_seconds``;
+    AgentRunner's timeout path records ``outcome=timeout`` on the
+    ``culture.harness.llm.calls`` counter."""
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    # Hanging async generator — never yields, never returns. Mirrors the
+    # production failure mode that motivated issue #349 (the per-turn
+    # timeout that this whole code path defends against). Use Event().wait()
+    # rather than `await asyncio.Future()` so cancellation propagates
+    # cleanly — a bare Future left pending on cancel emits "Future was
+    # destroyed but it is pending" warnings.
+    async def _hanging_query(**_kwargs):
+        await asyncio.Event().wait()
+        yield  # pragma: no cover  -- unreachable, marks this an async generator
+
+    monkeypatch.setattr(
+        "culture.clients.claude.agent_runner.query",
+        _hanging_query,
+        raising=True,
+    )
+
+    from culture.clients.claude.daemon import AgentDaemon
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    config = DaemonConfig(
+        server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=WebhookConfig(url=None),
+    )
+    agent = AgentConfig(
+        nick="testserv-bot",
+        directory=str(agent_dir),
+        channels=["#general"],
+    )
+    # AgentConfig is non-frozen — daemon reads turn_timeout_seconds via
+    # getattr() with DEFAULT_TURN_TIMEOUT_SECONDS fallback. 0.2s
+    # resolves quickly without flaking under CI jitter.
+    agent.turn_timeout_seconds = 0.2
+
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
+
+    # Stub out the daemon's on-exit hook before start: the timeout path
+    # calls `on_exit(1)`, which schedules `_delayed_restart` onto
+    # `_background_tasks`. AgentDaemon.stop() doesn't cancel these, so
+    # the sleeping restart task would outlive the test and emit
+    # pending-task warnings (and could compete for ports/sockets in a
+    # later test). The metric is recorded BEFORE on_exit fires, so the
+    # assertion still holds without scheduling a restart.
+    async def _no_restart(_exit_code: int) -> None:
+        return
+
+    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
+
+    await daemon.start()
+    try:
+        # daemon.start spawned AgentRunner; queue a prompt so _run_loop
+        # picks it up and invokes _process_turn (which wraps the hanging
+        # query in asyncio.wait_for with our short timeout).
+        assert daemon._agent_runner is not None
+        await daemon._agent_runner.send_prompt("hello")
+
+        timeout_dp = await _wait_for_timeout_metric(metrics_reader)
+        assert timeout_dp.attributes.get("backend") == "claude"
+        assert timeout_dp.value >= 1
+    finally:
+        await daemon.stop()

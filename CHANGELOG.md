@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.12] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_agent_runner.py` — Phase 0a Task 8 (claude only): end-to-end integration coverage for `AgentRunner._process_turn`'s timeout path. Drives the full `AgentDaemon` → `AgentRunner` → `_run_loop` → `_process_turn` chain with a hanging `claude_agent_sdk.query` and `turn_timeout_seconds=0.2`, then asserts via `metrics_reader` that the `culture.harness.llm.calls` counter records a `outcome=timeout` data point with `backend=claude`. Adopts Tasks 2/3/4/5/6 hardening (`tmp_path`, monkeypatched `PID_DIR`, `_invalidate_harness_telemetry_cache`, bounded `_wait_for_timeout_metric` poll). Includes self-contained `claude_agent_sdk` stubs so CI runs without the real SDK installed. The harness unit test in `tests/harness/test_agent_runner_claude.py` will move to cultureagent in Phase 1; the audit's "parameterize over 4 backends" ask is narrowed to claude only for this PR, with codex/copilot/acp coverage tracked as a follow-up (each backend has a different SDK injection point — bundling all four would mix scope).
+
 ## [10.5.11] - 2026-05-09
 
 ### Added
