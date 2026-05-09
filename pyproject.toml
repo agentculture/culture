@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "10.5.12"
+version = "10.6.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -85,8 +85,12 @@ omit = [
 
 [tool.coverage.report]
 # Locked 2026-05-09 at the measured project-wide floor (56.86% — see
-# docs/coverage-baseline.md). Each Phase 0a integration-test PR ratchets
-# this up by the measured delta.
+# docs/coverage-baseline.md). Phase 0a closeout (#370): post-Phase-0a
+# project-wide measured at 56.96% — barely above baseline because the
+# harness unit tests still cover the same code paths the integration
+# tests now exercise (they delete in Phase 1). Phase 0a's real delivery
+# is on `culture/clients/shared/` (58% → 80%). Project-wide gate stays
+# at 56 until Phase 1's unit-test deletion forces a re-baseline.
 fail_under = 56
 show_missing = true
 exclude_lines = [
