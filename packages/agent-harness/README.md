@@ -28,7 +28,7 @@ project (formerly `assimilai`).
    ```python
    from culture.clients.shared.attention import AttentionTracker
    from culture.clients.shared.irc_transport import IRCTransport
-   from culture.clients.shared.telemetry import TelemetryConfig
+   from culture.clients.shared.telemetry import init_harness_telemetry
    # ...etc.
    ```
 

@@ -63,7 +63,7 @@ an SDK upgrade forces telemetry to emit different attributes per backend):
    `tests/harness/test_all_backends_parity.py` for the now-cited backends
    so the cite-paste invariant is enforced again for them.
 5. Move `X` from the "Shared" table above to the "Cited" table in this
-   doc, and update the `Citation Pattern` section in `CLAUDE.md` to match.
+   doc, and update the *Shared vs cited* paragraph in `CLAUDE.md` to match.
 
 The two-tier model bends without breaking. The shared tier is **not** an
 all-or-nothing commitment — it just describes where the line currently is.
