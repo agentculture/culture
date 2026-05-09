@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.11] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_telemetry.py` — Phase 0a Task 6: end-to-end integration coverage for harness telemetry. Two tests: (1) daemon start emits the `harness.irc.connect` span with `harness.nick`/`harness.server`/`harness.backend` attrs; (2) a direct `@mention` IDLE→HOT transition increments the `culture.attention.transitions` counter with matching `from_band`/`to_band`/`cause`/`agent`/`target` attributes. Uses the conftest `tracing_exporter` (`InMemorySpanExporter` + `SimpleSpanProcessor`) and `metrics_reader` (`InMemoryMetricReader`) fixtures directly — no harness-side telemetry reset is needed since the fixtures' server-side resets clear globals and `init_harness_telemetry` resolves the test providers via OTel proxy. Adopts Tasks 2/3/4/5 hardening (`tmp_path`, monkeypatched `PID_DIR`, bounded `_wait_for_daemon_joined` and `_wait_for_band` polls). The harness unit tests in `tests/harness/test_telemetry_module.py` and `tests/harness/test_daemon_telemetry.py` will move to cultureagent in Phase 1.
+
 ## [10.5.10] - 2026-05-09
 
 ### Added
