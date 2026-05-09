@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.8] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_message_buffer.py` — Phase 0a Task 3: end-to-end integration coverage for the per-channel message buffer ring-buffer. Floods 2× `buffer_size` (10) PRIVMSGs to `#general` through real `agentirc.IRCd` and asserts via `SkillClient.irc_read` IPC that exactly `buffer_size` messages remain (deque `maxlen` cap), the most-recent message survives, and the oldest is evicted. Uses the same hardening pattern as Task 2 (`tmp_path` for sock_dir, monkeypatch `culture.pidfile.PID_DIR`, bounded `_wait_for_buffer_total` poll on `daemon._buffer._totals` instead of fixed sleeps). Lifts `culture/clients/shared/message_buffer.py` coverage to 72% from this file alone. The harness unit test in `tests/test_message_buffer.py` will move to cultureagent in Phase 1.
+
 ## [10.5.7] - 2026-05-09
 
 ### Added
