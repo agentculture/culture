@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.9] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_irc_transport.py` — Phase 0a Task 4: end-to-end integration coverage for IRC transport's IRCv3 inbound traceparent propagation. Sends `@culture.dev/traceparent=<valid> PRIVMSG #general :traced hello` from a real human IRC client, verifies via the `tracing_exporter` fixture that `IRCTransport._handle` emits a `harness.irc.message.handle` span with `culture.trace.origin: "remote"` and a `trace_id` matching the inbound traceparent. Adopts Tasks 2/3 hardening (`tmp_path` for sock_dir, monkeypatched `culture.pidfile.PID_DIR`, bounded `_wait_for_daemon_joined` and `_wait_for_span` polls). The harness unit test in `tests/harness/test_irc_transport_propagation.py` will move to cultureagent in Phase 1; reconnect coverage is already provided at integration shape by `tests/test_irc_transport.py::test_reconnect_retries_after_connection_error`, so Task 4's reconnect ask is met without a new test.
+
 ## [10.5.8] - 2026-05-09
 
 ### Added
