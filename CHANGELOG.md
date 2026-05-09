@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.3] - 2026-05-09
+
+### Fixed
+
+- `AgentDaemon.stop()` across all four backends (`claude`, `codex`, `copilot`, `acp`) now cancels and awaits any tasks scheduled into `self._background_tasks` (most importantly `_delayed_restart` from `_on_agent_exit`, plus `_send_channel_poll`/`_on_mention`/`_on_roominvite`/`_ipc_shutdown` tasks) before tearing down the agent runner. Previously these tasks could outlive `stop()` — `_delayed_restart` in particular sleeps `CRASH_RESTART_DELAY` and would either restart a daemon mid-teardown or leak past test boundaries (PR #369 review #2 follow-up). Insertion is identical across all four daemons (cite-don't-import twin code).
+
+### Changed
+
+- `tests/test_integration_agent_runner.py` — removed the `_no_restart` monkeypatch mitigation and its docstring/comment references. The fix above makes the stub unnecessary: tests can use the real `_on_agent_exit` and `daemon.stop()` cleans up the resulting `_delayed_restart` task.
+
 ## [10.6.2] - 2026-05-09
 
 ### Added

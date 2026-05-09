@@ -104,22 +104,6 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
     return AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
 
 
-async def _no_restart(_exit_code: int) -> None:
-    """Stub for ``daemon._on_agent_exit`` that prevents ``_delayed_restart``
-    from being scheduled onto ``_background_tasks`` (which ``daemon.stop()``
-    doesn't cancel — see PR #369 review #2 follow-up).
-
-    Why stubbing is safe for the metric assertion: ``_process_turn``'s
-    exception block awaits ``self.on_exit(1)`` *before* calling
-    ``record_llm_call`` (``agent_runner.py:200-232``). The stub returns
-    immediately, so the await unblocks instantly and ``record_llm_call``
-    fires right after — the metric still lands on
-    ``culture.harness.llm.calls`` exactly as in production. What we
-    avoid is the *real* ``_on_agent_exit``'s scheduling of a sleeping
-    restart task that would outlive ``daemon.stop()``."""
-    return
-
-
 @pytest.mark.asyncio
 async def test_claude_agent_runner_records_timeout_outcome(
     server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
@@ -151,11 +135,6 @@ async def test_claude_agent_runner_records_timeout_outcome(
     sock_dir = tmp_path / "sock"
     sock_dir.mkdir()
     daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
-
-    # Stub out the daemon's on-exit hook before start so `_delayed_restart`
-    # isn't scheduled onto `_background_tasks` (which daemon.stop() doesn't
-    # cancel — PR #369 review #2 follow-up).
-    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
 
     await daemon.start()
     try:
@@ -237,9 +216,7 @@ async def test_claude_agent_runner_records_error_outcome(
 ):
     """An SDK exception other than ``TimeoutError`` records
     ``outcome=error`` on ``culture.harness.llm.calls`` and triggers
-    ``on_exit(1)``. The ``_on_agent_exit`` callback is stubbed so the
-    resulting restart task doesn't leak past test teardown
-    (``agent_runner.py:216-221``)."""
+    ``on_exit(1)`` (``agent_runner.py:216-221``)."""
     _redirect_pidfile(monkeypatch, tmp_path)
     _invalidate_harness_telemetry_cache()
 
@@ -258,8 +235,6 @@ async def test_claude_agent_runner_records_error_outcome(
     sock_dir.mkdir()
     # Plenty of timeout — error fires before the timeout window closes.
     daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=5.0)
-
-    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
 
     await daemon.start()
     try:

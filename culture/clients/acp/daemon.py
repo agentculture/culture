@@ -245,6 +245,13 @@ class ACPDaemon:
             await asyncio.gather(self._sleep_task, return_exceptions=True)
             self._sleep_task = None
 
+        # Cancel _background_tasks (e.g. _delayed_restart) so they don't outlive stop().
+        if self._background_tasks:
+            for task in list(self._background_tasks):
+                task.cancel()
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            self._background_tasks.clear()
+
         if self._agent_runner is not None:
             await self._agent_runner.stop()
             self._agent_runner = None
