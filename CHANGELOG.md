@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.4] - 2026-05-09
+
+### Fixed
+
+- `sonar-project.properties`: project key migrated from the old personal-account `OriNachum_culture` to the org-aligned `agentculture_culture` and `sonar.organization=agentculture` added. The first SonarCloud Scan run on PR #362 failed with `ERROR You must define mandatory properties for 'OriNachum_culture': sonar.organization` — this is the fix.
+- `sonar-project.properties`: dropped `sonar.python.bandit.reportPaths` and `sonar.python.pylint.reportPaths`. Those report files are produced by `security-checks.yml`, not the `tests` job that runs the SonarCloud scan; configuring them in tests' scan would have produced scanner warnings on every analysis (Qodo bug #2). Aligns with steward's properties shape.
+- `sonar-project.properties`: added `sonar.qualitygate.timeout=600` so a slow/unavailable SonarCloud doesn't hang CI indefinitely (Qodo bug #3). Default behavior of `qualitygate.wait=true` has no built-in timeout.
+- `docs/coverage-baseline.md` and `pyproject.toml` `[tool.coverage.report]` comment: removed the dead link to `docs/superpowers/notes/2026-05-09-cultureagent-coverage-audit.md` (the audit doc lands in a follow-up PR; baseline doc is now self-contained for the rationale of `fail_under = 56`) (Qodo bug #1).
+
+### Changed
+
+- `sonar.exclusions` now also excludes `.claude/skills/cicd/**` — these scripts are vendored verbatim from steward (cite-don't-import seam at the skill boundary), so stylistic findings (29 `shelldre:S7688` "use `[[`" hits in this PR's analysis) belong upstream in steward, not forked here.
+
 ## [10.5.3] - 2026-05-09
 
 ### Added
