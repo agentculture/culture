@@ -212,11 +212,16 @@ bash .claude/skills/cicd/scripts/pr-reply.sh --resolve <PR_NUMBER> <COMMENT_ID> 
 
 ## Step 9 — Check SonarCloud before declaring ready
 
-After CI is green and all inline threads are resolved, query SonarCloud
-for the branch via the `/sonarclaude` skill. SonarCloud findings do not
-always arrive as inline PR comments — a fully-resolved thread list plus an
-all-green `gh pr checks` is **not** sufficient evidence that the PR is
-clean. If `/sonarclaude` surfaces new findings, loop back to Step 7.
+After CI is green and all inline threads are resolved, look at section 4
+of the most-recent `pr-comments.sh` output (or `wait-and-check.sh` if
+you've just pushed a fix and want a fresh read). SonarCloud findings
+appear there as `[SEVERITY] [rule] path:line` followed by the issue
+message. SonarCloud findings do not always arrive as inline PR
+comments — a fully-resolved thread list plus an all-green
+`gh pr checks` is **not** sufficient evidence that the PR is clean.
+If new findings show up, loop back to Step 7. For non-standard project
+keys, set `SONAR_PROJECT_KEY=<key>` before running the script (the
+default is `<owner>_<repo>`).
 
 ## Step 10 — Wait for merge
 

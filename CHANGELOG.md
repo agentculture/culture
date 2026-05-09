@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.1] - 2026-05-09
+
+### Fixed
+
+- Vendor steward's SonarCloud-aware `pr-comments.sh` into `.claude/skills/cicd/scripts/`. SonarCloud's new issues now appear as section 4 of the script's output. Removes references to the not-installed `/sonarclaude` skill from the cicd skill (Step 9) and `CLAUDE.md` (Git Workflow); the in-script section is the canonical surface now.
+
 ## [10.5.0] - 2026-05-09
 
 ### Added
