@@ -19,9 +19,10 @@ follow-up.
 """
 
 import asyncio
+import importlib.util
 import sys
 import types
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,12 +30,14 @@ import pytest
 # Stub out the copilot SDK if not installed so CI can import
 # culture.clients.copilot.agent_runner.start() (which lazy-imports
 # `from copilot import CopilotClient, PermissionHandler, SubprocessConfig`).
-# Mirrors the per-file stub pattern at tests/harness/test_agent_runner_copilot.py:32-69.
+# Mirrors the per-file stub pattern at tests/harness/test_agent_runner_copilot.py:32-69
+# but uses importlib.util.find_spec to gate on actual SDK availability — so a
+# real copilot install (dev env) isn't masked.
 # ---------------------------------------------------------------------------
 
 
 def _stub_copilot_sdk():
-    if "copilot" in sys.modules:
+    if importlib.util.find_spec("copilot") is not None:
         return
     mod = types.ModuleType("copilot")
 
@@ -50,7 +53,12 @@ def _stub_copilot_sdk():
 
         async def create_session(self, **_kwargs):
             await asyncio.sleep(0)
-            return MagicMock()
+            # Production teardown does `await self._session.destroy()`; provide
+            # an AsyncMock so the destroy path runs cleanly instead of raising
+            # TypeError that the runner's except-block swallows.
+            session = MagicMock()
+            session.destroy = AsyncMock()
+            return session
 
     class PermissionHandler:
         approve_all = staticmethod(lambda _req: True)
