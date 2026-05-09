@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- `tests/test_integration_attention.py` — Phase 0a Task 2: end-to-end integration coverage for attention behaviors. Three tests prove `Band.HOT` promotion via direct `@mention`, decay one band cooler past `hold_s` (with `attention_overrides` shrinking band timings to 1s), and per-channel state divergence under different stimuli. Exercises the full `AgentDaemon` → `IRCTransport` → `AttentionTracker` chain through real `agentirc.IRCd`. Lifts `culture/clients/shared/attention.py` coverage to 72% from this file alone (vs. 0% integration-only baseline). The harness unit test in `tests/harness/test_attention.py` will move to cultureagent in Phase 1.
+- `tests/test_integration_attention.py` — Phase 0a Task 2: end-to-end integration coverage for attention behaviors. Three tests prove `Band.HOT` promotion via direct `@mention` (asserted via a bounded `_wait_for_band` poll, not a fixed sleep), exact one-step decay past `hold_s` with `attention_overrides` (`hold_s=2`/`tick_s=2`/sleep=3.0s leaves remaining elapsed ≤ hold so the decay loop terminates deterministically at `Band.WARM`), and per-channel state divergence under different stimuli. Uses `tmp_path` for socket dirs and monkeypatches `culture.pidfile.PID_DIR` so test runs don't write into the real `~/.culture/pids`. Exercises the full `AgentDaemon` → `IRCTransport` → `AttentionTracker` chain through real `agentirc.IRCd`. Lifts `culture/clients/shared/attention.py` coverage to 72% from this file alone (vs. 0% integration-only baseline). The harness unit test in `tests/harness/test_attention.py` will move to cultureagent in Phase 1.
 
 ## [10.5.6] - 2026-05-09
 
