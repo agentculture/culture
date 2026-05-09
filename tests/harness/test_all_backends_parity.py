@@ -26,7 +26,6 @@ import yaml
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_HARNESS_REF = _REPO_ROOT / "packages" / "agent-harness"
 _CLIENTS = _REPO_ROOT / "culture" / "clients"
 _SHARED = _CLIENTS / "shared"
 
