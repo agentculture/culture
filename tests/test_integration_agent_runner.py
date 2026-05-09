@@ -49,24 +49,68 @@ def _invalidate_harness_telemetry_cache():
     harness_tel._registry = None
 
 
-async def _wait_for_timeout_metric(metrics_reader, timeout=10.0):
+def _iter_data_points(metrics_reader, metric_name):
+    """Yield each data point on ``metric_name`` across all resource/scope
+    metric trees the reader has captured. Flattening this once here keeps
+    the polling helpers readable."""
+    data = metrics_reader.get_metrics_data()
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == metric_name:
+                    yield from metric.data.data_points
+
+
+def _find_data_point(metrics_reader, metric_name, match_attrs):
+    """Return the first data point on ``metric_name`` whose attributes
+    are a superset of ``match_attrs``, else ``None``."""
+    for dp in _iter_data_points(metrics_reader, metric_name):
+        if all(dp.attributes.get(k) == v for k, v in match_attrs.items()):
+            return dp
+    return None
+
+
+async def _wait_for_outcome_metric(metrics_reader, outcome, timeout=10.0):
     """Bounded poll until ``culture.harness.llm.calls`` has a data point
-    with ``outcome=timeout``. Returns the data point. Replaces fixed
-    sleeps; the timeout path runs through ``record_llm_call`` after the
-    SDK wait_for fires, but ordering vs. the test's next line isn't
-    guaranteed."""
+    with the given ``outcome`` attribute. Returns the data point.
+    Replaces fixed sleeps; ``record_llm_call`` fires after each turn but
+    ordering vs. the test's next line isn't guaranteed."""
     async with asyncio.timeout(timeout):
         while True:
-            data = metrics_reader.get_metrics_data()
-            for rm in data.resource_metrics:
-                for sm in rm.scope_metrics:
-                    for metric in sm.metrics:
-                        if metric.name != "culture.harness.llm.calls":
-                            continue
-                        for dp in metric.data.data_points:
-                            if dp.attributes.get("outcome") == "timeout":
-                                return dp
+            dp = _find_data_point(metrics_reader, "culture.harness.llm.calls", {"outcome": outcome})
+            if dp is not None:
+                return dp
             await asyncio.sleep(0.1)
+
+
+def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
+    """Helper: build a claude AgentDaemon configured for these tests.
+    Returns the (unstarted) daemon. ``turn_timeout`` controls
+    ``agent.turn_timeout_seconds``."""
+    from culture.clients.claude.daemon import AgentDaemon
+
+    config = DaemonConfig(
+        server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=WebhookConfig(url=None),
+    )
+    agent = AgentConfig(
+        nick=nick,
+        directory=str(agent_dir),
+        channels=["#general"],
+    )
+    # AgentConfig is non-frozen — daemon reads turn_timeout_seconds via
+    # getattr() with DEFAULT_TURN_TIMEOUT_SECONDS fallback.
+    agent.turn_timeout_seconds = turn_timeout
+    return AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
+
+
+async def _no_restart(_exit_code: int) -> None:
+    """Stub for daemon._on_agent_exit that prevents `_delayed_restart`
+    from being scheduled onto `_background_tasks` (which `daemon.stop()`
+    doesn't cancel — see PR #369 review #2 follow-up). The outcome
+    metric is recorded BEFORE on_exit fires, so the assertion still
+    holds without scheduling a restart."""
+    return
 
 
 @pytest.mark.asyncio
@@ -95,50 +139,128 @@ async def test_claude_agent_runner_records_timeout_outcome(
         raising=True,
     )
 
-    from culture.clients.claude.daemon import AgentDaemon
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
+
+    # Stub out the daemon's on-exit hook before start so `_delayed_restart`
+    # isn't scheduled onto `_background_tasks` (which daemon.stop() doesn't
+    # cancel — PR #369 review #2 follow-up).
+    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
+
+    await daemon.start()
+    try:
+        assert daemon._agent_runner is not None
+        await daemon._agent_runner.send_prompt("hello")
+
+        timeout_dp = await _wait_for_outcome_metric(metrics_reader, "timeout")
+        assert timeout_dp.attributes.get("backend") == "claude"
+        assert timeout_dp.value >= 1
+    finally:
+        await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_claude_agent_runner_records_success_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """A normal SDK turn that yields ``ResultMessage`` records
+    ``outcome=success`` on ``culture.harness.llm.calls`` plus token
+    counters on ``culture.harness.llm.tokens.input`` /
+    ``tokens.output`` (the ``record_llm_call`` happy path —
+    ``agent_runner.py:200-235``)."""
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    # conftest installs a claude_agent_sdk stub at collection time (see
+    # tests/conftest.py). Its ResultMessage takes only kwargs; pylint
+    # however statically resolves the *real* SDK's ResultMessage which
+    # has required positional args (subtype, duration_ms, ...). The
+    # disable below applies only to the constructor call.
+    from claude_agent_sdk import ResultMessage
+
+    fake_result = ResultMessage(  # pylint: disable=no-value-for-parameter
+        session_id="sid-1",
+        is_error=False,
+        usage={"input_tokens": 100, "output_tokens": 200},
+    )
+
+    async def _fake_query(**_kwargs):
+        yield fake_result
+
+    monkeypatch.setattr("culture.clients.claude.agent_runner.query", _fake_query, raising=True)
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    config = DaemonConfig(
-        server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
-        webhooks=WebhookConfig(url=None),
-    )
-    agent = AgentConfig(
-        nick="testserv-bot",
-        directory=str(agent_dir),
-        channels=["#general"],
-    )
-    # AgentConfig is non-frozen — daemon reads turn_timeout_seconds via
-    # getattr() with DEFAULT_TURN_TIMEOUT_SECONDS fallback. 0.2s
-    # resolves quickly without flaking under CI jitter.
-    agent.turn_timeout_seconds = 0.2
-
     sock_dir = tmp_path / "sock"
     sock_dir.mkdir()
-    daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
+    # Plenty of timeout for the fake query to complete; no wedging here.
+    daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=5.0)
 
-    # Stub out the daemon's on-exit hook before start: the timeout path
-    # calls `on_exit(1)`, which schedules `_delayed_restart` onto
-    # `_background_tasks`. AgentDaemon.stop() doesn't cancel these, so
-    # the sleeping restart task would outlive the test and emit
-    # pending-task warnings (and could compete for ports/sockets in a
-    # later test). The metric is recorded BEFORE on_exit fires, so the
-    # assertion still holds without scheduling a restart.
-    async def _no_restart(_exit_code: int) -> None:
-        return
+    await daemon.start()
+    try:
+        assert daemon._agent_runner is not None
+        await daemon._agent_runner.send_prompt("hello")
+
+        success_dp = await _wait_for_outcome_metric(metrics_reader, "success")
+        assert success_dp.attributes.get("backend") == "claude"
+        assert success_dp.value >= 1
+
+        tokens_in = _find_data_point(
+            metrics_reader,
+            "culture.harness.llm.tokens.input",
+            {"backend": "claude", "harness.nick": "testserv-bot"},
+        )
+        tokens_out = _find_data_point(
+            metrics_reader,
+            "culture.harness.llm.tokens.output",
+            {"backend": "claude", "harness.nick": "testserv-bot"},
+        )
+        assert tokens_in is not None and tokens_in.value == 100
+        assert tokens_out is not None and tokens_out.value == 200
+    finally:
+        await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_claude_agent_runner_records_error_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """An SDK exception other than ``TimeoutError`` records
+    ``outcome=error`` on ``culture.harness.llm.calls`` and triggers
+    ``on_exit(1)``. The ``_on_agent_exit`` callback is stubbed so the
+    resulting restart task doesn't leak past test teardown
+    (``agent_runner.py:216-221``)."""
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    async def _failing_query(**_kwargs):
+        # `if False: yield` keeps this a valid async generator function
+        # without dead-code-after-raise (which pylint flags as unreachable).
+        if False:  # pragma: no cover
+            yield
+        raise RuntimeError("SDK exploded")
+
+    monkeypatch.setattr("culture.clients.claude.agent_runner.query", _failing_query, raising=True)
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    # Plenty of timeout — error fires before the timeout window closes.
+    daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=5.0)
 
     monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
 
     await daemon.start()
     try:
-        # daemon.start spawned AgentRunner; queue a prompt so _run_loop
-        # picks it up and invokes _process_turn (which wraps the hanging
-        # query in asyncio.wait_for with our short timeout).
         assert daemon._agent_runner is not None
         await daemon._agent_runner.send_prompt("hello")
 
-        timeout_dp = await _wait_for_timeout_metric(metrics_reader)
-        assert timeout_dp.attributes.get("backend") == "claude"
-        assert timeout_dp.value >= 1
+        error_dp = await _wait_for_outcome_metric(metrics_reader, "error")
+        assert error_dp.attributes.get("backend") == "claude"
+        assert error_dp.value >= 1
     finally:
         await daemon.stop()

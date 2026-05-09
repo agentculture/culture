@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.2] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_agent_runner.py` extended with two new tests for Phase 0a Task 8.5(b) — pre-handover coverage of the `AgentRunner._process_turn` success and error branches at integration shape: `test_claude_agent_runner_records_success_outcome` (fake `query` yields `ResultMessage` with usage; asserts `outcome=success` on `culture.harness.llm.calls` and 100/200 on `tokens.input`/`tokens.output`) and `test_claude_agent_runner_records_error_outcome` (fake `query` raises `RuntimeError`; asserts `outcome=error` and stubs `_on_agent_exit` to prevent `_delayed_restart` task leak — same mitigation as the timeout test). Lifts `culture/clients/claude/agent_runner.py` to **79%** from this single file alone. Generalized `_wait_for_timeout_metric(reader)` → `_wait_for_outcome_metric(reader, outcome)` and added `_find_data_point(reader, name, attrs)` helper.
+
+### Changed
+
+- `tests/test_integration_agent_runner.py` — refactored: extracted `_build_daemon` and `_no_restart` helpers shared by all three tests; existing timeout test updated to use the renamed `_wait_for_outcome_metric(metrics_reader, "timeout")` and the shared `_no_restart` stub.
+
 ## [10.6.1] - 2026-05-09
 
 ### Added
