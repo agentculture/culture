@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "10.5.1"
+version = "10.5.4"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -84,7 +84,10 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 50
+# Locked 2026-05-09 at the measured project-wide floor (56.86% — see
+# docs/coverage-baseline.md). Each Phase 0a integration-test PR ratchets
+# this up by the measured delta.
+fail_under = 56
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

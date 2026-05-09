@@ -189,24 +189,30 @@ Guidelines:
 
 ## Step 8 — Reply and resolve threads
 
+`pr-reply.sh` and `pr-batch.sh` automatically append a signature derived
+from `_resolve-nick.sh`: `- <nick> (Claude)`, where `<nick>` is the agent
+suffix from the repo-root `culture.yaml` if present, falling back to the
+repo basename. Don't sign manually — write reply bodies without a
+signature; the script appends it.
+
 Use batch mode to reply to all comments at once:
 
 ```bash
 bash .claude/skills/cicd/scripts/pr-batch.sh --resolve <PR_NUMBER> <<'EOF'
-{"comment_id": 123, "body": "Fixed -- changed X to Y.\n\n- Claude"}
-{"comment_id": 456, "body": "Intentional -- this follows the pattern in Z because...\n\n- Claude"}
+{"comment_id": 123, "body": "Fixed -- changed X to Y."}
+{"comment_id": 456, "body": "Intentional -- this follows the pattern in Z because..."}
 EOF
 ```
 
 Or reply to a single comment:
 
 ```bash
-bash .claude/skills/cicd/scripts/pr-reply.sh --resolve <PR_NUMBER> <COMMENT_ID> "Fixed -- updated.\n\n- Claude"
+bash .claude/skills/cicd/scripts/pr-reply.sh --resolve <PR_NUMBER> <COMMENT_ID> "Fixed -- updated."
 ```
 
 **Important:**
 
-- Always sign replies with `\n\n- Claude`
+- Don't add `- Claude` or any other signature to the reply body — the script appends `- <nick> (Claude)` automatically
 - Always use `--resolve` to resolve the thread after replying
 - Every comment must get a reply — no silent fixes
 
@@ -238,15 +244,22 @@ CULTURE_NICK="<agent-nick>" culture channel message "#general" "PR #<N> — all 
 
 | Script | Location | Purpose |
 |--------|----------|---------|
+| `workflow.sh <subcmd>` | `.claude/skills/cicd/scripts/` (project) | Single entry point that dispatches to the scripts below. Subcommands: `lint`, `open-pr`, `poll <PR>`, `poll-readiness <PR>`, `wait-after-push <PR>`, `await <PR>`, `reply <PR>`. |
 | `create-pr-and-wait.sh` | `.claude/skills/cicd/scripts/` (project) | Optional `git push` (`--push`) + `gh pr create --body-file` + `sleep 180` + `pr-comments.sh` in one invocation |
 | `wait-and-check.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | `sleep 180` + `pr-comments.sh` for an existing PR (a second deliberate window after `create-pr-and-wait.sh` or after a follow-up push) |
-| `pr-comments.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | Fetch all review comments |
-| `pr-reply.sh [--resolve] <PR> <ID> "body"` | `.claude/skills/cicd/scripts/` (project) | Reply to one comment |
-| `pr-batch.sh [--resolve] <PR> < jsonl` | `.claude/skills/cicd/scripts/` (project) | Batch reply from JSONL stdin |
+| `poll-readiness.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | Loop until automated reviewers (qodo) finish posting, the PR closes, or an iteration cap is hit. Use after a push to wait through the review cycle without burning fixed sleep time. |
+| `pr-comments.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | Fetch all review comments — body, inline threads, CI checks, and SonarCloud Section 4 findings |
+| `pr-status.sh <PR>` | `.claude/skills/cicd/scripts/` (project) | One-shot status overview: PR state, CI checks, review-bot pipeline, SonarCloud quality gate + issue count, inline-thread resolved tally |
+| `pr-reply.sh [--resolve] <PR> <ID> "body"` | `.claude/skills/cicd/scripts/` (project) | Reply to one comment. Auto-signs as `- <nick> (Claude)` via `_resolve-nick.sh`. |
+| `pr-batch.sh [--resolve] <PR> < jsonl` | `.claude/skills/cicd/scripts/` (project) | Batch reply from JSONL stdin. Same auto-signing as `pr-reply.sh`. |
+| `_resolve-nick.sh` | `.claude/skills/cicd/scripts/` (project) | Helper used by `pr-reply.sh`. Resolves the agent's nick from `<repo-root>/culture.yaml`'s first agent `suffix`, falling back to the repo basename. |
+| `portability-lint.sh [--all]` | `.claude/skills/cicd/scripts/` (project) | Catch absolute `/home/<user>/` paths and per-user dotfile references in committed docs/configs. Default mode lints the current diff (staged + unstaged); `--all` lints every tracked file. Run via `workflow.sh lint`. |
 
-All scripts auto-detect `owner/repo` from the current git remote. The trio
-(`pr-comments.sh`, `pr-reply.sh`, `pr-batch.sh`) is vendored from steward
-(the AgentCulture alignment hub) — re-cite from there if you need updates.
+All scripts auto-detect `owner/repo` from the current git remote. The full
+script set is vendored from steward (the AgentCulture alignment hub) —
+re-cite from there if you need updates. Scripts that have intentionally
+diverged from steward's upstream copy carry a `# culture-divergence:`
+header documenting what was changed and why; preserve those when re-citing.
 
 ## Quick reference — full flow
 
@@ -260,6 +273,6 @@ bash .claude/skills/cicd/scripts/create-pr-and-wait.sh --push \
     --title "..." --body-file /tmp/pr-body.md
 # (pushes the branch, then waits 3 min, then dumps reviewer comments)
 # ... fix issues, commit, push ...
-bash .claude/skills/cicd/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed\n\n- Claude"}'
+bash .claude/skills/cicd/scripts/pr-batch.sh --resolve <PR> <<< '{"comment_id":N,"body":"Fixed"}'
 # Wait for manual merge — never merge yourself
 ```
