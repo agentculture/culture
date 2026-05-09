@@ -206,6 +206,24 @@ def _build_copilot_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn
     return CopilotDaemon(config, agent, socket_dir=str(sock_dir), skip_copilot=False)
 
 
+def _build_acp_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
+    """Helper: build an acp ACPDaemon configured for these tests.
+    Note: ACP uses ``skip_agent`` (not ``skip_acp``)."""
+    from culture.clients.acp.config import AgentConfig as ACPAgentConfig
+    from culture.clients.acp.config import DaemonConfig as ACPDaemonConfig
+    from culture.clients.acp.config import ServerConnConfig as ACPServerConnConfig
+    from culture.clients.acp.config import WebhookConfig as ACPWebhookConfig
+    from culture.clients.acp.daemon import ACPDaemon
+
+    config = ACPDaemonConfig(
+        server=ACPServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=ACPWebhookConfig(url=None),
+    )
+    agent = ACPAgentConfig(nick=nick, directory=str(agent_dir), channels=["#general"])
+    agent.turn_timeout_seconds = turn_timeout
+    return ACPDaemon(config, agent, socket_dir=str(sock_dir), skip_agent=False)
+
+
 @pytest.mark.asyncio
 async def test_claude_agent_runner_records_timeout_outcome(
     server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
@@ -583,6 +601,137 @@ async def test_copilot_agent_runner_records_timeout_outcome(
         await daemon._agent_runner.send_prompt("hello")
         timeout_dp = await _wait_for_outcome_metric(metrics_reader, "timeout")
         assert timeout_dp.attributes.get("backend") == "copilot"
+        assert timeout_dp.value >= 1
+    finally:
+        await daemon.stop()
+
+
+class _FakeACPProcess:
+    """Stand-in for the ``opencode acp`` subprocess. Mirrors
+    ``_FakeCodexProcess`` shape; ACP also reads stderr (``_stderr_loop``)
+    so we add an opaque ``stderr`` attribute alongside ``stdout``."""
+
+    def __init__(self):
+        self.returncode = None
+
+        class _Stdin:
+            def write(self_inner, data):
+                pass
+
+            async def drain(self_inner):
+                return None
+
+        self.stdin = _Stdin()
+        # _read_loop and _stderr_loop are patched to hang in our test, so
+        # the corresponding stream attributes are never actually read.
+        # Provide them as opaque truthy objects.
+        self.stdout = object()
+        self.stderr = object()
+
+    def terminate(self):
+        self.returncode = -15
+
+    async def wait(self):
+        return self.returncode if self.returncode is not None else 0
+
+    def kill(self):
+        self.returncode = -9
+
+
+@pytest.mark.asyncio
+async def test_acp_agent_runner_records_timeout_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """Wedge the ACP busy-poll: ``_send_prompt_with_retry`` returns an
+    empty dict, then ``_handle_prompt_result`` hangs on the
+    ``while self._busy`` poll because the read-loop is faked and never
+    delivers a ``stopReason`` notification. The outer
+    ``asyncio.timeout(self._turn_timeout)`` (the safety net for issue
+    #349) fires; ``outcome=timeout`` lands on ``culture.harness.llm.calls``
+    with ``backend=acp`` (``agent_runner.py:466-507``).
+
+    Replaces the integration-shaped portion of
+    ``tests/harness/test_agent_runner_acp.py``'s timeout test (the
+    harness unit test moves to cultureagent in Phase 1). Pattern matches
+    that file's lines 237-286 — patch the pair (``_send_prompt_with_retry``
+    + ``_handle_prompt_result``) so the wedge is the busy-poll itself,
+    not the inner request, mirroring the production failure mode.
+    """
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    # Fake the subprocess spawn so runner.start() doesn't require the
+    # `opencode acp` binary on PATH.
+    async def _fake_create_subprocess_exec(*_args, **_kwargs):
+        return _FakeACPProcess()
+
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.asyncio.create_subprocess_exec",
+        _fake_create_subprocess_exec,
+    )
+
+    # Hang the read/stderr loops so no `session/update` notifications
+    # ever arrive — this is the wedge state the busy-poll defends against.
+    async def _hang(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.ACPAgentRunner._read_loop",
+        _hang,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.ACPAgentRunner._stderr_loop",
+        _hang,
+        raising=True,
+    )
+
+    # Fake `initialize` + `session/new` so runner.start() succeeds. The
+    # _initialize_acp_session helper requires session/new to return a
+    # truthy `sessionId`, else it raises RuntimeError.
+    async def _fake_send_request(self, method, params=None, timeout=None):  # noqa: ARG001
+        if method == "session/new":
+            return {"jsonrpc": "2.0", "id": "x", "result": {"sessionId": "sess-1"}}
+        return {"jsonrpc": "2.0", "id": "x", "result": {}}
+
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.ACPAgentRunner._send_request",
+        _fake_send_request,
+        raising=True,
+    )
+
+    # Wedge the busy-poll: _send_prompt_with_retry returns immediately,
+    # _handle_prompt_result hangs forever — the outer asyncio.timeout
+    # then fires (mirroring tests/harness/test_agent_runner_acp.py:237-286).
+    async def _fake_prompt(self, text):  # noqa: ARG001
+        return {"result": {}}
+
+    async def _hang_handle(self, resp):  # noqa: ARG001
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.ACPAgentRunner._send_prompt_with_retry",
+        _fake_prompt,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "culture.clients.acp.agent_runner.ACPAgentRunner._handle_prompt_result",
+        _hang_handle,
+        raising=True,
+    )
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    daemon = _build_acp_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
+
+    await daemon.start()
+    try:
+        assert daemon._agent_runner is not None
+        await daemon._agent_runner.send_prompt("hello")
+        timeout_dp = await _wait_for_outcome_metric(metrics_reader, "timeout")
+        assert timeout_dp.attributes.get("backend") == "acp"
         assert timeout_dp.value >= 1
     finally:
         await daemon.stop()
