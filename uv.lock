@@ -606,7 +606,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "10.6.0"
+version = "10.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
