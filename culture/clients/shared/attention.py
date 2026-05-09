@@ -7,8 +7,10 @@ one band warmer, capped at WARM. Quiet targets decay one band per hold
 window down to IDLE.
 
 Pure module: no I/O, no asyncio. All time values are passed in by the
-caller (use ``time.monotonic()`` in production). Designed to be cited
-byte-identically into each backend per the all-backends rule.
+caller (use ``time.monotonic()`` in production).
+
+Shared harness module — imported by every backend.
+See docs/architecture/shared-vs-cited.md.
 
 See ``docs/superpowers/specs/2026-05-08-dynamic-attention-levels-design.md``
 for the full design.

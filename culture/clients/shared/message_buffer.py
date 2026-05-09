@@ -1,3 +1,8 @@
+"""Per-target message buffer with thread-prefix detection.
+
+Shared harness module — see docs/architecture/shared-vs-cited.md.
+"""
+
 from __future__ import annotations
 
 import re

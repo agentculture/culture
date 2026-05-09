@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from culture.clients.claude.config import WebhookConfig
-from culture.clients.claude.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 
 
 class WebhookCapture(BaseHTTPRequestHandler):

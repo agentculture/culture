@@ -6,7 +6,7 @@ import pytest
 
 from culture.clients.claude.config import AgentConfig, DaemonConfig
 from culture.clients.claude.daemon import AgentDaemon
-from culture.clients.claude.message_buffer import MessageBuffer
+from culture.clients.shared.message_buffer import MessageBuffer
 
 
 @pytest.fixture

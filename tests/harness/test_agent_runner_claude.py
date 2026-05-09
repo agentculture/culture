@@ -121,7 +121,7 @@ _stub_claude_sdk()
 # Now safe to import
 from culture.clients.claude.agent_runner import AgentRunner  # noqa: E402
 from culture.clients.claude.config import DaemonConfig, TelemetryConfig  # noqa: E402
-from culture.clients.claude.telemetry import (  # noqa: E402
+from culture.clients.shared.telemetry import (  # noqa: E402
     HarnessMetricsRegistry,
     init_harness_telemetry,
     reset_for_tests,
@@ -170,7 +170,7 @@ def registry(metrics_reader):
     from opentelemetry import metrics as _m
 
     meter = _m.get_meter("culture.harness.claude")
-    from culture.clients.claude.telemetry import _build_registry
+    from culture.clients.shared.telemetry import _build_registry
 
     return _build_registry(meter)
 

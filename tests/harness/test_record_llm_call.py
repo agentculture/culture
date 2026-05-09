@@ -1,4 +1,4 @@
-"""Tests for record_llm_call() in packages/agent-harness/telemetry.py.
+"""Tests for record_llm_call() in culture/clients/shared/telemetry.py.
 
 Exercises all usage-dict shapes: None, partial, full, and verifies that
 ``llm_calls`` and ``llm_call_duration`` always record regardless of usage,
@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-# Imported via sys.path set in conftest.py
+# config still imported via sys.path set in conftest.py.
 # pylint: disable=import-error
 from config import DaemonConfig
-from telemetry import (
+
+from culture.clients.shared.telemetry import (
     init_harness_telemetry,
     record_llm_call,
     reset_for_tests,

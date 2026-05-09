@@ -1,20 +1,13 @@
 """OpenTelemetry bootstrap for Culture agent harnesses.
 
-Why this file lives in ``packages/agent-harness/``
----------------------------------------------------
-The culture codebase uses a **cite, don't import** pattern for the per-backend
-agent harnesses in ``culture/clients/{claude,codex,copilot,acp}/``. Each backend
-owns a verbatim copy of this file (with the ``service_name`` default changed to
-``culture.harness.<backend>``). Backend-specific overrides are isolated to those
-two sites; all other logic must stay identical so the all-backends parity test
-(``tests/harness/test_all_backends_parity.py``) passes.
+Shared harness module — imported by every backend.
+See docs/architecture/shared-vs-cited.md.
 
-Backend-specific edit sites (two, both must be updated on citation)
---------------------------------------------------------------------
-1. ``TelemetryConfig.service_name`` in ``config.py`` — change the default from
-   ``"culture.harness"`` to ``"culture.harness.<backend>"``.
-2. ``_HARNESS_TRACER_NAME`` constant in this file — change the value from
-   ``"culture.harness"`` to ``"culture.harness.<backend>"`` to match.
+The tracer name (``_HARNESS_TRACER_NAME``) is a generic ``"culture.harness"``;
+per-backend identification flows through ``TelemetryConfig.service_name`` (set
+to ``"culture.harness.<backend>"`` per backend in ``config.py``) which is
+attached to the OTEL Resource so spans/metrics are still distinguishable per
+backend even though every backend imports this same module.
 """
 
 from __future__ import annotations
@@ -42,8 +35,8 @@ from opentelemetry.trace import Tracer
 
 logger = logging.getLogger(__name__)
 
-# Module-level tracer name — cited backends replace "culture.harness" with
-# "culture.harness.<backend>" to match their service.name.
+# Generic tracer name; per-backend identity flows through OTel Resource
+# service.name (set per-backend via TelemetryConfig.service_name).
 _HARNESS_TRACER_NAME = "culture.harness"
 
 # Module-level globals — mirrors the server-side tracing.py / metrics.py pattern.

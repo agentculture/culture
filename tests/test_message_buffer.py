@@ -1,6 +1,6 @@
 import time
 
-from culture.clients.claude.message_buffer import MessageBuffer
+from culture.clients.shared.message_buffer import MessageBuffer
 
 
 def test_add_and_read():

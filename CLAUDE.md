@@ -34,6 +34,18 @@ If you improve a generic component (e.g., `irc_transport.py`), update the refere
 
 **All-backends rule:** When adding or changing a feature in any agent harness (config fields, transport capabilities, daemon handlers), propagate the change to **all** backends (`claude`, `codex`, `copilot`, `acp`) and update `docs/` accordingly. A feature that only exists in one backend is a bug.
 
+**Shared vs cited.** Modules with no backend-specific behavior live in
+`culture/clients/shared/` and are imported by every backend (currently:
+`attention`, `message_buffer`, `ipc`, `telemetry`, `irc_transport`,
+`socket_server`, `webhook`, plus `WebhookConfig` in `webhook_types`).
+Modules where backends genuinely diverge are cited from
+`packages/agent-harness/` (currently: `daemon.py`, `config.py`,
+`constants.py`) plus the per-backend `agent_runner.py` and `supervisor.py`.
+The all-backends rule applies to the cited tier — when you change a cited
+file, propagate to all four. The shared tier doesn't need the rule because
+import enforces it. See `docs/architecture/shared-vs-cited.md` for the rule
+and the fork-back procedure.
+
 ## Agent Configuration
 
 Agent definitions are decentralized into per-directory `culture.yaml` files:

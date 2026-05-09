@@ -17,7 +17,7 @@ import sys
 from typing import Any
 
 from culture.cli.shared.constants import culture_runtime_dir
-from culture.clients.acp.ipc import (
+from culture.clients.shared.ipc import (
     MSG_TYPE_RESPONSE,
     MSG_TYPE_WHISPER,
     decode_message,

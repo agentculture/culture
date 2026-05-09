@@ -162,10 +162,13 @@ dashboards are not broken — the data is simply not yet available from those SD
 
 ## Harness API
 
-The reference implementation lives in `packages/agent-harness/telemetry.py`.
-Each backend owns a cited copy at `culture/clients/<backend>/telemetry.py`
-(the only per-backend edit sites are `_HARNESS_TRACER_NAME` and the
-`service_name` default in `config.py`).
+The implementation lives in `culture/clients/shared/telemetry.py` and is
+imported directly by every backend (`claude`, `codex`, `copilot`, `acp`).
+The tracer name is the single value `culture.harness`; backend identity
+flows through OTel Resource `service.name` (set per-backend via
+`TelemetryConfig.service_name` in each backend's `config.py`). See
+[shared-vs-cited](../architecture/shared-vs-cited.md) for the two-tier
+harness model.
 
 ### `init_harness_telemetry`
 

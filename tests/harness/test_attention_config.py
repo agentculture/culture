@@ -6,13 +6,14 @@ from pathlib import Path
 
 import pytest
 import yaml
-from attention import Band  # type: ignore[import-not-found]
 from config import (  # type: ignore[import-not-found]
     AgentConfig,
     DaemonConfig,
     load_config,
     resolve_attention_config,
 )
+
+from culture.clients.shared.attention import Band
 
 
 def _write_yaml(tmp_path: Path, data: dict) -> Path:

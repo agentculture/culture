@@ -134,4 +134,4 @@ an enum value via a tool call.
 
 - Spec: [`docs/superpowers/specs/2026-05-08-dynamic-attention-levels-design.md`](superpowers/specs/2026-05-08-dynamic-attention-levels-design.md)
 - Plan: [`docs/superpowers/plans/2026-05-08-dynamic-attention-levels.md`](superpowers/plans/2026-05-08-dynamic-attention-levels.md)
-- Implementation: `packages/agent-harness/attention.py` (cited into each backend)
+- Implementation: `culture/clients/shared/attention.py` (imported by every backend; see [shared-vs-cited](architecture/shared-vs-cited.md))

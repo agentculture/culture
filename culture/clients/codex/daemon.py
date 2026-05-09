@@ -17,20 +17,20 @@ from collections import deque
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.codex.agent_runner import CodexAgentRunner
-from culture.clients.codex.attention import AttentionTracker, Band
 from culture.clients.codex.config import (
     AgentConfig,
     DaemonConfig,
     resolve_attention_config,
 )
 from culture.clients.codex.constants import DEFAULT_TURN_TIMEOUT_SECONDS
-from culture.clients.codex.ipc import make_response
-from culture.clients.codex.irc_transport import IRCTransport
-from culture.clients.codex.message_buffer import MessageBuffer
-from culture.clients.codex.socket_server import SocketServer
 from culture.clients.codex.supervisor import CodexSupervisor
-from culture.clients.codex.telemetry import init_harness_telemetry
-from culture.clients.codex.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.attention import AttentionTracker, Band
+from culture.clients.shared.ipc import make_response
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.clients.shared.socket_server import SocketServer
+from culture.clients.shared.telemetry import init_harness_telemetry
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
-from attention import (  # noqa: E402  # pylint: disable=import-error
+
+# Attention was lifted into culture/clients/shared/ — every backend (and the
+# reference here) imports from the shared location.
+from culture.clients.shared.attention import (
     AttentionConfig,
     Band,
     BandSpec,
@@ -56,21 +59,10 @@ class SupervisorConfig:
     prompt_override: str = ""
 
 
-@dataclass
-class WebhookConfig:
-    """Webhook alerting settings."""
-
-    url: str | None = None
-    irc_channel: str = "#alerts"
-    events: list[str] = field(
-        default_factory=lambda: [
-            "agent_spiraling",
-            "agent_error",
-            "agent_question",
-            "agent_timeout",
-            "agent_complete",
-        ]
-    )
+# WebhookConfig was lifted into culture/clients/shared/webhook_types.py in
+# 10.5.0. The reference here re-exports it so a future 5th backend that
+# copies this file gets the same shape as the four real backends.
+from culture.clients.shared.webhook_types import WebhookConfig  # noqa: E402, F401
 
 
 @dataclass

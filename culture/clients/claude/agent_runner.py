@@ -18,10 +18,10 @@ from claude_agent_sdk import (
 from opentelemetry import trace as _otel_trace
 
 from culture.clients.claude import constants as _C
-from culture.clients.claude.telemetry import _HARNESS_TRACER_NAME, record_llm_call
+from culture.clients.shared.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
-    from culture.clients.claude.telemetry import HarnessMetricsRegistry
+    from culture.clients.shared.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 

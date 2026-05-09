@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from culture.clients.codex.attention import AttentionConfig
 from culture.clients.codex.config import (
     AgentConfig,
     DaemonConfig,
@@ -14,6 +13,7 @@ from culture.clients.codex.config import (
     WebhookConfig,
 )
 from culture.clients.codex.daemon import CodexDaemon
+from culture.clients.shared.attention import AttentionConfig
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_codex_daemon_ipc_irc_send(server, make_client):
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
 
-    from culture.clients.codex.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     sock_path = os.path.join(sock_dir, "culture-testserv-codex.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)

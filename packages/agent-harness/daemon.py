@@ -20,21 +20,26 @@ import re
 import time
 from typing import Any
 
-# These imports point to YOUR backend's copies of these files:
+# Shared harness modules are imported directly from culture.clients.shared
+# (do NOT copy them into your backend directory — see
+# docs/architecture/shared-vs-cited.md).
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
-from culture.clients.BACKEND.attention import AttentionTracker, Band
-from culture.clients.BACKEND.config import (
+
+# These imports point to YOUR backend's copies of config and constants
+# (cited tier — copy and adapt per backend):
+from culture.clients.BACKEND.config import (  # noqa: E402
     AgentConfig,
     DaemonConfig,
     resolve_attention_config,
 )
-from culture.clients.BACKEND.ipc import make_response
-from culture.clients.BACKEND.irc_transport import IRCTransport
-from culture.clients.BACKEND.message_buffer import MessageBuffer
-from culture.clients.BACKEND.socket_server import SocketServer
-from culture.clients.BACKEND.telemetry import init_harness_telemetry
-from culture.clients.BACKEND.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.attention import AttentionTracker, Band
+from culture.clients.shared.ipc import make_response
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.clients.shared.socket_server import SocketServer
+from culture.clients.shared.telemetry import init_harness_telemetry
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 
 MAX_CONSECUTIVE_TURN_FAILURES = 3
 

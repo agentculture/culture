@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-# Bare-name import: tests run with packages/agent-harness on sys.path.
-from attention import (  # type: ignore[import-not-found]
+from culture.clients.shared.attention import (
     AttentionConfig,
     AttentionTracker,
     Band,

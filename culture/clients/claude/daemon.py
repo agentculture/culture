@@ -10,20 +10,20 @@ import time
 from culture.aio import maybe_await
 from culture.cli.shared.constants import culture_runtime_dir
 from culture.clients.claude.agent_runner import AgentRunner
-from culture.clients.claude.attention import AttentionTracker, Band
 from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
     resolve_attention_config,
 )
 from culture.clients.claude.constants import DEFAULT_TURN_TIMEOUT_SECONDS
-from culture.clients.claude.ipc import make_response
-from culture.clients.claude.irc_transport import IRCTransport
-from culture.clients.claude.message_buffer import MessageBuffer
-from culture.clients.claude.socket_server import SocketServer
 from culture.clients.claude.supervisor import Supervisor, make_sdk_evaluate_fn
-from culture.clients.claude.telemetry import init_harness_telemetry
-from culture.clients.claude.webhook import AlertEvent, WebhookClient
+from culture.clients.shared.attention import AttentionTracker, Band
+from culture.clients.shared.ipc import make_response
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.clients.shared.socket_server import SocketServer
+from culture.clients.shared.telemetry import init_harness_telemetry
+from culture.clients.shared.webhook import AlertEvent, WebhookClient
 from culture.pidfile import remove_pid, write_pid
 
 logger = logging.getLogger(__name__)

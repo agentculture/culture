@@ -8,12 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from culture.clients.claude.attention import (
+from culture.clients.shared.attention import (
     AttentionConfig,
     Band,
     BandSpec,
     default_bands,
 )
+from culture.clients.shared.webhook_types import WebhookConfig  # noqa: F401
 
 
 # YAML representer for Band so asdict(DaemonConfig) round-trips through
@@ -49,23 +50,6 @@ class SupervisorConfig:
     eval_interval: int = 5
     escalation_threshold: int = 3
     prompt_override: str = ""
-
-
-@dataclass
-class WebhookConfig:
-    """Webhook alerting settings."""
-
-    url: str | None = None
-    irc_channel: str = "#alerts"
-    events: list[str] = field(
-        default_factory=lambda: [
-            "agent_spiraling",
-            "agent_error",
-            "agent_question",
-            "agent_timeout",
-            "agent_complete",
-        ]
-    )
 
 
 @dataclass

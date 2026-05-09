@@ -3,8 +3,8 @@ import re
 
 import pytest
 
-from culture.clients.claude.irc_transport import IRCTransport
-from culture.clients.claude.message_buffer import MessageBuffer
+from culture.clients.shared.irc_transport import IRCTransport
+from culture.clients.shared.message_buffer import MessageBuffer
 
 
 @pytest.mark.asyncio

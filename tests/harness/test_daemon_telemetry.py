@@ -19,10 +19,10 @@ def _daemon_source() -> str:
 
 
 def test_daemon_template_imports_init_harness_telemetry():
-    """daemon.py must import init_harness_telemetry from the BACKEND stub module."""
+    """daemon.py must import init_harness_telemetry from culture.clients.shared.telemetry."""
     source = _daemon_source()
-    assert "from culture.clients.BACKEND.telemetry import init_harness_telemetry" in source, (
-        "Expected stub import 'from culture.clients.BACKEND.telemetry import "
+    assert "from culture.clients.shared.telemetry import init_harness_telemetry" in source, (
+        "Expected shared import 'from culture.clients.shared.telemetry import "
         "init_harness_telemetry' not found in daemon.py"
     )
 

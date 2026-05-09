@@ -46,7 +46,7 @@ async def test_daemon_ipc_irc_send(server, make_client):
     human = await make_client(nick="testserv-ori", user="ori")
     await human.send("JOIN #general")
     await human.recv_all(timeout=0.3)
-    from culture.clients.claude.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     sock_path = os.path.join(sock_dir, "culture-testserv-bot.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)
@@ -78,7 +78,7 @@ async def test_daemon_ipc_irc_read(server, make_client):
     await human.recv_all(timeout=0.3)
     await human.send("PRIVMSG #general :test message")
     await asyncio.sleep(0.3)
-    from culture.clients.claude.ipc import decode_message, encode_message, make_request
+    from culture.clients.shared.ipc import decode_message, encode_message, make_request
 
     sock_path = os.path.join(sock_dir, "culture-testserv-bot.sock")
     reader, writer = await asyncio.open_unix_connection(sock_path)

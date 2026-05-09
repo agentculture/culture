@@ -1,6 +1,9 @@
-# CITATION: Replace BACKEND with your backend name (e.g., codex, opencode)
-# After replacing BACKEND, remove the import-error/no-name-in-module disable below.
-# pylint: disable=import-error,no-name-in-module  # BACKEND placeholder imports
+"""Async IRC client for agent harnesses.
+
+Shared harness module — imported by every backend.
+See docs/architecture/shared-vs-cited.md.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +14,8 @@ from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Callable
 
 from culture.aio import maybe_await
-from culture.clients.BACKEND.message_buffer import MessageBuffer
+from culture.clients.shared.message_buffer import MessageBuffer
+from culture.constants import SYSTEM_USER_PREFIX
 from culture.protocol.message import Message
 from culture.telemetry.context import (
     TRACEPARENT_TAG,
@@ -22,7 +26,8 @@ from culture.telemetry.context import (
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
-    from telemetry import HarnessMetricsRegistry
+
+    from culture.clients.shared.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -342,22 +347,21 @@ class IRCTransport:
         # These are surfaced PRIVMSGs that announce mesh events (user.join,
         # agent.connect, server.link, etc.) — they are not conversation and
         # should not enter the agent's message buffer or trigger the poll loop.
-        # NOTE: Literal "system-" is inlined here rather than imported from
-        # culture.constants because this is a reference implementation in
-        # packages/agent-harness/ that is copied (not installed) into target
-        # projects via the citation pattern — culture.constants is not
-        # reliably importable from a copied reference implementation.
-        if sender.startswith("system-"):
+        if sender.startswith(SYSTEM_USER_PREFIX):
             return
-        if target.startswith("#"):
-            self.buffer.add(target, sender, text)
-        else:
-            self.buffer.add(f"DM:{sender}", sender, text)
+        self._route_to_buffer(target, sender, text)
         was_mention = self._detect_and_fire_mention(target, sender, text)
         # Ambient: a channel message that did NOT directly address us.
         # DMs are always direct — they go through the mention path above.
         if not was_mention and target.startswith("#") and self.on_ambient:
             self.on_ambient(target, sender, text)
+
+    def _route_to_buffer(self, target: str, sender: str, text: str) -> None:
+        """Insert the message into the appropriate buffer (channel or DM)."""
+        if target.startswith("#"):
+            self.buffer.add(target, sender, text)
+        else:
+            self.buffer.add(f"DM:{sender}", sender, text)
 
     def _detect_and_fire_mention(self, target: str, sender: str, text: str) -> bool:
         """Check if the message mentions this agent and fire the callback.
@@ -387,8 +391,7 @@ class IRCTransport:
         text = msg.params[1]
         sender = msg.prefix.split("!")[0] if msg.prefix else "server"
         # Filter event NOTICEs from system-<server> for the same reason as PRIVMSG.
-        # Literal "system-" inlined; see _on_privmsg comment above.
-        if sender.startswith("system-"):
+        if sender.startswith(SYSTEM_USER_PREFIX):
             return
         if target.startswith("#"):
             self.buffer.add(target, sender, text)
