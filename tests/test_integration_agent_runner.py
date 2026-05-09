@@ -104,22 +104,6 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
     return AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
 
 
-async def _no_restart(_exit_code: int) -> None:
-    """Stub for ``daemon._on_agent_exit`` that prevents ``_delayed_restart``
-    from being scheduled onto ``_background_tasks`` (which ``daemon.stop()``
-    doesn't cancel — see PR #369 review #2 follow-up).
-
-    Why stubbing is safe for the metric assertion: ``_process_turn``'s
-    exception block awaits ``self.on_exit(1)`` *before* calling
-    ``record_llm_call`` (``agent_runner.py:200-232``). The stub returns
-    immediately, so the await unblocks instantly and ``record_llm_call``
-    fires right after — the metric still lands on
-    ``culture.harness.llm.calls`` exactly as in production. What we
-    avoid is the *real* ``_on_agent_exit``'s scheduling of a sleeping
-    restart task that would outlive ``daemon.stop()``."""
-    return
-
-
 @pytest.mark.asyncio
 async def test_claude_agent_runner_records_timeout_outcome(
     server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
@@ -151,11 +135,6 @@ async def test_claude_agent_runner_records_timeout_outcome(
     sock_dir = tmp_path / "sock"
     sock_dir.mkdir()
     daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
-
-    # Stub out the daemon's on-exit hook before start so `_delayed_restart`
-    # isn't scheduled onto `_background_tasks` (which daemon.stop() doesn't
-    # cancel — PR #369 review #2 follow-up).
-    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
 
     await daemon.start()
     try:
@@ -237,9 +216,7 @@ async def test_claude_agent_runner_records_error_outcome(
 ):
     """An SDK exception other than ``TimeoutError`` records
     ``outcome=error`` on ``culture.harness.llm.calls`` and triggers
-    ``on_exit(1)``. The ``_on_agent_exit`` callback is stubbed so the
-    resulting restart task doesn't leak past test teardown
-    (``agent_runner.py:216-221``)."""
+    ``on_exit(1)`` (``agent_runner.py:216-221``)."""
     _redirect_pidfile(monkeypatch, tmp_path)
     _invalidate_harness_telemetry_cache()
 
@@ -259,8 +236,6 @@ async def test_claude_agent_runner_records_error_outcome(
     # Plenty of timeout — error fires before the timeout window closes.
     daemon = _build_daemon(server, agent_dir, sock_dir, turn_timeout=5.0)
 
-    monkeypatch.setattr(daemon, "_on_agent_exit", _no_restart, raising=True)
-
     await daemon.start()
     try:
         assert daemon._agent_runner is not None
@@ -271,3 +246,79 @@ async def test_claude_agent_runner_records_error_outcome(
         assert error_dp.value >= 1
     finally:
         await daemon.stop()
+
+
+_DAEMON_BACKENDS = [
+    ("claude", "AgentDaemon", "skip_claude"),
+    ("codex", "CodexDaemon", "skip_codex"),
+    ("copilot", "CopilotDaemon", "skip_copilot"),
+    ("acp", "ACPDaemon", "skip_agent"),  # ACP uses skip_agent, not skip_acp
+]
+
+
+@pytest.mark.parametrize("backend, daemon_cls_name, skip_flag", _DAEMON_BACKENDS)
+@pytest.mark.asyncio
+async def test_daemon_stop_handles_shutdown_from_within_tracked_task(
+    server, tmp_path, monkeypatch, backend, daemon_cls_name, skip_flag
+):
+    """Regression (all four backends): ``_ipc_shutdown`` (sync) schedules
+    ``_graceful_shutdown`` onto ``_background_tasks``, and that task awaits
+    ``self.stop()`` when no external ``_stop_event`` is registered.
+    ``stop()``'s cancel loop must exclude ``asyncio.current_task()`` —
+    otherwise the running shutdown task cancels itself, aborting teardown
+    before transport/socket cleanup. Surfaced by Qodo on PR #373.
+
+    Parametrized over all backends because the cancel-loop block was added
+    identically to all four daemons (cite-don't-import twin code) and the
+    self-cancellation hazard is structural to every backend.
+    """
+    import importlib
+
+    _redirect_pidfile(monkeypatch, tmp_path)
+    daemon_mod = importlib.import_module(f"culture.clients.{backend}.daemon")
+    config_mod = importlib.import_module(f"culture.clients.{backend}.config")
+    daemon_cls = getattr(daemon_mod, daemon_cls_name)
+    daemon_config_cls = config_mod.DaemonConfig
+    agent_config_cls = config_mod.AgentConfig
+    server_conn_cls = config_mod.ServerConnConfig
+    webhook_cls = config_mod.WebhookConfig
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    config = daemon_config_cls(
+        server=server_conn_cls(host="127.0.0.1", port=server.config.port),
+        webhooks=webhook_cls(url=None),
+    )
+    agent = agent_config_cls(nick="testserv-bot", directory=str(agent_dir), channels=["#general"])
+    daemon = daemon_cls(config, agent, socket_dir=str(sock_dir), **{skip_flag: True})
+
+    await daemon.start()
+    assert daemon._transport is not None
+    assert daemon._socket_server is not None
+
+    # Schedule a non-current background task so stop()'s cancel loop has
+    # something to actually cancel and gather. Without this the test only
+    # exercises the snapshot/filter; the cancel + gather lines don't run.
+    async def _sleeper():
+        await asyncio.sleep(60)
+
+    sleeper_task = asyncio.create_task(_sleeper())
+    daemon._background_tasks.add(sleeper_task)
+    sleeper_task.add_done_callback(daemon._background_tasks.discard)
+
+    # Trigger the IPC shutdown path: synchronous method that creates a
+    # _graceful_shutdown task and adds it to _background_tasks. With no
+    # _stop_event registered, _graceful_shutdown awaits self.stop().
+    daemon._ipc_shutdown("req-1", {})
+
+    # If self-cancellation regresses, stop() raises CancelledError before
+    # transport.disconnect() / socket_server.stop() runs, so _transport stays
+    # non-None. Bounded poll for clean teardown.
+    async with asyncio.timeout(5.0):
+        while daemon._transport is not None:
+            await asyncio.sleep(0.05)
+
+    assert daemon._transport is None
+    assert daemon._socket_server is None
