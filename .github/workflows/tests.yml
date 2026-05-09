@@ -9,8 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      # Promoted to job env so `if: env.SONAR_TOKEN != ''` works on the
+      # scanner step below (secrets.* is not allowed in if-conditions).
+      # Fork PRs that can't see the secret skip the scan with a green
+      # status rather than failing.
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0  # required for SonarCloud blame attribution
 
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
 
@@ -19,6 +27,12 @@ jobs:
       - run: uv sync
 
       - run: uv run pytest -n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v
+
+      - name: SonarCloud Scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
 
   version-check:
     runs-on: ubuntu-latest

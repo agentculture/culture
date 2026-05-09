@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.5.2] - 2026-05-09
+
+### Added
+
+- SonarCloud scanner step in `.github/workflows/tests.yml` — analyses now upload on every PR using the `SONAR_TOKEN` secret. `qualitygate.wait=true` (already in `sonar-project.properties`) blocks CI until the gate decides. Fork PRs without access to the secret skip the scan via `if: env.SONAR_TOKEN != ''`.
+- `docs/coverage-baseline.md` documenting the locked baseline (project-wide 56.86% measured 2026-05-09) and the per-domain growth path through Phase 0a of the cultureagent extraction.
+
+### Changed
+
+- `[tool.coverage.report] fail_under` in `pyproject.toml` raised from `50` → `56` to lock the audit-measured floor (see `docs/coverage-baseline.md`). Each Phase 0a integration-test PR will ratchet this further.
+- `tests.yml` checkout step now uses `fetch-depth: 0` for SonarCloud blame attribution.
+
 ## [10.5.1] - 2026-05-09
 
 ### Fixed
