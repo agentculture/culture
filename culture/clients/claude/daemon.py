@@ -210,11 +210,17 @@ class AgentDaemon:
             self._sleep_task = None
 
         # Cancel _background_tasks (e.g. _delayed_restart) so they don't outlive stop().
-        if self._background_tasks:
-            for task in list(self._background_tasks):
-                task.cancel()
-            await asyncio.gather(*self._background_tasks, return_exceptions=True)
-            self._background_tasks.clear()
+        # Exclude the current task: _ipc_shutdown schedules _graceful_shutdown onto
+        # _background_tasks, and _graceful_shutdown awaits self.stop() — so stop() can
+        # run inside one of these tracked tasks. Cancelling self mid-teardown would
+        # raise CancelledError and abort cleanup. Tasks' add_done_callback(discard)
+        # handles removal from the set.
+        current = asyncio.current_task()
+        to_cancel = [t for t in self._background_tasks if t is not current and not t.done()]
+        for task in to_cancel:
+            task.cancel()
+        if to_cancel:
+            await asyncio.gather(*to_cancel, return_exceptions=True)
 
         if self._agent_runner is not None:
             await self._agent_runner.stop()

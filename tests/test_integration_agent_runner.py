@@ -246,3 +246,46 @@ async def test_claude_agent_runner_records_error_outcome(
         assert error_dp.value >= 1
     finally:
         await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_daemon_stop_handles_shutdown_from_within_tracked_task(server, tmp_path, monkeypatch):
+    """Regression: ``_ipc_shutdown`` (sync) schedules ``_graceful_shutdown``
+    onto ``_background_tasks``, and that task awaits ``self.stop()`` when no
+    external ``_stop_event`` is registered. ``stop()``'s cancel loop must
+    exclude ``asyncio.current_task()`` — otherwise the running shutdown task
+    cancels itself, aborting teardown before transport/socket cleanup.
+    Surfaced by Qodo on PR #373.
+    """
+    _redirect_pidfile(monkeypatch, tmp_path)
+    from culture.clients.claude.daemon import AgentDaemon
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    config = DaemonConfig(
+        server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=WebhookConfig(url=None),
+    )
+    agent = AgentConfig(nick="testserv-bot", directory=str(agent_dir), channels=["#general"])
+    daemon = AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=True)
+
+    await daemon.start()
+    assert daemon._transport is not None
+    assert daemon._socket_server is not None
+
+    # Trigger the IPC shutdown path: synchronous method that creates a
+    # _graceful_shutdown task and adds it to _background_tasks. With no
+    # _stop_event registered, _graceful_shutdown awaits self.stop().
+    daemon._ipc_shutdown("req-1", {})
+
+    # If self-cancellation regresses, stop() raises CancelledError before
+    # transport.disconnect() / socket_server.stop() runs, so _transport stays
+    # non-None. Bounded poll for clean teardown.
+    async with asyncio.timeout(5.0):
+        while daemon._transport is not None:
+            await asyncio.sleep(0.05)
+
+    assert daemon._transport is None
+    assert daemon._socket_server is None
