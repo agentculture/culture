@@ -19,16 +19,84 @@ follow-up.
 """
 
 import asyncio
+import importlib.util
+import sys
+import types
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from culture.clients.claude.config import (
+# ---------------------------------------------------------------------------
+# Stub out the copilot SDK if not installed so CI can import
+# culture.clients.copilot.agent_runner.start() (which lazy-imports
+# `from copilot import CopilotClient, PermissionHandler, SubprocessConfig`).
+# Mirrors the per-file stub pattern at tests/harness/test_agent_runner_copilot.py:32-69
+# but uses importlib.util.find_spec to gate on actual SDK availability — so a
+# real copilot install (dev env) isn't masked.
+# ---------------------------------------------------------------------------
+
+
+def _stub_copilot_sdk():
+    # If copilot is already in sys.modules (real install or a sibling test's
+    # stub), don't override — a sibling stub may lack `__spec__`, which would
+    # make find_spec() raise ValueError, so check sys.modules first.
+    if "copilot" in sys.modules:
+        return
+    # Check distribution availability without importing. ValueError can fire
+    # if find_spec encounters a malformed entry; treat as "install our stub".
+    try:
+        if importlib.util.find_spec("copilot") is not None:
+            return
+    except (ValueError, ImportError):
+        pass
+    mod = types.ModuleType("copilot")
+    # Set __spec__ so consumers calling find_spec("copilot") later don't
+    # raise ValueError on this stub.
+    mod.__spec__ = importlib.util.spec_from_loader("copilot", loader=None)
+
+    class CopilotClient:
+        def __init__(self, config=None):  # noqa: ARG002
+            pass
+
+        async def start(self):
+            await asyncio.sleep(0)
+
+        async def stop(self):
+            await asyncio.sleep(0)
+
+        async def create_session(self, **_kwargs):
+            await asyncio.sleep(0)
+            # Production teardown does `await self._session.destroy()`; provide
+            # an AsyncMock so the destroy path runs cleanly instead of raising
+            # TypeError that the runner's except-block swallows.
+            session = MagicMock()
+            session.destroy = AsyncMock()
+            return session
+
+    class PermissionHandler:
+        approve_all = staticmethod(lambda _req: True)
+
+    class SubprocessConfig:
+        def __init__(self, cwd=None, env=None):
+            self.cwd = cwd
+            self.env = env
+
+    mod.CopilotClient = CopilotClient
+    mod.PermissionHandler = PermissionHandler
+    mod.SubprocessConfig = SubprocessConfig
+    sys.modules["copilot"] = mod
+
+
+_stub_copilot_sdk()
+
+
+from culture.clients.claude.config import (  # noqa: E402
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.shared import telemetry as harness_tel
+from culture.clients.shared import telemetry as harness_tel  # noqa: E402
 
 
 def _redirect_pidfile(monkeypatch, tmp_path):
@@ -102,6 +170,40 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
     # getattr() with DEFAULT_TURN_TIMEOUT_SECONDS fallback.
     agent.turn_timeout_seconds = turn_timeout
     return AgentDaemon(config, agent, socket_dir=str(sock_dir), skip_claude=False)
+
+
+def _build_codex_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
+    """Helper: build a codex CodexDaemon configured for these tests."""
+    from culture.clients.codex.config import AgentConfig as CodexAgentConfig
+    from culture.clients.codex.config import DaemonConfig as CodexDaemonConfig
+    from culture.clients.codex.config import ServerConnConfig as CodexServerConnConfig
+    from culture.clients.codex.config import WebhookConfig as CodexWebhookConfig
+    from culture.clients.codex.daemon import CodexDaemon
+
+    config = CodexDaemonConfig(
+        server=CodexServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=CodexWebhookConfig(url=None),
+    )
+    agent = CodexAgentConfig(nick=nick, directory=str(agent_dir), channels=["#general"])
+    agent.turn_timeout_seconds = turn_timeout
+    return CodexDaemon(config, agent, socket_dir=str(sock_dir), skip_codex=False)
+
+
+def _build_copilot_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
+    """Helper: build a copilot CopilotDaemon configured for these tests."""
+    from culture.clients.copilot.config import AgentConfig as CopilotAgentConfig
+    from culture.clients.copilot.config import DaemonConfig as CopilotDaemonConfig
+    from culture.clients.copilot.config import ServerConnConfig as CopilotServerConnConfig
+    from culture.clients.copilot.config import WebhookConfig as CopilotWebhookConfig
+    from culture.clients.copilot.daemon import CopilotDaemon
+
+    config = CopilotDaemonConfig(
+        server=CopilotServerConnConfig(host="127.0.0.1", port=server.config.port),
+        webhooks=CopilotWebhookConfig(url=None),
+    )
+    agent = CopilotAgentConfig(nick=nick, directory=str(agent_dir), channels=["#general"])
+    agent.turn_timeout_seconds = turn_timeout
+    return CopilotDaemon(config, agent, socket_dir=str(sock_dir), skip_copilot=False)
 
 
 @pytest.mark.asyncio
@@ -322,3 +424,165 @@ async def test_daemon_stop_handles_shutdown_from_within_tracked_task(
 
     assert daemon._transport is None
     assert daemon._socket_server is None
+
+
+# ---------------------------------------------------------------------------
+# Codex + copilot timeout integration tests (Phase 0a Task 8 narrowing follow-up).
+#
+# Mirror the claude timeout test for codex and copilot. The harness unit tests
+# in tests/harness/test_agent_runner_{codex,copilot}.py move to cultureagent in
+# Phase 1; without these integration replacements the timeout path loses
+# coverage on cutover.
+# ---------------------------------------------------------------------------
+
+
+class _FakeCodexProcess:
+    """Stand-in for the codex app-server subprocess. Provides just enough
+    surface for ``CodexAgentRunner.start()``/``stop()``/``_send_request()``
+    plumbing to succeed when ``_send_request`` and ``_read_loop`` are also
+    monkeypatched. Does not back any real stdio."""
+
+    def __init__(self):
+        self.returncode = None
+
+        class _Stdin:
+            def write(self_inner, data):
+                pass
+
+            async def drain(self_inner):
+                return None
+
+        self.stdin = _Stdin()
+        # _read_loop is patched to hang in our test, so .stdout.readline is
+        # never actually awaited. Provide an attribute so the truthiness
+        # check in `_read_loop` (`if not self._process.stdout: return`)
+        # doesn't bail early.
+        self.stdout = object()
+
+    def terminate(self):
+        self.returncode = -15
+
+    async def wait(self):
+        return self.returncode if self.returncode is not None else 0
+
+    def kill(self):
+        self.returncode = -9
+
+
+@pytest.mark.asyncio
+async def test_codex_agent_runner_records_timeout_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """Wedge the codex JSON-RPC turn: ``_send_request`` returns a fake
+    response but the ``turn/completed`` notification never arrives (the
+    read-loop is patched to hang), so ``_turn_done.wait()`` hangs and
+    ``_execute_single_turn``'s outer ``asyncio.timeout`` fires. Assert
+    ``outcome=timeout`` lands on ``culture.harness.llm.calls`` with
+    ``backend=codex`` (``agent_runner.py:402-447``).
+
+    Replaces the integration-shaped portion of
+    ``tests/harness/test_agent_runner_codex.py``'s timeout test (the
+    harness unit test moves to cultureagent in Phase 1).
+    """
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    # Fake out the subprocess spawn so `runner.start()` doesn't require
+    # the real `codex` binary on PATH. Only the runner's interactions with
+    # `self._process` need the fake; we patch _send_request and _read_loop
+    # to bypass actual JSON-RPC plumbing.
+    async def _fake_create_subprocess_exec(*_args, **_kwargs):
+        return _FakeCodexProcess()
+
+    monkeypatch.setattr(
+        "culture.clients.codex.agent_runner.asyncio.create_subprocess_exec",
+        _fake_create_subprocess_exec,
+    )
+
+    # Hang the read-loop so no `turn/completed` notification ever fires —
+    # this is what causes `_turn_done.wait()` to never resolve, which is
+    # the wedge state the outer timeout defends against in production.
+    async def _hanging_read_loop(self):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        "culture.clients.codex.agent_runner.CodexAgentRunner._read_loop",
+        _hanging_read_loop,
+        raising=True,
+    )
+
+    # Replace _send_request with a fake JSON-RPC responder so
+    # `runner.start()` (which calls initialize + thread/start) succeeds and
+    # later turn/start calls also return immediately. The wedge is in the
+    # absence of `turn/completed`, not in _send_request itself.
+    async def _fake_send_request(self, method, params=None):
+        if method == "thread/start":
+            return {"jsonrpc": "2.0", "id": "x", "result": {"thread": {"id": "t-1"}}}
+        return {"jsonrpc": "2.0", "id": "x", "result": {}}
+
+    monkeypatch.setattr(
+        "culture.clients.codex.agent_runner.CodexAgentRunner._send_request",
+        _fake_send_request,
+        raising=True,
+    )
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    daemon = _build_codex_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
+
+    await daemon.start()
+    try:
+        assert daemon._agent_runner is not None
+        await daemon._agent_runner.send_prompt("hello")
+        timeout_dp = await _wait_for_outcome_metric(metrics_reader, "timeout")
+        assert timeout_dp.attributes.get("backend") == "codex"
+        assert timeout_dp.value >= 1
+    finally:
+        await daemon.stop()
+
+
+@pytest.mark.asyncio
+async def test_copilot_agent_runner_records_timeout_outcome(
+    server, metrics_reader, tracing_exporter, tmp_path, monkeypatch
+):
+    """Wedge the copilot session: replace ``_session.send_and_wait`` with
+    a never-resolving coroutine after ``daemon.start()`` so
+    ``asyncio.wait_for`` fires its outer timeout. Assert
+    ``outcome=timeout`` lands on ``culture.harness.llm.calls`` with
+    ``backend=copilot`` (``agent_runner.py:204-239``).
+
+    Replaces the integration-shaped portion of
+    ``tests/harness/test_agent_runner_copilot.py``'s timeout test (the
+    harness unit test moves to cultureagent in Phase 1). The copilot SDK
+    stub installed at the top of this module mirrors the harness file's
+    pattern so CI works without ``copilot`` installed.
+    """
+    _redirect_pidfile(monkeypatch, tmp_path)
+    _invalidate_harness_telemetry_cache()
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    sock_dir = tmp_path / "sock"
+    sock_dir.mkdir()
+    daemon = _build_copilot_daemon(server, agent_dir, sock_dir, turn_timeout=0.2)
+
+    await daemon.start()
+    try:
+        assert daemon._agent_runner is not None
+
+        # _session is created during runner.start() via _client.create_session
+        # (which our SDK stub returns a MagicMock for). Mutate its
+        # send_and_wait attribute to a never-resolving coroutine.
+        async def _hanging_send_and_wait(_text, timeout=None):  # noqa: ARG001
+            await asyncio.Event().wait()
+
+        daemon._agent_runner._session.send_and_wait = _hanging_send_and_wait
+
+        await daemon._agent_runner.send_prompt("hello")
+        timeout_dp = await _wait_for_outcome_metric(metrics_reader, "timeout")
+        assert timeout_dp.attributes.get("backend") == "copilot"
+        assert timeout_dp.value >= 1
+    finally:
+        await daemon.stop()
