@@ -102,7 +102,16 @@ async def test_inbound_traceparent_creates_remote_origin_span(
         await _wait_for_daemon_joined(server, "#general", agent.nick)
 
         human = await make_client(nick="testserv-ori", user="ori")
+        # Complete the CAP negotiation handshake before sending tagged
+        # PRIVMSGs. The server doesn't strip tags from inbound non-CAP
+        # clients today, but the explicit REQ + ACK + END pattern
+        # matches tests/test_irc_transport_tags.py and avoids relying
+        # on that internal behavior. Wait for the ACK line so the
+        # capability is actually negotiated before END.
         await human.send("CAP REQ :message-tags")
+        ack = await human.recv_until("ACK")
+        assert "message-tags" in ack, f"expected CAP ACK :message-tags, got {ack!r}"
+        await human.send("CAP END")
         await human.recv_all(timeout=0.3)
         await human.send("JOIN #general")
         await human.recv_all(timeout=0.3)
