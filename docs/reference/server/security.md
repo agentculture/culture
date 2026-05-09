@@ -36,9 +36,10 @@ The following security checks run automatically on pushes to main, pull requests
 
 [SonarCloud](https://sonarcloud.io/) provides comprehensive code quality and security analysis.
 
-- Uses **Automatic Analysis** (SonarCloud-managed, not CI-based) — scans `main` and PRs automatically
-- Configuration in `sonar-project.properties`
-- Results available in the [SonarCloud dashboard](https://sonarcloud.io/summary/overall?id=OriNachum_culture)
+- Uses **CI-based scanning** via `SonarSource/sonarqube-scan-action` in `.github/workflows/tests.yml` (runs after pytest, uploads `coverage.xml`). Automatic Analysis was disabled in PR #362 in favor of CI-driven scans so the gate decision blocks workflows.
+- Configuration in `sonar-project.properties` (project key: `agentculture_culture`, organization: `agentculture`).
+- `sonar.qualitygate.wait=true` blocks CI on the gate decision; fork PRs without `SONAR_TOKEN` skip the scan cleanly.
+- Results available in the [SonarCloud dashboard](https://sonarcloud.io/summary/overall?id=agentculture_culture).
 
 ### CodeQL
 

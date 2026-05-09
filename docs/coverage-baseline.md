@@ -12,7 +12,7 @@ The baseline was measured by `uv run pytest -n auto --cov=culture --cov-report=x
 
 ## Locks
 
-- **pytest CI gate:** [`tool.coverage.report] fail_under = 56`](../pyproject.toml) in `pyproject.toml`. Drops below 56% fail the PR locally / in CI before SonarCloud reports back.
+- **pytest CI gate:** [`[tool.coverage.report] fail_under = 56`](../pyproject.toml) in `pyproject.toml`. Drops below 56% fail the PR locally / in CI before SonarCloud reports back.
 - **SonarCloud Quality Gate:** `sonar.qualitygate.wait=true` in [`sonar-project.properties`](../sonar-project.properties) blocks CI on the gate decision. Gate threshold managed in SonarCloud's project settings (out-of-tree).
 - **CI scanner:** `.github/workflows/tests.yml` runs `SonarSource/sonarqube-scan-action` after pytest, uploading `coverage.xml` to the SonarCloud project (`agentculture_culture`). Fork PRs without `SONAR_TOKEN` skip the scan cleanly.
 
