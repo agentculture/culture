@@ -105,11 +105,18 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
 
 
 async def _no_restart(_exit_code: int) -> None:
-    """Stub for daemon._on_agent_exit that prevents `_delayed_restart`
-    from being scheduled onto `_background_tasks` (which `daemon.stop()`
-    doesn't cancel — see PR #369 review #2 follow-up). The outcome
-    metric is recorded BEFORE on_exit fires, so the assertion still
-    holds without scheduling a restart."""
+    """Stub for ``daemon._on_agent_exit`` that prevents ``_delayed_restart``
+    from being scheduled onto ``_background_tasks`` (which ``daemon.stop()``
+    doesn't cancel — see PR #369 review #2 follow-up).
+
+    Why stubbing is safe for the metric assertion: ``_process_turn``'s
+    exception block awaits ``self.on_exit(1)`` *before* calling
+    ``record_llm_call`` (``agent_runner.py:200-232``). The stub returns
+    immediately, so the await unblocks instantly and ``record_llm_call``
+    fires right after — the metric still lands on
+    ``culture.harness.llm.calls`` exactly as in production. What we
+    avoid is the *real* ``_on_agent_exit``'s scheduling of a sleeping
+    restart task that would outlive ``daemon.stop()``."""
     return
 
 
