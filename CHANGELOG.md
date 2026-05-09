@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `WebhookConfig` lifted from each backend's `config.py` into `culture/clients/shared/webhook_types.py`; per-backend re-export keeps `from culture.clients.<backend>.config import WebhookConfig` working.
 - `tests/harness/test_all_backends_parity.py` no longer watches the 7 moved modules; only `daemon.py`, `config.py`, `constants.py` remain in the parity matrix.
 - `acp/socket_server.py`: added 4 missing comment/docstring lines so it agrees with the other backends.
+- OTel tracer name is now `culture.harness` for all four backends (was `culture.harness.<backend>`). Backend identity moves to OTel Resource `service.name` (already set per-backend via `TelemetryConfig.service_name`). External consumers querying spans by tracer name should query by `service.name` instead.
 - `claude/codex/acp webhook.py`: adopted copilot's `with urllib.request.urlopen(req, timeout=10) as resp: resp.read()` form so the response is closed on every backend.
 
 ## [10.4.3] - 2026-05-09
