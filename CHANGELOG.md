@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.1] - 2026-05-09
+
+### Added
+
+- `tests/test_integration_skill_client.py` — Phase 0a Task 8.5(a): pre-handover integration coverage for `SkillClient`. Four tests drive the verbs not yet covered by `tests/test_integration_layer5.py`: `irc_who`, `irc_topic` (set + get modes), supervisor whisper dispatch (via `daemon._socket_server.send_whisper`) → `SkillClient.pending_whispers` / `drain_whispers()`, and the `close()` cleanup branch (pending requests resolved with `ConnectionError`). Lifts `culture/clients/claude/skill/irc_client.py` from 54% → **~87% on the class itself** (61% headline including the explicitly out-of-scope CLI helpers in lines 189-318). Adopts Tasks 2/3/6's hardening (`tmp_path` sock_dir, monkeypatched `PID_DIR`, bounded polls). Replaces the integration-shaped portion of `tests/test_skill_client.py` (the unit test moves to cultureagent in Phase 1; this file stays as the contract test for culture's daemon ↔ skill IPC surface). `compact` / `clear` SkillClient verbs require a real claude SDK turn — covered by Task 8.5(b) follow-up.
+
 ## [10.6.0] - 2026-05-09
 
 ### Added
