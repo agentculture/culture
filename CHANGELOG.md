@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [10.6.6] - 2026-05-09
+
+### Changed
+
+- `docs/superpowers/specs/2026-05-09-cultureagent-extraction-design.md` status updated from "Design" to "Phase 0a complete; Phase 0b in flight upstream". Added a tracking section listing the Phase 0a integration test PRs (#364–#375) and a link to the Phase 0b kickoff brief on cultureagent ([agentculture/cultureagent#3](https://github.com/agentculture/cultureagent/issues/3)). Phase 0b work itself is tracked on cultureagent's repo per the cross-repo handoff convention; culture's spec only points at the issue.
+
 ## [10.6.5] - 2026-05-09
 
 ### Added

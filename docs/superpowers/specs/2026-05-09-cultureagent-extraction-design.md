@@ -1,8 +1,13 @@
 # cultureagent extraction — agent harness moves to a sibling repo
 
-**Status:** Design
+**Status:** Phase 0a complete; Phase 0b in flight upstream
 **Date:** 2026-05-09
 **Author:** Ori Nachum + Claude (culture-side)
+
+**Tracking:**
+
+- Phase 0a integration test PRs (closed): #364, #365, #366, #367, #368, #369, #370, #371, #372, #373, #374, #375
+- Phase 0b kickoff brief filed: [agentculture/cultureagent#3](https://github.com/agentculture/cultureagent/issues/3) — work tracked there, not here
 
 ## Goal
 
