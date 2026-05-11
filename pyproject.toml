@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "11.0.0"
+version = "11.1.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,7 @@ dependencies = [
     "aiohttp>=3.9",
     "textual>=1.0",
     "agex-cli>=0.13,<1.0",
+    "agtag>=0.1,<1.0",
     "afi-cli>=0.3,<1.0",
     "irc-lens>=0.5.1,<1.0",
     "opentelemetry-api>=1.25",

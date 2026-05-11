@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [11.1.0] - 2026-05-12
+
+### Added
+
+- communicate skill (vendored from steward 0.11.1): new scripts `post-comment.sh` and `fetch-issues.sh`, plus `scripts/templates/skill-update-brief.md`; issue I/O now backed by `agtag>=0.1,<1.0` (added as a runtime dep) — agtag resolves the signing nick from `culture.yaml` so the hard-coded `- culture (Claude)` literal is retired.
+
+### Changed
+
+- cicd skill (vendored from steward 0.12.0): `workflow.sh` now delegates `lint`/`open`/`read`/`reply`/`delta` to `agex pr` (already a culture runtime dep). Culture keeps two extensions on top — `status` (SonarCloud quality gate, OPEN issues, hotspots, unresolved-thread tally via `pr-status.sh`) and `await` (`pr read --wait` + `status`, exits non-zero on Sonar ERROR or unresolved threads). Env var prefix renamed `STEWARD_*` → `CULTURE_*` (`CULTURE_PR_AWAIT_WAIT`, `CULTURE_PR_AWAIT_SECONDS`, `CULTURE_AGEX_AGENT`).
+- `culture skills install` materializes the four-script `communicate` skill plus the `scripts/templates/` Markdown brief; `_COMMUNICATE_SCRIPTS` tuple expanded; install machinery + tests updated.
+- `culture/learn_prompt.py`'s vendored-skill section now mentions all four scripts (`post-issue.sh`, `post-comment.sh`, `fetch-issues.sh`, `mesh-message.sh`) and notes the agtag-backed signing. The per-agent walkthrough stays hand-coded so it can preserve harness info in the signature (agtag's `(Claude)` suffix is fixed).
+
+### Fixed
+
+- `CLAUDE.md`'s SonarCloud pre-PR-ready guidance now points at `workflow.sh status`/`workflow.sh await` instead of the removed `pr-comments.sh`/`wait-and-check.sh`.
+
 ## [11.0.0] - 2026-05-11
 
 ### Changed
