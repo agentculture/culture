@@ -468,7 +468,8 @@ bash {skill_dir}/communicate/scripts/post-issue.sh \\
 # Follow-up on an existing issue (auto-signed via agtag):
 bash {skill_dir}/communicate/scripts/post-comment.sh \\
     --repo agentculture/<sibling> --number 42 \\
-    --body "PR #87 has shipped — closing the loop."
+    --body-file /tmp/follow-up.md
+# (or pipe the body on stdin via heredoc — same flag surface as post-issue.sh)
 
 # Fetch issue body + comments (single, range, or list):
 bash {skill_dir}/communicate/scripts/fetch-issues.sh 42 --repo agentculture/<sibling>

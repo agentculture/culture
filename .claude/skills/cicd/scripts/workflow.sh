@@ -50,8 +50,13 @@ AGEX_AGENT="${CULTURE_AGEX_AGENT:-claude-code}"
 
 require_agex() {
     if ! command -v agex >/dev/null 2>&1; then
-        echo "✗ agex not on PATH. Install agex-cli (>=0.1)." >&2
-        echo "  uv tool install agex-cli  # or pip install agex-cli" >&2
+        # culture-divergence: pin minimum to >=0.13 to match culture's
+        # runtime dep in pyproject.toml. Upstream (steward 0.12.0)
+        # advertises >=0.1; following that hint outside a culture venv
+        # can install an incompatible older agex. Pinned by PR #380
+        # review (Qodo).
+        echo "✗ agex not on PATH. Install agex-cli (>=0.13)." >&2
+        echo "  uv tool install 'agex-cli>=0.13'  # or pip install --user 'agex-cli>=0.13'" >&2
         exit 2
     fi
 }

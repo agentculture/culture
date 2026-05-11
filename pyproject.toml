@@ -50,7 +50,10 @@ packages = ["culture"]
 "culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
 "culture/skills/communicate/SKILL.md" = "culture/skills/communicate/SKILL.md"
 "culture/skills/communicate/scripts/post-issue.sh" = "culture/skills/communicate/scripts/post-issue.sh"
+"culture/skills/communicate/scripts/post-comment.sh" = "culture/skills/communicate/scripts/post-comment.sh"
+"culture/skills/communicate/scripts/fetch-issues.sh" = "culture/skills/communicate/scripts/fetch-issues.sh"
 "culture/skills/communicate/scripts/mesh-message.sh" = "culture/skills/communicate/scripts/mesh-message.sh"
+"culture/skills/communicate/scripts/templates/skill-update-brief.md" = "culture/skills/communicate/scripts/templates/skill-update-brief.md"
 "culture/overview/web/style.css" = "culture/overview/web/style.css"
 "culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
 

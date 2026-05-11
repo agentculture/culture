@@ -24,11 +24,30 @@ while [[ $# -gt 0 ]]; do
       fi
       REPO="$2"
       shift 2 ;;
-    *-*)  # range like 191-197
-      IFS='-' read -r start end <<< "$1"
-      for ((i=start; i<=end; i++)); do NUMBERS+=("$i"); done
+    # culture-divergence: gate the range branch on a strict
+    # `^[0-9]+-[0-9]+$` regex with start<=end and non-empty parts.
+    # Upstream (steward 0.11.1) treats any arg containing `-` as a range
+    # and feeds `start`/`end` directly into bash arithmetic — inputs
+    # like `191-` or `abc-def` crash the whole script under
+    # `set -euo pipefail`. Pinned by PR #380 review (Qodo).
+    *-*)
+      if [[ "$1" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        start="${BASH_REMATCH[1]}"
+        end="${BASH_REMATCH[2]}"
+        if (( start > end )); then
+          echo "Error: range start ($start) > end ($end) in '$1'" >&2
+          exit 1
+        fi
+        for ((i=start; i<=end; i++)); do NUMBERS+=("$i"); done
+      else
+        echo "Error: malformed range '$1' (expected <start>-<end> with non-empty integers)" >&2
+        exit 1
+      fi
       shift ;;
-    *)  NUMBERS+=("$1"); shift ;;
+    [0-9]*)  NUMBERS+=("$1"); shift ;;
+    *)
+      echo "Error: unrecognized argument '$1' (expected NUMBER, NUMBER-NUMBER, or --repo OWNER/REPO)" >&2
+      exit 1 ;;
   esac
 done
 
