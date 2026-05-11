@@ -62,11 +62,11 @@ def _get_bundled_admin_skill_path() -> str:
 
 
 def _get_bundled_skill_path() -> str:
-    """Return the path to the bundled SKILL.md in the installed package."""
-    import culture
+    """Return the path to the bundled Claude SKILL.md (from cultureagent)."""
+    import cultureagent
 
     return os.path.join(
-        os.path.dirname(culture.__file__), "clients", "claude", "skill", _SKILL_FILENAME
+        os.path.dirname(cultureagent.__file__), "clients", "claude", "skill", _SKILL_FILENAME
     )
 
 
@@ -138,10 +138,10 @@ def _install_skill_claude() -> None:
 
 
 def _get_bundled_codex_skill_path() -> str:
-    import culture
+    import cultureagent
 
     return os.path.join(
-        os.path.dirname(culture.__file__), "clients", "codex", "skill", _SKILL_FILENAME
+        os.path.dirname(cultureagent.__file__), "clients", "codex", "skill", _SKILL_FILENAME
     )
 
 
@@ -159,10 +159,10 @@ def _install_skill_codex() -> None:
 
 
 def _get_bundled_copilot_skill_path() -> str:
-    import culture
+    import cultureagent
 
     return os.path.join(
-        os.path.dirname(culture.__file__), "clients", "copilot", "skill", _SKILL_FILENAME
+        os.path.dirname(cultureagent.__file__), "clients", "copilot", "skill", _SKILL_FILENAME
     )
 
 
@@ -180,10 +180,10 @@ def _install_skill_copilot() -> None:
 
 
 def _get_bundled_acp_skill_path() -> str:
-    import culture
+    import cultureagent
 
     return os.path.join(
-        os.path.dirname(culture.__file__), "clients", "acp", "skill", _SKILL_FILENAME
+        os.path.dirname(cultureagent.__file__), "clients", "acp", "skill", _SKILL_FILENAME
     )
 
 

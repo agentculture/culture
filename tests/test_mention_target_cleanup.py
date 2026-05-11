@@ -9,13 +9,13 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from cultureagent.clients.acp.daemon import ACPDaemon
 
 from culture.clients.acp.config import (
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
 )
-from culture.clients.acp.daemon import ACPDaemon
 from culture.clients.shared.attention import AttentionConfig
 
 

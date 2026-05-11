@@ -1,17 +1,14 @@
-"""ACP backend timeout constants. See `culture/_constants.py` for cross-backend defaults."""
+"""Re-export shim — see ``cultureagent.clients.acp.constants``.
 
-from __future__ import annotations
+Backend timeout constants. The implementation lives in cultureagent;
+bug reports go upstream.
+"""
 
-from culture._constants import (  # noqa: F401  # pylint: disable=unused-import
+# pylint: disable=wildcard-import,unused-wildcard-import
+from cultureagent.clients.acp.constants import *  # noqa: F401, F403
+from cultureagent.clients.acp.constants import (  # noqa: F401
     DEFAULT_TURN_TIMEOUT_SECONDS,
+    INNER_REQUEST_TIMEOUT_SECONDS,
+    PROCESS_KILL_GRACE_SECONDS,
+    PROCESS_TERMINATE_GRACE_SECONDS,
 )
-
-# Per JSON-RPC request budget in `_send_request`, used twice by
-# `_send_prompt_with_retry` (original + retry).
-INNER_REQUEST_TIMEOUT_SECONDS: int = 300
-
-# Subprocess SIGTERM grace before SIGKILL escalation.
-PROCESS_TERMINATE_GRACE_SECONDS: int = 5
-
-# Subprocess SIGKILL grace before `_await_process_exit` returns -1.
-PROCESS_KILL_GRACE_SECONDS: int = 1

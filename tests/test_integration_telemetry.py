@@ -16,6 +16,8 @@ call-duration histogram fire inside the agent runner via
 import asyncio
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
+from cultureagent.clients.shared import telemetry as harness_tel
 
 from culture.clients.claude.config import (
     AgentConfig,
@@ -23,8 +25,6 @@ from culture.clients.claude.config import (
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
-from culture.clients.shared import telemetry as harness_tel
 from culture.clients.shared.attention import Band
 
 CONNECT_SPAN = "harness.irc.connect"

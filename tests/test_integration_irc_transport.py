@@ -17,6 +17,7 @@ audit's Task 4 reconnect ask cites that exact file.
 import asyncio
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
 
 from culture.clients.claude.config import (
     AgentConfig,
@@ -24,7 +25,6 @@ from culture.clients.claude.config import (
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
 
 # Standard W3C traceparent: version-trace_id-span_id-flags. See
 # https://www.w3.org/TR/trace-context/#traceparent-header.
@@ -81,9 +81,8 @@ async def test_inbound_traceparent_creates_remote_origin_span(
     # tracing_exporter provider — not a stale one from a sibling worker —
     # is what daemon.start() picks up. The reset also clears the OTel
     # global, so we must re-install the test provider afterwards.
+    from cultureagent.clients.shared import telemetry as harness_tel
     from opentelemetry import trace as _otel_trace
-
-    from culture.clients.shared import telemetry as harness_tel
 
     captured_provider = _otel_trace.get_tracer_provider()
     harness_tel.reset_for_tests()

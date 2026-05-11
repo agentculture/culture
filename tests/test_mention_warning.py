@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
 
 from culture.clients.claude.config import AgentConfig, DaemonConfig
-from culture.clients.claude.daemon import AgentDaemon
 from culture.clients.shared.message_buffer import MessageBuffer
 
 

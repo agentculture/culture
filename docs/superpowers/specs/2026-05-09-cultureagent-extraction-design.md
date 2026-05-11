@@ -1,13 +1,19 @@
 # cultureagent extraction — agent harness moves to a sibling repo
 
-**Status:** Phase 0a complete; Phase 0b in flight upstream
-**Date:** 2026-05-09
+**Status:** Phase 1 cutover landed in culture 11.0.0; cultureagent 0.4.0 consumed
+**Date:** 2026-05-09 (Phase 1 closeout: 2026-05-11)
 **Author:** Ori Nachum + Claude (culture-side)
 
 **Tracking:**
 
 - Phase 0a integration test PRs (closed): #364, #365, #366, #367, #368, #369, #370, #371, #372, #373, #374, #375
-- Phase 0b kickoff brief filed: [agentculture/cultureagent#3](https://github.com/agentculture/cultureagent/issues/3) — work tracked there, not here
+- Phase 0b kickoff brief: [agentculture/cultureagent#3](https://github.com/agentculture/cultureagent/issues/3) — closed; cultureagent shipped 0.1.0 → 0.4.0 between 2026-05-09 and 2026-05-10 (full dedup arc — `__main__` + `skill/irc_client` + `Supervisor` to shared, `packages/agent-harness/` retired, `BaseDaemon` + `QueuedBaseDaemon` template-method introduced)
+- Phase 1 cutover PR (this work): culture 11.0.0
+
+**Two surprises vs. this spec, captured for posterity:**
+
+1. **Subprocess retarget was a no-op.** The spec assumed `python -m culture.clients.<B>` was the daemon subprocess target. In reality culture's CLI launches daemons in-process via direct class instantiation in `culture/cli/agent.py`; the only `python -m culture.clients.<B>.skill.irc_client` strings in the tree were docstrings inside the per-backend `skill/irc_client.py` files (now deleted). systemd `ExecStart` is `culture agent start <name>`, which forks daemons in-process inside one Python process. Subprocess retarget step in §Phase 1 became a verification-only pass.
+2. **Daemons are private in cultureagent's 0.4.0 stable surface but culture imports them directly.** Culture's CLI does `from cultureagent.clients.<B>.daemon import <Daemon>` to instantiate in-process. Hedged with `cultureagent~=0.4.0` (compatible-release pin blocks accidental minor bumps). Follow-up brief asks cultureagent to promote daemon classes to the stable surface; once shipped, culture relaxes the pin to `>=0.4,<1.0`.
 
 ## Goal
 

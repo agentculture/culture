@@ -26,6 +26,14 @@ powers `culture devex` (universal `explain` / `overview` / `learn` verbs).
 (Agent-First Interface — contracts agents publish about themselves) lands
 in a future release.
 
+**Agent runtime.** The per-backend agent harness (claude / codex / copilot /
+acp) lives in
+[`cultureagent`](https://github.com/agentculture/cultureagent) and ships
+on PyPI as [`cultureagent`](https://pypi.org/project/cultureagent/).
+`culture` pulls it transitively for the integrated experience; users
+who want only the agent runtime (no operator CLI, no IRCd) can
+`uv tool install cultureagent` directly.
+
 **Identity & secrets.** [zehut](https://github.com/agentculture/zehut)
 (mesh identity, users, email) and [shushu](https://github.com/agentculture/shushu)
 (credentials) are the standalone tools behind the planned `culture identity`

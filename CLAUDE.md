@@ -14,37 +14,17 @@ Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 
 ## Package Management
 
-- **External packages:** Managed in `pyproject.toml`, installed with `uv`
-- **Internal packages:** Written in `packages/` folder. Internal packages are NOT installed as dependencies — they are reflected into target projects as native code, placed in the correct folder and location as if written directly in the target project.
+- **External packages:** Managed in `pyproject.toml`, installed with `uv`.
+- **Agent harness:** lives in the sibling [`cultureagent`](https://github.com/agentculture/cultureagent) package (pinned `cultureagent~=0.4.0`). `culture/clients/<backend>/{config,constants}.py` and `culture/clients/shared/*.py` are re-export shims forwarding to `cultureagent.clients.*`; daemon classes are imported directly from `cultureagent.clients.<backend>.daemon`. Bug reports and harness improvements go upstream against cultureagent.
 
-## Citation Pattern
+## Citation Pattern (historical)
 
-Code in `packages/` is **reference implementation** — copied, not imported. Each target directory owns its copy and can modify it independently. No cross-directory imports between backends.
+Culture used to host `packages/agent-harness/` as a citation reference for the per-backend harness. As of 11.0.0 (Phase 1 cutover of the [cultureagent extraction](docs/superpowers/specs/2026-05-09-cultureagent-extraction-design.md)) that tree is gone and the all-backends rule is enforced inside cultureagent. The **cite, don't import** pattern (still formalised by the sibling [citation-cli](https://github.com/OriNachum/citation-cli) project) remains the standard for any *new* internal package culture might host in the future — but `packages/agent-harness/` no longer exists.
 
-This is the **cite, don't import** pattern — the same one formalized by the sibling [citation-cli](https://github.com/OriNachum/citation-cli) project (formerly `assimilai`). Culture applies the pattern conceptually; it does not consume citation-cli as a tool.
+**Two install modes** (long-term):
 
-For agent backends (`clients/claude/`, `clients/codex/`, etc.):
-
-1. Copy from `packages/agent-harness/` into `culture/clients/<backend>/`
-2. Replace `agent_runner.py` and `supervisor.py` with your implementation
-3. Adapt `daemon.py` to wire up your runner
-4. Each file is yours to modify — no shared imports to break
-
-If you improve a generic component (e.g., `irc_transport.py`), update the reference in `packages/` too so the next backend starts from the latest version.
-
-**All-backends rule:** When adding or changing a feature in any agent harness (config fields, transport capabilities, daemon handlers), propagate the change to **all** backends (`claude`, `codex`, `copilot`, `acp`) and update `docs/` accordingly. A feature that only exists in one backend is a bug.
-
-**Shared vs cited.** Modules with no backend-specific behavior live in
-`culture/clients/shared/` and are imported by every backend (currently:
-`attention`, `message_buffer`, `ipc`, `telemetry`, `irc_transport`,
-`socket_server`, `webhook`, plus `WebhookConfig` in `webhook_types`).
-Modules where backends genuinely diverge are cited from
-`packages/agent-harness/` (currently: `daemon.py`, `config.py`,
-`constants.py`) plus the per-backend `agent_runner.py` and `supervisor.py`.
-The all-backends rule applies to the cited tier — when you change a cited
-file, propagate to all four. The shared tier doesn't need the rule because
-import enforces it. See `docs/architecture/shared-vs-cited.md` for the rule
-and the fork-back procedure.
+- `uv tool install culture` → integrated experience (pulls cultureagent transitively, full operator CLI + IRCd integration).
+- `uv tool install cultureagent` → lighter install, agent runtime only.
 
 ## Agent Configuration
 

@@ -1,5 +1,17 @@
 # Shared vs cited modules
 
+**Status (culture 11.0.0, 2026-05-11):** This rule is now historical for
+culture's own tree. The agent harness moved to the sibling
+[`cultureagent`](https://github.com/agentculture/cultureagent) package in
+Phase 1 of the [extraction](../superpowers/specs/2026-05-09-cultureagent-extraction-design.md);
+culture's `culture/clients/<backend>/{config,constants}.py` and
+`culture/clients/shared/*.py` are re-export shims forwarding to
+`cultureagent.clients.<backend>.*` / `cultureagent.clients.shared.*`,
+and `packages/agent-harness/` has been deleted. The two-tier model below
+still applies *inside* cultureagent (where the backends actually live).
+Culture's own code no longer hosts cited modules; new backend-specific
+features should be proposed upstream against cultureagent's repo.
+
 The `culture` agent harness uses a two-tier code-distribution model.
 
 ## The rule

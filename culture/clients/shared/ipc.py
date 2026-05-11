@@ -1,46 +1,17 @@
-"""JSON line-framing helpers for harness IPC (whispers and responses).
+"""Re-export shim — see ``cultureagent.clients.shared.ipc``.
 
-Shared harness module — see docs/architecture/shared-vs-cited.md.
+Whisper protocol primitives. The implementation lives in cultureagent;
+bug reports go upstream.
 """
 
-from __future__ import annotations
-
-import json
-import uuid
-from typing import Any
-
-MSG_TYPE_RESPONSE = "response"
-MSG_TYPE_WHISPER = "whisper"
-
-
-def encode_message(msg: dict[str, Any]) -> bytes:
-    return json.dumps(msg, separators=(",", ":")).encode() + b"\n"
-
-
-def decode_message(line: bytes) -> dict[str, Any] | None:
-    stripped = line.strip()
-    if not stripped:
-        return None
-    return json.loads(stripped)
-
-
-def make_request(msg_type: str, **kwargs: Any) -> dict[str, Any]:
-    return {"type": msg_type, "id": str(uuid.uuid4()), **kwargs}
-
-
-def make_response(
-    request_id: str,
-    ok: bool = True,
-    data: Any = None,
-    error: str | None = None,
-) -> dict[str, Any]:
-    msg: dict[str, Any] = {"type": MSG_TYPE_RESPONSE, "id": request_id, "ok": ok}
-    if data is not None:
-        msg["data"] = data
-    if error is not None:
-        msg["error"] = error
-    return msg
-
-
-def make_whisper(message: str, whisper_type: str) -> dict[str, Any]:
-    return {"type": MSG_TYPE_WHISPER, "message": message, "whisper_type": whisper_type}
+# pylint: disable=wildcard-import,unused-wildcard-import
+from cultureagent.clients.shared.ipc import *  # noqa: F401, F403
+from cultureagent.clients.shared.ipc import (  # noqa: F401
+    MSG_TYPE_RESPONSE,
+    MSG_TYPE_WHISPER,
+    decode_message,
+    encode_message,
+    make_request,
+    make_response,
+    make_whisper,
+)
