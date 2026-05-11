@@ -549,8 +549,9 @@ def _make_backend_config(config: DaemonConfig, backend_daemon_config_cls):
 
 def _create_codex_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create a Codex backend daemon."""
+    from cultureagent.clients.codex.daemon import CodexDaemon
+
     from culture.clients.codex.config import DaemonConfig as CodexDaemonConfig
-    from culture.clients.codex.daemon import CodexDaemon
 
     return CodexDaemon(_make_backend_config(config, CodexDaemonConfig), agent)
 
@@ -576,8 +577,9 @@ def _coerce_to_acp_agent(agent: AgentConfig):
 
 def _create_acp_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create an ACP backend daemon."""
+    from cultureagent.clients.acp.daemon import ACPDaemon
+
     from culture.clients.acp.config import DaemonConfig as ACPDaemonConfig
-    from culture.clients.acp.daemon import ACPDaemon
 
     return ACPDaemon(
         _make_backend_config(config, ACPDaemonConfig),
@@ -587,15 +589,16 @@ def _create_acp_daemon(config: DaemonConfig, agent: AgentConfig):
 
 def _create_copilot_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create a Copilot backend daemon."""
+    from cultureagent.clients.copilot.daemon import CopilotDaemon
+
     from culture.clients.copilot.config import DaemonConfig as CopilotDaemonConfig
-    from culture.clients.copilot.daemon import CopilotDaemon
 
     return CopilotDaemon(_make_backend_config(config, CopilotDaemonConfig), agent)
 
 
 def _create_claude_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create the default Claude backend daemon."""
-    from culture.clients.claude.daemon import AgentDaemon
+    from cultureagent.clients.claude.daemon import AgentDaemon
 
     return AgentDaemon(config, agent)
 

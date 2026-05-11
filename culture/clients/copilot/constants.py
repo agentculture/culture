@@ -1,11 +1,12 @@
-"""Copilot backend timeout constants. See `culture/_constants.py` for cross-backend defaults."""
+"""Re-export shim — see ``cultureagent.clients.copilot.constants``.
 
-from __future__ import annotations
+Backend timeout constants. The implementation lives in cultureagent;
+bug reports go upstream.
+"""
 
-from culture._constants import (  # noqa: F401  # pylint: disable=unused-import
+# pylint: disable=wildcard-import,unused-wildcard-import
+from cultureagent.clients.copilot.constants import *  # noqa: F401, F403
+from cultureagent.clients.copilot.constants import (  # noqa: F401
     DEFAULT_TURN_TIMEOUT_SECONDS,
+    INNER_SDK_TIMEOUT_SECONDS,
 )
-
-# github-copilot-sdk's own `session.send_and_wait` budget. The outer
-# turn-timeout wraps this if the SDK ignores its own.
-INNER_SDK_TIMEOUT_SECONDS: float = 120.0

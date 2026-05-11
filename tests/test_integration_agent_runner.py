@@ -28,7 +28,7 @@ import pytest
 
 # ---------------------------------------------------------------------------
 # Stub out the copilot SDK if not installed so CI can import
-# culture.clients.copilot.agent_runner.start() (which lazy-imports
+# cultureagent.clients.copilot.agent_runner.start() (which lazy-imports
 # `from copilot import CopilotClient, PermissionHandler, SubprocessConfig`).
 # Mirrors the per-file stub pattern at tests/harness/test_agent_runner_copilot.py:32-69
 # but uses importlib.util.find_spec to gate on actual SDK availability — so a
@@ -90,13 +90,14 @@ def _stub_copilot_sdk():
 _stub_copilot_sdk()
 
 
+from cultureagent.clients.shared import telemetry as harness_tel  # noqa: E402
+
 from culture.clients.claude.config import (  # noqa: E402
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.shared import telemetry as harness_tel  # noqa: E402
 
 
 def _redirect_pidfile(monkeypatch, tmp_path):
@@ -155,7 +156,7 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
     """Helper: build a claude AgentDaemon configured for these tests.
     Returns the (unstarted) daemon. ``turn_timeout`` controls
     ``agent.turn_timeout_seconds``."""
-    from culture.clients.claude.daemon import AgentDaemon
+    from cultureagent.clients.claude.daemon import AgentDaemon
 
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -174,11 +175,12 @@ def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout
 
 def _build_codex_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
     """Helper: build a codex CodexDaemon configured for these tests."""
+    from cultureagent.clients.codex.daemon import CodexDaemon
+
     from culture.clients.codex.config import AgentConfig as CodexAgentConfig
     from culture.clients.codex.config import DaemonConfig as CodexDaemonConfig
     from culture.clients.codex.config import ServerConnConfig as CodexServerConnConfig
     from culture.clients.codex.config import WebhookConfig as CodexWebhookConfig
-    from culture.clients.codex.daemon import CodexDaemon
 
     config = CodexDaemonConfig(
         server=CodexServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -191,11 +193,12 @@ def _build_codex_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_t
 
 def _build_copilot_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
     """Helper: build a copilot CopilotDaemon configured for these tests."""
+    from cultureagent.clients.copilot.daemon import CopilotDaemon
+
     from culture.clients.copilot.config import AgentConfig as CopilotAgentConfig
     from culture.clients.copilot.config import DaemonConfig as CopilotDaemonConfig
     from culture.clients.copilot.config import ServerConnConfig as CopilotServerConnConfig
     from culture.clients.copilot.config import WebhookConfig as CopilotWebhookConfig
-    from culture.clients.copilot.daemon import CopilotDaemon
 
     config = CopilotDaemonConfig(
         server=CopilotServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -209,11 +212,12 @@ def _build_copilot_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn
 def _build_acp_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
     """Helper: build an acp ACPDaemon configured for these tests.
     Note: ACP uses ``skip_agent`` (not ``skip_acp``)."""
+    from cultureagent.clients.acp.daemon import ACPDaemon
+
     from culture.clients.acp.config import AgentConfig as ACPAgentConfig
     from culture.clients.acp.config import DaemonConfig as ACPDaemonConfig
     from culture.clients.acp.config import ServerConnConfig as ACPServerConnConfig
     from culture.clients.acp.config import WebhookConfig as ACPWebhookConfig
-    from culture.clients.acp.daemon import ACPDaemon
 
     config = ACPDaemonConfig(
         server=ACPServerConnConfig(host="127.0.0.1", port=server.config.port),
@@ -245,7 +249,7 @@ async def test_claude_agent_runner_records_timeout_outcome(
         yield  # pragma: no cover  -- unreachable, marks this an async generator
 
     monkeypatch.setattr(
-        "culture.clients.claude.agent_runner.query",
+        "cultureagent.clients.claude.agent_runner.query",
         _hanging_query,
         raising=True,
     )
@@ -296,7 +300,7 @@ async def test_claude_agent_runner_records_success_outcome(
     async def _fake_query(**_kwargs):
         yield fake_result
 
-    monkeypatch.setattr("culture.clients.claude.agent_runner.query", _fake_query, raising=True)
+    monkeypatch.setattr("cultureagent.clients.claude.agent_runner.query", _fake_query, raising=True)
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
@@ -347,7 +351,9 @@ async def test_claude_agent_runner_records_error_outcome(
             yield
         raise RuntimeError("SDK exploded")
 
-    monkeypatch.setattr("culture.clients.claude.agent_runner.query", _failing_query, raising=True)
+    monkeypatch.setattr(
+        "cultureagent.clients.claude.agent_runner.query", _failing_query, raising=True
+    )
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
@@ -395,8 +401,8 @@ async def test_daemon_stop_handles_shutdown_from_within_tracked_task(
     import importlib
 
     _redirect_pidfile(monkeypatch, tmp_path)
-    daemon_mod = importlib.import_module(f"culture.clients.{backend}.daemon")
-    config_mod = importlib.import_module(f"culture.clients.{backend}.config")
+    daemon_mod = importlib.import_module(f"cultureagent.clients.{backend}.daemon")
+    config_mod = importlib.import_module(f"cultureagent.clients.{backend}.config")
     daemon_cls = getattr(daemon_mod, daemon_cls_name)
     daemon_config_cls = config_mod.DaemonConfig
     agent_config_cls = config_mod.AgentConfig
@@ -513,7 +519,7 @@ async def test_codex_agent_runner_records_timeout_outcome(
         return _FakeCodexProcess()
 
     monkeypatch.setattr(
-        "culture.clients.codex.agent_runner.asyncio.create_subprocess_exec",
+        "cultureagent.clients.codex.agent_runner.asyncio.create_subprocess_exec",
         _fake_create_subprocess_exec,
     )
 
@@ -524,7 +530,7 @@ async def test_codex_agent_runner_records_timeout_outcome(
         await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        "culture.clients.codex.agent_runner.CodexAgentRunner._read_loop",
+        "cultureagent.clients.codex.agent_runner.CodexAgentRunner._read_loop",
         _hanging_read_loop,
         raising=True,
     )
@@ -539,7 +545,7 @@ async def test_codex_agent_runner_records_timeout_outcome(
         return {"jsonrpc": "2.0", "id": "x", "result": {}}
 
     monkeypatch.setattr(
-        "culture.clients.codex.agent_runner.CodexAgentRunner._send_request",
+        "cultureagent.clients.codex.agent_runner.CodexAgentRunner._send_request",
         _fake_send_request,
         raising=True,
     )
@@ -666,7 +672,7 @@ async def test_acp_agent_runner_records_timeout_outcome(
         return _FakeACPProcess()
 
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.asyncio.create_subprocess_exec",
+        "cultureagent.clients.acp.agent_runner.asyncio.create_subprocess_exec",
         _fake_create_subprocess_exec,
     )
 
@@ -676,12 +682,12 @@ async def test_acp_agent_runner_records_timeout_outcome(
         await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.ACPAgentRunner._read_loop",
+        "cultureagent.clients.acp.agent_runner.ACPAgentRunner._read_loop",
         _hang,
         raising=True,
     )
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.ACPAgentRunner._stderr_loop",
+        "cultureagent.clients.acp.agent_runner.ACPAgentRunner._stderr_loop",
         _hang,
         raising=True,
     )
@@ -695,7 +701,7 @@ async def test_acp_agent_runner_records_timeout_outcome(
         return {"jsonrpc": "2.0", "id": "x", "result": {}}
 
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.ACPAgentRunner._send_request",
+        "cultureagent.clients.acp.agent_runner.ACPAgentRunner._send_request",
         _fake_send_request,
         raising=True,
     )
@@ -710,12 +716,12 @@ async def test_acp_agent_runner_records_timeout_outcome(
         await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.ACPAgentRunner._send_prompt_with_retry",
+        "cultureagent.clients.acp.agent_runner.ACPAgentRunner._send_prompt_with_retry",
         _fake_prompt,
         raising=True,
     )
     monkeypatch.setattr(
-        "culture.clients.acp.agent_runner.ACPAgentRunner._handle_prompt_result",
+        "cultureagent.clients.acp.agent_runner.ACPAgentRunner._handle_prompt_result",
         _hang_handle,
         raising=True,
     )

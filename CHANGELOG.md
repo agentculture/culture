@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [11.0.0] - 2026-05-11
+
+### Changed
+
+- Agent harness extracted to sibling `cultureagent` package (consumed at `cultureagent~=0.4.0`). Culture's `culture/clients/<backend>/{config,constants}.py` and `culture/clients/shared/*.py` are now re-export shims forwarding to `cultureagent.clients.*`. Daemon classes are imported directly from `cultureagent.clients.<backend>.daemon`.
+- `culture skills install` now reads per-backend `SKILL.md` from the installed `cultureagent` package instead of `culture/clients/<backend>/skill/`.
+- Integration tests retargeted to import `SkillClient` from `cultureagent.clients.shared.skill_irc_client` and to import daemon classes from `cultureagent.clients.<backend>.daemon`.
+
 ## [10.6.6] - 2026-05-09
 
 ### Changed

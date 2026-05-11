@@ -1,10 +1,12 @@
-"""Claude backend timeout constants. See `culture/_constants.py` for cross-backend defaults."""
+"""Re-export shim — see ``cultureagent.clients.claude.constants``.
 
-from __future__ import annotations
+Backend timeout constants. The implementation lives in cultureagent;
+bug reports go upstream.
+"""
 
-from culture._constants import (  # noqa: F401  # pylint: disable=unused-import
+# pylint: disable=wildcard-import,unused-wildcard-import
+from cultureagent.clients.claude.constants import *  # noqa: F401, F403
+from cultureagent.clients.claude.constants import (  # noqa: F401
     DEFAULT_TURN_TIMEOUT_SECONDS,
+    STOP_GRACE_SECONDS,
 )
-
-# AgentRunner.stop() grace period before the run-loop task is cancelled.
-STOP_GRACE_SECONDS: float = 5.0

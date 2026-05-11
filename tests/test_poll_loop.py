@@ -3,13 +3,13 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
 
 from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
 from culture.clients.shared.attention import AttentionConfig
 
 # These tests exercise the legacy fixed-interval poll loop. The new

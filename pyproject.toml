@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "10.6.6"
+version = "11.0.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -16,6 +16,7 @@ classifiers = [
 dependencies = [
     "pyyaml>=6.0",
     "agentirc-cli>=9.6,<10",
+    "cultureagent~=0.4.0",
     "anthropic>=0.40",
     "claude-agent-sdk>=0.1",
     "mistune>=3.0",
@@ -45,10 +46,6 @@ build-backend = "hatchling.build"
 packages = ["culture"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"culture/clients/claude/skill/SKILL.md" = "culture/clients/claude/skill/SKILL.md"
-"culture/clients/codex/skill/SKILL.md" = "culture/clients/codex/skill/SKILL.md"
-"culture/clients/copilot/skill/SKILL.md" = "culture/clients/copilot/skill/SKILL.md"
-"culture/clients/acp/skill/SKILL.md" = "culture/clients/acp/skill/SKILL.md"
 "culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
 "culture/skills/communicate/SKILL.md" = "culture/skills/communicate/SKILL.md"
 "culture/skills/communicate/scripts/post-issue.sh" = "culture/skills/communicate/scripts/post-issue.sh"

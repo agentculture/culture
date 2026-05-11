@@ -2,13 +2,13 @@ import asyncio
 import tempfile
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
 
 from culture.clients.claude.config import (
     AgentConfig,
     DaemonConfig,
     ServerConnConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
 
 
 @pytest.mark.asyncio

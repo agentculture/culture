@@ -606,7 +606,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "10.6.6"
+version = "11.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -615,6 +615,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
+    { name = "cultureagent" },
     { name = "irc-lens" },
     { name = "mistune" },
     { name = "opentelemetry-api" },
@@ -657,6 +658,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },
+    { name = "cultureagent", specifier = "~=0.4.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'" },
     { name = "irc-lens", specifier = ">=0.5.1,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
@@ -686,6 +688,24 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.1" },
     { name = "pytest-xdist", specifier = ">=3.0" },
     { name = "safety", specifier = ">=2.3.0" },
+]
+
+[[package]]
+name = "cultureagent"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "agentirc-cli" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-instrumentation-aiohttp-server" },
+    { name = "opentelemetry-sdk" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/d9/7ec3af049794422ffa39ceb62160dc4be3090077da5848245bb878ddba65/cultureagent-0.4.0.tar.gz", hash = "sha256:e2151b6b5476d4d94ac1f773a4c9e7f2fc20032c69b4543e237c10df292c95f9", size = 315121, upload-time = "2026-05-10T06:03:47.255Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/0d/0bff771dca49f43483ad13b6f465a3d96b93c3288273da1ba24312a42cfe/cultureagent-0.4.0-py3-none-any.whl", hash = "sha256:079443ec8c48cf1871dbc572851001ec7eb19c6a2b9dec10393c49d2e9cd6d29", size = 137074, upload-time = "2026-05-10T06:03:48.498Z" },
 ]
 
 [[package]]

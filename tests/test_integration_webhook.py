@@ -19,6 +19,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
+from cultureagent.clients.shared.skill_irc_client import SkillClient
 
 from culture.clients.claude.config import (
     AgentConfig,
@@ -26,8 +28,6 @@ from culture.clients.claude.config import (
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
-from culture.clients.claude.skill.irc_client import SkillClient
 
 
 def _redirect_pidfile(monkeypatch, tmp_path):

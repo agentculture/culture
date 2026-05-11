@@ -10,6 +10,7 @@ import asyncio
 import time
 
 import pytest
+from cultureagent.clients.claude.daemon import AgentDaemon
 
 from culture.clients.claude.config import (
     AgentConfig,
@@ -17,7 +18,6 @@ from culture.clients.claude.config import (
     ServerConnConfig,
     WebhookConfig,
 )
-from culture.clients.claude.daemon import AgentDaemon
 from culture.clients.shared.attention import Band
 
 # Decay overrides: hold_s=2 across HOT/WARM/COOL with tick_s=2 and
