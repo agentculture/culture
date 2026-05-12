@@ -15,6 +15,10 @@
 # pyproject.toml sets `parallel = true` so the worker files are produced; we
 # suppress pytest-cov's auto-report (`--cov-report=`) and render manually via
 # `coverage report` / `coverage xml` after combine.
+#
+# Stale `.coverage` / `.coverage.*` shards from a previous run are removed
+# before pytest so `coverage combine` can never silently merge old data into
+# the new report.
 
 set -uo pipefail
 
@@ -56,24 +60,56 @@ fi
 
 CMD+=("${EXTRA_ARGS[@]}")
 
+# Wipe stale coverage data so a failed `coverage combine` can't mask a real
+# problem by merging old shards into the new report.
+if [[ -n "$NEED_COMBINE" ]]; then
+    rm -f .coverage .coverage.*
+fi
+
 echo "Running: ${CMD[*]}"
 "${CMD[@]}"
 PYTEST_RC=$?
 
+FINAL_RC="$PYTEST_RC"
+
 if [[ -n "$NEED_COMBINE" ]]; then
-    # Combine xdist worker shards into a single .coverage, then render.
-    # `coverage combine` is a no-op (or warns) when only one shard exists.
-    uv run coverage combine -q 2>/dev/null || true
-    uv run coverage report
-    REPORT_RC=$?
-    if [[ -n "$NEED_XML" ]]; then
-        uv run coverage xml -o coverage.xml
+    # Combine xdist worker shards into a single `.coverage`. When only one
+    # shard exists, the parallel-mode file is still named `.coverage.<host>.*`
+    # so we always have shards to merge — but be defensive: only combine when
+    # shard files actually exist, and propagate real combine failures.
+    shopt -s nullglob
+    SHARDS=(.coverage.*)
+    shopt -u nullglob
+    if (( ${#SHARDS[@]} > 0 )); then
+        uv run coverage combine -q
+        COMBINE_RC=$?
+        if (( COMBINE_RC != 0 )); then
+            echo "coverage combine failed (rc=$COMBINE_RC) — refusing to report on partial data" >&2
+            (( FINAL_RC == 0 )) && FINAL_RC="$COMBINE_RC"
+        fi
+    elif [[ ! -f .coverage ]]; then
+        echo "no coverage data produced — skipping report" >&2
+        (( FINAL_RC == 0 )) && FINAL_RC=1
     fi
-    # Surface a coverage-floor failure (exit 2 from `coverage report`) if
-    # pytest itself passed.
-    if [[ "$PYTEST_RC" -eq 0 && "$REPORT_RC" -ne 0 ]]; then
-        PYTEST_RC=$REPORT_RC
+
+    if [[ -f .coverage ]]; then
+        uv run coverage report
+        REPORT_RC=$?
+        # Surface a coverage-floor failure (exit 2 from `coverage report`)
+        # over a passing pytest run.
+        if (( FINAL_RC == 0 && REPORT_RC != 0 )); then
+            FINAL_RC="$REPORT_RC"
+        fi
+    fi
+
+    if [[ -n "$NEED_XML" ]] && [[ -f .coverage ]]; then
+        uv run coverage xml -o coverage.xml
+        XML_RC=$?
+        if (( XML_RC != 0 )); then
+            echo "coverage xml failed (rc=$XML_RC) — coverage.xml may be missing or stale" >&2
+            (( FINAL_RC == 0 )) && FINAL_RC="$XML_RC"
+        fi
     fi
 fi
 
-exit "$PYTEST_RC"
+exit "$FINAL_RC"

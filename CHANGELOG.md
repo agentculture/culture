@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.1] - 2026-05-13
+
+### Fixed
+
+- test.sh: clean stale .coverage* shards before pytest; propagate coverage combine and coverage xml exit codes instead of swallowing them (Qodo PR #383 reviews 3229900166 + 3229900163).
+
 ## [12.0.0] - 2026-05-13
 
 ### Added
