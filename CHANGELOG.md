@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.4] - 2026-05-13
+
+### Added
+
+- `tests/test_cli_shared_mesh.py` — 14 tests covering `culture/cli/shared/mesh.py` (25% → 100%): `parse_link` (defaults, explicit trust, password-with-colons, malformed-spec rejection, non-integer-port rejection); `resolve_links_from_mesh` (no peers, builds-per-peer, skips peers without credentials with warning); `generate_mesh_from_agents` (missing `DEFAULT_CONFIG` returns `None`, happy save path); `build_server_start_cmd` (foreground + mesh-config flags, server name/host/port, port stringification).
+- `tests/test_cli_bot.py` — 35 tests covering `culture/cli/bot.py` (33% → 99%): `dispatch` (no/unknown command exits, route to list), `_should_include_bot` (owner match, archive filter), `_load_and_filter_bots` (missing dir, unfiltered, owner filter, archive filter, skip dirs without YAML), `_bot_create` (empty-name rejection, owner-prefix rewrite, duplicate rejection, channels/mention rendering), `_bot_start` / `_bot_stop` (unknown bot exits, reload notice), `_bot_list` (empty, owner filter empty, table rendering, archived marker), `_bot_inspect` (unknown exits, full metadata, long-template truncation, archive block), `_bot_archive` / `_bot_unarchive` (round-trip, idempotency, error paths). Filesystem isolated via `tmp_path`-backed `BOTS_DIR`.
+- 21 tests appended to `tests/test_channel_cli.py` covering `culture/cli/channel.py` (44% → 99.6%): every `_cmd_*` handler (list/read/message/who/join/part/ask/topic/compact/clear), `_interpret_escapes` (passthrough, n/t, double backslash, unknown escape), `_is_connection_error` classification, `dispatch` OSError wrapping with connection-error hint, `_topic_read` daemon-unreachable exit, `_require_ipc` when daemon responds `None`. Uses a new `_stub_ipc` helper that patches `_try_ipc` / `_require_ipc` at the channel-module boundary, sidestepping the nested-`asyncio.run` conflict that would otherwise dead-lock the existing Unix-socket mock pattern.
+
+### Changed
+
+- pyproject.toml: fail_under raised 62 → 67 (Phase 3a floor of the 60→90 ratchet plan). Project-wide measured 67.89%.
+- docs/coverage-baseline.md: Phase 3a entry + updated phase target table (Phase 3 split into 3a + 3b).
+
 ## [12.0.3] - 2026-05-13
 
 ### Fixed
@@ -445,7 +458,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **`culture agent message` no longer treats local config as the source of truth** (#333 item 11). The previous behavior refused to send when the target nick was missing from local `server.yaml`, which broke DMs to agents reachable via federation. The local-config gate is removed; the send is delegated to the IRC server, and `401 NOSUCHNICK` propagates if the nick truly isn't on the mesh.
 - **`culture agent sleep`/`wake` usage errors now use argparse formatting** (#333 item 12). Missing-arg, conflicting-arg, and unknown-nick errors previously went to stdout via `print()` + `sys.exit(1)`, inconsistent with every other CLI verb. They now write `culture agent sleep: error: ...` to stderr with rc 2, matching argparse's standard usage-error path.
 - **`culture agent migrate --help` text now signals it's a one-time op** (#333 item 7). Help reads `Migrate legacy agents.yaml to server.yaml + culture.yaml (one-time, usually a no-op)` instead of advertising it as routine. The verb stays in the CLI surface for completeness — most repos have already migrated.
-- **Channel-existence guard now uses the server-wide `LIST` query** (#341 review). Earlier draft of the #331 guard read the daemon's `irc_channels` IPC, which only returns the daemon's *joined* channels — false-rejecting valid channels the daemon hadn't joined. The guard now always uses the observer's `list_channels()` (a fresh peek `LIST`) regardless of IPC availability.
+- **Channel-existence guard now uses the server-wide `LIST` query** (#341 review). Earlier draft of the #331 guard read the daemon's `irc_channels` IPC, which only returns the daemon's _joined_ channels — false-rejecting valid channels the daemon hadn't joined. The guard now always uses the observer's `list_channels()` (a fresh peek `LIST`) regardless of IPC availability.
 
 ### Deprecated
 
