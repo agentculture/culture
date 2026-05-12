@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "12.0.1"
+version = "12.0.3"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -93,11 +93,11 @@ omit = [
 
 [tool.coverage.report]
 # Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
-# Phase 1 (2026-05-13): coverage plumbing fix + console removal.
-# Post-Phase-1 measured: 60.99% on commit 0322b83 + this PR. Floor set to
-# measured - 1pp to absorb rounding flake. Phase 2 targets cli/shared/process
-# and protocol/commands to reach 66.
-fail_under = 60
+# Phase 2 (2026-05-13): added tests for culture/cli/shared/process.py and
+# culture/protocol/commands.py (both now 100% covered). Project-wide
+# measured: 62.91%. Floor = floor(measured) to absorb rounding flake.
+# Phase 3 targets the CLI command handlers (server/agent/bot/channel/mesh).
+fail_under = 62
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
