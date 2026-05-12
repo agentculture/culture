@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.6] - 2026-05-13
+
+### Added
+
+- `tests/test_cli_agent.py` — 104 tests covering `culture/cli/agent.py` (47% → 89%): `dispatch`, the four backend config factories (`_create_codex_config`, `_create_copilot_config`, `_create_acp_config`, `_create_default_config`, `_create_agent_config`, parametrized across all four backends), `_parse_acp_command` (default / JSON / split-fallback / rejection branches), `_check_existing_agent` (clean / archived-duplicate / active-duplicate), `_to_manifest_agent`, `_save_agent_to_directory`, `_cmd_create` (per-backend + collision exit), `_cmd_join`, all resolution helpers (`_get_active_agents`, `_resolve_by_nick`, `_resolve_auto`, `_resolve_agents_to_start`, `_resolve_agents_to_stop` including cwd-disambiguation), the `_cmd_start` dispatcher routing, backend daemon factories (`_create_codex_daemon`, `_create_copilot_daemon`, `_create_claude_daemon`, `_coerce_to_acp_agent`, `_make_backend_config`), `_cmd_stop`, `_cmd_status` (all branches), `_cmd_rename` / `_cmd_assign` (every branch), the IPC dispatcher chain (`_resolve_ipc_targets`, `_argparse_error`, `_send_ipc`, `_ipc_to_agents`, plus `_cmd_sleep` / `_cmd_wake` wrappers), `_cmd_learn` (explicit nick / cwd-match / no-match), `_cmd_message` (empty target / empty text / observer-send happy path), `_cmd_read`, `_cmd_archive` / `_cmd_unarchive` / `_cmd_delete`, `_cmd_unregister`. The 5 integration-territory functions (`_probe_server_connection`, `_start_foreground`, `_start_background`, `_run_single_agent`, `_run_multi_agents`) are deliberately skipped — exercised by `tests/test_integration_agent_runner.py` against a real IRCd.
+
+### Changed
+
+- pyproject.toml: fail_under raised 73 → 77 (Phase 3c floor of the 60→90 ratchet plan). Project-wide measured 77.30%.
+- docs/coverage-baseline.md: Phase 3c entry + updated phase target table.
+
 ## [12.0.5] - 2026-05-13
 
 ### Added

@@ -95,6 +95,12 @@ Notable findings (deferred to later phases):
 - `culture/cli/mesh.py` — 53% → **99.3%** (282 statements, 2 missing). `tests/test_cli_mesh.py` (54 tests) covers every dispatched handler (`_cmd_overview`, `_cmd_setup`, `_cmd_update`, `_cmd_console`) plus every reachable helper: `_collect_mesh_data` exit paths, `_find_upgrade_tool`, `_upgrade_timeout_hint`, `_run_upgrade` (timeout + non-zero-exit), `_upgrade_culture_package` (skip / dry-run / no-tool / exec-reach), `_wait_for_server_port` (accept / refuse / non-culture PID), `_restart_single_service` (service path + subprocess fallback + timeout swallow), `_restart_mesh_services`, `_resolve_mesh_for_server`, `_restart_running_servers`, `_restart_from_config`. `_install_mesh_services` is excluded (systemd; Linux + root only); `os.execvp` re-exec is reached by the tests but its body is excluded as an end-of-life branch.
 - `culture/cli/server.py` — 21% → **76%** (396 statements, 96 missing). `tests/test_cli_server.py` (54 tests) covers `_resolve_server_name`, `dispatch` (including the `agentirc.cli.dispatch` passthrough for forwarded verbs), `_cmd_default`, `_server_rename` (every branch), `_check_server_archived`, `_check_already_running`, `_resolve_server_links`, `_wait_for_graceful_stop`, `_force_kill` (POSIX SIGKILL + win32 SIGTERM + `ProcessLookupError` swallow), `_server_stop`, `_server_status`, `_validate_config_name`, `_update_single_bot_archive`, `_set_bots_archive_state`, `_server_archive`, `_server_unarchive`, plus the `_server_start` dispatcher. The 96 missing lines are concentrated in three deliberately-skipped integration-territory functions: `_run_foreground`, `_daemonize_server`, `_run_server` — exercised by `tests/test_integration_irc_transport.py` against a real IRCd, not unit tests.
 
+### Phase 3c — `cli/agent.py` (2026-05-13)
+
+**Measured: 77.30%** (6260 statements, 1421 missing) → `fail_under = 77`. The last CLI module is now covered:
+
+- `culture/cli/agent.py` — 47% → **88.8%** (579 statements, 65 missing). `tests/test_cli_agent.py` (104 tests, heavily parametrized) covers `dispatch`, the four backend `_create_*_config` factories (parametrized across claude/codex/copilot/acp), `_parse_acp_command` (all branches incl. JSON parse, fallback split, rejection), `_check_existing_agent` (clean / archived / active duplicate), `_to_manifest_agent`, `_save_agent_to_directory`, `_cmd_create` (per-backend + collision), `_cmd_join`, every resolution helper (`_get_active_agents`, `_resolve_by_nick`, `_resolve_auto`, `_resolve_agents_to_start`, `_resolve_agents_to_stop`), `_cmd_start` dispatcher routing, the backend daemon factories (`_create_codex_daemon`, `_create_copilot_daemon`, `_create_claude_daemon`), `_coerce_to_acp_agent`, `_make_backend_config`, `_cmd_stop`, `_cmd_status` (all branches), `_cmd_rename`/`_cmd_assign` (every branch), the IPC dispatcher chain (`_resolve_ipc_targets`, `_argparse_error`, `_send_ipc`, `_ipc_to_agents`), the IPC verb wrappers (`_cmd_sleep`, `_cmd_wake`), `_cmd_learn` (nick / no-nick / cwd-match / no-match), `_cmd_message` (empty target / empty text / send), `_cmd_read`, `_cmd_archive`/`_cmd_unarchive`/`_cmd_delete`, `_cmd_unregister`. The 65 missing lines are concentrated in 5 deliberately-skipped integration-territory functions (`_probe_server_connection`, `_start_foreground`, `_start_background`, `_run_single_agent`, `_run_multi_agents`) — exercised by `tests/test_integration_agent_runner.py` against a real IRCd.
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
@@ -102,9 +108,9 @@ Notable findings (deferred to later phases):
 | 1 | 60 | 60.99% | [#383](https://github.com/agentculture/culture/pull/383) | ✅ merged |
 | 2 | 62 | 62.91% | [#384](https://github.com/agentculture/culture/pull/384) | ✅ merged |
 | 3a | 67 | 67.89% | [#385](https://github.com/agentculture/culture/pull/385) | ✅ merged |
-| 3b | 73 | 73.40% | (this PR) | in flight |
-| 3c | 78 | — | `cli/agent.py` (1,123 LOC alone) | pending |
-| 4 | 82 | — | Domain modules via real IRCd | pending |
-| 5 | 86 | — | `transport/client.py` (or its deletion) | pending |
-| 6 | 89 | — | Long tail | pending |
+| 3b | 73 | 73.40% | [#386](https://github.com/agentculture/culture/pull/386) | ✅ merged |
+| 3c | 77 | 77.30% | (this PR) | in flight |
+| 4 | 80 | — | Domain modules via real IRCd | pending |
+| 5 | 84 | — | `transport/client.py` (or its deletion) | pending |
+| 6 | 88 | — | Long tail | pending |
 | 7 | 90 | — | Final sweep | pending |
