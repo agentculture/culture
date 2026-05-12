@@ -14,7 +14,6 @@ the happy path. This file targets the remaining gaps:
 
 from __future__ import annotations
 
-import asyncio
 import os
 from unittest.mock import patch
 
@@ -279,10 +278,11 @@ class TestShutdownPaths:
             metrics=metrics,
         )
         await sink.start()
-        # Submit one record to open the fd
+        # Submit one record to open the fd, then wait for the writer to drain
+        # via the queue's task_done signal — deterministic, no sleep.
         ev = Event(type=EventType.MESSAGE, nick="ada", channel="#ops", data={})
         sink.submit(build_audit_record("testserv", ev, None, "t", "sp"))
-        await asyncio.sleep(0.05)  # let writer process
+        await sink.queue.join()
 
         # Patch os.close to raise — shutdown should swallow it.
         original_close = os.close
@@ -361,10 +361,11 @@ class TestRotation:
         sink = self._sink(tmp_path, max_file_bytes=200)
         await sink.start()
 
-        # Write one record to open the initial fd
+        # Write one record to open the initial fd, then wait for the writer
+        # task_done signal — deterministic, no sleep.
         ev = Event(type=EventType.MESSAGE, nick="ada", channel="#ops", data={})
         sink.submit(build_audit_record("testserv", ev, None, "t", "sp"))
-        await asyncio.sleep(0.05)
+        await sink.queue.join()
         original_fd = sink._current_fd
         assert original_fd != -1
 

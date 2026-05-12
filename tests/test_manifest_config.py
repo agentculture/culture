@@ -331,15 +331,16 @@ def _bootstrap_server_with_agent(tmpdir, server_name="spark", suffix="ada"):
     """
     agent_dir = os.path.join(tmpdir, "agent_dir")
     os.makedirs(agent_dir)
-    (open(os.path.join(agent_dir, "culture.yaml"), "w")).write(
-        yaml.safe_dump(
-            {
-                "agents": [
-                    {"suffix": suffix, "backend": "claude", "channels": ["#general"]},
-                ]
-            }
+    with open(os.path.join(agent_dir, "culture.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "agents": [
+                        {"suffix": suffix, "backend": "claude", "channels": ["#general"]},
+                    ]
+                }
+            )
         )
-    )
 
     server_yaml = os.path.join(tmpdir, "server.yaml")
     save_server_config(
@@ -451,26 +452,27 @@ def test_load_legacy_config_direct(tmpdir):
     from culture.config import _load_legacy_config
 
     legacy_path = os.path.join(tmpdir, "agents.yaml")
-    open(legacy_path, "w").write(
-        yaml.safe_dump(
-            {
-                "server": {"name": "spark", "host": "1.2.3.4", "port": 7000},
-                "buffer_size": 250,
-                "poll_interval": 30,
-                "sleep_start": "22:00",
-                "sleep_end": "07:00",
-                "agents": [
-                    {
-                        "nick": "spark-ada",
-                        "directory": "/tmp/ada",
-                        "agent": "codex",  # legacy field name → backend
-                        "channels": ["#ops"],
-                        "custom_extra": "preserved",
-                    }
-                ],
-            }
+    with open(legacy_path, "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "server": {"name": "spark", "host": "1.2.3.4", "port": 7000},
+                    "buffer_size": 250,
+                    "poll_interval": 30,
+                    "sleep_start": "22:00",
+                    "sleep_end": "07:00",
+                    "agents": [
+                        {
+                            "nick": "spark-ada",
+                            "directory": "/tmp/ada",
+                            "agent": "codex",  # legacy field name → backend
+                            "channels": ["#ops"],
+                            "custom_extra": "preserved",
+                        }
+                    ],
+                }
+            )
         )
-    )
 
     config = _load_legacy_config(legacy_path)
 
@@ -494,7 +496,8 @@ def test_load_legacy_config_empty_agents(tmpdir):
     from culture.config import _load_legacy_config
 
     legacy_path = os.path.join(tmpdir, "agents.yaml")
-    open(legacy_path, "w").write(yaml.safe_dump({"server": {"name": "spark"}}))
+    with open(legacy_path, "w", encoding="utf-8") as f:
+        f.write(yaml.safe_dump({"server": {"name": "spark"}}))
 
     config = _load_legacy_config(legacy_path)
     assert config.server.name == "spark"
@@ -506,16 +509,17 @@ def test_archive_manifest_server_with_extra_unrelated_agent_in_directory(tmpdir)
     flips the ones whose suffix matches a manifest entry."""
     agent_dir = os.path.join(tmpdir, "agent_dir")
     os.makedirs(agent_dir)
-    (open(os.path.join(agent_dir, "culture.yaml"), "w")).write(
-        yaml.safe_dump(
-            {
-                "agents": [
-                    {"suffix": "ada", "backend": "claude"},
-                    {"suffix": "bob", "backend": "claude"},  # NOT in manifest
-                ]
-            }
+    with open(os.path.join(agent_dir, "culture.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "agents": [
+                        {"suffix": "ada", "backend": "claude"},
+                        {"suffix": "bob", "backend": "claude"},  # NOT in manifest
+                    ]
+                }
+            )
         )
-    )
     server_yaml = os.path.join(tmpdir, "server.yaml")
     save_server_config(
         server_yaml,
