@@ -3,6 +3,8 @@ name: Tests
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   test:
@@ -40,6 +42,11 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
 
   version-check:
+    # Only run on PR events. On push to main after a merged PR, the
+    # comparison would always fail (PR_VERSION == MAIN_VERSION because HEAD
+    # and origin/main point at the same commit) and `gh pr comment` would
+    # have no PR to target. Mirrors steward/.github/workflows/tests.yml.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

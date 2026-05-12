@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [11.1.1] - 2026-05-12
+
+### Fixed
+
+- SonarCloud coverage now appears on agentculture_culture main-branch dashboard — Tests workflow now also runs on push to main, mirroring steward. The CI scanner already produces coverage.xml correctly on PR builds (PR #380 reported 60.1% line coverage), but main was never re-scanned after merge, so the project view stayed at 0%.
+
 ## [11.1.0] - 2026-05-12
 
 ### Added
