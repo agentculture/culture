@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "12.0.4"
+version = "12.0.5"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -93,11 +93,12 @@ omit = [
 
 [tool.coverage.report]
 # Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
-# Phase 3a (2026-05-13): added tests for culture/cli/shared/mesh.py,
-# culture/cli/bot.py, culture/cli/channel.py (now at 100% / 99% / 99%).
-# Project-wide measured: 67.89%. Floor = floor(measured).
-# Phase 3b targets the remaining CLI handlers (mesh/server/agent).
-fail_under = 67
+# Phase 3b (2026-05-13): added tests for culture/cli/mesh.py (now 99%)
+# and culture/cli/server.py (now 76% — integration-territory helpers
+# `_run_server`/`_daemonize_server`/`_run_foreground` deliberately
+# skipped). Project-wide measured: 73.40%. Floor = floor(measured).
+# Phase 3c targets the last CLI module: culture/cli/agent.py.
+fail_under = 73
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

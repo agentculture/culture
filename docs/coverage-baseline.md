@@ -88,15 +88,23 @@ Notable findings (deferred to later phases):
 - `culture/cli/bot.py` — 33% → **99%** (199 statements, 2 missing). `tests/test_cli_bot.py` (35 tests) covers all seven `_bot_*` handlers + the `_should_include_bot` / `_load_and_filter_bots` helpers. Filesystem isolated via tmp_path-backed `BOTS_DIR`; `load_config_or_default` patched. The 2 missing lines are in a small `_bot_list` empty-state branch.
 - `culture/cli/channel.py` — 44% → **99.6%** (260 statements, 1 missing). 21 new tests appended to `tests/test_channel_cli.py` covering every `_cmd_*` handler (list/read/message/who/join/part/ask/topic/compact/clear), `_interpret_escapes`, `_is_connection_error`, the dispatch wrapper for OSError, and the `_topic_read` daemon-unreachable exit path. IPC is stubbed at the `_try_ipc` / `_require_ipc` boundary (the `_cmd_*` handlers call `asyncio.run` internally, so a test-owned event loop would dead-lock the real Unix-socket-mock pattern).
 
+### Phase 3b — `cli/mesh.py` + `cli/server.py` (2026-05-13)
+
+**Measured: 73.40%** (6260 statements, 1665 missing) → `fail_under = 73`. Two more CLI handlers covered:
+
+- `culture/cli/mesh.py` — 53% → **99.3%** (282 statements, 2 missing). `tests/test_cli_mesh.py` (54 tests) covers every dispatched handler (`_cmd_overview`, `_cmd_setup`, `_cmd_update`, `_cmd_console`) plus every reachable helper: `_collect_mesh_data` exit paths, `_find_upgrade_tool`, `_upgrade_timeout_hint`, `_run_upgrade` (timeout + non-zero-exit), `_upgrade_culture_package` (skip / dry-run / no-tool / exec-reach), `_wait_for_server_port` (accept / refuse / non-culture PID), `_restart_single_service` (service path + subprocess fallback + timeout swallow), `_restart_mesh_services`, `_resolve_mesh_for_server`, `_restart_running_servers`, `_restart_from_config`. `_install_mesh_services` is excluded (systemd; Linux + root only); `os.execvp` re-exec is reached by the tests but its body is excluded as an end-of-life branch.
+- `culture/cli/server.py` — 21% → **76%** (396 statements, 96 missing). `tests/test_cli_server.py` (54 tests) covers `_resolve_server_name`, `dispatch` (including the `agentirc.cli.dispatch` passthrough for forwarded verbs), `_cmd_default`, `_server_rename` (every branch), `_check_server_archived`, `_check_already_running`, `_resolve_server_links`, `_wait_for_graceful_stop`, `_force_kill` (POSIX SIGKILL + win32 SIGTERM + `ProcessLookupError` swallow), `_server_stop`, `_server_status`, `_validate_config_name`, `_update_single_bot_archive`, `_set_bots_archive_state`, `_server_archive`, `_server_unarchive`, plus the `_server_start` dispatcher. The 96 missing lines are concentrated in three deliberately-skipped integration-territory functions: `_run_foreground`, `_daemonize_server`, `_run_server` — exercised by `tests/test_integration_irc_transport.py` against a real IRCd, not unit tests.
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
 |---|---|---|---|---|
 | 1 | 60 | 60.99% | [#383](https://github.com/agentculture/culture/pull/383) | ✅ merged |
 | 2 | 62 | 62.91% | [#384](https://github.com/agentculture/culture/pull/384) | ✅ merged |
-| 3a | 67 | 67.89% | (this PR) | in flight |
-| 3b | 70 | — | `cli/mesh.py`, `cli/server.py`, `cli/agent.py` | pending |
-| 4 | 75 | — | Domain modules via real IRCd | pending |
-| 5 | 82 | — | `transport/client.py` (or its deletion) | pending |
-| 6 | 88 | — | Long tail | pending |
+| 3a | 67 | 67.89% | [#385](https://github.com/agentculture/culture/pull/385) | ✅ merged |
+| 3b | 73 | 73.40% | (this PR) | in flight |
+| 3c | 78 | — | `cli/agent.py` (1,123 LOC alone) | pending |
+| 4 | 82 | — | Domain modules via real IRCd | pending |
+| 5 | 86 | — | `transport/client.py` (or its deletion) | pending |
+| 6 | 89 | — | Long tail | pending |
 | 7 | 90 | — | Final sweep | pending |

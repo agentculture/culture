@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.5] - 2026-05-13
+
+### Added
+
+- `tests/test_cli_mesh.py` — 54 tests covering `culture/cli/mesh.py` (53% → 99%): `dispatch`, `_collect_mesh_data` (happy + ConnectionRefused/Timeout/OSError exits), `_cmd_overview` (text + clamped messages + serve dispatch), `_cmd_console` deprecation, `_store_mesh_credentials` (keyring hit/miss/store-fail), `_cmd_setup` (uninstall / install / generated fallback / exit on no-mesh), `_find_upgrade_tool` (uv / pip / neither), `_upgrade_timeout_hint`, `_run_upgrade` (success / timeout / non-zero exit), `_upgrade_culture_package` (skip / dry-run / no-tool / exec-reach), `_wait_for_server_port`, `_dry_run_restart`, `_restart_single_service` (service / subprocess fallback / timeout swallow), `_restart_mesh_services` (dry-run / port-down / happy), `_resolve_mesh_for_server`, `_restart_running_servers`, `_restart_from_config`, `_cmd_update`. `_install_mesh_services` (systemd) and the `os.execvp` re-exec body are excluded from coverage.
+- `tests/test_cli_server.py` — 54 tests covering `culture/cli/server.py` (21% → 76%): `_resolve_server_name`, `_cmd_default` (running / unknown), `dispatch` (no verb / unknown / agentirc-forwarded / culture verb), `_wait_for_port` (connect / pid dies / timeout), `_maybe_set_default_server` (idempotent), `_check_server_archived`, `_check_already_running`, `_resolve_server_links`, `_wait_for_graceful_stop`, `_force_kill` (POSIX SIGKILL / win32 SIGTERM / ProcessLookupError swallow), `_server_stop`, `_server_status`, `_validate_config_name`, `_update_single_bot_archive`, `_set_bots_archive_state`, `_server_archive`, `_server_unarchive`, `_server_rename` (every branch), `_server_start` (foreground / daemonize routing). Integration-territory functions `_run_foreground`/`_daemonize_server`/`_run_server` are deliberately skipped — covered by `tests/test_integration_irc_transport.py` against a real IRCd.
+
+### Changed
+
+- pyproject.toml: fail_under raised 67 → 73 (Phase 3b floor of the 60→90 ratchet plan). Project-wide measured 73.40%.
+- docs/coverage-baseline.md: Phase 3b entry + updated phase target table.
+
 ## [12.0.4] - 2026-05-13
 
 ### Added
