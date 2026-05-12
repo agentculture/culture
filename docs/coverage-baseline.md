@@ -101,6 +101,16 @@ Notable findings (deferred to later phases):
 
 - `culture/cli/agent.py` — 47% → **88.8%** (579 statements, 65 missing). `tests/test_cli_agent.py` (104 tests, heavily parametrized) covers `dispatch`, the four backend `_create_*_config` factories (parametrized across claude/codex/copilot/acp), `_parse_acp_command` (all branches incl. JSON parse, fallback split, rejection), `_check_existing_agent` (clean / archived / active duplicate), `_to_manifest_agent`, `_save_agent_to_directory`, `_cmd_create` (per-backend + collision), `_cmd_join`, every resolution helper (`_get_active_agents`, `_resolve_by_nick`, `_resolve_auto`, `_resolve_agents_to_start`, `_resolve_agents_to_stop`), `_cmd_start` dispatcher routing, the backend daemon factories (`_create_codex_daemon`, `_create_copilot_daemon`, `_create_claude_daemon`), `_coerce_to_acp_agent`, `_make_backend_config`, `_cmd_stop`, `_cmd_status` (all branches), `_cmd_rename`/`_cmd_assign` (every branch), the IPC dispatcher chain (`_resolve_ipc_targets`, `_argparse_error`, `_send_ipc`, `_ipc_to_agents`), the IPC verb wrappers (`_cmd_sleep`, `_cmd_wake`), `_cmd_learn` (nick / no-nick / cwd-match / no-match), `_cmd_message` (empty target / empty text / send), `_cmd_read`, `_cmd_archive`/`_cmd_unarchive`/`_cmd_delete`, `_cmd_unregister`. The 65 missing lines are concentrated in 5 deliberately-skipped integration-territory functions (`_probe_server_connection`, `_start_foreground`, `_start_background`, `_run_single_agent`, `_run_multi_agents`) — exercised by `tests/test_integration_agent_runner.py` against a real IRCd.
 
+### Phase 4a — `persistence.py` + `config.py` + `telemetry/audit.py` (2026-05-13)
+
+**Measured: 79.68%** (6260 statements, 1272 missing) → `fail_under = 79`. The pure config / OS-services / audit layer is now covered:
+
+- `culture/persistence.py` — 54% → **97.95%** (146 statements, 3 missing). `tests/test_persistence.py` extended with 26 new tests covering `_run_cmd` (success / timeout), `install_service` (macOS plist + Windows .bat + unsupported-platform raise), `uninstall_service` (every platform), `list_services` (macOS / Windows / unsupported-empty), and `restart_service` (every platform + missing-unit + Windows-query-timeout). The 3 missing lines are trivial path-builders (`_systemd_user_dir` / `_launchd_dir` / `_windows_service_dir`) that don't exercise platform-specific branches under test.
+- `culture/config.py` — 75% → **90.11%** (445 statements, 44 missing). `tests/test_manifest_config.py` extended with 9 new tests covering `archive_manifest_server` (happy path + skip-already-archived + missing-culture-yaml + extra-unrelated-agent-in-dir), `unarchive_manifest_server` (round-trip + empty + missing-yaml), and `_load_legacy_config` (full body + empty-agents fallback). The 44 remaining missing lines are scattered tiny error paths in YAML I/O helpers and rename validators.
+- `culture/telemetry/audit.py` — 82% → **91.89%** (185 statements, 15 missing). New `tests/telemetry/test_audit_rotation.py` (25 tests) covers `_write_all` (full / short-write retry / zero-bytes-raise), `_target_for` (every branch incl. non-dict data), `build_audit_record` (federated origin, extra_tags, actor-kind/remote_addr propagation), `AuditSink.submit` (before start + disabled), `start()` idempotency, `shutdown()` no-op paths + fd-close OSError swallow, `_pick_rotation_path` (suffix increment + stat-error fallback), `_maybe_rotate` open-failure-keeps-old-fd, and `init_audit` / `reset_for_tests` warning paths.
+
+Note: this PR landed 0.3pp short of the original 80% target. The gap is absorbed by the existing Phase 7 sweep.
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
@@ -109,8 +119,9 @@ Notable findings (deferred to later phases):
 | 2 | 62 | 62.91% | [#384](https://github.com/agentculture/culture/pull/384) | ✅ merged |
 | 3a | 67 | 67.89% | [#385](https://github.com/agentculture/culture/pull/385) | ✅ merged |
 | 3b | 73 | 73.40% | [#386](https://github.com/agentculture/culture/pull/386) | ✅ merged |
-| 3c | 77 | 77.30% | (this PR) | in flight |
-| 4 | 80 | — | Domain modules via real IRCd | pending |
-| 5 | 84 | — | `transport/client.py` (or its deletion) | pending |
-| 6 | 88 | — | Long tail | pending |
+| 3c | 77 | 77.30% | [#387](https://github.com/agentculture/culture/pull/387) | ✅ merged |
+| 4a | 79 | 79.68% | (this PR) | in flight |
+| 4b | 83 | — | `observer.py`, `overview/collector.py`, `bots/*` | pending |
+| 5 | 86 | — | `transport/client.py` (or its deletion) | pending |
+| 6 | 89 | — | Long tail | pending |
 | 7 | 90 | — | Final sweep | pending |
