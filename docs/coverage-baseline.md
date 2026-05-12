@@ -80,13 +80,22 @@ Notable findings (deferred to later phases):
 - `culture/cli/shared/process.py` — 12% → **100%** (97 statements, 0 missing). `tests/test_cli_shared_process.py` (24 tests) covers all four functions (`stop_agent`, `_try_ipc_shutdown`, `_try_pid_shutdown`, `server_stop_by_name`) including every branch: IPC success, IPC failure, IPC raises, missing socket, corrupt/stale/non-culture PID, SIGTERM success, SIGTERM `ProcessLookupError`, SIGKILL escalation, and the "aborts kill when PID no longer culture" guard. All OS primitives monkeypatched — no real `os.kill` / `os.fork` / sockets.
 - `culture/protocol/commands.py` — 0% → **100%** (35 statements, 0 missing). `tests/test_protocol_commands.py` (3 tests) discovery-style: iterates `vars(commands)` for uppercase string constants and asserts `value == name`. Adding a new verb does not require a test edit; deletion is caught by the RFC-baseline smoke test.
 
+### Phase 3a — `cli/shared/mesh.py` + `cli/bot.py` + `cli/channel.py` (2026-05-13)
+
+**Measured: 67.89%** (6260 statements, 2010 missing) → `fail_under = 67`. All three target files moved to near-100% coverage:
+
+- `culture/cli/shared/mesh.py` — 25% → **100%** (48 statements, 0 missing). `tests/test_cli_shared_mesh.py` (14 tests) covers all four functions (`parse_link`, `resolve_links_from_mesh`, `generate_mesh_from_agents`, `build_server_start_cmd`) including malformed-spec rejection, password-with-colons preservation, peer-without-credential skip with warning, and the missing-DEFAULT_CONFIG fallback path.
+- `culture/cli/bot.py` — 33% → **99%** (199 statements, 2 missing). `tests/test_cli_bot.py` (35 tests) covers all seven `_bot_*` handlers + the `_should_include_bot` / `_load_and_filter_bots` helpers. Filesystem isolated via tmp_path-backed `BOTS_DIR`; `load_config_or_default` patched. The 2 missing lines are in a small `_bot_list` empty-state branch.
+- `culture/cli/channel.py` — 44% → **99.6%** (260 statements, 1 missing). 21 new tests appended to `tests/test_channel_cli.py` covering every `_cmd_*` handler (list/read/message/who/join/part/ask/topic/compact/clear), `_interpret_escapes`, `_is_connection_error`, the dispatch wrapper for OSError, and the `_topic_read` daemon-unreachable exit path. IPC is stubbed at the `_try_ipc` / `_require_ipc` boundary (the `_cmd_*` handlers call `asyncio.run` internally, so a test-owned event loop would dead-lock the real Unix-socket-mock pattern).
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
 |---|---|---|---|---|
 | 1 | 60 | 60.99% | [#383](https://github.com/agentculture/culture/pull/383) | ✅ merged |
-| 2 | 62 | 62.91% | (this PR) | in flight |
-| 3 | 68 | — | CLI handlers (server/agent/bot/channel/mesh) | pending |
+| 2 | 62 | 62.91% | [#384](https://github.com/agentculture/culture/pull/384) | ✅ merged |
+| 3a | 67 | 67.89% | (this PR) | in flight |
+| 3b | 70 | — | `cli/mesh.py`, `cli/server.py`, `cli/agent.py` | pending |
 | 4 | 75 | — | Domain modules via real IRCd | pending |
 | 5 | 82 | — | `transport/client.py` (or its deletion) | pending |
 | 6 | 88 | — | Long tail | pending |
