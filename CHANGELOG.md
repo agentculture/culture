@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [11.1.1] - 2026-05-12
+
+### Fixed
+
+- SonarCloud coverage now appears on agentculture_culture main-branch dashboard — Tests workflow now also runs on push to main, mirroring steward. The CI scanner already produces coverage.xml correctly on PR builds (PR #380 reported 60.1% line coverage), but main was never re-scanned after merge, so the project view stayed at 0%.
+
+### Changed
+
+- `publish.yml` no longer has its own `test` job. pytest (with coverage + SonarCloud scan) runs once in `tests.yml` on both pull_request and push:[main]; branch protection makes that the required gate on PRs. Mirrors `agex-cli/.github/workflows/publish.yml` and closes #382. Cuts ~3.5 min of redundant CI per main merge that touches `pyproject.toml` or `culture/**`.
+
 ## [11.1.0] - 2026-05-12
 
 ### Added
