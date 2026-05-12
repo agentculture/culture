@@ -11,7 +11,13 @@ import sys
 NAME = "skills"
 
 _SKILL_FILENAME = "SKILL.md"
-_COMMUNICATE_SCRIPTS = ("post-issue.sh", "mesh-message.sh")
+_COMMUNICATE_SCRIPTS = (
+    "fetch-issues.sh",
+    "mesh-message.sh",
+    "post-comment.sh",
+    "post-issue.sh",
+)
+_COMMUNICATE_TEMPLATES = ("skill-update-brief.md",)
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -91,16 +97,19 @@ def _get_bundled_communicate_dir() -> str:
 def _install_communicate_skill(root_dir: str, label: str) -> None:
     """Install the cross-repo + mesh `communicate` skill (SKILL.md + scripts/).
 
-    The two scripts (`post-issue.sh`, `mesh-message.sh`) are written
-    executable for the owner so the receiving harness can ``bash`` them
-    directly without a separate chmod step. Sourced from steward via
+    The four scripts (``post-issue.sh``, ``post-comment.sh``,
+    ``fetch-issues.sh``, ``mesh-message.sh``) are written executable for
+    the owner so the receiving harness can ``bash`` them directly without
+    a separate chmod step. The ``scripts/templates/`` subdir ships the
+    Markdown brief template (non-executable). Sourced from steward via
     ``culture/skills/communicate/`` — see the SKILL.md provenance note.
     """
     src_dir = _get_bundled_communicate_dir()
     dest_dir = os.path.join(os.path.expanduser(root_dir), "communicate")
     dest_scripts = os.path.join(dest_dir, "scripts")
+    dest_templates = os.path.join(dest_scripts, "templates")
 
-    os.makedirs(dest_scripts, exist_ok=True)
+    os.makedirs(dest_templates, exist_ok=True)
 
     src_skill = os.path.join(src_dir, _SKILL_FILENAME)
     dest_skill = os.path.join(dest_dir, _SKILL_FILENAME)
@@ -120,6 +129,11 @@ def _install_communicate_skill(root_dir: str, label: str) -> None:
             (st.st_mode | stat.S_IXUSR)
             & ~(stat.S_IXGRP | stat.S_IXOTH | stat.S_IWGRP | stat.S_IWOTH),
         )
+
+    for template in _COMMUNICATE_TEMPLATES:
+        src_template = os.path.join(src_dir, "scripts", "templates", template)
+        dest_template = os.path.join(dest_templates, template)
+        shutil.copy2(src_template, dest_template)
 
     print(f"Installed {label} communicate skill: {dest_dir}")
 

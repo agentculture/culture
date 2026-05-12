@@ -154,7 +154,7 @@ git commit -m "docs: cultureagent extraction phase 0a coverage audit"
 
 ```bash
 git push -u origin chore/cultureagent-extraction-coverage-audit
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: coverage audit for cultureagent extraction"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: coverage audit for cultureagent extraction"
 ```
 
 ---
@@ -314,7 +314,7 @@ uv run isort tests/test_integration_attention.py
 git add tests/test_integration_attention.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for attention transitions"
 git push -u origin test/integration-attention
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for attention behaviors"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for attention behaviors"
 ```
 
 ---
@@ -415,7 +415,7 @@ uv run isort tests/test_integration_message_buffer.py
 git add tests/test_integration_message_buffer.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for message buffer overflow"
 git push -u origin test/integration-message-buffer
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for message buffer overflow"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for message buffer overflow"
 ```
 
 ---
@@ -523,7 +523,7 @@ uv run isort tests/test_integration_irc_transport.py
 git add tests/test_integration_irc_transport.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for IRC transport tags + reconnect"
 git push -u origin test/integration-irc-transport
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for IRC transport"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for IRC transport"
 ```
 
 ---
@@ -637,7 +637,7 @@ uv run isort tests/test_integration_webhook.py
 git add tests/test_integration_webhook.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for webhook fanout"
 git push -u origin test/integration-webhook
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for webhook fanout"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for webhook fanout"
 ```
 
 ---
@@ -750,7 +750,7 @@ uv run isort tests/test_integration_telemetry.py
 git add tests/test_integration_telemetry.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for harness telemetry"
 git push -u origin test/integration-telemetry
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for telemetry"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for telemetry"
 ```
 
 ---
@@ -845,7 +845,7 @@ uv run isort tests/test_integration_agent_runner.py
 git add tests/test_integration_agent_runner.py pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "test: integration coverage for agent_runner per-turn timeout (4 backends)"
 git push -u origin test/integration-agent-runner
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a: integration test for agent_runner timeout"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a: integration test for agent_runner timeout"
 ```
 
 ---
@@ -935,7 +935,7 @@ Expected: PASS. If it fails, you cannot land this PR — back to gate analysis.
 git add .github/workflows/tests.yml pyproject.toml culture/__init__.py CHANGELOG.md uv.lock
 git commit -m "ci: ratchet pytest fail_under to post-Phase-0a measured floor"
 git push -u origin chore/coverage-gate-phase0a-closeout
-bash .claude/skills/cicd/scripts/workflow.sh open-pr --title "Phase 0a closeout: ratchet fail_under to post-Phase-0a floor"
+bash .claude/skills/cicd/scripts/workflow.sh open --title "Phase 0a closeout: ratchet fail_under to post-Phase-0a floor"
 ```
 
 The PR description should call out the SonarCloud gate change explicitly so reviewers know the out-of-tree action is part of the change.

@@ -9,12 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Promote a *presence flag* (not the secret itself) to job env so the
+    # SonarCloud step can gate on `if: env.SONAR_TOKEN_PRESENT == 'true'`
+    # — `secrets.*` isn't allowed in `if:`. The real SONAR_TOKEN is
+    # injected only at the scan step's env, keeping it out of earlier
+    # steps (checkout, setup-uv, sync, pytest) and reducing blast radius
+    # if any step logs its environment. Mirrors agentculture/katvan
+    # PR #6 fix (commit 755f74d). Fork PRs still skip the scan with a
+    # green status because SONAR_TOKEN_PRESENT evaluates to 'false'.
     env:
-      # Promoted to job env so `if: env.SONAR_TOKEN != ''` works on the
-      # scanner step below (secrets.* is not allowed in if-conditions).
-      # Fork PRs that can't see the secret skip the scan with a green
-      # status rather than failing.
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_TOKEN_PRESENT: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -29,9 +33,10 @@ jobs:
       - run: uv run pytest -n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v
 
       - name: SonarCloud Scan
-        if: env.SONAR_TOKEN != ''
+        if: env.SONAR_TOKEN_PRESENT == 'true'
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
         env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
   version-check:

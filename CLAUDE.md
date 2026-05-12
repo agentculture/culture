@@ -58,7 +58,7 @@ Before the first push on a branch that adds public API surface (new exceptions, 
 - Push to GitHub for agentic code review
 - Pull review comments, address feedback, push fixes
 - Reply to comments after pushing, resolve threads
-- **Before declaring the PR ready**, confirm SonarCloud is clean. The `pr-comments.sh` script in the `/cicd` skill prints SonarCloud's new issues as section 4 of its output, so a fresh run after your last fix-push (via `wait-and-check.sh` or `pr-comments.sh` directly) is what tells you whether the gate is green. Don't rely solely on `gh pr checks` + resolved threads — SonarCloud findings don't always arrive as inline PR comments.
+- **Before declaring the PR ready**, confirm SonarCloud is clean. The `/cicd` skill's `workflow.sh status <PR>` (and the composite `workflow.sh await <PR>`) calls `pr-status.sh`, which surfaces the SonarCloud quality gate, the OPEN-issue list, hotspots, and the unresolved-inline-thread tally. `await` exits non-zero on Sonar `ERROR` or any unresolved thread, so it's the single command to gate "ready for merge" on. Don't rely solely on `gh pr checks` + resolved threads — SonarCloud findings don't always arrive as inline PR comments.
 
 ## Testing
 

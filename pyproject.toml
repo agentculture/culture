@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "11.0.0"
+version = "11.1.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,7 @@ dependencies = [
     "aiohttp>=3.9",
     "textual>=1.0",
     "agex-cli>=0.13,<1.0",
+    "agtag>=0.1,<1.0",
     "afi-cli>=0.3,<1.0",
     "irc-lens>=0.5.1,<1.0",
     "opentelemetry-api>=1.25",
@@ -49,7 +50,10 @@ packages = ["culture"]
 "culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
 "culture/skills/communicate/SKILL.md" = "culture/skills/communicate/SKILL.md"
 "culture/skills/communicate/scripts/post-issue.sh" = "culture/skills/communicate/scripts/post-issue.sh"
+"culture/skills/communicate/scripts/post-comment.sh" = "culture/skills/communicate/scripts/post-comment.sh"
+"culture/skills/communicate/scripts/fetch-issues.sh" = "culture/skills/communicate/scripts/fetch-issues.sh"
 "culture/skills/communicate/scripts/mesh-message.sh" = "culture/skills/communicate/scripts/mesh-message.sh"
+"culture/skills/communicate/scripts/templates/skill-update-brief.md" = "culture/skills/communicate/scripts/templates/skill-update-brief.md"
 "culture/overview/web/style.css" = "culture/overview/web/style.css"
 "culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
 

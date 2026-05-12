@@ -48,6 +48,18 @@ wheels = [
 ]
 
 [[package]]
+name = "agtag"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/6e/a31b52e0880d720a13e308927574d1f1c3a2b05b4a31f051240916ef36b9/agtag-0.1.3.tar.gz", hash = "sha256:44439478204808a49eca723e8b969f43fef4aded67ecf13d3d2976dc73224c0f", size = 107027, upload-time = "2026-05-09T22:23:33.969Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/b8/6e60ef9e117eb30e790b44dc99b6da7aeb4d1f62f9e4ab37328e84ceb74a/agtag-0.1.3-py3-none-any.whl", hash = "sha256:c76dbd599d074a0973928b465ee2129d1579bd696f5ba570a04ac1ac840a3c15", size = 18510, upload-time = "2026-05-09T22:23:32.602Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -606,12 +618,13 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "11.0.0"
+version = "11.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
     { name = "agentirc-cli" },
     { name = "agex-cli" },
+    { name = "agtag" },
     { name = "aiohttp" },
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
@@ -655,6 +668,7 @@ requires-dist = [
     { name = "afi-cli", specifier = ">=0.3,<1.0" },
     { name = "agentirc-cli", specifier = ">=9.6,<10" },
     { name = "agex-cli", specifier = ">=0.13,<1.0" },
+    { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },

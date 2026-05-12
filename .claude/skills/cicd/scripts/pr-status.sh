@@ -160,5 +160,4 @@ if [[ "$INLINE_PENDING" -gt 0 ]]; then
 fi
 
 echo
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "(For full comment bodies: bash \"$SCRIPT_DIR/pr-comments.sh\" $PR_NUMBER)"
+echo "(For full comment bodies: agex pr read --agent claude-code $PR_NUMBER)"
