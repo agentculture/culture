@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.3] - 2026-05-13
+
+### Fixed
+
+- tests/test_cli_shared_process.py: pin sys.platform via monkeypatch in SIGKILL-escalation tests and add explicit win32-branch coverage. Addresses Qodo PR #384 finding that the original tests asserted POSIX-only behavior (SIGKILL + sending SIGKILL message) and would fail on Windows. The docstring incorrectly claimed `exclude_lines` prevents runtime execution — `exclude_lines` only affects reporting.
+
 ## [12.0.2] - 2026-05-13
 
 ### Added

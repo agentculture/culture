@@ -6,14 +6,19 @@ cover every branch of the four public/private functions:
 
 - `stop_agent(nick)` — dispatcher: IPC then PID.
 - `_try_ipc_shutdown(nick, socket_path)` — IPC + drain-poll.
-- `_try_pid_shutdown(nick)` — PID file → SIGTERM → 5s poll → SIGKILL.
-- `server_stop_by_name(name)` — PID file → SIGTERM → 5s poll → SIGKILL.
+- `_try_pid_shutdown(nick)` — PID file → SIGTERM → 5s poll → SIGKILL/SIGTERM.
+- `server_stop_by_name(name)` — PID file → SIGTERM → 5s poll → SIGKILL/SIGTERM.
 
 All OS-touching primitives (`os.kill`, `os.path.exists`, `time.sleep`,
 `asyncio.run(ipc_shutdown)`, the `culture.pidfile.*` helpers) are
 monkeypatched so the suite is hermetic and the poll loops do not block.
-The win32 branches are excluded from coverage by Phase 1's
-`exclude_lines` rule, so the POSIX path is the only one exercised.
+
+Both the POSIX (SIGKILL escalation) and win32 (SIGTERM-only second
+attempt) branches of the implementation are exercised by pinning
+`sys.platform` via monkeypatch — so the tests are portable across
+hosts. The Phase 1 `exclude_lines = ["if sys\\.platform == .win32."]`
+rule only suppresses *reporting* of the win32 if/body in coverage,
+not its execution at runtime.
 """
 
 from __future__ import annotations
@@ -57,6 +62,18 @@ def fake_os(monkeypatch):
 def no_sleep(monkeypatch):
     """Make the poll loops instant."""
     monkeypatch.setattr(proc_mod.time, "sleep", lambda _s: None)
+
+
+@pytest.fixture
+def posix_platform(monkeypatch):
+    """Pin sys.platform to a POSIX value so SIGKILL-escalation paths run."""
+    monkeypatch.setattr(proc_mod.sys, "platform", "linux")
+
+
+@pytest.fixture
+def win32_platform(monkeypatch):
+    """Pin sys.platform to win32 so the SIGTERM-only fallback runs."""
+    monkeypatch.setattr(proc_mod.sys, "platform", "win32")
 
 
 @pytest.fixture
@@ -304,7 +321,7 @@ def test_pid_shutdown_aborts_kill_when_pid_no_longer_culture(pid_state, capsys, 
     assert "agent-ada" in pid_state.removed
 
 
-def test_pid_shutdown_sigkill_escalation(pid_state, capsys, fake_os):
+def test_pid_shutdown_sigkill_escalation_posix(posix_platform, pid_state, capsys, fake_os):
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)  # never dies during polls
     pid_state.culture_sequence(4242, True, True)  # still culture post-poll
@@ -318,7 +335,9 @@ def test_pid_shutdown_sigkill_escalation(pid_state, capsys, fake_os):
     assert "agent-ada" in pid_state.removed
 
 
-def test_pid_shutdown_swallows_sigkill_process_lookup_error(pid_state, capsys, fake_os):
+def test_pid_shutdown_swallows_sigkill_process_lookup_error_posix(
+    posix_platform, pid_state, capsys, fake_os
+):
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True, True)
@@ -327,6 +346,24 @@ def test_pid_shutdown_swallows_sigkill_process_lookup_error(pid_state, capsys, f
     proc_mod._try_pid_shutdown("ada")
 
     assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert "agent-ada" in pid_state.removed
+
+
+def test_pid_shutdown_win32_escalates_with_sigterm_not_sigkill(
+    win32_platform, pid_state, capsys, fake_os
+):
+    """On Windows, the second-attempt signal is SIGTERM, not SIGKILL."""
+    pid_state.set_pid("agent-ada", 4242)
+    pid_state.alive_sequence(4242, True)
+    pid_state.culture_sequence(4242, True, True)
+
+    proc_mod._try_pid_shutdown("ada")
+
+    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGTERM)]
+    out = capsys.readouterr().out
+    assert "terminating" in out
+    assert "sending SIGKILL" not in out
+    assert "killed" in out
     assert "agent-ada" in pid_state.removed
 
 
@@ -373,7 +410,7 @@ def test_server_stop_sigterm_success(pid_state, fake_os):
     assert "server-spark" in pid_state.removed
 
 
-def test_server_stop_sigkill_escalation(pid_state, fake_os):
+def test_server_stop_sigkill_escalation_posix(posix_platform, pid_state, fake_os):
     pid_state.set_pid("server-spark", 4242)
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
@@ -384,7 +421,21 @@ def test_server_stop_sigkill_escalation(pid_state, fake_os):
     assert "server-spark" in pid_state.removed
 
 
-def test_server_stop_sigkill_swallows_process_lookup_error(pid_state, fake_os):
+def test_server_stop_win32_escalates_with_sigterm(win32_platform, pid_state, fake_os):
+    """On Windows, server_stop_by_name re-sends SIGTERM instead of SIGKILL."""
+    pid_state.set_pid("server-spark", 4242)
+    pid_state.alive_sequence(4242, True)
+    pid_state.culture_sequence(4242, True)
+
+    proc_mod.server_stop_by_name("spark")
+
+    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGTERM)]
+    assert "server-spark" in pid_state.removed
+
+
+def test_server_stop_sigkill_swallows_process_lookup_error_posix(
+    posix_platform, pid_state, fake_os
+):
     pid_state.set_pid("server-spark", 4242)
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
