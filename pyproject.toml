@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "11.1.1"
+version = "12.0.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -21,7 +21,6 @@ dependencies = [
     "claude-agent-sdk>=0.1",
     "mistune>=3.0",
     "aiohttp>=3.9",
-    "textual>=1.0",
     "agex-cli>=0.13,<1.0",
     "agtag>=0.1,<1.0",
     "afi-cli>=0.3,<1.0",
@@ -80,24 +79,33 @@ dev = [
 
 [tool.coverage.run]
 source = ["culture"]
+# parallel + concurrency are required for pytest-xdist (`-n auto`) to produce
+# per-worker `.coverage.*` files that `coverage combine` merges into a single
+# `.coverage`. Without these, only one worker's slice is reported and modules
+# exercised by every test (e.g. transport/client.py) look under-covered.
+# sigterm = true flushes worker coverage on graceful shutdown.
+parallel = true
+concurrency = ["thread", "multiprocessing"]
+sigterm = true
 omit = [
     "culture/__pycache__/*",
 ]
 
 [tool.coverage.report]
-# Locked 2026-05-09 at the measured project-wide floor (56.86% — see
-# docs/coverage-baseline.md). Phase 0a closeout (#370): post-Phase-0a
-# project-wide measured at 56.96% — barely above baseline because the
-# harness unit tests still cover the same code paths the integration
-# tests now exercise (they delete in Phase 1). Phase 0a's real delivery
-# is on `culture/clients/shared/` (58% → 80%). Project-wide gate stays
-# at 56 until Phase 1's unit-test deletion forces a re-baseline.
-fail_under = 56
+# Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
+# Phase 1 (2026-05-13): coverage plumbing fix + console removal.
+# Post-Phase-1 measured: 60.99% on commit 0322b83 + this PR. Floor set to
+# measured - 1pp to absorb rounding flake. Phase 2 targets cli/shared/process
+# and protocol/commands to reach 66.
+fail_under = 60
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.",
     "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+    "if sys\\.platform == .win32.",
 ]
 
 [tool.isort]

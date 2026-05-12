@@ -9,8 +9,18 @@
 #   --quick, -q       Quick mode: no coverage, quiet output
 #
 # Extra args are passed through to pytest.
+#
+# When coverage is enabled, this script runs `coverage combine` after pytest
+# so xdist worker `.coverage.*` files are merged before the final report.
+# pyproject.toml sets `parallel = true` so the worker files are produced; we
+# suppress pytest-cov's auto-report (`--cov-report=`) and render manually via
+# `coverage report` / `coverage xml` after combine.
+#
+# Stale `.coverage` / `.coverage.*` shards from a previous run are removed
+# before pytest so `coverage combine` can never silently merge old data into
+# the new report.
 
-set -euo pipefail
+set -uo pipefail
 
 PARALLEL=""
 COVERAGE=""
@@ -29,19 +39,77 @@ while [[ $# -gt 0 ]]; do
 done
 
 CMD=(uv run pytest)
+NEED_COMBINE=""
+NEED_XML=""
 
 if [[ -n "$CI_MODE" ]]; then
-    CMD+=(-n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v)
+    CMD+=(-n auto --cov=culture --cov-report= -v)
+    NEED_COMBINE=1
+    NEED_XML=1
 elif [[ -n "$QUIET" ]]; then
     CMD+=(-q)
     [[ -n "$PARALLEL" ]] && CMD+=(-n auto)
 else
     [[ -n "$PARALLEL" ]] && CMD+=(-n auto)
-    [[ -n "$COVERAGE" ]] && CMD+=(--cov=culture --cov-report=term)
+    if [[ -n "$COVERAGE" ]]; then
+        CMD+=(--cov=culture --cov-report=)
+        NEED_COMBINE=1
+    fi
     CMD+=(-v)
 fi
 
 CMD+=("${EXTRA_ARGS[@]}")
 
+# Wipe stale coverage data so a failed `coverage combine` can't mask a real
+# problem by merging old shards into the new report.
+if [[ -n "$NEED_COMBINE" ]]; then
+    rm -f .coverage .coverage.*
+fi
+
 echo "Running: ${CMD[*]}"
-exec "${CMD[@]}"
+"${CMD[@]}"
+PYTEST_RC=$?
+
+FINAL_RC="$PYTEST_RC"
+
+if [[ -n "$NEED_COMBINE" ]]; then
+    # Combine xdist worker shards into a single `.coverage`. When only one
+    # shard exists, the parallel-mode file is still named `.coverage.<host>.*`
+    # so we always have shards to merge — but be defensive: only combine when
+    # shard files actually exist, and propagate real combine failures.
+    shopt -s nullglob
+    SHARDS=(.coverage.*)
+    shopt -u nullglob
+    if (( ${#SHARDS[@]} > 0 )); then
+        uv run coverage combine -q
+        COMBINE_RC=$?
+        if (( COMBINE_RC != 0 )); then
+            echo "coverage combine failed (rc=$COMBINE_RC) — refusing to report on partial data" >&2
+            (( FINAL_RC == 0 )) && FINAL_RC="$COMBINE_RC"
+        fi
+    elif [[ ! -f .coverage ]]; then
+        echo "no coverage data produced — skipping report" >&2
+        (( FINAL_RC == 0 )) && FINAL_RC=1
+    fi
+
+    if [[ -f .coverage ]]; then
+        uv run coverage report
+        REPORT_RC=$?
+        # Surface a coverage-floor failure (exit 2 from `coverage report`)
+        # over a passing pytest run.
+        if (( FINAL_RC == 0 && REPORT_RC != 0 )); then
+            FINAL_RC="$REPORT_RC"
+        fi
+    fi
+
+    if [[ -n "$NEED_XML" ]] && [[ -f .coverage ]]; then
+        uv run coverage xml -o coverage.xml
+        XML_RC=$?
+        if (( XML_RC != 0 )); then
+            echo "coverage xml failed (rc=$XML_RC) — coverage.xml may be missing or stale" >&2
+            (( FINAL_RC == 0 )) && FINAL_RC="$XML_RC"
+        fi
+    fi
+fi
+
+exit "$FINAL_RC"
