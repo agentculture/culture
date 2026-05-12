@@ -9,8 +9,14 @@
 #   --quick, -q       Quick mode: no coverage, quiet output
 #
 # Extra args are passed through to pytest.
+#
+# When coverage is enabled, this script runs `coverage combine` after pytest
+# so xdist worker `.coverage.*` files are merged before the final report.
+# pyproject.toml sets `parallel = true` so the worker files are produced; we
+# suppress pytest-cov's auto-report (`--cov-report=`) and render manually via
+# `coverage report` / `coverage xml` after combine.
 
-set -euo pipefail
+set -uo pipefail
 
 PARALLEL=""
 COVERAGE=""
@@ -29,19 +35,45 @@ while [[ $# -gt 0 ]]; do
 done
 
 CMD=(uv run pytest)
+NEED_COMBINE=""
+NEED_XML=""
 
 if [[ -n "$CI_MODE" ]]; then
-    CMD+=(-n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v)
+    CMD+=(-n auto --cov=culture --cov-report= -v)
+    NEED_COMBINE=1
+    NEED_XML=1
 elif [[ -n "$QUIET" ]]; then
     CMD+=(-q)
     [[ -n "$PARALLEL" ]] && CMD+=(-n auto)
 else
     [[ -n "$PARALLEL" ]] && CMD+=(-n auto)
-    [[ -n "$COVERAGE" ]] && CMD+=(--cov=culture --cov-report=term)
+    if [[ -n "$COVERAGE" ]]; then
+        CMD+=(--cov=culture --cov-report=)
+        NEED_COMBINE=1
+    fi
     CMD+=(-v)
 fi
 
 CMD+=("${EXTRA_ARGS[@]}")
 
 echo "Running: ${CMD[*]}"
-exec "${CMD[@]}"
+"${CMD[@]}"
+PYTEST_RC=$?
+
+if [[ -n "$NEED_COMBINE" ]]; then
+    # Combine xdist worker shards into a single .coverage, then render.
+    # `coverage combine` is a no-op (or warns) when only one shard exists.
+    uv run coverage combine -q 2>/dev/null || true
+    uv run coverage report
+    REPORT_RC=$?
+    if [[ -n "$NEED_XML" ]]; then
+        uv run coverage xml -o coverage.xml
+    fi
+    # Surface a coverage-floor failure (exit 2 from `coverage report`) if
+    # pytest itself passed.
+    if [[ "$PYTEST_RC" -eq 0 && "$REPORT_RC" -ne 0 ]]; then
+        PYTEST_RC=$REPORT_RC
+    fi
+fi
+
+exit "$PYTEST_RC"

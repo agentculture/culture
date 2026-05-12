@@ -53,3 +53,33 @@ Phase 0a's six integration-test PRs all merged:
 1. **Task 8.5 — skill_client integration test.** `culture/clients/claude/skill/irc_client.py` shows 54% under integration-only tests; needs a small `tests/test_integration_skill_client.py` before Phase 1 deletes `tests/test_skill_client.py`, otherwise the Phase 1 delete drops the floor.
 2. **Cross-backend integration timeout tests** for `codex`, `copilot`, `acp` (Task 8 narrowing).
 3. **Product fix — `AgentDaemon.stop()` should cancel/await `_background_tasks`** (PR #369 review #2 follow-up).
+
+## Coverage ratchet to 90% — phase log (started 2026-05-13)
+
+Plan: `/home/spark/.claude/plans/we-re-at-60-coverage-refactored-lark.md` — phased PR plan to raise the floor from 56 to 90.
+
+### Phase 1 — Coverage plumbing + console removal (2026-05-13)
+
+**Measured: 60.99%** (6260 statements, 2442 missing) → `fail_under = 60`.
+
+Changes:
+
+1. **Parallel-coverage merging fixed.** `[tool.coverage.run]` now sets `parallel = true`, `concurrency = ["thread", "multiprocessing"]`, `sigterm = true`. The test runner (`.claude/skills/run-tests/scripts/test.sh`) now runs `coverage combine` between pytest-xdist and the final report. Before this, xdist worker `.coverage.*` files were merged unsafely and the reported number drifted from reality.
+2. **`culture/console/` deleted.** The Textual TUI is superseded by sibling repo [`irc-lens`](https://github.com/agentculture/irc-lens); `culture console` already passthrough-launches it via `culture/cli/console.py` (kept). Removed: `culture/console/` package, eight `tests/test_console_*.py` files, `textual>=1.0` from `pyproject.toml`.
+3. **`exclude_lines` extended** with `raise NotImplementedError`, `...` (literal ellipsis), and `if sys.platform == "win32":` to drop legitimately-untestable lines from the denominator.
+
+Notable findings (deferred to later phases):
+
+- **`culture/transport/client.py` (569 stmts, 25% covered) is largely dead post-extraction.** `agentirc.ircd.IRCd` uses agentirc's own `Client` class (`.venv/lib/python3.12/site-packages/agentirc/client.py`), not culture's. Only four telemetry tests still import `culture.transport.client.Client` directly. Phase 5 should reconsider: delete the unused code rather than backfill tests for it.
+- **`culture/protocol/commands.py` (35 stmts, 0% covered)** — addressed in Phase 2 as planned.
+
+### Phase target table
+
+| Phase | Floor | PR | Status |
+|---|---|---|---|
+| 1 | 60 | (this PR) | in flight |
+| 2 | 66 | `cli/shared/process.py`, `protocol/commands.py` | pending |
+| 3 | 73 | CLI handlers (server/agent/bot/channel/mesh) | pending |
+| 4 | 80 | Domain modules via real IRCd | pending |
+| 5 | 88 | `transport/client.py` (or its deletion) | pending |
+| 6 | 90 | Long tail + final exclusions | pending |

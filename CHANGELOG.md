@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.0] - 2026-05-13
+
+### Added
+
+- docs/coverage-baseline.md — Phase 1 entry of the 60→90 ratchet plan, with per-phase target table and notable findings (transport/client.py is largely dead post-extraction; deferred to Phase 5).
+
+### Changed
+
+- [tool.coverage.run] now sets parallel = true, concurrency = ["thread", "multiprocessing"], sigterm = true so pytest-xdist worker shards are merged via coverage combine. Before this, only one worker's slice was reported.
+- [tool.coverage.report] exclude_lines extended with raise NotImplementedError, ... (literal ellipsis), and if sys.platform == "win32": to drop legitimately-untestable lines from the denominator.
+- fail_under raised from 56 to 60 (Phase 1 floor of the 60→90 ratchet plan). Measured post-Phase-1: 60.99%.
+- .claude/skills/run-tests/scripts/test.sh now runs coverage combine + coverage report between pytest-xdist and the final render so xdist shards merge before the floor is checked.
+
 ## [11.1.1] - 2026-05-12
 
 ### Fixed
