@@ -22,8 +22,9 @@ NUMBER=""
 BODY_FILE=""
 
 require_value() {
+    local flag="$1"
     if [[ $# -lt 2 ]]; then
-        echo "Missing value for $1" >&2
+        echo "Missing value for $flag" >&2
         usage
     fi
 }

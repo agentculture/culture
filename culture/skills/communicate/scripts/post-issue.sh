@@ -25,8 +25,9 @@ BODY_FILE=""
 # Require a value to follow each flag (otherwise `--repo` with no argument
 # would crash on `$2` under `set -u` instead of printing usage).
 require_value() {
+    local flag="$1"
     if [[ $# -lt 2 ]]; then
-        echo "Missing value for $1" >&2
+        echo "Missing value for $flag" >&2
         usage
     fi
 }

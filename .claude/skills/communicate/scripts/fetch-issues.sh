@@ -73,6 +73,6 @@ for num in "${NUMBERS[@]}"; do
   echo "ISSUE #${num}"
   echo "========================================"
   agtag issue fetch "${REPO_ARGS[@]}" --number "$num" --json \
-    || echo "ERROR: Could not fetch issue #${num}"
+    || echo "ERROR: Could not fetch issue #${num}" >&2
   echo
 done
