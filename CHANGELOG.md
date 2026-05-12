@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.2] - 2026-05-13
+
+### Added
+
+- `tests/test_cli_shared_process.py` — 24 tests covering `culture/cli/shared/process.py` (12% → 100%): `stop_agent` orchestration, `_try_ipc_shutdown` including missing socket / raise / false / poll-exhaustion, `_try_pid_shutdown` including corrupt PID / stale PID / non-culture PID / SIGTERM / SIGKILL escalation / abort-when-no-longer-culture / `ProcessLookupError` mid-kill, `server_stop_by_name` including SIGTERM success / SIGKILL escalation / lookup-error swallow. Fully hermetic: monkeypatches `os.kill`, `time.sleep`, `ipc_shutdown`, and `culture.pidfile.*` — no real signals, sockets, or forks.
+- `tests/test_protocol_commands.py` — 3 discovery-style tests covering `culture/protocol/commands.py` (0% → 100%): asserts every uppercase string constant equals its attribute name, and a baseline RFC 2812 smoke test. Adding a new verb does not require a test edit.
+
+### Changed
+
+- pyproject.toml: fail_under raised 60 → 62 (Phase 2 floor of the 60→90 ratchet plan). Project-wide measured 62.91%.
+- docs/coverage-baseline.md: Phase 2 entry + updated phase target table.
+
 ## [12.0.1] - 2026-05-13
 
 ### Fixed

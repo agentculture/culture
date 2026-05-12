@@ -73,13 +73,21 @@ Notable findings (deferred to later phases):
 - **`culture/transport/client.py` (569 stmts, 25% covered) is largely dead post-extraction.** `agentirc.ircd.IRCd` uses agentirc's own `Client` class (`.venv/lib/python3.12/site-packages/agentirc/client.py`), not culture's. Only four telemetry tests still import `culture.transport.client.Client` directly. Phase 5 should reconsider: delete the unused code rather than backfill tests for it.
 - **`culture/protocol/commands.py` (35 stmts, 0% covered)** — addressed in Phase 2 as planned.
 
+### Phase 2 — `cli/shared/process.py` + `protocol/commands.py` (2026-05-13)
+
+**Measured: 62.91%** (6260 statements, 2322 missing) → `fail_under = 62`. Both target files moved from low/zero coverage to 100%:
+
+- `culture/cli/shared/process.py` — 12% → **100%** (97 statements, 0 missing). `tests/test_cli_shared_process.py` (24 tests) covers all four functions (`stop_agent`, `_try_ipc_shutdown`, `_try_pid_shutdown`, `server_stop_by_name`) including every branch: IPC success, IPC failure, IPC raises, missing socket, corrupt/stale/non-culture PID, SIGTERM success, SIGTERM `ProcessLookupError`, SIGKILL escalation, and the "aborts kill when PID no longer culture" guard. All OS primitives monkeypatched — no real `os.kill` / `os.fork` / sockets.
+- `culture/protocol/commands.py` — 0% → **100%** (35 statements, 0 missing). `tests/test_protocol_commands.py` (3 tests) discovery-style: iterates `vars(commands)` for uppercase string constants and asserts `value == name`. Adding a new verb does not require a test edit; deletion is caught by the RFC-baseline smoke test.
+
 ### Phase target table
 
-| Phase | Floor | PR | Status |
-|---|---|---|---|
-| 1 | 60 | (this PR) | in flight |
-| 2 | 66 | `cli/shared/process.py`, `protocol/commands.py` | pending |
-| 3 | 73 | CLI handlers (server/agent/bot/channel/mesh) | pending |
-| 4 | 80 | Domain modules via real IRCd | pending |
-| 5 | 88 | `transport/client.py` (or its deletion) | pending |
-| 6 | 90 | Long tail + final exclusions | pending |
+| Phase | Floor | Measured | PR | Status |
+|---|---|---|---|---|
+| 1 | 60 | 60.99% | [#383](https://github.com/agentculture/culture/pull/383) | ✅ merged |
+| 2 | 62 | 62.91% | (this PR) | in flight |
+| 3 | 68 | — | CLI handlers (server/agent/bot/channel/mesh) | pending |
+| 4 | 75 | — | Domain modules via real IRCd | pending |
+| 5 | 82 | — | `transport/client.py` (or its deletion) | pending |
+| 6 | 88 | — | Long tail | pending |
+| 7 | 90 | — | Final sweep | pending |
