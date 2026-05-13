@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.1] - 2026-05-13
+
+### Added
+
+- tests/test_credentials.py extensions — 16 new tests covering platform-specific store/lookup/delete + FileNotFoundError tool-name fallback
+- tests/test_pidfile.py extensions — 17 new tests covering port files, default_server, rename_pid, list_servers, is_process_alive PermissionError
+- tests/test_cli_shared_ipc.py — 10 tests using real asyncio.start_unix_server for ipc_request / ipc_shutdown / get_observer / agent_socket_path
+- tests/test_cli_afi_devex.py — 11 tests for culture.cli.{afi,devex} dispatch/_entry/register + culture.cli.shared.formatting re-export
+
+### Changed
+
+- test coverage floor raised from 89 to 90 — closes the 60→90 ratchet (measured 90.28%)
+
 ## [12.1.0] - 2026-05-13
 
 ### Removed
