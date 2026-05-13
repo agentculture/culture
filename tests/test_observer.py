@@ -403,7 +403,7 @@ async def test_observer_send_message_strips_target_crlf(monkeypatch):
         captured["writer"] = fake_writer
         return _FakeReader(), fake_writer, "nick"
 
-    async def _fake_recv(_reader, timeout=0.0):
+    async def _fake_recv(_reader):
         return []
 
     monkeypatch.setattr(obs, "_connect_and_register", _fake_connect)

@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 RECV_TIMEOUT = 5.0
 # Timeout for the full connect + register cycle
 REGISTER_TIMEOUT = 10.0
+# Timeout for draining JOIN responses before sending PRIVMSG
+JOIN_DRAIN_TIMEOUT = 1.0
 
 
 def _sanitize_for_irc(value: str) -> str:
@@ -165,25 +167,22 @@ class IRCObserver:
         except OSError:
             pass
 
-    async def _recv_lines(
-        self, reader: asyncio.StreamReader, timeout: float = RECV_TIMEOUT
-    ) -> list[Message]:
-        """Read all available lines from the reader until timeout."""
+    async def _recv_lines(self, reader: asyncio.StreamReader) -> list[Message]:
+        """Drain all available lines from the reader for up to JOIN_DRAIN_TIMEOUT seconds."""
         messages: list[Message] = []
         buffer = ""
         try:
-            while True:
-                async with asyncio.timeout(timeout):
+            async with asyncio.timeout(JOIN_DRAIN_TIMEOUT):
+                while True:
                     data = await reader.read(4096)
-                if not data:
-                    break
-                buffer += data.decode(errors="replace")
-                while "\r\n" in buffer:
-                    line, buffer = buffer.split("\r\n", 1)
-                    if line.strip():
-                        messages.append(Message.parse(line))
+                    if not data:
+                        break
+                    buffer += data.decode(errors="replace")
+                    while "\r\n" in buffer:
+                        line, buffer = buffer.split("\r\n", 1)
+                        if line.strip():
+                            messages.append(Message.parse(line))
         except asyncio.TimeoutError:
-            # Parse anything remaining in buffer
             if buffer.strip():
                 messages.append(Message.parse(buffer.strip()))
         return messages
@@ -321,7 +320,7 @@ class IRCObserver:
                 writer.write(f"JOIN {target}\r\n".encode())
                 await writer.drain()
                 # Drain join responses
-                await self._recv_lines(reader, timeout=1.0)
+                await self._recv_lines(reader)
 
             for line in lines:
                 writer.write(f"PRIVMSG {target} :{line}\r\n".encode())
