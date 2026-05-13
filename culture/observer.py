@@ -172,16 +172,16 @@ class IRCObserver:
         messages: list[Message] = []
         buffer = ""
         try:
-            async with asyncio.timeout(timeout):
-                while True:
+            while True:
+                async with asyncio.timeout(timeout):
                     data = await reader.read(4096)
-                    if not data:
-                        break
-                    buffer += data.decode(errors="replace")
-                    while "\r\n" in buffer:
-                        line, buffer = buffer.split("\r\n", 1)
-                        if line.strip():
-                            messages.append(Message.parse(line))
+                if not data:
+                    break
+                buffer += data.decode(errors="replace")
+                while "\r\n" in buffer:
+                    line, buffer = buffer.split("\r\n", 1)
+                    if line.strip():
+                        messages.append(Message.parse(line))
         except asyncio.TimeoutError:
             # Parse anything remaining in buffer
             if buffer.strip():

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.4] - 2026-05-13
+
+### Fixed
+
+- observer._recv_lines: restore per-read (inactivity) timeout semantics — asyncio.timeout now wraps each reader.read instead of the whole loop, so a slow but steady stream (e.g. JOIN drains in send_message) no longer truncates after the total budget. Caught by Qodo review of PR #395.
+
 ## [12.1.3] - 2026-05-13
 
 ### Fixed
