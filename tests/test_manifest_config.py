@@ -13,6 +13,7 @@ from culture.config import (
     ServerConnConfig,
     add_to_manifest,
     archive_manifest_agent,
+    archive_manifest_server,
     load_config,
     load_config_or_default,
     load_culture_yaml,
@@ -24,6 +25,7 @@ from culture.config import (
     save_culture_yaml,
     save_server_config,
     unarchive_manifest_agent,
+    unarchive_manifest_server,
 )
 
 
@@ -315,3 +317,223 @@ def test_load_config_or_default_missing(tmpdir):
     config = load_config_or_default(path, fallback=os.path.join(tmpdir, "also-missing.yaml"))
     assert config.server.name == "culture"
     assert config.agents == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 4a — archive_manifest_server / unarchive_manifest_server
+# ---------------------------------------------------------------------------
+
+
+def _bootstrap_server_with_agent(tmpdir, server_name="spark", suffix="ada"):
+    """Create a server.yaml with one registered agent + a per-directory culture.yaml.
+
+    Returns (server_yaml_path, agent_directory).
+    """
+    agent_dir = os.path.join(tmpdir, "agent_dir")
+    os.makedirs(agent_dir)
+    with open(os.path.join(agent_dir, "culture.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "agents": [
+                        {"suffix": suffix, "backend": "claude", "channels": ["#general"]},
+                    ]
+                }
+            )
+        )
+
+    server_yaml = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_yaml,
+        ServerConfig(
+            server=ServerConnConfig(name=server_name),
+            manifest={suffix: agent_dir},
+        ),
+    )
+    return server_yaml, agent_dir
+
+
+def test_archive_manifest_server_archives_agents_and_server(tmpdir):
+    server_yaml, agent_dir = _bootstrap_server_with_agent(tmpdir)
+
+    archived = archive_manifest_server(server_yaml, reason="cleanup")
+
+    assert archived == ["spark-ada"]
+
+    # The server-level config is now flagged archived.
+    cfg = load_config(server_yaml)
+    assert cfg.server.archived is True
+    assert cfg.server.archived_reason == "cleanup"
+    assert cfg.server.archived_at  # non-empty date
+
+    # The per-directory culture.yaml has the agent archived too.
+    agents = load_culture_yaml(agent_dir)
+    assert agents and agents[0].archived is True
+    assert agents[0].archived_reason == "cleanup"
+
+
+def test_archive_manifest_server_skips_already_archived_agents(tmpdir):
+    server_yaml, agent_dir = _bootstrap_server_with_agent(tmpdir)
+    # Pre-archive the agent manually.
+    agents = load_culture_yaml(agent_dir)
+    agents[0].archived = True
+    agents[0].archived_at = "2025-01-01"
+    save_culture_yaml(agent_dir, agents)
+
+    archived = archive_manifest_server(server_yaml, reason="cleanup")
+    # No new nicks — agent was already archived.
+    assert archived == []
+
+
+def test_archive_manifest_server_handles_missing_culture_yaml(tmpdir):
+    """If a manifest entry points to a directory whose culture.yaml is gone,
+    archive_manifest_server should still archive the server itself."""
+    agent_dir = os.path.join(tmpdir, "ghost")  # directory doesn't exist
+    server_yaml = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_yaml,
+        ServerConfig(
+            server=ServerConnConfig(name="spark"),
+            manifest={"ghost": agent_dir},
+        ),
+    )
+
+    archived = archive_manifest_server(server_yaml)
+    # No agent nicks reported (yaml file missing) — but the server is archived.
+    assert archived == []
+    cfg = load_config(server_yaml)
+    assert cfg.server.archived is True
+
+
+def test_unarchive_manifest_server_restores_agents_and_server(tmpdir):
+    server_yaml, agent_dir = _bootstrap_server_with_agent(tmpdir)
+    archive_manifest_server(server_yaml, reason="cleanup")
+
+    unarchived = unarchive_manifest_server(server_yaml)
+
+    assert unarchived == ["spark-ada"]
+    cfg = load_config(server_yaml)
+    assert cfg.server.archived is False
+    assert cfg.server.archived_at == ""
+    assert cfg.server.archived_reason == ""
+
+    agents = load_culture_yaml(agent_dir)
+    assert agents and agents[0].archived is False
+    assert agents[0].archived_at == ""
+
+
+def test_unarchive_manifest_server_returns_empty_when_nothing_archived(tmpdir):
+    server_yaml, _ = _bootstrap_server_with_agent(tmpdir)
+    # Never archived
+    unarchived = unarchive_manifest_server(server_yaml)
+    assert unarchived == []
+
+
+def test_unarchive_manifest_server_skips_missing_culture_yaml(tmpdir):
+    """If a manifest entry points to a missing directory, unarchive still flips the server."""
+    agent_dir = os.path.join(tmpdir, "ghost")
+    server_yaml = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_yaml,
+        ServerConfig(
+            server=ServerConnConfig(name="spark", archived=True, archived_at="2025-01-01"),
+            manifest={"ghost": agent_dir},
+        ),
+    )
+
+    unarchived = unarchive_manifest_server(server_yaml)
+    assert unarchived == []
+    cfg = load_config(server_yaml)
+    assert cfg.server.archived is False
+
+
+def test_load_legacy_config_direct(tmpdir):
+    """_load_legacy_config parses the old list-of-dicts agents.yaml format directly."""
+    from culture.config import _load_legacy_config
+
+    legacy_path = os.path.join(tmpdir, "agents.yaml")
+    with open(legacy_path, "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "server": {"name": "spark", "host": "1.2.3.4", "port": 7000},
+                    "buffer_size": 250,
+                    "poll_interval": 30,
+                    "sleep_start": "22:00",
+                    "sleep_end": "07:00",
+                    "agents": [
+                        {
+                            "nick": "spark-ada",
+                            "directory": "/tmp/ada",
+                            "agent": "codex",  # legacy field name → backend
+                            "channels": ["#ops"],
+                            "custom_extra": "preserved",
+                        }
+                    ],
+                }
+            )
+        )
+
+    config = _load_legacy_config(legacy_path)
+
+    assert config.server.name == "spark"
+    assert config.server.host == "1.2.3.4"
+    assert config.server.port == 7000
+    assert config.buffer_size == 250
+    assert config.poll_interval == 30
+    assert config.sleep_start == "22:00"
+    assert config.sleep_end == "07:00"
+    assert len(config.agents) == 1
+    agent = config.agents[0]
+    # Legacy `agent` key → `backend` field
+    assert agent.backend == "codex"
+    # Unknown keys go into extras
+    assert agent.extras == {"custom_extra": "preserved"}
+
+
+def test_load_legacy_config_empty_agents(tmpdir):
+    """An agents.yaml with no `agents` key parses to a ServerConfig with []."""
+    from culture.config import _load_legacy_config
+
+    legacy_path = os.path.join(tmpdir, "agents.yaml")
+    with open(legacy_path, "w", encoding="utf-8") as f:
+        f.write(yaml.safe_dump({"server": {"name": "spark"}}))
+
+    config = _load_legacy_config(legacy_path)
+    assert config.server.name == "spark"
+    assert config.agents == []
+
+
+def test_archive_manifest_server_with_extra_unrelated_agent_in_directory(tmpdir):
+    """A culture.yaml may contain agents for multiple suffixes; archive only
+    flips the ones whose suffix matches a manifest entry."""
+    agent_dir = os.path.join(tmpdir, "agent_dir")
+    os.makedirs(agent_dir)
+    with open(os.path.join(agent_dir, "culture.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "agents": [
+                        {"suffix": "ada", "backend": "claude"},
+                        {"suffix": "bob", "backend": "claude"},  # NOT in manifest
+                    ]
+                }
+            )
+        )
+    server_yaml = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_yaml,
+        ServerConfig(
+            server=ServerConnConfig(name="spark"),
+            manifest={"ada": agent_dir},  # only ada is registered
+        ),
+    )
+
+    archived = archive_manifest_server(server_yaml)
+    assert archived == ["spark-ada"]
+
+    agents = load_culture_yaml(agent_dir)
+    by_suffix = {a.suffix: a for a in agents}
+    assert by_suffix["ada"].archived is True
+    # bob is not in the manifest, so it stays untouched
+    assert by_suffix["bob"].archived is False

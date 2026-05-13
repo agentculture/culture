@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.8] - 2026-05-13
+
+### Fixed
+
+- tests/test_manifest_config.py: wrap `open(...).write(...)` in `with` blocks so YAML fixture files are closed/flushed before save_culture_yaml writes via `os.replace` (Qodo PR #388 finding #3230365666, Windows reliability).
+- tests/telemetry/test_audit_rotation.py: replace `asyncio.sleep(0.05)` with `await sink.queue.join()` for deterministic synchronization on the writer task_done signal (Qodo PR #388 top-level finding, CI race risk).
+
+## [12.0.7] - 2026-05-13
+
+### Added
+
+- Extended `tests/test_persistence.py` with 26 new tests covering `culture/persistence.py` (54% → 98%): `_run_cmd` (success / timeout), `install_service` per platform (macOS launchd plist + Windows .bat + unsupported-platform raise), `uninstall_service` per platform, `list_services` (macOS / Windows / unsupported), `restart_service` per platform including the Windows `schtasks /Query` timeout path.
+- Extended `tests/test_manifest_config.py` with 9 new tests covering `archive_manifest_server` / `unarchive_manifest_server` (happy / skip-already-archived / missing-culture-yaml / extra-unrelated-agent) and `_load_legacy_config` (full body + empty-agents).
+
+### Changed
+
+- pyproject.toml: fail_under raised 77 → 79 (Phase 4a floor). Project-wide measured 79.68% — 0.3pp short of the original 80 target; the gap is absorbed by the Phase 7 sweep.
+- docs/coverage-baseline.md: Phase 4a entry + updated phase target table (Phase 4 split into 4a + 4b).
+
 ## [12.0.6] - 2026-05-13
 
 ### Added
