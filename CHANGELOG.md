@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.2] - 2026-05-13
+
+### Changed
+
+- culture/credentials.py: module docstring no longer claims passwords never reach command lines on darwin/win32 — accurately notes the macOS/Windows paths pass the password via argv / PowerShell script, with stdin-based hardening flagged as a follow-up
+
+### Fixed
+
+- culture/cli/shared/ipc.py: ipc_request now returns None on EOF from readline() instead of busy-looping until the 15s deadline (Qodo finding 3)
+- tests/test_cli_afi_devex.py: test_devex_entry_exits_when_agex_not_installed blocks the right import name (agent_experience.cli, not agex.cli) so the SystemExit(2) branch is deterministically reached (Qodo finding 2)
+- tests/test_credentials.py: store_credential darwin/win32 tests no longer assert the literal password text in argv — they assert the -w flag / cmdlet name instead so future stdin-based hardening does not break tests (Qodo finding 4)
+
+## [12.1.1] - 2026-05-13
+
+### Added
+
+- tests/test_credentials.py extensions — 16 new tests covering platform-specific store/lookup/delete + FileNotFoundError tool-name fallback
+- tests/test_pidfile.py extensions — 17 new tests covering port files, default_server, rename_pid, list_servers, is_process_alive PermissionError
+- tests/test_cli_shared_ipc.py — 10 tests using real asyncio.start_unix_server for ipc_request / ipc_shutdown / get_observer / agent_socket_path
+- tests/test_cli_afi_devex.py — 11 tests for culture.cli.{afi,devex} dispatch/_entry/register + culture.cli.shared.formatting re-export
+
+### Changed
+
+- test coverage floor raised from 89 to 90 — closes the 60→90 ratchet (measured 90.28%)
+
 ## [12.1.0] - 2026-05-13
 
 ### Removed

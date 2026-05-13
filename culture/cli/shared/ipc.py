@@ -39,6 +39,10 @@ async def ipc_request(socket_path: str, msg_type: str, **kwargs) -> dict | None:
             if remaining <= 0:
                 return None
             data = await asyncio.wait_for(reader.readline(), timeout=remaining)
+            # EOF (peer closed without responding) — exit early instead
+            # of busy-looping until the 15s deadline.
+            if not data:
+                return None
             msg = decode_message(data)
             if msg and msg.get("type") == "response":
                 return msg
