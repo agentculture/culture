@@ -105,8 +105,8 @@ class BotManager:
                 if config.trigger_type == "event" and config.event_filter:
                     try:
                         config._compiled_filter = compile_filter(config.event_filter)
-                    except _FILTER_ERRORS as exc:
-                        logger.error("Bot %s has invalid filter, skipping: %s", config.name, exc)
+                    except _FILTER_ERRORS:
+                        logger.exception("Bot %s has invalid filter, skipping", config.name)
                         continue
                 bot = Bot(config, self.server)
                 self.bots[config.name] = bot
@@ -250,7 +250,7 @@ class BotManager:
 
     async def stop_all(self) -> None:
         """Stop all active bots."""
-        for bot in list(self.bots.values()):
+        for bot in self.bots.values():
             try:
                 await bot.stop()
             except Exception:

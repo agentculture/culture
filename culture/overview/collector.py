@@ -225,7 +225,7 @@ async def _disconnect(writer: asyncio.StreamWriter) -> None:
         pass
 
 
-async def _recv_until(
+async def _recv_until(  # NOSONAR S7483 — timeout sets the per-call recv budget; removing the param removes caller control
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     stop_commands: set[str],

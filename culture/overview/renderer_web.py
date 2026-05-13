@@ -117,7 +117,7 @@ def _stop_existing_overview(pid_name: str) -> None:
             remove_port(pid_name)
             port_msg = f", port {existing_port}" if existing_port else ""
             print(
-                f"Warning: could not stop previous overview (PID {existing_pid}" f"{port_msg})",
+                f"Warning: could not stop previous overview (PID {existing_pid}{port_msg})",
                 flush=True,
             )
             return
@@ -260,7 +260,8 @@ def serve_web(
     atexit.register(cleanup)
     _setup_signal_handlers(httpd)
 
-    print(f"Overview dashboard: http://localhost:{actual_port}", flush=True)
+    dashboard_url = f"http://localhost:{actual_port}"  # NOSONAR — localhost-only dev URL
+    print(f"Overview dashboard: {dashboard_url}", flush=True)
     print("Press Ctrl+C to stop.", flush=True)
     try:
         httpd.serve_forever()

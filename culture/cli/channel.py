@@ -182,7 +182,7 @@ def dispatch(args: argparse.Namespace) -> None:
         sys.exit(1)
     try:
         handler(args)
-    except (TimeoutError, OSError) as exc:
+    except OSError as exc:
         if _is_connection_error(str(exc)):
             print(
                 "Error: cannot connect to IRC server. Is the server running?\n"

@@ -247,12 +247,12 @@ class AuditSink:
         old_fd = self._current_fd
         try:
             new_fd = self._open_audit_file(path)
-        except OSError as exc:
+        except OSError:
             # New open failed — keep the old fd usable so the next record may
             # still write to the previous file. If old_fd was -1 we degrade to
             # silent-drop (counter increments via writer-loop OSError branch on
             # next write attempt — which will retry rotation).
-            logger.error("audit open failed for %s: %s — keeping previous fd open", path, exc)
+            logger.exception("audit open failed for %s — keeping previous fd open", path)
             return
 
         # New fd opened successfully — now close the old one if there was one.

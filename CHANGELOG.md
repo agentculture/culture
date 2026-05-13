@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.3] - 2026-05-13
+
+### Fixed
+
+- SonarCloud cleanup: 19 OPEN code-smell issues resolved (logger.exception, redundant except clauses, chained endswith, unused locals/params, list-snapshot tidy, implicit string concat, CSS contrast). 1 TO_REVIEW hotspot annotated (localhost dev URL).
+
 ## [12.1.2] - 2026-05-13
 
 ### Changed

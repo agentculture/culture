@@ -628,7 +628,7 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, stop_event.set)
-        except (NotImplementedError, RuntimeError):
+        except RuntimeError:
             signal.signal(sig, lambda *_: stop_event.set())
 
     await stop_event.wait()
