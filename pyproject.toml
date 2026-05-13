@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "12.0.8"
+version = "12.0.9"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -93,12 +93,14 @@ omit = [
 
 [tool.coverage.report]
 # Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
-# Phase 4a (2026-05-13): added tests for culture/persistence.py (now 98%),
-# culture/config.py (now 90%), culture/telemetry/audit.py (now 92%).
-# Project-wide measured: 79.68%. Floor = floor(measured); 0.3pp short of
-# the original Phase 4a target of 80. Phase 4b targets the IRCd-integrated
-# modules (observer.py, overview/collector.py, bots/*).
-fail_under = 79
+# Phase 4b (2026-05-13): added tests for culture/observer.py (now 92%),
+# culture/overview/collector.py (now 98%), culture/bots/bot.py (now 98%),
+# culture/bots/bot_manager.py (now 99%). Project-wide measured: 83.93%
+# (rounds to 84 with cov-report's two-decimal rounding; floor uses the
+# unrounded floor(measured)). Phase 5 targets culture/transport/client.py
+# (currently 25%, largely dead post-cultureagent-extraction — re-evaluate
+# backfill vs. deletion).
+fail_under = 83
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
