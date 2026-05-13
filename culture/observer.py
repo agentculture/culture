@@ -173,7 +173,8 @@ class IRCObserver:
         buffer = ""
         try:
             while True:
-                data = await asyncio.wait_for(reader.read(4096), timeout=timeout)
+                async with asyncio.timeout(timeout):
+                    data = await reader.read(4096)
                 if not data:
                     break
                 buffer += data.decode(errors="replace")
@@ -221,7 +222,7 @@ class IRCObserver:
 
     async def _irc_query(self, command, end_numerics, parse_line):
         """Send an IRC command, collect parsed results until an end marker."""
-        reader, writer, nick = await self._connect_and_register()
+        reader, writer, _ = await self._connect_and_register()
         results = []
         try:
             writer.write(f"{command}\r\n".encode())
@@ -313,7 +314,7 @@ class IRCObserver:
         if not lines:
             return
 
-        reader, writer, nick = await self._connect_and_register()
+        reader, writer, _ = await self._connect_and_register()
         try:
             # If sending to a channel, join it first so the server accepts the PRIVMSG
             if target.startswith("#"):

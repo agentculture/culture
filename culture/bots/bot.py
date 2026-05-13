@@ -115,7 +115,7 @@ class Bot:
         if not self.active or not self.virtual_client:
             return
 
-        for channel_name in list(ch.name for ch in self.virtual_client.channels):
+        for channel_name in [ch.name for ch in self.virtual_client.channels]:
             await self.virtual_client.part_channel(channel_name)
 
         self.virtual_client = None

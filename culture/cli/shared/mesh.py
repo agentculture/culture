@@ -23,7 +23,7 @@ def parse_link(value: str):
     from agentirc.config import LinkConfig
 
     trust = "full"
-    if value.endswith(":full") or value.endswith(":restricted"):
+    if value.endswith((":full", ":restricted")):
         value, trust = value.rsplit(":", 1)
 
     parts = value.split(":", 3)

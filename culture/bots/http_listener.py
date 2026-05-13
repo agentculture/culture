@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -75,7 +74,9 @@ class HttpListener:
                 {"bot": bot_name, "status_class": status_class},
             )
 
-    async def _handle_health(self, request: web.Request) -> web.Response:
+    async def _handle_health(  # NOSONAR S7503 — aiohttp handler signature requires async
+        self, request: web.Request
+    ) -> web.Response:
         return web.json_response({"status": "ok"})
 
     async def _handle_webhook(self, request: web.Request) -> web.Response:
@@ -84,7 +85,7 @@ class HttpListener:
         # Parse JSON body
         try:
             payload = await request.json()
-        except (json.JSONDecodeError, Exception):
+        except Exception:
             return web.json_response(
                 {"error": "invalid JSON"},
                 status=400,

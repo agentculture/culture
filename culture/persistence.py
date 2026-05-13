@@ -62,6 +62,7 @@ def _run_cmd(args: list[str], timeout: float = DEFAULT_CMD_TIMEOUT) -> bool:
 def _build_systemd_unit(name: str, command: list[str], description: str) -> str:
     exec_start = " ".join(shlex.quote(arg) for arg in command)
     return (
+        f"# {name}\n"
         f"[Unit]\n"
         f"Description={description}\n"
         f"\n"
@@ -81,6 +82,7 @@ def _build_launchd_plist(name: str, command: list[str], description: str) -> str
     log_path = os.path.join(LOG_DIR, f"{name}.log")
     return (
         f'<?xml version="1.0" encoding="UTF-8"?>\n'
+        f"<!-- {xml_escape(description)} -->\n"
         f'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'
         f' "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
         f'<plist version="1.0">\n'
