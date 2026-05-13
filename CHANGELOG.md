@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.0] - 2026-05-13
+
+### Removed
+
+- `culture.transport.Client` — never instantiated in production post-cultureagent-extraction; `agentirc.ircd.IRCd` uses `agentirc.client.Client`, which carries the same parse-error-audit / dispatch-span / traceparent-inject instrumentation
+- `culture.transport.RemoteClient` — superseded by `agentirc.remote_client.RemoteClient`
+- `culture/transport/` package — both modules above were the only contents; the package is gone
+- `tests/telemetry/test_parse_error.py`, `test_audit_parse_error.py`, `test_dispatch_span.py`, `test_outbound_inject.py` — isolation-style tests against the deleted `culture.transport.Client`; equivalent paths are tested upstream in `agentirc`
+
+### Changed
+
+- test coverage floor raised from 83 to 89 (Phase 5 ratchet, measured 89.13%)
+
 ## [12.0.10] - 2026-05-13
 
 ### Fixed
