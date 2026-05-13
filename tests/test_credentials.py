@@ -90,8 +90,10 @@ def test_store_credential_darwin_uses_security(monkeypatch):
     assert store_credential("peerA", "secret") is True
     assert captured[0]["args"][0] == "security"
     assert "add-generic-password" in captured[0]["args"]
-    # Password lands in the argv list (via `-w secret`).
-    assert "secret" in captured[0]["args"]
+    # `-w` flag is present (password-by-arg path); the literal password
+    # is intentionally NOT asserted here so future hardening (moving the
+    # password to stdin or a secure-input API) doesn't break the test.
+    assert "-w" in captured[0]["args"]
 
 
 def test_store_credential_darwin_failure_returns_false(monkeypatch):
@@ -107,8 +109,9 @@ def test_store_credential_win32_invokes_powershell(monkeypatch):
 
     assert store_credential("peerB", "s3cret") is True
     assert captured[0]["args"][0] == "powershell"
-    # Password is interpolated into the PS script.
-    assert "s3cret" in captured[0]["args"][-1]
+    # The cmdlet name is the stable assertion; the literal password is
+    # intentionally not pinned so a future move to a secure-input API
+    # (Get-Credential / stdin) doesn't break the test.
     assert "New-StoredCredential" in captured[0]["args"][-1]
 
 

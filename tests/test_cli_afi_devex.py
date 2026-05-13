@@ -107,12 +107,19 @@ def test_devex_dispatch_handles_missing_devex_args(monkeypatch):
 
 
 def test_devex_entry_exits_when_agex_not_installed(monkeypatch):
+    """`_entry` exits with rc 2 when `agent_experience.cli` import fails.
+
+    The wrapped package is named `agent_experience` (the agex-cli
+    distribution), not `agex` — block the right name so the test
+    deterministically drives the missing-dependency branch instead of
+    accidentally invoking the real CLI.
+    """
     real_import = (
         __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
     )
 
     def _blocked(name, *a, **kw):
-        if name == "agex.cli":
+        if name == "agent_experience.cli" or name == "agent_experience":
             raise ImportError("agex-cli not installed")
         return real_import(name, *a, **kw)
 

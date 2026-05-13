@@ -1,11 +1,16 @@
 """OS credential store for culture link passwords.
 
 Uses platform-native secure storage:
-- Linux: secret-tool (libsecret / GNOME Keyring)
-- macOS: security (Keychain)
-- Windows: cmdkey + PowerShell
+- Linux: secret-tool (libsecret / GNOME Keyring); the password is
+  piped on stdin and never appears in the argv list.
+- macOS: ``security add-generic-password -w <pw>`` (Keychain).
+- Windows: PowerShell ``New-StoredCredential`` (Credential Manager).
 
-Passwords are never stored in config files or command lines.
+Passwords never land in config files. On macOS and Windows the password
+is passed via argv / a PowerShell command string (so it may be visible
+to ``ps`` / process-listing tools); on Linux the password is piped via
+stdin. Hardening the macOS / Windows paths to read from stdin / a secure
+channel is a known follow-up (Qodo finding 4 on PR #391).
 """
 
 from __future__ import annotations
