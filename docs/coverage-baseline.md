@@ -111,6 +111,15 @@ Notable findings (deferred to later phases):
 
 Note: this PR landed 0.3pp short of the original 80% target. The gap is absorbed by the existing Phase 7 sweep.
 
+### Phase 4b — `observer.py` + `overview/collector.py` + `bots/*` (2026-05-13)
+
+**Measured: 83.93%** (6260 statements, 1006 missing) → `fail_under = 83`. The four IRCd-integrated modules picked up substantial coverage; the project floor jumps 4pp in a single PR and hits the original Phase 4b target (83) exactly, while soaking up most of the Phase 4a 0.3pp shortfall as a side effect:
+
+- `culture/observer.py` — 28% → **92%** (183 statements, 14 missing). New `tests/test_observer.py` (28 tests) covers the pure parsers (`_parse_history_line` / `_parse_who_line` / `_parse_list_line` table-driven), the registration/query state machines (`_process_registration_line`, `_process_query_line`, `_drain_query_buffer` exercised with a `_RecordingWriter` + canned bytes), and the full public API (`list_channels` / `who` / `read_channel` / `send_message`) round-tripped against the real `server` fixture. The CRLF-in-target injection test pins the strip behavior — the smuggled `JOIN` collapses into the channel name rather than starting a second protocol line. The remaining 14 missing lines are the `_disconnect` writer-close swallow paths and a recv-empty-line fall-through that fires only on socket close.
+- `culture/overview/collector.py` — 71% → **98%** (255 statements, 6 missing). 23 new tests appended to `tests/test_overview_collector.py` covering `_inject_stopped_agents` (manifest archived skip + already-present pass-through + non-list channels fallback), `_handle_registration_line` (PING / 001 / 433-retry / unknown), `_recv_until` (stop-command termination + PING absorption + blank-line skip + timeout), `_query_roommeta` (every key parsed: `room_id` / `owner` / `purpose` / `tags` CSV / `persistent` truthy + ERR_UNKNOWNCOMMAND short-circuit), `_query_tags` (parsed list + ERR_NOSUCHNICK empty), `_collect_bots` (missing dir / missing yaml / malformed yaml swallow), and `_enrich_via_ipc` against a real tmp_path Unix socket — happy status, `circuit_open` / `paused` status flips, stranger-socket skip, foreign-server skip, malformed-not-a-socket connection-refused swallow, and `ok: False` response no-mutation. End-to-end `collect_mesh_state` injects stopped manifest agents.
+- `culture/bots/bot.py` — 62% → **98%** (155 statements, 3 missing). 21 new tests appended to `tests/test_bot.py` covering `_DynamicEventType.__str__`, `_check_rate` (burst + release-after-window with pinned `time.monotonic`), `_render_data_values` (templated strings + non-string passthrough + sandbox-rejected dunder fall-through), `start()` idempotency, `handle()` empty-message short-circuit, `_resolve_channels` (dynamic-from-event + empty fallback + non-dict ctx), `_deliver` re-join branch when the channel was dropped, the full `_maybe_fire_event` matrix (happy enum-typed emit / dynamic-typed emit / no-spec early-return / invalid type regex skip / rate-limited skip / emit-raises log-and-swallow), and `_run_custom_handler` against a real `importlib.util` load (handler-on-disk happy / no `handle()` fallback / handler raises fallback / handler returns `None` → empty). The 3 missing lines are inside the `relative_to`-fails security guard that can't be reached without forging an out-of-tree path.
+- `culture/bots/bot_manager.py` — 65% → **99%** (175 statements, 1 missing). 24 new tests appended to `tests/test_bot_manager.py` covering `start()` listener wiring + crash-safe teardown when `load_bots` raises + `OSError` listener-bind swallow, `stop()` exception-tolerant listener teardown, `load_bots` (missing dir / dir-without-yaml / archived skip / invalid filter / malformed yaml exception swallow), `register_bot` filter compile-error raise, `_try_start_bot` (mid-start re-entrancy guard + start-fails log-and-return-false), `_matches_event` (non-event triggers / no compiled filter / evaluate raises), `_dispatch_to_bot` (try-start-fails short-circuit + handle-raises span error), `on_event` event matching, `start_bot` load-from-disk fallback + unknown-name raise, `stop_all` per-bot exception swallow, and `load_system_bots` (collision skip + register raises + server-config forwarding). The one remaining missing line is a single guard branch inside `_dispatch_to_bot`'s span context.
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
@@ -120,8 +129,8 @@ Note: this PR landed 0.3pp short of the original 80% target. The gap is absorbed
 | 3a | 67 | 67.89% | [#385](https://github.com/agentculture/culture/pull/385) | ✅ merged |
 | 3b | 73 | 73.40% | [#386](https://github.com/agentculture/culture/pull/386) | ✅ merged |
 | 3c | 77 | 77.30% | [#387](https://github.com/agentculture/culture/pull/387) | ✅ merged |
-| 4a | 79 | 79.68% | (this PR) | in flight |
-| 4b | 83 | — | `observer.py`, `overview/collector.py`, `bots/*` | pending |
+| 4a | 79 | 79.68% | [#388](https://github.com/agentculture/culture/pull/388) | ✅ merged |
+| 4b | 83 | 83.93% | (this PR) | in flight |
 | 5 | 86 | — | `transport/client.py` (or its deletion) | pending |
 | 6 | 89 | — | Long tail | pending |
 | 7 | 90 | — | Final sweep | pending |

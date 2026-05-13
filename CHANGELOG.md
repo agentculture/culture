@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.10] - 2026-05-13
+
+### Fixed
+
+- test_start_creates_http_listener now uses the real HttpListener against an OS-assigned port and probes /health to confirm the bind (Qodo)
+- test_start_swallows_listener_oserror retains the OSError-raising patch (forced because OSError cannot be deterministically reproduced on a real listener) but applies it at the HttpListener.start method seam instead of swapping the entire class
+
+## [12.0.9] - 2026-05-13
+
+### Added
+
+- `tests/test_observer.py` — 28 tests for `IRCObserver` query cycle, parsers, and public API (`read_channel` / `who` / `send_message` / `list_channels`) against the real `server` fixture
+- Phase 4b coverage additions in `tests/test_overview_collector.py` (23 tests for `_query_roommeta`, `_query_tags`, `_enrich_via_ipc`, `_inject_stopped_agents`, `_handle_registration_line`, `_recv_until`)
+- Phase 4b coverage additions in `tests/test_bot.py` (21 tests for `_DynamicEventType`, `_check_rate`, `_render_data_values`, `_maybe_fire_event`, `_run_custom_handler`, `_deliver`, `_resolve_channels`)
+- Phase 4b coverage additions in `tests/test_bot_manager.py` (24 tests for start/stop lifecycle, `load_bots` edge paths, `register_bot` filter error, `_try_start_bot`, `_matches_event`, `_dispatch_to_bot`, `load_system_bots`)
+
+### Changed
+
+- test coverage floor raised from 79 to 83 (Phase 4b ratchet, measured 83.93%)
+
 ## [12.0.8] - 2026-05-13
 
 ### Fixed
