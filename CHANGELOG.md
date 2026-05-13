@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.6] - 2026-05-13
+
+### Fixed
+
+- Guard `_recv_until` in `culture/overview/collector.py` against EOF spin: break immediately when `reader.readline()` returns `b""`, instead of hot-looping until `RECV_TIMEOUT` (Qodo PR review #396).
+
+## [12.1.5] - 2026-05-13
+
+### Fixed
+
+- SonarCloud S7483: drop dead `timeout` parameter from `culture/observer.py:_recv_lines` and `culture/overview/collector.py:_recv_until`; express the bound with an `asyncio.timeout` context manager and a module-level constant (`JOIN_DRAIN_TIMEOUT` / `RECV_TIMEOUT`).
+
 ## [12.1.4] - 2026-05-13
 
 ### Fixed

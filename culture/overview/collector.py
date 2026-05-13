@@ -225,35 +225,32 @@ async def _disconnect(writer: asyncio.StreamWriter) -> None:
         pass
 
 
-async def _recv_until(  # NOSONAR S7483 — timeout sets the per-call recv budget; removing the param removes caller control
+async def _recv_until(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     stop_commands: set[str],
-    timeout: float = RECV_TIMEOUT,
 ) -> list[IRCMessage]:
-    """Read IRC messages until a stop command is seen."""
-    messages = []
-    deadline = asyncio.get_event_loop().time() + timeout
-    while True:
-        remaining = deadline - asyncio.get_event_loop().time()
-        if remaining <= 0:
-            break
-        try:
-            async with asyncio.timeout(remaining):
+    """Read IRC messages until a stop command is seen or RECV_TIMEOUT elapses."""
+    messages: list[IRCMessage] = []
+    try:
+        async with asyncio.timeout(RECV_TIMEOUT):
+            while True:
                 data = await reader.readline()
-        except asyncio.TimeoutError:
-            break
-        line = data.decode().strip()
-        if not line:
-            continue
-        msg = IRCMessage.parse(line)
-        if msg.command == "PING":
-            writer.write(f"PONG :{msg.params[0]}\r\n".encode())
-            await writer.drain()
-            continue
-        messages.append(msg)
-        if msg.command in stop_commands:
-            break
+                if not data:
+                    break
+                line = data.decode().strip()
+                if not line:
+                    continue
+                msg = IRCMessage.parse(line)
+                if msg.command == "PING":
+                    writer.write(f"PONG :{msg.params[0]}\r\n".encode())
+                    await writer.drain()
+                    continue
+                messages.append(msg)
+                if msg.command in stop_commands:
+                    break
+    except asyncio.TimeoutError:
+        pass
     return messages
 
 

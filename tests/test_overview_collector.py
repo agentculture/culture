@@ -320,7 +320,7 @@ class _FakeReader:
 async def test_recv_until_stops_on_stop_command():
     reader = _FakeReader([b":srv 322 me #room 0 :topic\r\n", b":srv 323 me :End\r\n"])
     writer = _CollectorWriter()
-    msgs = await _recv_until(reader, writer, {"323"}, timeout=1.0)  # type: ignore[arg-type]
+    msgs = await _recv_until(reader, writer, {"323"})  # type: ignore[arg-type]
     cmds = [m.command for m in msgs]
     assert "322" in cmds
     assert cmds[-1] == "323"
@@ -330,7 +330,7 @@ async def test_recv_until_stops_on_stop_command():
 async def test_recv_until_ponging_a_ping_does_not_emit_message():
     reader = _FakeReader([b"PING :tok\r\n", b":srv 323 me :End\r\n"])
     writer = _CollectorWriter()
-    msgs = await _recv_until(reader, writer, {"323"}, timeout=1.0)  # type: ignore[arg-type]
+    msgs = await _recv_until(reader, writer, {"323"})  # type: ignore[arg-type]
     cmds = [m.command for m in msgs]
     assert "PING" not in cmds
     assert "323" in cmds
@@ -338,11 +338,22 @@ async def test_recv_until_ponging_a_ping_does_not_emit_message():
 
 
 @pytest.mark.asyncio
-async def test_recv_until_skips_blank_lines_and_returns_on_timeout():
+async def test_recv_until_skips_blank_lines_and_returns_on_timeout(monkeypatch):
+    monkeypatch.setattr("culture.overview.collector.RECV_TIMEOUT", 0.1)
     reader = _FakeReader([b"\r\n"], block_after=True)
     writer = _CollectorWriter()
-    msgs = await _recv_until(reader, writer, {"323"}, timeout=0.1)  # type: ignore[arg-type]
+    msgs = await _recv_until(reader, writer, {"323"})  # type: ignore[arg-type]
     assert msgs == []
+
+
+@pytest.mark.asyncio
+async def test_recv_until_breaks_on_eof_without_spinning():
+    """A closed stream (readline returns b'') must exit immediately, not hot-loop."""
+    reader = _FakeReader([b":srv 322 me #room 0 :topic\r\n"], block_after=False)
+    writer = _CollectorWriter()
+    msgs = await _recv_until(reader, writer, {"323"})  # type: ignore[arg-type]
+    # We got the one line we had; EOF then triggered the break.
+    assert [m.command for m in msgs] == ["322"]
 
 
 # ---- _query_roommeta / _query_tags via stubbed reader -----------------------
