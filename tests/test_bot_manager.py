@@ -160,52 +160,49 @@ async def test_stop_unknown_bot(server):
 
 @pytest.mark.asyncio
 async def test_start_creates_http_listener(server, tmp_path, monkeypatch):
-    """`BotManager.start()` loads bots + system bots + binds HTTP listener."""
+    """`BotManager.start()` loads bots + system bots + binds a real HTTP listener.
+
+    Uses the real `HttpListener` against an OS-assigned port (the `server`
+    fixture sets `webhook_port=0`) and probes `/health` to confirm the
+    listener actually bound.
+    """
+    import aiohttp
+
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
 
-    started: list = []
-    stopped: list = []
-
-    class _FakeListener:
-        def __init__(self, mgr, host, port):
-            self.mgr = mgr
-            self.host = host
-            self.port = port
-
-        async def start(self):
-            started.append((self.host, self.port))
-
-        async def stop(self):
-            stopped.append(True)
-
-    monkeypatch.setattr("culture.bots.http_listener.HttpListener", _FakeListener)
-
     mgr = BotManager(server)
     await mgr.start()
-    assert started and started[0][0] == "127.0.0.1"
     assert mgr._http_listener is not None
+
+    # Confirm the listener actually bound by hitting /health.
+    bound_host = mgr._http_listener.host
+    bound_port = mgr._http_listener._runner.addresses[0][1]
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"http://{bound_host}:{bound_port}/health") as resp:
+            assert resp.status == 200
+
     await mgr.stop()
-    assert stopped == [True]
+    # After stop the runner is gone.
+    assert mgr._http_listener is None
 
 
 @pytest.mark.asyncio
 async def test_start_swallows_listener_oserror(server, tmp_path, monkeypatch, caplog):
-    """Listener bind failure (EADDRINUSE etc.) is logged, not fatal."""
+    """Listener bind failure (EADDRINUSE etc.) is logged, not fatal.
+
+    OSError can't be deterministically forced on a real `HttpListener`
+    without racing another process for a port, so we patch
+    `HttpListener.start` itself to raise. The rest of the manager flow
+    runs against the real `server` fixture.
+    """
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
 
-    class _BadListener:
-        def __init__(self, *a, **kw):
-            pass
+    async def _bad_start(self):
+        raise OSError("address already in use")
 
-        async def start(self):
-            raise OSError("address already in use")
-
-        async def stop(self):
-            return None
-
-    monkeypatch.setattr("culture.bots.http_listener.HttpListener", _BadListener)
+    monkeypatch.setattr("culture.bots.http_listener.HttpListener.start", _bad_start)
 
     mgr = BotManager(server)
     with caplog.at_level("WARNING"):

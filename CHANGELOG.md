@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.0.10] - 2026-05-13
+
+### Fixed
+
+- test_start_creates_http_listener now uses the real HttpListener against an OS-assigned port and probes /health to confirm the bind (Qodo)
+- test_start_swallows_listener_oserror retains the OSError-raising patch (forced because OSError cannot be deterministically reproduced on a real listener) but applies it at the HttpListener.start method seam instead of swapping the entire class
+
 ## [12.0.9] - 2026-05-13
 
 ### Added
