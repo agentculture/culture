@@ -73,18 +73,26 @@ async def test_ipc_request_socket_missing_returns_none(tmp_path):
 
 @pytest.mark.asyncio
 async def test_ipc_request_server_drops_returns_none(tmp_path):
-    """Peer closes without responding (EOF) → ipc_request returns None
-    promptly via the EOF guard in the read loop.
+    """Peer reads the request then closes without responding (EOF) →
+    `ipc_request` returns None promptly via the EOF guard in the read
+    loop (`if not data: return None`).
 
+    The handler reads the request first so the client's `drain()`
+    succeeds — that way the connection isn't broken on the write side,
+    and the client genuinely reaches `readline()` and sees b"" (EOF).
     Without the EOF guard `ipc_request` would busy-loop until its 15s
     deadline; this test wraps it in a 3s `wait_for` to pin that the
     early-return path is taken.
     """
     sock_path = tmp_path / "drop.sock"
 
-    async def handler(_reader, writer):
-        # Close immediately without writing a response → reader sees EOF.
-        writer.close()
+    async def handler(reader, writer):
+        # Read the client's request first so its write/drain succeeds,
+        # then close the writer to deliver EOF on the read side.
+        try:
+            await reader.readline()
+        finally:
+            writer.close()
 
     server = await asyncio.start_unix_server(handler, path=str(sock_path))
     try:
