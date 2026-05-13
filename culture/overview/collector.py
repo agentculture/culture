@@ -236,6 +236,8 @@ async def _recv_until(
         async with asyncio.timeout(RECV_TIMEOUT):
             while True:
                 data = await reader.readline()
+                if not data:
+                    break
                 line = data.decode().strip()
                 if not line:
                     continue

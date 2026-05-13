@@ -346,6 +346,16 @@ async def test_recv_until_skips_blank_lines_and_returns_on_timeout(monkeypatch):
     assert msgs == []
 
 
+@pytest.mark.asyncio
+async def test_recv_until_breaks_on_eof_without_spinning():
+    """A closed stream (readline returns b'') must exit immediately, not hot-loop."""
+    reader = _FakeReader([b":srv 322 me #room 0 :topic\r\n"], block_after=False)
+    writer = _CollectorWriter()
+    msgs = await _recv_until(reader, writer, {"323"})  # type: ignore[arg-type]
+    # We got the one line we had; EOF then triggered the break.
+    assert [m.command for m in msgs] == ["322"]
+
+
 # ---- _query_roommeta / _query_tags via stubbed reader -----------------------
 
 
