@@ -120,6 +120,26 @@ Note: this PR landed 0.3pp short of the original 80% target. The gap is absorbed
 - `culture/bots/bot.py` — 62% → **98%** (155 statements, 3 missing). 21 new tests appended to `tests/test_bot.py` covering `_DynamicEventType.__str__`, `_check_rate` (burst + release-after-window with pinned `time.monotonic`), `_render_data_values` (templated strings + non-string passthrough + sandbox-rejected dunder fall-through), `start()` idempotency, `handle()` empty-message short-circuit, `_resolve_channels` (dynamic-from-event + empty fallback + non-dict ctx), `_deliver` re-join branch when the channel was dropped, the full `_maybe_fire_event` matrix (happy enum-typed emit / dynamic-typed emit / no-spec early-return / invalid type regex skip / rate-limited skip / emit-raises log-and-swallow), and `_run_custom_handler` against a real `importlib.util` load (handler-on-disk happy / no `handle()` fallback / handler raises fallback / handler returns `None` → empty). The 3 missing lines are inside the `relative_to`-fails security guard that can't be reached without forging an out-of-tree path.
 - `culture/bots/bot_manager.py` — 65% → **99%** (175 statements, 1 missing). 24 new tests appended to `tests/test_bot_manager.py` covering `start()` listener wiring + crash-safe teardown when `load_bots` raises + `OSError` listener-bind swallow, `stop()` exception-tolerant listener teardown, `load_bots` (missing dir / dir-without-yaml / archived skip / invalid filter / malformed yaml exception swallow), `register_bot` filter compile-error raise, `_try_start_bot` (mid-start re-entrancy guard + start-fails log-and-return-false), `_matches_event` (non-event triggers / no compiled filter / evaluate raises), `_dispatch_to_bot` (try-start-fails short-circuit + handle-raises span error), `on_event` event matching, `start_bot` load-from-disk fallback + unknown-name raise, `stop_all` per-bot exception swallow, and `load_system_bots` (collision skip + register raises + server-config forwarding). The one remaining missing line is a single guard branch inside `_dispatch_to_bot`'s span context.
 
+### Phase 5 — Delete `culture/transport/` (2026-05-13)
+
+**Measured: 89.13%** (5669 statements, 616 missing) → `fail_under = 89`. Pivoted from backfill to deletion after auditing the file: `culture.transport.client.Client` was never instantiated in production (`agentirc.ircd.IRCd._handle_connection` imports `agentirc.client.Client`, not culture's copy), and the four `tests/telemetry/test_*.py` files that imported it were all isolation-style unit tests against the dead code — none of them exercised the production `IRCd` connection path.
+
+Pre-deletion audit confirmed `agentirc.client.Client` (in the installed `agentirc-cli` package) carries the same instrumentation hooks the deleted culture tests covered: `_submit_parse_error_audit` (line 182 upstream), the `irc.parse_error` span event (163), and traceparent injection on outbound `send` (95–116). The instrumentation is alive in production, just on the upstream side.
+
+`culture/transport/remote_client.py` was also deleted — `RemoteClient` is now `agentirc.remote_client.RemoteClient` and culture's copy was unused. The whole `culture/transport/` package is removed in this PR.
+
+Deletions:
+
+- `culture/transport/client.py` (569 statements, dead in production)
+- `culture/transport/remote_client.py` (18 statements, superseded by `agentirc.remote_client`)
+- `culture/transport/__init__.py` (4 statements)
+- `tests/telemetry/test_parse_error.py` (1 test)
+- `tests/telemetry/test_audit_parse_error.py` (4 tests)
+- `tests/telemetry/test_dispatch_span.py` (3 tests)
+- `tests/telemetry/test_outbound_inject.py` (4 tests)
+
+Net effect: project drops by 591 statements (6260 → 5669) and 12 tests (1292 → 1280); coverage jumps +5.2pp because the deleted slice was at 25% (424 missing / 569 stmts on `client.py` alone). The Phase 5 → 6 step is now a single +5.2pp move instead of two +3pp moves; Phase 6 picks up only the final +0.87pp to reach 90.
+
 ### Phase target table
 
 | Phase | Floor | Measured | PR | Status |
@@ -130,7 +150,6 @@ Note: this PR landed 0.3pp short of the original 80% target. The gap is absorbed
 | 3b | 73 | 73.40% | [#386](https://github.com/agentculture/culture/pull/386) | ✅ merged |
 | 3c | 77 | 77.30% | [#387](https://github.com/agentculture/culture/pull/387) | ✅ merged |
 | 4a | 79 | 79.68% | [#388](https://github.com/agentculture/culture/pull/388) | ✅ merged |
-| 4b | 83 | 83.93% | (this PR) | in flight |
-| 5 | 86 | — | `transport/client.py` (or its deletion) | pending |
-| 6 | 89 | — | Long tail | pending |
-| 7 | 90 | — | Final sweep | pending |
+| 4b | 83 | 83.93% | [#389](https://github.com/agentculture/culture/pull/389) | ✅ merged |
+| 5 | 89 | 89.13% | (this PR) | in flight |
+| 6 | 90 | — | Long tail — `credentials.py`, `pidfile.py`, `metrics.py`, `cli/__init__.py` | pending |

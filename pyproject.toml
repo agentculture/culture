@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "12.0.10"
+version = "12.1.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "MIT"
@@ -93,14 +93,15 @@ omit = [
 
 [tool.coverage.report]
 # Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
-# Phase 4b (2026-05-13): added tests for culture/observer.py (now 92%),
-# culture/overview/collector.py (now 98%), culture/bots/bot.py (now 98%),
-# culture/bots/bot_manager.py (now 99%). Project-wide measured: 83.93%
-# (rounds to 84 with cov-report's two-decimal rounding; floor uses the
-# unrounded floor(measured)). Phase 5 targets culture/transport/client.py
-# (currently 25%, largely dead post-cultureagent-extraction — re-evaluate
-# backfill vs. deletion).
-fail_under = 83
+# Phase 5 (2026-05-13): deleted culture/transport/ entirely. Both
+# `Client` (dead post-cultureagent-extraction; never instantiated in
+# production) and `RemoteClient` (superseded by agentirc.remote_client)
+# were redundant; the four isolation-style telemetry tests covering
+# culture's Client were deleted alongside (the agentirc.client.Client
+# carries the same parse-error-audit / dispatch-span / traceparent-inject
+# instrumentation in production). Project-wide measured: 89.13%.
+# Phase 6 targets the long-tail sweep to 90.
+fail_under = 89
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
