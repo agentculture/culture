@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.7] - 2026-05-14
+
+### Changed
+
+- Bump `irc-lens` floor `>=0.5.1` -> `>=0.5.3` and refresh `uv.lock` (0.5.1 -> 0.5.3). 0.5.3 is a CI-only release over 0.5.1 (no runtime change) -- a lockfile/pin freshness bump. Cloudflare Access SSO support for `culture console` landed upstream in irc-lens 0.5.x and was already reachable via the prior `>=0.5.1` floor.
+
 ## [12.1.6] - 2026-05-13
 
 ### Fixed
