@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.10] - 2026-05-18
+
+### Fixed
+
+- bots: address Qodo review of #399 — declare `_starting: bool = False` on `Bot.__init__` (replacing the dynamic `# type: ignore[attr-defined]` writes) and centralize the start-guard set/clear into a single `BotManager._starting_guard` context manager used by both `load_bots` and `_try_start_bot`.
+
 ## [12.1.9] - 2026-05-17
 
 ### Fixed
