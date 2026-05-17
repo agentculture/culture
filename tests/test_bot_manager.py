@@ -349,6 +349,80 @@ def test_register_bot_raises_on_invalid_filter(server, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_load_bots_sets_starting_guard_around_bot_start(
+    server,
+    tmp_path,
+    monkeypatch,
+):
+    """Regression for #317 — load_bots must set `_starting = True`
+    around `await bot.start()` so a synchronous on_event re-entry
+    (triggered by a user.join emitted from join_channel inside the same
+    start()) sees the guard and short-circuits via `_try_start_bot`.
+
+    Pre-fix: the guard was only set by `_try_start_bot`; `load_bots`
+    awaited `bot.start()` with no guard, so a re-entrant call from
+    `on_event → _dispatch_to_bot → _try_start_bot → bot.start()` would
+    trip the nick-collision check on the VirtualClient that the original
+    `start()` had already registered.
+
+    This test inspects state at the precise moment when `Bot.start()`
+    yields control — by monkeypatching `start()` to capture
+    `bot._starting` mid-flight. It also confirms `_try_start_bot` is a
+    no-op while the guard is set.
+    """
+    monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
+    monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
+    monkeypatch.setattr("culture.bots.config.BOTS_DIR", tmp_path)
+
+    cfg = BotConfig(
+        name="testserv-guard-probe",
+        owner="testserv-ori",
+        channels=["#guard"],
+        template="x",
+    )
+    save_bot_config(tmp_path / cfg.name / "bot.yaml", cfg)
+
+    mgr = BotManager(server)
+
+    captured: dict = {"starting_mid_call": None, "try_start_result": None}
+
+    from culture.bots.bot import Bot as _Bot
+
+    real_start = _Bot.start
+
+    async def probing_start(self):
+        # Re-entrant probe: simulate on_event walking bots and calling
+        # _try_start_bot on this same bot mid-start(). If load_bots didn't
+        # set the guard, _try_start_bot would await start() again and
+        # the nick-collision check would raise.
+        captured["starting_mid_call"] = getattr(self, "_starting", False)
+        if self in mgr.bots.values():
+            captured["try_start_result"] = await mgr._try_start_bot(self)
+        await real_start(self)
+
+    monkeypatch.setattr(_Bot, "start", probing_start)
+
+    await mgr.load_bots()
+
+    assert captured["starting_mid_call"] is True, (
+        "load_bots failed to set bot._starting=True around bot.start() — "
+        "re-entrant on_event dispatch can race the original start() call (#317)"
+    )
+    # While load_bots holds the guard, _try_start_bot must short-circuit
+    # to False rather than starting the bot a second time.
+    assert captured["try_start_result"] is False, (
+        "_try_start_bot did not honor the _starting guard set by load_bots; "
+        "this would let a second concurrent start() proceed."
+    )
+    assert cfg.name in mgr.bots
+    assert mgr.bots[cfg.name].active
+    # Guard cleared on the way out so a future _try_start_bot can run.
+    assert not getattr(mgr.bots[cfg.name], "_starting", False)
+
+    await mgr.stop_all()
+
+
+@pytest.mark.asyncio
 async def test_try_start_bot_idempotent_when_already_starting(server, tmp_path, monkeypatch):
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)

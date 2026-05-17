@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.10] - 2026-05-18
+
+### Fixed
+
+- bots: address Qodo review of #399 — declare `_starting: bool = False` on `Bot.__init__` (replacing the dynamic `# type: ignore[attr-defined]` writes) and centralize the start-guard set/clear into a single `BotManager._starting_guard` context manager used by both `load_bots` and `_try_start_bot`.
+
+## [12.1.9] - 2026-05-17
+
+### Fixed
+
+- bots: close `BotManager.load_bots` race against re-entrant `Bot.start()` (#317). The loader now sets `bot._starting=True` before the await and clears it in a `finally`, so `on_event` dispatches that fire mid-start (e.g. a `user.join` from this bot's own `join_channel`) short-circuit via `_try_start_bot`'s existing guard instead of re-entering `Bot.start()` and tripping the nick-collision check.
+
 ## [12.1.7] - 2026-05-14
 
 ### Changed

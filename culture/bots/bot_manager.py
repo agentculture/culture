@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from opentelemetry import trace as _otel_trace
@@ -87,6 +88,23 @@ class BotManager:
             self._http_listener = None
         await self.stop_all()
 
+    @staticmethod
+    @contextmanager
+    def _starting_guard(bot: Bot):
+        """Mark ``bot`` as starting so a re-entrant ``_try_start_bot`` short-circuits.
+
+        Set before awaiting ``Bot.start()`` and cleared in ``finally`` so an
+        event fired mid-start (e.g. ``user.join`` from this bot's own
+        ``join_channel``) can't loop back into ``Bot.start()`` from
+        ``on_event`` and trip the "Nick already in use" check on the
+        ``VirtualClient`` this same call already registered. Closes #317.
+        """
+        bot._starting = True
+        try:
+            yield
+        finally:
+            bot._starting = False
+
     async def load_bots(self) -> None:
         """Scan ~/.culture/bots/ and load all bot definitions."""
         if not BOTS_DIR.is_dir():
@@ -110,7 +128,8 @@ class BotManager:
                         continue
                 bot = Bot(config, self.server)
                 self.bots[config.name] = bot
-                await bot.start()
+                with self._starting_guard(bot):
+                    await bot.start()
                 logger.info("Loaded bot %s", config.name)
             except Exception:
                 logger.exception("Failed to load bot from %s", bot_dir)
@@ -130,17 +149,15 @@ class BotManager:
         """Lazily start a bot on first matching event. Returns True if ready."""
         if bot.active:
             return True
-        if getattr(bot, "_starting", False):
+        if bot._starting:
             return False
-        bot._starting = True  # type: ignore[attr-defined]
-        try:
-            await bot.start()
-            return True
-        except Exception:
-            logger.exception("Bot %s failed to start", bot.config.name)
-            return False
-        finally:
-            bot._starting = False  # type: ignore[attr-defined]
+        with self._starting_guard(bot):
+            try:
+                await bot.start()
+                return True
+            except Exception:
+                logger.exception("Bot %s failed to start", bot.config.name)
+                return False
 
     async def on_event(self, event) -> None:
         """Evaluate event-triggered bots against an event and dispatch matches."""

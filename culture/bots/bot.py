@@ -78,6 +78,11 @@ class Bot:
         self.server = server
         self.virtual_client: VirtualClient | None = None
         self.active: bool = False
+        # Set by BotManager while awaiting start() so a nested event
+        # dispatch can't re-enter Bot.start() and trip the nick-already-in-use
+        # check against the VirtualClient this same call already registered.
+        # See BotManager._starting_guard / _try_start_bot. Closes #317.
+        self._starting: bool = False
 
     @property
     def name(self) -> str:
