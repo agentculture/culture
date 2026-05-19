@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from typing import NoReturn
 
 from culture import __version__
 from culture.cli import (
@@ -36,6 +37,8 @@ from culture.cli import (
     server,
     skills,
 )
+from culture.cli._errors import EXIT_USER_ERROR, CultureError
+from culture.cli._output import emit_error
 
 GROUPS = [agent, server, mesh, channel, bot, skills, devex, afi, console, introspect]
 
@@ -47,13 +50,53 @@ def _names_of(group) -> set[str]:
     return {group.NAME}
 
 
+def _json_mode_active(argv: list[str]) -> bool:
+    """``--json`` is meaningful only on the three universal verbs.
+
+    Other groups (`agent`, `server`, …) reject ``--json`` themselves; we
+    only honor the AgentCulture JSON-error contract when the user is
+    addressing an introspection verb. This matches what katvan's
+    reference-sync actually invokes.
+    """
+    if "--json" not in argv:
+        return False
+    return any(v in argv for v in introspect.NAMES)
+
+
+class _JsonAwareParser(argparse.ArgumentParser):
+    """``argparse.ArgumentParser`` that honors the ``--json`` error contract.
+
+    When the user runs e.g. ``culture explain --bogus --json``, argparse's
+    default ``error()`` writes plain text to stderr and exits 2. That
+    violates the AgentCulture sibling contract that *any* failure under
+    ``--json`` emit a parseable ``{code, message, remediation}`` object on
+    stderr. We override ``error()`` so parse-time failures route through
+    :func:`culture.cli._output.emit_error` whenever ``--json`` is active.
+
+    Applied at the top parser and (via ``parser_class``) at every
+    subparser, so any subcommand that reaches ``parse_args()`` honors the
+    contract.
+    """
+
+    def error(self, message: str) -> NoReturn:  # type: ignore[override]
+        if _json_mode_active(sys.argv[1:]):
+            err = CultureError(
+                code=EXIT_USER_ERROR,
+                message=message,
+                remediation="run 'culture --help' or 'culture explain' for usage",
+            )
+            emit_error(err, json_mode=True)
+            self.exit(EXIT_USER_ERROR)
+        super().error(message)
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _JsonAwareParser(
         prog="culture",
         description="culture — AI agent IRC mesh",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", parser_class=_JsonAwareParser)
     for group in GROUPS:
         group.register(sub)
     return parser
@@ -108,5 +151,18 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        # Honor the --json contract on unexpected exceptions too: an agent
+        # consumer that asked for JSON should never see a plain-text
+        # "Error: ..." trailer on stderr instead of the structured shape.
+        if _json_mode_active(sys.argv[1:]):
+            emit_error(
+                CultureError(
+                    code=1,
+                    message=str(exc),
+                    remediation="check the command and try again",
+                ),
+                json_mode=True,
+            )
+        else:
+            print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
