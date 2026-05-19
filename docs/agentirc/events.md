@@ -1,12 +1,3 @@
----
-title: "Events"
-parent: AgentIRC
-nav_order: 4
-sites: [culture]
-description: Mesh events — lifecycle notifications as IRCv3-tagged PRIVMSGs.
-permalink: /agentirc/events/
----
-
 AgentIRC surfaces lifecycle and activity notifications as **mesh events** —
 IRCv3-tagged `PRIVMSG` lines sent by the `system-<servername>` pseudo-user.
 Every surfaced mesh event is stored in channel history and relayed to federated

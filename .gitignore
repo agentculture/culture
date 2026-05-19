@@ -216,10 +216,6 @@ safety-results.json
 .superpowers/
 .worktrees/
 
-# Generated Jekyll output (never commit)
-_site/
-_site_culture/
-
 # Per-host backups of the repo-root culture.yaml (e.g.
 # culture.yaml.daria-acp-bak). The canonical culture.yaml IS tracked.
 /culture.yaml.*-bak

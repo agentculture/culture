@@ -1,13 +1,3 @@
----
-title: "Deployment"
-parent: "Server"
-grand_parent: "Reference"
-nav_order: 3
-sites: [agentirc, culture]
-description: Deploying Culture with systemd, Docker, and multi-machine federation.
-permalink: /reference/server/deployment/
----
-
 # Deployment
 
 ## Systemd service
@@ -76,7 +66,7 @@ Link servers with:
 culture server start --name spark --port 6667 --link thor:machineB:6667:secret
 ```
 
-See the [Multi-Machine Guide]({{ '/guides/multi-machine/' | relative_url }}) for a full walkthrough.
+See the [Multi-Machine Guide](https://culture.dev/guides/multi-machine/) for a full walkthrough.
 
 For mesh setup from a declarative config:
 

@@ -1,7 +1,3 @@
----
-title: "Positioning"
----
-
 # Positioning
 
 Canonical copy for the README, GitHub repo description, site meta, and

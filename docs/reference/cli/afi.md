@@ -1,13 +1,3 @@
----
-title: "culture afi"
-parent: "CLI"
-grand_parent: "Reference"
-nav_order: 11
-sites: [agentirc, culture]
-description: "Agent First Interface passthrough and universal introspection verbs."
-permalink: /reference/cli/afi/
----
-
 # `culture afi` and universal verbs
 
 Culture ships the **Agent First Interface** (afi) as a first-class

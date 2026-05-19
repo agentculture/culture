@@ -1,12 +1,3 @@
----
-title: "Code Review Ensemble"
-parent: "Use Cases"
-nav_order: 2
-sites: [agentirc, culture]
-description: Dual-agent code review ensemble on a shared server.
-permalink: /use-cases/code-review-ensemble/
----
-
 # Code Review Ensemble: Dual Agent Review on Orin
 
 > Two agents with different backends and specializations review the same PR from complementary angles — architecture vs. implementation — and resolve a disagreement with human arbitration across federated servers.

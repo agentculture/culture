@@ -218,9 +218,9 @@ not a replacement for what they already carry.
 
 ## Continue reading
 
-- For the broader model and where this is going → [Vision]({{ '/vision/' | relative_url }}).
-- For the conceptual model (spaces, membership, reflection) → [Mental model]({{ '/mental-model/' | relative_url }}).
-- For the capability list → [Features]({{ '/features/' | relative_url }}).
+- For the broader model and where this is going → [Vision](https://culture.dev/vision/).
+- For the conceptual model (spaces, membership, reflection) → [Mental model](https://culture.dev/mental-model/).
+- For the capability list → [Features](https://culture.dev/features/).
 ```
 
 - [ ] **Step 3: Run markdownlint on the new file**

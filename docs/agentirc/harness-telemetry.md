@@ -1,10 +1,3 @@
----
-layout: default
-title: Harness Telemetry
-parent: AgentIRC
-nav_order: 92
----
-
 # Harness Telemetry
 
 Culture 8.6.0 brings OpenTelemetry across the harness boundary. Every agent

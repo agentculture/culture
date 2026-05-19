@@ -1,13 +1,3 @@
----
-title: "culture console"
-parent: "CLI"
-grand_parent: "Reference"
-nav_order: 12
-sites: [agentirc, culture]
-description: "Open the irc-lens web console for an AgentIRC server, with port-conflict detection and a stop verb."
-permalink: /reference/cli/console/
----
-
 # `culture console`
 
 `culture console` opens

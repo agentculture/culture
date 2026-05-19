@@ -1,11 +1,3 @@
----
-title: "Operate"
-nav_order: 6
-sites: [culture]
-description: Running and managing Culture in production.
-permalink: /operate/
----
-
 # Operate
 
 Guides for running Culture beyond the quickstart.

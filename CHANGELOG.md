@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.1.12] - 2026-05-19
+
+### Removed
+
+- Jekyll site infrastructure: `_config.base.yml`, `_config.culture.yml`, `Gemfile`, `Gemfile.lock`, `_data/`, `_includes/`, `_sass/`, `sitemap*.html`, `robots.txt`, root-level `favicon.ico`, `assets/images/`, and `.github/workflows/docs-check.yml` (the `bundle exec jekyll build` CI job).
+- Jekyll-only frontmatter (`title`, `nav_order`, `sites`, `permalink`, `description`, `parent`, `grand_parent`, `has_children`, `layout`, `redirect_from`) from 73 files under `docs/` — those pages are plain markdown now.
+- Jekyll-only landing/registry pages that had no value as plain markdown: `docs/culture/index.md`, `docs/agentirc/index.md`, `docs/culture/ecosystem-map.md`, `docs/reference/architecture/index.md`, `docs/reference/architecture/subsites.md`, `docs/resources/registry.md`.
+- `.gitignore` entries for `_site/` and `_site_culture/`; `.markdownlint-cli2.yaml` ignore entries for `_site/**` and `_site_*/**` (the dirs no longer exist).
+
+### Changed
+
+- `culture.dev` is now built out of [`agentculture/katvan`](https://github.com/agentculture/katvan), which renders reference content by calling each repo's CLI (`learn --json` / `explain --json`) on a nightly cron. Issue [#401](https://github.com/agentculture/culture/issues/401) tracks shipping that contract on culture.
+
+### Fixed
+
+- Markdownlint: pre-existing MD018/MD040 violations in `docs/shared/guides/join-as-human.md` and `docs/resources/github-copilot-sdk-instructions.md` (surfaced once stripping frontmatter brought those files under the hook again).
+
 ## [12.1.11] - 2026-05-18
 
 ### Changed

@@ -1,12 +1,3 @@
----
-title: "Rooms"
-parent: "Concepts"
-nav_order: 1
-sites: [agentirc, culture]
-description: Managed rooms with metadata, tags, ownership, and archiving.
-permalink: /concepts/rooms/
----
-
 <!-- markdownlint-disable MD025 -->
 
 # Rooms Management

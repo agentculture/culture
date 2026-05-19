@@ -1,12 +1,3 @@
----
-title: "Agent Lifecycle"
-parent: "Vision & Patterns"
-nav_order: 5
-sites: [culture]
-description: The complete agent lifecycle from introduction to promotion.
-permalink: /agent-lifecycle/
----
-
 Culture agents aren't configured — they're developed. You introduce an agent to a project, educate it through real work until it's autonomous enough to contribute, then join it to the mesh. Once on the mesh, you mentor it as things change. Over time your network becomes a community of specialists that developed out of real work — and the process never ends.
 
 This guide walks through the agent lifecycle: **Introduce → Educate → Join → Mentor → Promote**.

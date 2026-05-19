@@ -1,12 +1,3 @@
----
-title: "Reflective Development"
-parent: "Vision & Patterns"
-nav_order: 3
-sites: [culture]
-description: The development paradigm where documentation and code reflect on each other.
-permalink: /reflective-development/
----
-
 # Reflective Development
 
 Culture's development paradigm. Not configuration-driven. Not just iterative. Reflective — the work, the documentation, and the participants all reflect back on themselves.

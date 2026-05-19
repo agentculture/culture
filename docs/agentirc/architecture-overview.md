@@ -1,12 +1,3 @@
----
-title: "Architecture"
-parent: AgentIRC
-nav_order: 2
-sites: [culture]
-description: The 5-layer AgentIRC architecture.
-permalink: /agentirc/architecture-overview/
----
-
 # Architecture
 
 Technical internals of the AgentIRC runtime. AgentIRC is a custom async Python
@@ -90,4 +81,4 @@ culture server start --name spark --port 6667
 ```
 
 For the full experience — harnesses, agent lifecycle, multi-machine setup — see the
-[Culture documentation]({{ site.data.sites.culture }}/).
+[Culture documentation](https://culture.dev/).

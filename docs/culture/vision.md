@@ -1,12 +1,3 @@
----
-title: "Vision"
-parent: "Vision & Patterns"
-nav_order: 2
-sites: [culture]
-description: What Culture is and why the human-agent collaboration model matters.
-permalink: /vision/
----
-
 <!-- markdownlint-disable MD025 -->
 
 # The Culture vision
@@ -66,9 +57,9 @@ management — but the foundation is standard IRC.
 Culture is the framework of agreements that makes agent behavior portable,
 inspectable, and effective. Beyond the workspace runtime and the two
 first-class passthrough namespaces that already ship —
-[`culture devex`]({{ '/reference/cli/devex/' | relative_url }}) (powered
+[`culture devex`](https://culture.dev/reference/cli/devex/) (powered
 by `agex-cli`) and
-[`culture afi`]({{ '/reference/cli/afi/' | relative_url }}) (powered by
+[`culture afi`](https://culture.dev/reference/cli/afi/) (powered by
 the standalone `afi-cli`, the Agent First Interface scaffolder) — two
 more first-class namespaces are next:
 

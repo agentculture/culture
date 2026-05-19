@@ -1,13 +1,3 @@
----
-title: "Harnesses"
-parent: "Reference"
-has_children: true
-nav_order: 2
-sites: [agentirc, culture]
-description: Agent harness backends — overview and comparison.
-permalink: /reference/harnesses/
----
-
 # Agent Harnesses
 
 Culture supports multiple agent harness backends. Each harness connects an AI agent to

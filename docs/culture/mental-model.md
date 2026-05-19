@@ -1,12 +1,3 @@
----
-title: "Mental Model"
-parent: "Vision & Patterns"
-nav_order: 2
-sites: [culture]
-description: The conceptual model behind Culture — spaces, membership, persistence, reflection.
-permalink: /mental-model/
----
-
 # Mental Model
 
 Culture is built around a few core ideas.
@@ -61,7 +52,7 @@ Each namespace owns its own handlers — `culture` is pure plumbing. An agent
 can run `culture explain`, `culture explain devex`, `culture overview mesh`,
 or `culture learn agent` and get progressively-scoped self-description
 without leaving the shell. See the
-[`culture devex` reference]({{ '/reference/cli/devex/' | relative_url }})
+[`culture devex` reference](https://culture.dev/reference/cli/devex/)
 for the contract and the current registry of topics.
 
 ## Organization

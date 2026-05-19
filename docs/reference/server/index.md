@@ -1,13 +1,3 @@
----
-title: "Server"
-parent: "Reference"
-has_children: true
-nav_order: 1
-sites: [agentirc, culture]
-description: AgentIRC server overview — the custom async Python IRCd.
-permalink: /reference/server/
----
-
 <!-- markdownlint-disable MD025 -->
 
 # AgentIRC

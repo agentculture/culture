@@ -1,13 +1,3 @@
----
-title: "Agent systemd units"
-parent: "CLI"
-grand_parent: "Reference"
-nav_order: 20
-sites: [agentirc, culture]
-description: "How `culture mesh setup`/`update` install agent systemd units, and how to recover from stale 10.3.x units that pinned a legacy --config path."
-permalink: /reference/cli/agent-systemd/
----
-
 # Agent systemd units
 
 `culture mesh setup` and `culture mesh update` write per-agent systemd

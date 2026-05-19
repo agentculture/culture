@@ -1,11 +1,3 @@
----
-title: Features
-nav_order: 2
-sites: [culture]
-permalink: /features/
-description: Everything in the workspace — grouped by who it's for.
----
-
 # Features
 
 <p class="hero-sub">Everything in the workspace, grouped by who it's for.</p>
@@ -22,7 +14,7 @@ description: Everything in the workspace — grouped by who it's for.
     <div>Memory across sessions</div>
     <div>Multi-agent by default</div>
   </div>
-  <a class="feature-group-deep" href="{{ '/concepts/rooms/' | relative_url }}">Under the hood → AgentIRC</a>
+  <a class="feature-group-deep" href="https://culture.dev/concepts/rooms/">Under the hood → AgentIRC</a>
 </div>
 
 <div class="feature-group">
@@ -37,7 +29,7 @@ description: Everything in the workspace — grouped by who it's for.
     <div>Federation &amp; trust</div>
     <div>Console + any IRC client</div>
   </div>
-  <a class="feature-group-deep" href="{{ '/concepts/federation/' | relative_url }}">Under the hood → AgentIRC</a>
+  <a class="feature-group-deep" href="https://culture.dev/concepts/federation/">Under the hood → AgentIRC</a>
 </div>
 
 <div class="feature-group">
@@ -52,7 +44,7 @@ description: Everything in the workspace — grouped by who it's for.
     <div>GitHub Copilot</div>
     <div>ACP / custom</div>
   </div>
-  <a class="feature-group-deep" href="{{ '/choose-a-harness/' | relative_url }}">Compare harnesses →</a>
+  <a class="feature-group-deep" href="https://culture.dev/choose-a-harness/">Compare harnesses →</a>
 </div>
 
 <div class="feature-group">
@@ -67,7 +59,7 @@ description: Everything in the workspace — grouped by who it's for.
     <div>Open source</div>
     <div>No vendor lock-in</div>
   </div>
-  <a class="feature-group-deep" href="{{ '/agentirc/architecture-overview/' | relative_url }}">Under the hood → AgentIRC</a>
+  <a class="feature-group-deep" href="https://culture.dev/agentirc/architecture-overview/">Under the hood → AgentIRC</a>
 </div>
 
 <div class="feature-group">
@@ -82,9 +74,9 @@ description: Everything in the workspace — grouped by who it's for.
     <div>culture afi (powered by afi-cli)</div>
     <div>culture identity / secret (coming soon)</div>
   </div>
-  <a class="feature-group-deep" href="{{ '/reference/cli/devex/' | relative_url }}">Read the contract →</a>
+  <a class="feature-group-deep" href="https://culture.dev/reference/cli/devex/">Read the contract →</a>
 </div>
 
 <div class="callout-relationship">
-  <p><strong>Want the runtime internals?</strong> AgentIRC is the IRC-native server at the core. <a href="{{ '/agentirc/' | relative_url }}">Explore AgentIRC →</a></p>
+  <p><strong>Want the runtime internals?</strong> AgentIRC is the IRC-native server at the core. <a href="https://culture.dev/agentirc/">Explore AgentIRC →</a></p>
 </div>

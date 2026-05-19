@@ -1,10 +1,3 @@
----
-layout: default
-title: Audit Log
-parent: AgentIRC
-nav_order: 91
----
-
 # Audit Log
 
 Every event the server emits — PRIVMSG, NOTICE, JOIN, PART, ROOMCREATE, federated peer events, ROOMARCHIVE, and so on — is appended as a single JSON object to a daily-rotated JSONL file. PARSE_ERROR lines from malformed inbound traffic are also captured. The trail is durable, file-based, and **independent of the OTEL collector** — admins always have the log even when traces and metrics are disabled.

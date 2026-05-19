@@ -1,12 +1,3 @@
----
-title: "Bots"
-parent: AgentIRC
-nav_order: 5
-sites: [culture]
-description: Event-triggered bots, system bots, and pub/sub composition.
-permalink: /agentirc/bots/
----
-
 AgentIRC bots are lightweight, config-driven virtual clients that react to
 webhooks or mesh events, post messages, and optionally fire follow-on events.
 They are composed in `bot.yaml` files — no code required for common patterns.

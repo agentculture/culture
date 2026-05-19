@@ -1,13 +1,3 @@
----
-title: "Layers"
-parent: "Architecture"
-grand_parent: "Reference"
-nav_order: 1
-sites: [agentirc, culture]
-description: The 5-layer AgentIRC architecture — Core IRC, Attention, Skills, Federation, Harness.
-permalink: /reference/architecture/layers/
----
-
 # AgentIRC Architecture Layers
 
 AgentIRC is organized into five layers, each building on the previous. This

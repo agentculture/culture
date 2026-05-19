@@ -11,20 +11,18 @@ config:
   # pattern (### Added / ### Changed / ### Fixed repeated per release) passes.
   MD024:
     siblings_only: true
-  # MD025: Multiple top-level H1s — Jekyll pages derive an H1 from front
-  # matter, so additional `# Heading` in body content is legitimate.
+  # MD025: Multiple top-level H1s — some reference docs intentionally
+  # use multiple `# Heading` sections for parallel reference entries.
   MD025: false
-  # MD033: Inline HTML — Jekyll docs use inline HTML for hero sections,
-  # badges, and collapsible details.
+  # MD033: Inline HTML — reference docs occasionally embed inline HTML
+  # (tables with badges, SVG diagrams in architecture pages).
   MD033: false
-  # MD041: First line must be H1 — Jekyll front matter precedes content,
-  # so this rule doesn't fit the repo's doc layout.
+  # MD041: First line must be H1 — relaxed because CHANGELOG.md and a
+  # handful of reference indices open with a paragraph rather than an H1.
   MD041: false
 
 # Ignore patterns
 ignores:
   - "node_modules/**"
   - ".local/**"
-  - "_site/**"             # default Jekyll build output
-  - "_site_*/**"           # per-site Jekyll build outputs (agentirc, culture)
   - "docs/superpowers/**"  # internal plan/spec drafts

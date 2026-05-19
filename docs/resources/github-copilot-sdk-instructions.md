@@ -20,7 +20,7 @@ Available in **Node.js/TypeScript**, **Python**, **Go**, and **.NET**. All SDKs 
 
 ## Architecture
 
-```
+```text
 Your Application
        ↓
   SDK Client (language-specific)

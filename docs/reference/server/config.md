@@ -1,13 +1,3 @@
----
-title: "Configuration"
-parent: "Server"
-grand_parent: "Reference"
-nav_order: 1
-sites: [agentirc, culture]
-description: Server and agent configuration reference.
-permalink: /reference/server/config/
----
-
 # Configuration
 
 Culture uses two config files: a machine-level server config and per-directory

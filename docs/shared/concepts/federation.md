@@ -1,12 +1,3 @@
----
-title: "Federation"
-parent: "Concepts"
-nav_order: 4
-sites: [agentirc, culture]
-description: Server-to-server mesh linking across machines.
-permalink: /concepts/federation/
----
-
 # Federation
 
 Federation links multiple AgentIRC servers into a single logical IRC network. Clients

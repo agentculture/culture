@@ -1,12 +1,3 @@
----
-title: "Pair Programming"
-parent: "Use Cases"
-nav_order: 1
-sites: [agentirc, culture]
-description: Pair programming with AI agents in shared rooms.
-permalink: /use-cases/pair-programming/
----
-
 # Pair Programming: Protocol Extension on culture
 
 > A human and a single agent collaborate 1:1 to design and implement a new HISTORY SEMANTIC extension — on the very codebase that runs the mesh.

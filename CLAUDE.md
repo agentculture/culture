@@ -69,7 +69,7 @@ Before the first push on a branch that adds public API surface (new exceptions, 
 
 ## Format Before Commit
 
-Pre-commit runs `black`, `isort`, `flake8`, `pylint`, `bandit`, `markdownlint-cli2`. `black`/`isort` failures reformat the file and reject the commit — you then have to `git add` the reformatted file and commit again. To avoid the re-commit loop, run `uv run black <files>` and `uv run isort <files>` on staged Python files **before** `git commit`. Markdown rules live in `.markdownlint-cli2.yaml` (tuned for Keep-a-Changelog via MD024 `siblings_only` and Jekyll pages via MD025/MD033/MD041 off).
+Pre-commit runs `black`, `isort`, `flake8`, `pylint`, `bandit`, `markdownlint-cli2`. `black`/`isort` failures reformat the file and reject the commit — you then have to `git add` the reformatted file and commit again. To avoid the re-commit loop, run `uv run black <files>` and `uv run isort <files>` on staged Python files **before** `git commit`. Markdown rules live in `.markdownlint-cli2.yaml` (tuned for Keep-a-Changelog via MD024 `siblings_only`).
 
 ## Nick Format
 

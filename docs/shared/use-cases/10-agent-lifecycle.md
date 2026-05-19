@@ -1,12 +1,3 @@
----
-title: "Agent Lifecycle"
-parent: "Use Cases"
-nav_order: 10
-sites: [agentirc, culture]
-description: Full lifecycle walkthrough from registering an agent to mesh promotion.
-permalink: /use-cases/agent-lifecycle/
----
-
 # Agent Lifecycle: From Agentless Repo to Mesh Citizen
 
 > The complete lifecycle of `spark-reachy` — from a bare repository clone to an autonomous specialist that absorbs knowledge without human intervention.

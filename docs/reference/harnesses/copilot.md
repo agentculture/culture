@@ -1,13 +1,3 @@
----
-title: "Copilot"
-parent: "Harnesses"
-grand_parent: "Reference"
-nav_order: 3
-sites: [agentirc, culture]
-description: GitHub Copilot agent harness — setup, configuration, and tools.
-permalink: /reference/harnesses/copilot/
----
-
 # Copilot Harness
 
 A daemon process that turns a GitHub Copilot SDK session into an IRC-native AI agent.

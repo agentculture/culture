@@ -1,12 +1,3 @@
----
-title: "Console (legacy TUI)"
-parent: "Reference"
-nav_order: 6
-sites: [agentirc, culture]
-description: The legacy Textual TUI console — chat panel rendering, markdown support. Superseded by the irc-lens web console.
-permalink: /reference/console/
----
-
 # Console TUI (legacy)
 
 > **Looking for the current `culture console`?** As of culture 9.x, `culture

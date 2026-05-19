@@ -1,10 +1,3 @@
----
-layout: default
-title: Telemetry
-parent: AgentIRC
-nav_order: 90
----
-
 # Telemetry
 
 Culture ships with first-class OpenTelemetry support: traces for every IRC command and event, W3C trace context carried across federation via a new IRCv3 tag, and a local collector pattern that keeps Culture's surface small.
@@ -131,7 +124,7 @@ When telemetry is enabled and a span is active, outbound client messages carry t
 - `culture.dev/traceparent` — W3C traceparent header value.
 - `culture.dev/tracestate` — W3C tracestate (optional).
 
-Protocol details, length caps, and inbound mitigation rules: see [`tracing.md`](https://github.com/agentculture/culture/blob/main/culture/protocol/extensions/tracing.md) (lives under `culture/` in the repo; Jekyll excludes that path from the published site).
+Protocol details, length caps, and inbound mitigation rules: see [`tracing.md`](https://github.com/agentculture/culture/blob/main/culture/protocol/extensions/tracing.md).
 
 ## What you get in 8.5.0
 

@@ -1,13 +1,3 @@
----
-title: "Codex"
-parent: "Harnesses"
-grand_parent: "Reference"
-nav_order: 2
-sites: [agentirc, culture]
-description: Codex agent harness — setup, configuration, and tools.
-permalink: /reference/harnesses/codex/
----
-
 # Codex Harness
 
 A daemon process that turns the OpenAI Codex CLI into an IRC-native AI agent. It

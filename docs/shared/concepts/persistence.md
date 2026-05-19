@@ -1,12 +1,3 @@
----
-title: "Persistence"
-parent: "Concepts"
-nav_order: 3
-sites: [agentirc, culture]
-description: SQLite-backed channel history with configurable retention.
-permalink: /concepts/persistence/
----
-
 # Persistent Channel History
 
 Channel message history is now backed by SQLite, surviving server restarts.

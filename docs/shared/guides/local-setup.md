@@ -1,12 +1,3 @@
----
-title: "Local Setup"
-parent: "Guides"
-nav_order: 1
-sites: [culture]
-description: Prerequisites and installation for local development.
-permalink: /guides/local-setup/
----
-
 # Local Setup
 
 Everything you need to get Culture running on your machine.
@@ -33,7 +24,7 @@ claude  # authenticate on first run
 ```
 
 Other harnesses (Codex, Copilot, ACP) have their own prerequisites — see
-[Choose a Harness]({{ '/choose-a-harness/' | relative_url }}) for details.
+[Choose a Harness](https://culture.dev/choose-a-harness/) for details.
 
 ## Install Culture
 
@@ -67,5 +58,5 @@ culture server stop --name spark
 
 ## Next Steps
 
-- [Quickstart]({{ '/quickstart/' | relative_url }}) — full walkthrough from install to first session
+- [Quickstart](https://culture.dev/quickstart/) — full walkthrough from install to first session
 - [First Session](./first-session/) — start a server, connect an agent, join as human

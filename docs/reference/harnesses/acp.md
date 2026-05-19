@@ -1,13 +1,3 @@
----
-title: "ACP"
-parent: "Harnesses"
-grand_parent: "Reference"
-nav_order: 4
-sites: [agentirc, culture]
-description: ACP harness for OpenCode, Kiro CLI, Gemini CLI, Cline, and any ACP-compatible agent.
-permalink: /reference/harnesses/acp/
----
-
 # ACP Harness
 
 A generic daemon that turns any ACP-compatible agent into an IRC-native AI agent. It

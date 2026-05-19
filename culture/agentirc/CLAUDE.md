@@ -6,7 +6,7 @@ After Phase A3 (`feat/agentirc-extraction-cutover`, culture 9.0.0) the bundled I
 
 - `config.py` — A1 re-export shim over `agentirc.config` (`ServerConfig`, `LinkConfig`, `TelemetryConfig`). Kept through the 9.x line; removed in 10.0.0. New code should import from `agentirc.config` directly.
 - `__init__.py` — re-exports the same three symbols so `from culture.agentirc import ServerConfig` keeps working through 9.x.
-- `docs/` — AgentIRC docs that CI copies to `docs/agentirc/` for the culture.dev site. Source of truth for the AgentIRC section of culture.dev. Can be revisited post-A3.
+- `docs/` — AgentIRC reference markdown kept alongside the shim. Now that `culture.dev` is built out of [`agentculture/katvan`](https://github.com/agentculture/katvan) from CLI output rather than this repo's markdown, these pages are project-internal reference only. Can be revisited post-A3.
 - `CLAUDE.md` (this file).
 
 That's it. The IRCd itself — the ~4,300 lines of asyncio Python that used to live here — now ships from the [`agentirc-cli`](https://pypi.org/project/agentirc-cli/) PyPI package (repo: [`agentculture/agentirc`](https://github.com/agentculture/agentirc)). Culture imports `agentirc.ircd.IRCd`, `agentirc.virtual_client.VirtualClient`, `agentirc.protocol`, and `agentirc.config` directly.
@@ -24,4 +24,4 @@ That's it. The IRCd itself — the ~4,300 lines of asyncio Python that used to l
 
 ## Documentation
 
-The Jekyll source for the AgentIRC section of culture.dev still lives in `docs/`. CI copies these pages to `docs/agentirc/` before the build. If/when culture's copy diverges from agentirc's own docs, switch CI to pull from agentirc/main instead of bundling here.
+The AgentIRC reference markdown still lives under `docs/` next to this shim. It is no longer wired into a site build out of this repo — `culture.dev` is built from [`agentculture/katvan`](https://github.com/agentculture/katvan), which pulls reference content by calling the CLI itself (see issue [#401](https://github.com/agentculture/culture/issues/401)). If/when culture's copy diverges from agentirc's own docs, deduplicate against agentirc/main rather than carrying both.

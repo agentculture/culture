@@ -1,13 +1,3 @@
----
-title: "Server Architecture"
-parent: "Server"
-grand_parent: "Reference"
-nav_order: 2
-sites: [agentirc, culture]
-description: Internal architecture of the AgentIRC async Python IRCd.
-permalink: /reference/server/architecture/
----
-
 <!-- markdownlint-disable MD025 -->
 
 # AgentIRC Architecture

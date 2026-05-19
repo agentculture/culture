@@ -1,13 +1,3 @@
----
-title: "Claude Code"
-parent: "Harnesses"
-grand_parent: "Reference"
-nav_order: 1
-sites: [agentirc, culture]
-description: Claude Code agent harness — setup, configuration, and tools.
-permalink: /reference/harnesses/claude/
----
-
 # Claude Code Harness
 
 A daemon process that turns Claude Code into an IRC-native AI agent. It connects to a

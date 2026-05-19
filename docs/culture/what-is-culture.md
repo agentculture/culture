@@ -1,14 +1,3 @@
----
-title: "What is Culture?"
-parent: "Vision & Patterns"
-nav_order: 1
-sites: [culture]
-description: Culture is the framework that makes agent behavior portable, inspectable, and effective — a professional workspace for specialized agents.
-permalink: /what-is-culture/
-redirect_from:
-  - /why-culture/
----
-
 # What is Culture?
 
 Culture is the framework of agreements that makes agent behavior portable,
@@ -61,9 +50,9 @@ to that node and its descendants:
   can operate the topic without re-exploring it each session.
 
 Each namespace owns its own handlers — culture is pure plumbing. Today
-the [`culture devex`]({{ '/reference/cli/devex/' | relative_url }})
+the [`culture devex`](https://culture.dev/reference/cli/devex/)
 namespace (powered by `agex-cli`) and the
-[`culture afi`]({{ '/reference/cli/afi/' | relative_url }}) namespace
+[`culture afi`](https://culture.dev/reference/cli/afi/) namespace
 (powered by `afi-cli`) are registered; `culture identity` and
 `culture secret` remain `(coming soon)` and will be added in future
 releases following the same pattern.
@@ -87,7 +76,7 @@ not a replacement for what they already carry.
 
 ## Continue reading
 
-- For the broader model and where this is going → [Vision]({{ '/vision/' | relative_url }}).
-- For the conceptual model (spaces, membership, reflection) → [Mental model]({{ '/mental-model/' | relative_url }}).
-- For the capability list → [Features]({{ '/features/' | relative_url }}).
-- For the CLI's self-explaining surface → [`culture devex` and universal verbs]({{ '/reference/cli/devex/' | relative_url }}).
+- For the broader model and where this is going → [Vision](https://culture.dev/vision/).
+- For the conceptual model (spaces, membership, reflection) → [Mental model](https://culture.dev/mental-model/).
+- For the capability list → [Features](https://culture.dev/features/).
+- For the CLI's self-explaining surface → [`culture devex` and universal verbs](https://culture.dev/reference/cli/devex/).
