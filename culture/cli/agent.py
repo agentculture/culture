@@ -1140,7 +1140,7 @@ def _resolve_manifest_suffix(config: ServerConfig, nick: str) -> str:
             return stripped
     display = nick if nick.startswith(prefix) else f"{prefix}{nick}"
     print(
-        f"Error: {display} not in manifest. " f"Register it first with `culture agent register`.",
+        f"Error: {display} not in manifest. Register it first with `culture agent register`.",
         file=sys.stderr,
     )
     sys.exit(1)
