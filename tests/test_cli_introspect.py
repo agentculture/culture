@@ -1,8 +1,10 @@
 """Tests for the universal introspection verb dispatcher."""
 
+import json
 import subprocess
 import sys
 
+from culture import __version__
 from culture.cli import introspect
 
 
@@ -168,3 +170,130 @@ def test_resolve_unit_coming_soon_for_namespace_without_handler():
         assert "afi" in stdout
     finally:
         introspect._clear_registry()
+
+
+# --- JSON contract tests (issue #401) ------------------------------------
+
+
+def _run_cli(*argv: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "culture", *argv],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_learn_json_emits_required_keys():
+    """`culture learn --json` is what katvan's reference-sync invokes."""
+    result = _run_cli("learn", "--json")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["tool"] == "culture"
+    assert payload["version"] == __version__
+    assert payload["json_support"] is True
+    assert payload["explain_pointer"] == "culture explain <path>"
+    # Native nouns katvan should recurse into — passthroughs go in a separate key.
+    assert set(payload["nouns"]) == {"agent", "server", "mesh", "channel", "bot", "skills"}
+    assert {p["binary"] for p in payload["passthroughs"]} == {"agex", "afi", "irc-lens"}
+    assert payload["verbs"] == ["explain", "overview", "learn"]
+    assert set(payload["exit_codes"].keys()) >= {"0", "1", "2"}
+
+
+def test_explain_root_json_has_path_and_nouns():
+    """`culture explain --json` (no path) and `culture explain culture --json`
+    return the root shape with an empty path."""
+    for argv in (("explain", "--json"), ("explain", "culture", "--json")):
+        result = _run_cli(*argv)
+        assert result.returncode == 0, result.stderr
+        assert result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["path"] == []
+        assert "agent" in payload["nouns"]
+        assert "Culture" in payload["markdown"]
+
+
+def test_explain_native_noun_json_has_verbs():
+    """`culture explain <noun> --json` exposes the noun's verbs (what katvan
+    recurses into)."""
+    result = _run_cli("explain", "agent", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["path"] == ["agent"]
+    # Cross-check against the live argparse registration in agent.py.
+    assert {"start", "stop", "status", "create"}.issubset(set(payload["verbs"]))
+    assert "culture agent" in payload["markdown"]
+
+
+def test_explain_noun_verb_json_has_argparse_markdown():
+    """`culture explain <noun>/<verb> --json` exposes argparse-derived help."""
+    result = _run_cli("explain", "agent/start", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["path"] == ["agent", "start"]
+    assert payload["markdown"].startswith("usage:")
+    assert "culture agent start" in payload["markdown"]
+
+
+def test_explain_passthrough_noun_json_does_not_list_verbs():
+    """Passthrough nouns surface `passthrough_to` and no `verbs` key — katvan
+    won't recurse (they're listed under `passthroughs`, not `nouns`)."""
+    result = _run_cli("explain", "devex", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["path"] == ["devex"]
+    assert payload["passthrough_to"] == "agex"
+    assert "verbs" not in payload
+
+
+def test_explain_bogus_topic_json_emits_structured_error():
+    """JSON-mode errors go to stderr only with the {code, message, remediation}
+    shape; stdout stays empty so JSON parsers don't choke on mixed output."""
+    result = _run_cli("explain", "nope-noun-xyz", "--json")
+    assert result.returncode == 1
+    assert result.stdout == ""
+    err = json.loads(result.stderr)
+    assert err["code"] == 1
+    assert "nope-noun-xyz" in err["message"]
+    assert err["remediation"]
+
+
+def test_overview_json_has_path_and_nouns():
+    """Overview keeps the same shape minus `verbs` so the three universal
+    verbs stay symmetric."""
+    result = _run_cli("overview", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["path"] == []
+    assert "agent" in payload["nouns"]
+
+
+def test_stdout_and_stderr_never_mixed_on_success():
+    """Every --json success path writes exactly to stdout, nothing to stderr."""
+    for argv in (
+        ("learn", "--json"),
+        ("explain", "--json"),
+        ("explain", "agent", "--json"),
+        ("explain", "agent/start", "--json"),
+        ("overview", "--json"),
+    ):
+        result = _run_cli(*argv)
+        assert result.returncode == 0, (argv, result.stderr)
+        json.loads(result.stdout)  # raises on malformed stdout
+        assert result.stderr == "", (argv, result.stderr)
+
+
+def test_katvan_pull_one_schema_match():
+    """End-to-end: run the same call sequence katvan's pull does, and assert
+    the schema is parseable at every step. This is the regression net
+    against #401 ever reopening."""
+    learn = json.loads(_run_cli("learn", "--json").stdout)
+    assert isinstance(learn.get("nouns"), list) and learn["nouns"]
+    for noun in learn["nouns"]:
+        explain = json.loads(_run_cli("explain", noun, "--json").stdout)
+        assert isinstance(explain.get("verbs"), list), noun
+        for verb in explain["verbs"]:
+            leaf = json.loads(_run_cli("explain", f"{noun}/{verb}", "--json").stdout)
+            assert leaf["path"] == [noun, verb]
+            assert leaf["markdown"]

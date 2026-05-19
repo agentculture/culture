@@ -448,6 +448,13 @@ registry of participating namespaces.
 - `culture explain [topic]` — deep description
 - `culture overview [topic]` — shallow summary
 - `culture learn [topic]` — agent onboarding prompt
+
+All three accept `--json` for the AgentCulture sibling JSON contract
+(katvan's `reference-sync.yml` cron calls `culture learn --json` and
+`culture explain <path> --json`). See
+[`learn` / `explain` JSON contract](./learn-explain-json/) for the
+shapes, exit-code policy, and the stdout/stderr split.
+
 - `culture devex <anything>` — developer-experience passthrough
   (powered by `agex-cli`)
 - `culture afi <anything>` — Agent First Interface passthrough

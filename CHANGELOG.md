@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [12.2.0] - 2026-05-19
+
+### Added
+
+- `culture learn --json`, `culture explain [path] --json`, `culture overview [topic] --json` — emit structured JSON per the AgentCulture sibling contract. `learn --json` returns `{tool, version, summary, purpose, nouns, passthroughs, verbs, exit_codes, json_support, explain_pointer}`; `explain --json` returns `{path, nouns?|verbs?|passthrough_to?, markdown}`. Errors in JSON mode emit `{code, message, remediation}` to stderr; stdout and stderr are never mixed. Verbs come from live argparse introspection so the reference stays in sync as groups add subcommands. Closes #401.
+
 ## [12.1.12] - 2026-05-19
 
 ### Removed

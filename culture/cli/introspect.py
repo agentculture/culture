@@ -1,7 +1,10 @@
 """Universal introspection verb dispatcher.
 
 Registers three top-level verbs (``explain``, ``overview``, ``learn``)
-on the culture CLI and dispatches each to a per-topic handler.
+on the culture CLI and dispatches each to a per-topic handler. All three
+verbs accept ``--json`` for the AgentCulture sibling JSON contract (see
+``docs/reference/cli/learn-explain-json.md``); without ``--json`` the
+existing markdown/text behavior is unchanged.
 
 The module conforms to the extended culture CLI group protocol:
 exports ``NAMES`` (frozenset) instead of the singular ``NAME``.
@@ -11,7 +14,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Callable
+import sys
+from typing import Any, Callable
+
+from culture.cli._errors import EXIT_USER_ERROR, CultureError
+from culture.cli._output import emit_error, emit_result
 
 _log = logging.getLogger(__name__)
 
@@ -111,6 +118,25 @@ _NAMESPACES = (
     "skills",
     "devex",
     "afi",
+)
+
+# Nouns that delegate their real reference to a sibling binary. Listed in
+# ``learn --json`` under ``passthroughs`` (not ``nouns``) so katvan's
+# reference-sync skips them — it'll pull each sibling's own ``learn --json``
+# / ``explain --json`` directly from its registry entry.
+_PASSTHROUGHS: dict[str, str] = {
+    "devex": "agex",
+    "afi": "afi",
+    "console": "irc-lens",
+}
+
+_NATIVE_NOUNS: tuple[str, ...] = tuple(n for n in _NAMESPACES if n not in _PASSTHROUGHS)
+_UNIVERSAL_VERBS: tuple[str, ...] = ("explain", "overview", "learn")
+_SUMMARY = "AI agent IRC mesh — server, agents, channels, federation."
+_PURPOSE = (
+    "Culture is the framework of agreements that makes agent behavior "
+    "portable, inspectable, and effective. It hosts a mesh of IRC servers "
+    "where AI agents collaborate, share knowledge, and coordinate work."
 )
 
 
@@ -287,24 +313,224 @@ def _register_root() -> None:
 _register_root()
 
 
+# --- JSON contract helpers ------------------------------------------------
+
+
+def _split_path(topic: str | None) -> list[str]:
+    """Normalise a ``topic`` arg into a noun/verb path list.
+
+    ``None`` and ``""`` → ``[]``; ``"agent"`` → ``["agent"]``;
+    ``"agent/start"`` → ``["agent", "start"]``. Katvan passes the latter
+    form as a single argv token; siblings accept either form.
+    """
+    if not topic:
+        return []
+    return [seg for seg in topic.split("/") if seg]
+
+
+def _collect_verbs(noun: str) -> list[str]:
+    """Return the sorted list of verbs (subcommands) registered under
+    ``culture <noun>``.
+
+    Reaches into argparse private attrs ``_actions`` /
+    ``_SubParsersAction`` — stable since Python 3.2 and the only way to
+    enumerate subparsers without duplicating each group's registration
+    metadata. Returns ``[]`` for passthrough nouns (their parser uses
+    ``REMAINDER`` and exposes no inner subparsers).
+    """
+    from culture.cli import _build_parser
+
+    parser = _build_parser()
+    top_sub = next(
+        (a for a in parser._actions if isinstance(a, argparse._SubParsersAction)),
+        None,
+    )
+    if top_sub is None or noun not in top_sub.choices:
+        return []
+    noun_parser = top_sub.choices[noun]
+    inner = next(
+        (a for a in noun_parser._actions if isinstance(a, argparse._SubParsersAction)),
+        None,
+    )
+    return sorted(inner.choices.keys()) if inner else []
+
+
+def _format_verb_help(noun: str, verb: str) -> str:
+    """Return ``culture <noun> <verb> --help`` formatted help text.
+
+    Used as the ``markdown`` body of ``culture explain noun/verb --json``;
+    keeps the leaf-level reference in lockstep with argparse — no
+    hand-authored doc per verb needed.
+    """
+    from culture.cli import _build_parser
+
+    parser = _build_parser()
+    top_sub = next(
+        (a for a in parser._actions if isinstance(a, argparse._SubParsersAction)),
+        None,
+    )
+    if top_sub is None or noun not in top_sub.choices:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"unknown noun '{noun}'",
+            "run 'culture explain' to see the registry of nouns",
+        )
+    noun_parser = top_sub.choices[noun]
+    inner = next(
+        (a for a in noun_parser._actions if isinstance(a, argparse._SubParsersAction)),
+        None,
+    )
+    if inner is None or verb not in inner.choices:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"unknown verb '{verb}' for noun '{noun}'",
+            f"run 'culture explain {noun}' to see the verbs of that noun",
+        )
+    return inner.choices[verb].format_help()
+
+
+def _learn_root_payload() -> dict[str, Any]:
+    from culture import __version__
+
+    return {
+        "tool": "culture",
+        "version": __version__,
+        "summary": _SUMMARY,
+        "purpose": _PURPOSE,
+        "nouns": list(_NATIVE_NOUNS),
+        "passthroughs": [
+            {"noun": noun, "binary": binary} for noun, binary in _PASSTHROUGHS.items()
+        ],
+        "verbs": list(_UNIVERSAL_VERBS),
+        "exit_codes": {
+            "0": "success",
+            "1": "user-input error",
+            "2": "environment/setup error",
+        },
+        "json_support": True,
+        "explain_pointer": "culture explain <path>",
+    }
+
+
+def _explain_payload(path: list[str]) -> dict[str, Any]:
+    if not path or path == ["culture"]:
+        markdown, _ = _culture_explain(None)
+        return {
+            "path": [],
+            "nouns": list(_NATIVE_NOUNS),
+            "passthroughs": [
+                {"noun": noun, "binary": binary} for noun, binary in _PASSTHROUGHS.items()
+            ],
+            "markdown": markdown,
+        }
+    if len(path) == 1:
+        noun = path[0]
+        if noun in _PASSTHROUGHS:
+            return {
+                "path": [noun],
+                "passthrough_to": _PASSTHROUGHS[noun],
+                "markdown": (
+                    f"`culture {noun}` is a passthrough to "
+                    f"`{_PASSTHROUGHS[noun]}`. Pull its reference from "
+                    f"that sibling's `learn --json` / `explain --json` "
+                    f"output directly.\n"
+                ),
+            }
+        explainer = _NAMESPACE_EXPLAINERS.get(noun)
+        if explainer is None:
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"unknown noun '{noun}' for explain",
+                "run 'culture explain' to see the registry of nouns",
+            )
+        markdown, _ = explainer(None)
+        return {
+            "path": [noun],
+            "verbs": _collect_verbs(noun),
+            "markdown": markdown,
+        }
+    if len(path) == 2:
+        noun, verb = path
+        markdown = _format_verb_help(noun, verb)
+        return {"path": [noun, verb], "markdown": markdown}
+    raise CultureError(
+        EXIT_USER_ERROR,
+        f"path too deep: {'/'.join(path)} (max depth is noun/verb)",
+        "use 'culture explain <noun>' or 'culture explain <noun>/<verb>'",
+    )
+
+
+def _overview_payload(path: list[str]) -> dict[str, Any]:
+    """Thin sibling of explain — symmetric shape, no verbs list."""
+    if not path or path == ["culture"]:
+        markdown, _ = _culture_overview(None)
+        return {
+            "path": [],
+            "nouns": list(_NATIVE_NOUNS),
+            "passthroughs": [
+                {"noun": noun, "binary": binary} for noun, binary in _PASSTHROUGHS.items()
+            ],
+            "markdown": markdown,
+        }
+    # Fall back to the explain shape minus 'verbs' for any other path —
+    # keeps overview useful as a thin wrapper even though katvan does
+    # not consume it.
+    payload = _explain_payload(path)
+    payload.pop("verbs", None)
+    return payload
+
+
+def _payload_for(verb: str, path: list[str]) -> dict[str, Any]:
+    if verb == "learn":
+        # ``culture learn --json`` always emits the root payload regardless
+        # of topic; katvan only ever calls the no-topic form, and a
+        # topic-scoped JSON learn has no defined consumer.
+        return _learn_root_payload()
+    if verb == "explain":
+        return _explain_payload(path)
+    if verb == "overview":
+        return _overview_payload(path)
+    raise CultureError(
+        EXIT_USER_ERROR,
+        f"unsupported verb '{verb}' for --json",
+        "use one of: explain, overview, learn",
+    )
+
+
 # --- CLI group protocol ---------------------------------------------------
 
 
 def register(subparsers: "argparse._SubParsersAction") -> None:
-    for verb in ("explain", "overview", "learn"):
+    for verb in _UNIVERSAL_VERBS:
         p = subparsers.add_parser(verb, help=f"{verb.capitalize()} a topic (culture by default)")
         p.add_argument("topic", nargs="?", default=None, help="Topic to inspect")
+        p.add_argument(
+            "--json",
+            action="store_true",
+            dest="json",
+            help="Emit structured JSON (stdout) per the AgentCulture sibling contract.",
+        )
 
 
 def dispatch(args: argparse.Namespace) -> None:
-    import sys
-
     verb = args.command
     topic = getattr(args, "topic", None)
-    stdout, code = _resolve(verb, topic)
-    if stdout:
-        stream = sys.stdout if code == 0 else sys.stderr
-        end = "" if stdout.endswith("\n") else "\n"
-        print(stdout, end=end, file=stream)
-    if code != 0:
-        sys.exit(code)
+    json_mode = bool(getattr(args, "json", False))
+    try:
+        if json_mode:
+            payload = _payload_for(verb, _split_path(topic))
+            emit_result(payload, json_mode=True)
+            return
+        stdout, code = _resolve(verb, topic)
+        if code != 0:
+            raise CultureError(
+                code,
+                stdout.rstrip("\n").split(";")[0] or f"unknown topic for {verb}",
+                "run 'culture explain' to see the registry of nouns",
+            )
+        if stdout:
+            end = "" if stdout.endswith("\n") else "\n"
+            print(stdout, end=end, file=sys.stdout)
+    except CultureError as err:
+        emit_error(err, json_mode=json_mode)
+        sys.exit(err.code)
