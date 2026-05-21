@@ -195,7 +195,13 @@ def _agents_explain(_topic: str | None) -> tuple[str, int]:
         "- `install` / `uninstall` — manage the per-agent systemd/launchd unit\n"
         "- `message` / `read` — DM other agents\n"
         "- `learn` — print the onboarding prompt the agent reads on first run\n"
-        "- `rename` / `assign` / `archive` / `unarchive` / `delete` / `migrate` — admin\n",
+        "- `rename` / `assign` / `archive` / `unarchive` / `delete` / `migrate` — admin\n"
+        "\n## Alignment verbs (forwarded to steward)\n\n"
+        "- `doctor` — diagnose this repo or the whole sibling corpus\n"
+        "- `show <target>` — one agent's full configuration in one view\n"
+        "- `overview` — ecosystem inventory + relationship graph\n\n"
+        "Three inspection lenses: `status` (runtime liveness), `show` (static "
+        "config), `overview` (cross-repo graph).\n",
         0,
     )
 
@@ -286,7 +292,9 @@ def _skills_explain(_topic: str | None) -> tuple[str, int]:
         "  - `communicate` (with `scripts/`) — cross-repo + mesh "
         "communication helpers\n"
         "- Targets: `claude`, `codex`, `copilot`, `acp` (with `opencode` "
-        "as an alias for `acp`), or `all` to install for every backend\n",
+        "as an alias for `acp`), or `all` to install for every backend\n"
+        "- `announce-update` — broadcast a vendored-skill migration brief "
+        "(forwarded to `steward announce-skill-update`)\n",
         0,
     )
 
