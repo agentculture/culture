@@ -275,7 +275,7 @@ def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path
         # migrated to per-directory culture.yaml.
         agent_cmd = [
             culture_bin,
-            "agent",
+            "agents",
             "start",
             full_nick,
             "--foreground",
@@ -511,7 +511,7 @@ def _restart_mesh_services(
         # --config; this restart path mirrors that contract.
         agent_cmd = [
             culture_bin,
-            "agent",
+            "agents",
             "start",
             full_nick,
             "--foreground",
@@ -554,7 +554,7 @@ def _restart_mesh_services(
         # per-workdir path.
         agent_fallback = [
             culture_bin,
-            "agent",
+            "agents",
             "start",
             full_nick,
         ]

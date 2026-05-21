@@ -281,7 +281,41 @@ def test_install_mesh_services_omits_legacy_config_path():
             ".culture/agents.yaml" in tok for tok in command
         ), f"{svc_name} ExecStart references the legacy agents.yaml path: {command}"
         # Sanity: the command is still a valid agent-start invocation.
-        assert "agent" in command and "start" in command and "--foreground" in command
+        assert "agents" in command and "start" in command and "--foreground" in command
+
+
+def test_restart_mesh_services_uses_plural_agents_noun():
+    """Regenerated agent units (restart path) must invoke `culture agents start`.
+
+    Regression guard for the Phase-1 rename: `_restart_mesh_services` builds its
+    own ExecStart argv, so a stale singular `agent` token would generate units
+    that fail with "invalid choice" on 13.0.0. The `culture-agent-` service
+    *name* (an identifier) is intentionally preserved; only the argv noun moves.
+    """
+    from culture.cli.mesh import _restart_mesh_services
+
+    mesh = MeshConfig(
+        server=MeshServerConfig(name="spark", host="127.0.0.1", port=6667),
+        agents=[
+            MeshAgentConfig(nick="claude", workdir="/home/u/work"),
+            MeshAgentConfig(nick="codex", workdir="/home/u/work2"),
+        ],
+    )
+
+    with (
+        patch("culture.persistence.install_service") as mock_install,
+        patch("culture.persistence.restart_service", return_value=True),
+        patch(f"{_MESH_MOD}.build_server_start_cmd", return_value=["culture", "server", "start"]),
+        patch(f"{_MESH_MOD}._wait_for_server_port", return_value=True),
+    ):
+        _restart_mesh_services(mesh, "spark", "/usr/bin/culture", "/etc/mesh.yaml", False)
+
+    calls = _captured_install_calls(mock_install)
+    agent_calls = [c for c in calls if c[0].startswith("culture-agent-")]
+    assert len(agent_calls) == 2, f"expected 2 agent units, got {len(agent_calls)}"
+    for svc_name, command, _desc in agent_calls:
+        assert "agents" in command, f"{svc_name} ExecStart missing plural noun: {command}"
+        assert "agent" not in command, f"{svc_name} ExecStart uses removed singular noun: {command}"
 
 
 def test_resolve_rebuilds_from_agents_yaml_preserving_links(tmp_path):
