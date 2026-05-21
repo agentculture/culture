@@ -62,12 +62,21 @@ logger = logging.getLogger("culture")
 
 NAME = "agents"
 
+# Verbs forwarded verbatim to steward.cli.main. Registered as thin REMAINDER
+# subparsers and short-circuited before argparse (see _maybe_forward_to_steward
+# in culture.cli.__init__) so --help reaches steward's own parser.
+_STEWARD_FORWARDED_VERBS = ("doctor", "show", "overview")
+
 _NICK_HELP = "Agent suffix or full nick"
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     agent_parser = subparsers.add_parser("agents", help="Manage AI agents")
     agent_sub = agent_parser.add_subparsers(dest="agents_command")
+
+    for verb in _STEWARD_FORWARDED_VERBS:
+        fwd = agent_sub.add_parser(verb, help=f"(forwarded to steward {verb})", add_help=False)
+        fwd.add_argument("argv", nargs=argparse.REMAINDER)
 
     # -- create ---------------------------------------------------------------
     _agent_args = [
@@ -229,7 +238,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def dispatch(args: argparse.Namespace) -> None:
     if not args.agents_command:
         print(
-            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|install|uninstall|migrate}",
+            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|install|uninstall|migrate|doctor|show|overview}",
             file=sys.stderr,
         )
         sys.exit(1)

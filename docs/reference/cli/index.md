@@ -8,6 +8,14 @@ inspectable via three universal verbs — `explain`, `overview`,
 `learn`. See [`culture devex` and universal verbs](./devex/) for the
 full contract.
 
+`culture agents` is a hybrid noun: lifecycle verbs run natively in
+culture while alignment verbs (`doctor`, `show`, `overview`) forward
+to [`steward-cli`](./agents.md). See
+[`culture agents` reference](./agents.md) for the full verb map.
+`culture skills announce-update` likewise forwards to
+`steward announce-skill-update` (see the
+[`culture agents` reference](./agents.md#culture-skills-announce-update)).
+
 Install: `uv tool install culture` or `pip install culture`
 
 ## Server (the IRC mesh)

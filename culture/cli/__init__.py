@@ -120,6 +120,32 @@ def _maybe_forward_to_agentirc(argv: list[str]) -> int | None:
     return _agentirc_dispatch(argv[1:])
 
 
+def _maybe_forward_to_steward(argv: list[str]) -> int | None:
+    """Bypass argparse for steward verbs forwarded under ``agents`` / ``skills``.
+
+    Mirrors ``_maybe_forward_to_agentirc``: argparse REMAINDER can't capture
+    ``--help`` reliably, so forwarded steward verbs are short-circuited here and
+    replayed through ``steward.cli.main`` verbatim (the ``skills`` verb is remapped
+    to steward's canonical name). Returns the exit code, or None to let
+    argparse handle a native verb.
+    """
+    if len(argv) < 2:
+        return None
+    noun, verb = argv[0], argv[1]
+    if noun == "agents" and verb in agents._STEWARD_FORWARDED_VERBS:
+        steward_argv = [verb, *argv[2:]]
+    elif noun == "skills" and verb in skills._STEWARD_FORWARDED:
+        steward_argv = [skills._STEWARD_FORWARDED[verb], *argv[2:]]
+    else:
+        return None
+    try:
+        from steward.cli import main as steward_main
+    except ImportError as exc:  # pragma: no cover — declared dep
+        print(f"steward-cli is not installed: {exc}", file=sys.stderr)
+        return 2
+    return steward_main(steward_argv)
+
+
 def main() -> None:
     # Logging must be configured before any dispatch path runs — including
     # the agentirc forwarder bypass below — so any logs emitted by
@@ -132,6 +158,10 @@ def main() -> None:
 
     try:
         forwarded = _maybe_forward_to_agentirc(sys.argv[1:])
+        if forwarded is not None:
+            sys.exit(forwarded)
+
+        forwarded = _maybe_forward_to_steward(sys.argv[1:])
         if forwarded is not None:
             sys.exit(forwarded)
 

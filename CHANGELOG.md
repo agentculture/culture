@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.1.0] - 2026-05-21
+
+### Added
+
+- `culture agents doctor`, `culture agents show`, and `culture agents overview` forward to the bundled steward alignment CLI (new `steward-cli` dependency). `culture agents` is now a hybrid noun — native lifecycle verbs plus forwarded steward alignment verbs, mirroring how `culture server` forwards to agentirc.
+- `culture skills announce-update` forwards to `steward announce-skill-update` (broadcast a vendored-skill migration brief to consumers of a vendored skill).
+
 ## [13.0.0] - 2026-05-21
 
 ### Changed

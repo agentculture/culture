@@ -10,6 +10,10 @@ import sys
 
 NAME = "skills"
 
+# culture-facing verb -> steward verb. Forwarded verbatim via
+# _maybe_forward_to_steward (culture.cli.__init__).
+_STEWARD_FORWARDED = {"announce-update": "announce-skill-update"}
+
 _SKILL_FILENAME = "SKILL.md"
 _COMMUNICATE_SCRIPTS = (
     "fetch-issues.sh",
@@ -29,6 +33,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         choices=["claude", "codex", "copilot", "acp", "opencode", "all"],
         help="Target agent: claude, codex, copilot, acp, opencode (alias of acp), or all",
     )
+
+    for culture_verb, steward_verb in _STEWARD_FORWARDED.items():
+        fwd = skills_sub.add_parser(
+            culture_verb, help=f"(forwarded to steward {steward_verb})", add_help=False
+        )
+        fwd.add_argument("argv", nargs=argparse.REMAINDER)
 
 
 def dispatch(args: argparse.Namespace) -> None:

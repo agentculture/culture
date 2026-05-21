@@ -618,7 +618,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "13.0.0"
+version = "13.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -637,6 +637,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "pyyaml" },
+    { name = "steward-cli" },
 ]
 
 [package.optional-dependencies]
@@ -681,6 +682,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.25" },
     { name = "opentelemetry-semantic-conventions", specifier = ">=0.46b0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "steward-cli", specifier = ">=0.16,<1.0" },
 ]
 provides-extras = ["copilot"]
 
@@ -2445,6 +2447,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/6d/90764092216fa560f6587f83bb70113a8ba510ba436c6476a2b47359057c/stevedore-5.7.0.tar.gz", hash = "sha256:31dd6fe6b3cbe921e21dcefabc9a5f1cf848cf538a1f27543721b8ca09948aa3", size = 516200, upload-time = "2026-02-20T13:27:06.765Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/69/06/36d260a695f383345ab5bbc3fd447249594ae2fa8dfd19c533d5ae23f46b/stevedore-5.7.0-py3-none-any.whl", hash = "sha256:fd25efbb32f1abb4c9e502f385f0018632baac11f9ee5d1b70f88cc5e22ad4ed", size = 54483, upload-time = "2026-02-20T13:27:05.561Z" },
+]
+
+[[package]]
+name = "steward-cli"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/ce/183c268a79d6461ae14c9d20a1f3254ec82ea6230b3dd493718cf8daeb6a/steward_cli-0.16.0.tar.gz", hash = "sha256:9a8bd558478057f7553b2aba2f02c2b8003b5d1e2cdb2d71804c802f511776fd", size = 206851, upload-time = "2026-05-21T16:48:00.479Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/b0/02f00df9af6a053224d70d43adefd6c415ac02fc2bfdff9f519c45eb3079/steward_cli-0.16.0-py3-none-any.whl", hash = "sha256:126a8b22a337ef93be77c30fd3e383acf9bbbb123686e1f099d0e6c15507dd82", size = 45048, upload-time = "2026-05-21T16:48:01.489Z" },
 ]
 
 [[package]]
