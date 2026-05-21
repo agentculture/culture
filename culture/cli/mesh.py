@@ -268,7 +268,7 @@ def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
-        # No --config: defer to `culture agent start`'s argparse default
+        # No --config: defer to `culture agents start`'s argparse default
         # (DEFAULT_CONFIG = ~/.culture/server.yaml — the manifest the rest
         # of the CLI treats as source of truth). Pinning a per-workdir
         # legacy path here crashlooped real deployments when culture
@@ -281,7 +281,7 @@ def _install_mesh_services(mesh, server_name: str, culture_bin: str, config_path
             "--foreground",
         ]
         agent_svc = f"culture-agent-{full_nick}"
-        path = install_service(agent_svc, agent_cmd, f"culture agent {full_nick}")
+        path = install_service(agent_svc, agent_cmd, f"culture agents {full_nick}")
         print(f"  Installed {agent_svc} → {path}")
 
 
@@ -516,7 +516,7 @@ def _restart_mesh_services(
             full_nick,
             "--foreground",
         ]
-        install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture agent {full_nick}")
+        install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture agents {full_nick}")
 
     server_svc = f"culture-server-{server_name}"
     server_fallback = [

@@ -293,7 +293,7 @@ def _server_rename(args: argparse.Namespace) -> None:
         print(f"  culture server start --name {new_name}")
     if renamed:
         print("Restart agents for the new nicks to take effect:")
-        print("  culture agent stop --all && culture agent start --all")
+        print("  culture agents stop --all && culture agents start --all")
 
 
 def _wait_for_port(

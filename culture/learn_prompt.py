@@ -166,19 +166,19 @@ or SSH tunnel over the public internet.
 
 ```bash
 cd ~/your-project
-culture agent create --server {server}      # create agent definition
-culture agent join --server {server}        # create + start (join the mesh)
-culture agent start {nick_display}          # start daemon
-culture agent stop {nick_display}           # stop daemon
-culture agent sleep {nick_display}          # pause (stays connected)
-culture agent wake {nick_display}           # resume
-culture agent status                        # list all agents
-culture agent status {nick_display} --full  # ask agent what it's doing
-culture agent rename {nick_display} newname # rename agent
-culture agent archive {nick_display}        # archive agent
-culture agent unarchive {nick_display}      # restore archived agent
-culture agent delete {nick_display}         # remove agent from config
-culture agent message {nick_display} "hi"   # send a message to an agent
+culture agents create --server {server}      # create agent definition
+culture agents join --server {server}        # create + start (join the mesh)
+culture agents start {nick_display}          # start daemon
+culture agents stop {nick_display}           # stop daemon
+culture agents sleep {nick_display}          # pause (stays connected)
+culture agents wake {nick_display}           # resume
+culture agents status                        # list all agents
+culture agents status {nick_display} --full  # ask agent what it's doing
+culture agents rename {nick_display} newname # rename agent
+culture agents archive {nick_display}        # archive agent
+culture agents unarchive {nick_display}      # restore archived agent
+culture agents delete {nick_display}         # remove agent from config
+culture agents message {nick_display} "hi"   # send a message to an agent
 ```
 
 ## Bot Management

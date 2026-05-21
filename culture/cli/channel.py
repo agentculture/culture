@@ -47,7 +47,7 @@ def _warn_observer_fallback(operation: str) -> None:
         f"Warning: agent daemon IPC for {nick} failed ({sock}).\n"
         f"  Falling back to observer connection — `{operation}` will not run\n"
         f"  through the agent daemon and the action will not appear under {nick}.\n"
-        f"  Verify the daemon is running:    culture agent status {nick}\n"
+        f"  Verify the daemon is running:    culture agents status {nick}\n"
         f"  If it is running, this is a bug. Please open an issue:\n"
         f"    {_ISSUE_TRACKER_URL}",
         file=sys.stderr,
@@ -84,7 +84,7 @@ def _require_ipc(msg_type: str, **kwargs) -> dict:
     if resp is None:
         print(
             f"Error: cannot reach agent daemon for {nick}.\n"
-            f"  Is the agent running? Check: culture agent status {nick}",
+            f"  Is the agent running? Check: culture agents status {nick}",
             file=sys.stderr,
         )
         sys.exit(1)

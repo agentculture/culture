@@ -263,7 +263,7 @@ def resolve_agents(config: ServerConfig) -> None:
                 server_name,
                 suffix,
                 "culture.yaml missing for %s-%s at %s — run "
-                "'culture agent unregister %s' to remove this stale manifest entry",
+                "'culture agents unregister %s' to remove this stale manifest entry",
                 server_name,
                 suffix,
                 directory,
@@ -275,7 +275,7 @@ def resolve_agents(config: ServerConfig) -> None:
                 server_name,
                 suffix,
                 "Error loading %s-%s from %s: %s — run "
-                "'culture agent unregister %s' if this entry is stale",
+                "'culture agents unregister %s' if this entry is stale",
                 server_name,
                 suffix,
                 directory,
