@@ -50,3 +50,21 @@ def test_agents_doctor_help_reaches_steward():
     )
     assert result.returncode == 0, result.stderr
     assert "doctor" in result.stdout.lower()
+
+
+def test_explain_agents_documents_forwarded_verbs():
+    from culture.cli import introspect
+
+    out, rc = introspect.explain("agents")
+    assert rc == 0
+    # The forwarded alignment verbs must be visible in the noun's explain text.
+    for verb in ("doctor", "show", "overview"):
+        assert verb in out, f"explain agents omits forwarded verb {verb!r}: {out}"
+
+
+def test_explain_skills_documents_announce_update():
+    from culture.cli import introspect
+
+    out, rc = introspect.explain("skills")
+    assert rc == 0
+    assert "announce-update" in out

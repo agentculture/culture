@@ -12,6 +12,9 @@ full contract.
 culture while alignment verbs (`doctor`, `show`, `overview`) forward
 to [`steward-cli`](./agents.md). See
 [`culture agents` reference](./agents.md) for the full verb map.
+`culture skills announce-update` likewise forwards to
+`steward announce-skill-update` (see the
+[`culture agents` reference](./agents.md#culture-skills-announce-update)).
 
 Install: `uv tool install culture` or `pip install culture`
 
