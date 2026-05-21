@@ -143,7 +143,7 @@ def _maybe_forward_to_steward(argv: list[str]) -> int | None:
     except ImportError as exc:  # pragma: no cover — declared dep
         print(f"steward-cli is not installed: {exc}", file=sys.stderr)
         return 2
-    return steward_main(steward_argv) or 0
+    return steward_main(steward_argv)
 
 
 def main() -> None:

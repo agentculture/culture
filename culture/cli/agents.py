@@ -238,7 +238,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def dispatch(args: argparse.Namespace) -> None:
     if not args.agents_command:
         print(
-            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|install|uninstall|migrate}",
+            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|install|uninstall|migrate|doctor|show|overview}",
             file=sys.stderr,
         )
         sys.exit(1)

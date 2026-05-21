@@ -293,7 +293,7 @@ def _skills_explain(_topic: str | None) -> tuple[str, int]:
         "communication helpers\n"
         "- Targets: `claude`, `codex`, `copilot`, `acp` (with `opencode` "
         "as an alias for `acp`), or `all` to install for every backend\n"
-        "- `announce-update` — broadcast a vendored-skill migration brief "
+        "- `culture skills announce-update` — broadcast a vendored-skill migration brief "
         "(forwarded to `steward announce-skill-update`)\n",
         0,
     )

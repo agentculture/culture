@@ -5,17 +5,20 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
 
-def test_forwards_agents_doctor_verbatim(monkeypatch):
+
+@pytest.mark.parametrize("verb", ["doctor", "show", "overview"])
+def test_forwards_agents_verb_verbatim(monkeypatch, verb):
     calls = []
     import steward.cli
 
     monkeypatch.setattr(steward.cli, "main", lambda argv: calls.append(argv) or 0)
     from culture.cli import _maybe_forward_to_steward
 
-    rc = _maybe_forward_to_steward(["agents", "doctor", "--scope", "siblings"])
+    rc = _maybe_forward_to_steward(["agents", verb, "--scope", "siblings"])
     assert rc == 0
-    assert calls == [["doctor", "--scope", "siblings"]]
+    assert calls == [[verb, "--scope", "siblings"]]
 
 
 def test_forwards_skills_announce_update_remapped(monkeypatch):
