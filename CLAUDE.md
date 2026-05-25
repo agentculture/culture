@@ -10,7 +10,12 @@ Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
 
 ## Sibling alignment
 
-[Steward](https://github.com/agentculture/steward) is the alignment hub for AgentCulture skills. When a skill stabilizes here that other repos benefit from (`communicate`, `cicd`, `version-bump`, `agent-config`), the expectation is that steward picks it up and propagates it to the rest of the mesh. When steward stabilizes a convention culture should adopt (naming, signature format, script layout), that lands here as a follow-up PR — see `communicate` skill briefs from `- steward (Claude)`.
+As of the **steward → guildmaster cutover** (2026-05-24), the mesh's skills role split in two:
+
+- **[guildmaster](https://github.com/agentculture/guildmaster) is the skills supplier/hub.** It owns the canonical skill set (`communicate`, `cicd`, `version-bump`, `run-tests`, `agent-config`, `pypi-maintainer`, `sonarclaude`, `doc-test-alignment`), the upstream/downstream provenance ledger, and the broadcast verbs (`guild teach` / `guild onboard`). Skills land in culture **from guildmaster** — re-cite vendored skills from `../guildmaster/.claude/skills/<skill>/`. The devague workflow trio (`think`, `spec-to-plan`, `assign-to-workforce`) originates in [devague](https://github.com/agentculture/devague) and is re-broadcast through guildmaster. When a skill stabilizes in culture that the mesh benefits from, guildmaster picks it up and propagates it.
+- **[steward](https://github.com/agentculture/steward) retains agent alignment.** The `steward doctor` / `steward overview` / `steward show` verbs (which culture forwards via the `steward-cli>=0.16` dep — unchanged by the cutover) stay with steward.
+
+When guildmaster stabilizes a convention culture should adopt (naming, signature format, script layout), that lands here as a follow-up PR — see skill-update briefs from `- guildmaster (Claude)`. Some vendored scripts are intentionally **ahead** of guildmaster's copy (e.g. `run-tests`); those carry a `# culture-divergence:` header and are offered back upstream rather than overwritten on resync.
 
 ## Package Management
 

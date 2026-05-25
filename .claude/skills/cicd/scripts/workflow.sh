@@ -2,8 +2,10 @@
 set -euo pipefail
 
 # culture-divergence: env var prefix renamed STEWARD_* → CULTURE_*; header
-# prose rebranded "steward" → "culture". Vendored from steward 0.12.0 — see
-# https://github.com/agentculture/steward/blob/main/.claude/skills/cicd/scripts/workflow.sh
+# prose rebranded "steward" → "culture". Supplier is guildmaster (the
+# AgentCulture skills hub, post steward→guildmaster cutover); lineage:
+# steward 0.12.0. Re-cite from
+# https://github.com/agentculture/guildmaster/blob/main/.claude/skills/cicd/scripts/workflow.sh
 #
 # Culture cicd workflow — thin layer over `agex pr` plus two culture
 # extensions (`status`, `await`) for SonarCloud gating and triage flow.

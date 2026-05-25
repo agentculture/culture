@@ -21,7 +21,7 @@ _COMMUNICATE_SCRIPTS = (
     "post-comment.sh",
     "post-issue.sh",
 )
-_COMMUNICATE_TEMPLATES = ("skill-update-brief.md",)
+_COMMUNICATE_TEMPLATES = ("skill-update-brief.md", "skill-new-brief.md")
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

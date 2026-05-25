@@ -46,3 +46,12 @@ Extra arguments are passed through to pytest (e.g., `-x` for stop-on-first-failu
 - **Quick sanity check:** `bash .claude/skills/run-tests/scripts/test.sh -p -q` — minimal output
 - **Before PR / release:** `bash .claude/skills/run-tests/scripts/test.sh --ci` — matches CI exactly
 - **Debugging flaky test:** `bash .claude/skills/run-tests/scripts/test.sh tests/test_flaky.py` — sequential, single file
+
+## Provenance
+
+Canonical supplier is **agentculture/guildmaster** (post steward→guildmaster
+cutover). Culture's `scripts/test.sh` is intentionally **ahead** of guildmaster's
+copy: it adds xdist shard-combine, stale-shard wipe, coverage-floor (exit 2)
+surfacing, and combine/report/xml failure propagation that guildmaster's
+simpler `exec pytest --cov` lacks. Do not overwrite from upstream on resync;
+the improvements are offered back to guildmaster.

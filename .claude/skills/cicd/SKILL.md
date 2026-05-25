@@ -322,9 +322,10 @@ CULTURE_NICK="<agent-nick>" culture channel message "#general" "PR #<N> — all 
 | `portability-lint.sh [--all]` | `.claude/skills/cicd/scripts/` | Catch absolute `/home/<user>/` paths and per-user dotfile references in committed docs/configs. Default mode lints the current diff (staged + unstaged); `--all` lints every tracked file. Run via `workflow.sh lint` (which forwards to `agex pr lint --exit-on-violation`). |
 
 All scripts auto-detect `owner/repo` from the current git remote. The
-full script set is vendored from steward (the AgentCulture alignment
-hub) — re-cite from there if you need updates. Scripts that have
-intentionally diverged from steward's upstream copy carry a
+full script set is vendored from **guildmaster** (the AgentCulture skills
+hub, post steward→guildmaster cutover; lineage: steward 0.12.0) — re-cite
+from `../guildmaster/.claude/skills/cicd/` if you need updates. Scripts
+that have intentionally diverged from the upstream copy carry a
 `# culture-divergence:` header documenting what was changed and why;
 preserve those when re-citing.
 

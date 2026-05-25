@@ -19,6 +19,14 @@
 # Stale `.coverage` / `.coverage.*` shards from a previous run are removed
 # before pytest so `coverage combine` can never silently merge old data into
 # the new report.
+#
+# culture-divergence: this script is intentionally AHEAD of guildmaster's
+# canonical run-tests (which `exec`s `pytest --cov` and relies on
+# pytest-cov's own report). Culture keeps the xdist shard-combine, stale-shard
+# wipe, coverage-floor (exit 2) surfacing, and combine/report/xml failure
+# propagation below. Do NOT overwrite from upstream on resync — these
+# improvements are offered back to guildmaster (see issue filed against
+# agentculture/guildmaster).
 
 set -uo pipefail
 

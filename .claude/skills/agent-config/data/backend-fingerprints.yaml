@@ -1,0 +1,30 @@
+# Canonical backend fingerprint registry. Vendored from guildmaster's
+# agent-config skill (cite-don't-import; guildmaster forked it from steward).
+# Read by the agent-config show.sh (bash), which `guild show` shells out to.
+# Steward also reads it from a Python detector; guildmaster has no parallel
+# detector, so only the `backends:` prompt mapping below is load-bearing here.
+# Keep that mapping in sync with upstream when re-syncing.
+#
+# `prompt`        — the backend's system-prompt filename at the repo root.
+# `steering`      — files/dirs distinctive enough to attribute to this backend.
+# `shared_steering` — files/dirs that belong to NO specific backend. A repo
+#                   declared as any backend may have these without triggering a
+#                   mismatch. `.agents` is a generic Culture agent-config
+#                   convention. `.claude/settings.json` and
+#                   `.claude/settings.local.json` are generic Claude Code
+#                   (editor/CLI) workspace config files — they appear in any
+#                   repo that uses Claude Code as the development tool,
+#                   regardless of the agent backend, so they must never be used
+#                   to infer the backend or flag a mismatch. The claude backend
+#                   is identified solely by its `CLAUDE.md` prompt file.
+#                   `.github/copilot-instructions.md` is generic GitHub Copilot
+#                   editor/IDE config — any repo may have it regardless of the
+#                   declared agent backend, so it must not trigger a mismatch.
+backends:
+  claude:  { prompt: CLAUDE.md, steering: [] }
+  codex:   { prompt: AGENTS.md, steering: [".codex"] }
+  acp:     { prompt: AGENTS.md, steering: [".kiro"] }
+  copilot: { prompt: AGENTS.md, steering: [] }
+  gemini:  { prompt: GEMINI.md, steering: [".gemini"] }
+shared_steering: [".agents", ".claude/settings.json", ".claude/settings.local.json", ".github/copilot-instructions.md"]
+prompt_fallback: AGENTS.md

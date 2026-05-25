@@ -13,7 +13,9 @@ description: >
 ---
 
 <!--
-Vendored from agentculture/steward → .claude/skills/communicate/. The
+Vendored from agentculture/guildmaster → .claude/skills/communicate/
+(the AgentCulture skills hub, post steward→guildmaster cutover; lineage:
+steward through 0.11.x). The
 three GitHub verbs (post-issue.sh, post-comment.sh, fetch-issues.sh)
 are thin wrappers around `agtag issue post|reply|fetch`. agtag resolves
 the signing nick from the local `culture.yaml`'s first agent suffix
@@ -247,6 +249,8 @@ Output is one JSON object per issue (separated by header bars) with
 
 ---
 
-Source: agentculture/steward → `.claude/skills/communicate/`. Re-cite
-from there when steward bumps the skill. Scripts intentionally diverged
-from steward's upstream copy carry a `# culture-divergence:` header.
+Source: agentculture/guildmaster → `.claude/skills/communicate/` (the
+AgentCulture skills hub, post steward→guildmaster cutover; lineage:
+steward through 0.11.x). Re-cite from there when guildmaster bumps the
+skill. Scripts intentionally diverged from the upstream copy carry a
+`# culture-divergence:` header.

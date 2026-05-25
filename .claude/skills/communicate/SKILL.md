@@ -223,7 +223,8 @@ with the next one.
 | `scripts/post-comment.sh` | Comment on an existing issue. Wraps `agtag issue reply`; auto-signs from `culture.yaml`. |
 | `scripts/fetch-issues.sh` | Fetch one or more issues (single / range / list) with body + comments. Wraps `agtag issue fetch`. |
 | `scripts/mesh-message.sh` | Send a message to a Culture mesh channel. Unsigned (IRC nick is the speaker). |
-| `scripts/templates/skill-update-brief.md` | The Markdown template the steward broadcast verb consumes. Vendored alongside the scripts for reference; culture itself does not run a broadcast verb (that lives in `steward-cli`). |
+| `scripts/templates/skill-update-brief.md` | Markdown template the upstream broadcast verb (guildmaster's `guild teach`) renders for a **resync** of an already-vendored skill. Vendored alongside the scripts for reference; culture itself does not run a broadcast verb. |
+| `scripts/templates/skill-new-brief.md` | Companion template for a **new** skill (no older copy to replace), rendered with `--new`. Same reference-only role. |
 
 More scripts can land here as the communication footprint grows —
 `mesh-ask.sh` for question-shaped pings via `culture channel ask`,
@@ -253,8 +254,9 @@ hypotheticals.
 
 ## Provenance
 
-Vendored from agentculture/steward
-([`.claude/skills/communicate/`](https://github.com/agentculture/steward/tree/main/.claude/skills/communicate)).
-Re-cite from there when steward bumps the skill. Scripts intentionally
-diverged from steward's upstream copy carry a `# culture-divergence:`
-header; preserve those when re-citing.
+Vendored from **agentculture/guildmaster** (the AgentCulture skills hub,
+post steward→guildmaster cutover; lineage: steward through 0.11.x)
+([`.claude/skills/communicate/`](https://github.com/agentculture/guildmaster/tree/main/.claude/skills/communicate)).
+Re-cite from there when guildmaster bumps the skill. Scripts intentionally
+diverged from the upstream copy carry a `# culture-divergence:` header
+(e.g. `fetch-issues.sh`'s strict range guard); preserve those when re-citing.

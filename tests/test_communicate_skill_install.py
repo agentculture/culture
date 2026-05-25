@@ -31,7 +31,7 @@ EXPECTED_SCRIPTS = (
     "post-comment.sh",
     "post-issue.sh",
 )
-EXPECTED_TEMPLATES = ("skill-update-brief.md",)
+EXPECTED_TEMPLATES = ("skill-update-brief.md", "skill-new-brief.md")
 
 
 @pytest.mark.parametrize(("target", "root"), BACKENDS)
@@ -79,13 +79,17 @@ def test_install_drops_communicate_skill_for_backend(
 
 
 def test_install_skill_md_carries_provenance_header(tmp_path, monkeypatch) -> None:
-    """The vendored SKILL.md must declare it was sourced from steward."""
+    """The vendored SKILL.md must declare its guildmaster provenance.
+
+    Post steward→guildmaster cutover (issue #409) the skills hub is
+    guildmaster; the provenance header records that supplier.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
     skills.dispatch(Namespace(skills_command="install", target="claude"))
 
     skill_md = os.path.expanduser("~/.claude/skills/communicate/SKILL.md")
     text = open(skill_md, encoding="utf-8").read()
-    assert "Vendored from agentculture/steward" in text
+    assert "Vendored from agentculture/guildmaster" in text
 
 
 def test_install_all_backends_includes_communicate(tmp_path, monkeypatch) -> None:
