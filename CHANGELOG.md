@@ -15,6 +15,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **steward → guildmaster skills-supplier cutover** ([#409](https://github.com/agentculture/culture/issues/409)): re-pointed vendor/provenance attribution in the `cicd` and `communicate` `SKILL.md` and the `cicd/workflow.sh` header from steward to guildmaster (steward lineage preserved), and rewrote the `CLAUDE.md` "Sibling alignment" section to the post-cutover split — guildmaster owns the canonical skill set + broadcast verbs (`guild teach` / `guild onboard`); steward retains agent alignment (the `steward-cli` dep is unchanged).
 - Kept culture's `run-tests` and `version-bump` copies, which are intentionally **ahead** of guildmaster's (xdist shard-combine + coverage-floor surfacing + combine/report/xml failure propagation; `idx >= 0` changelog insertion). Added `# culture-divergence:` notes; the improvements are offered back upstream to guildmaster rather than overwritten on resync.
+- Re-pointed the *new* skills' provenance/broadcast attribution to guildmaster too (PR #410 review): `agent-config` cites guildmaster (forked from steward, which keeps the alignment-judgment variant); the devague trio names guildmaster as the re-broadcaster (origin stays devague). Steward's retained agent-alignment references (`steward overview` / `steward doctor`) are left intact.
+
+### Fixed
+
+- `agent-config/scripts/show.sh` suffix mode no longer forces exit 2 for *every* Python failure — only the explicit "unknown suffix" case maps to 2; malformed-manifest / runtime errors keep their own rc so callers can distinguish a typo'd suffix from a broken manifest (PR #410 review; `# culture-divergence:`, offered upstream in [guildmaster#22](https://github.com/agentculture/guildmaster/issues/22)).
+- `sonarclaude/scripts/sonar.sh` `accept` now validates the SonarCloud transition HTTP status (mirroring the add-comment step) instead of silently reporting a failed transition as success (PR #410 review; `# culture-divergence:`, offered upstream in guildmaster#22).
 
 ## [13.1.0] - 2026-05-21
 
@@ -667,7 +673,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **`culture agent message` no longer treats local config as the source of truth** (#333 item 11). The previous behavior refused to send when the target nick was missing from local `server.yaml`, which broke DMs to agents reachable via federation. The local-config gate is removed; the send is delegated to the IRC server, and `401 NOSUCHNICK` propagates if the nick truly isn't on the mesh.
 - **`culture agent sleep`/`wake` usage errors now use argparse formatting** (#333 item 12). Missing-arg, conflicting-arg, and unknown-nick errors previously went to stdout via `print()` + `sys.exit(1)`, inconsistent with every other CLI verb. They now write `culture agent sleep: error: ...` to stderr with rc 2, matching argparse's standard usage-error path.
 - **`culture agent migrate --help` text now signals it's a one-time op** (#333 item 7). Help reads `Migrate legacy agents.yaml to server.yaml + culture.yaml (one-time, usually a no-op)` instead of advertising it as routine. The verb stays in the CLI surface for completeness — most repos have already migrated.
-- **Channel-existence guard now uses the server-wide `LIST` query** (#341 review). Earlier draft of the #331 guard read the daemon's `irc_channels` IPC, which only returns the daemon's _joined_ channels — false-rejecting valid channels the daemon hadn't joined. The guard now always uses the observer's `list_channels()` (a fresh peek `LIST`) regardless of IPC availability.
+- **Channel-existence guard now uses the server-wide `LIST` query** (#341 review). Earlier draft of the #331 guard read the daemon's `irc_channels` IPC, which only returns the daemon's *joined* channels — false-rejecting valid channels the daemon hadn't joined. The guard now always uses the observer's `list_channels()` (a fresh peek `LIST`) regardless of IPC availability.
 
 ### Deprecated
 

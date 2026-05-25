@@ -2,7 +2,7 @@
 # doc-test-alignment skill — entry point.
 #
 # STUB: the real workflow is not implemented yet. This script exists so the
-# steward skills convention is satisfied (every skill ships an executable
+# AgentCulture skills convention is satisfied (every skill ships an executable
 # entry-point script); when the real implementation lands here, it must
 # satisfy the contract documented in ../SKILL.md.
 #

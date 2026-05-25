@@ -11,8 +11,8 @@ description: >
   performs the fan-out. Use when the user says "assign to workforce",
   "fan out the plan", "parallel subagents", or after /spec-to-plan exports a
   plan. Authored and maintained in agentculture/devague (origin = devague);
-  steward pulls this skill from here and broadcasts it to the AgentCulture
-  mesh — it is NOT vendored from steward like the other skills here.
+  guildmaster re-broadcasts it to the AgentCulture mesh — it originates in
+  devague, not guildmaster (the supplier post steward→guildmaster cutover).
 ---
 
 # assign-to-workforce — fan out a converged plan's waves to parallel agents
@@ -236,7 +236,7 @@ This is a **first-party** skill — its origin is `agentculture/devague`, where
 the devague agent maintains it alongside the tools it operates (dogfooding),
 next to its siblings `/think` and `/spec-to-plan`. It is the *third* skill in
 that outbound family, covering the implementation leg after a plan converges.
-The flow runs the *opposite* direction of the vendored steward skills: steward
-pulls this **from** devague and broadcasts it to the rest of the AgentCulture
-mesh. The `cite, don't import` policy still holds: downstream repos copy it,
+The flow runs the *opposite* direction of the vendored guildmaster skills:
+guildmaster pulls this **from** devague and re-broadcasts it to the rest of the
+AgentCulture mesh. The `cite, don't import` policy still holds: downstream repos copy it,
 they don't symlink or depend on it. See `docs/skill-sources.md`.

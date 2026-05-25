@@ -6,8 +6,9 @@ description: >
   culture.yaml, and the agent's local .claude/skills index. Use when an
   operator says "show agent <name>", "what does <agent> look like", or before
   teaching/onboarding an agent and you need to see its current kit + config.
-  Backs the `guild show` verb. Vendored from steward (cite-don't-import);
-  inventory only — it reports, it does not judge alignment or drift.
+  Backs the `guild show` verb. Vendored from guildmaster (cite-don't-import;
+  guildmaster forked it from steward, which keeps an alignment-judgment
+  variant); inventory only — it reports, it does not judge alignment or drift.
 type: command
 ---
 
@@ -76,7 +77,8 @@ truncated to 120 chars).
 - **Per-machine config.** Suffix mode reads `culture_server_yaml` from
   `.claude/skills.local.yaml` (git-ignored), falling back to
   `.claude/skills.local.yaml.example`.
-- **Vendored from steward** (`agent-config`). guildmaster owns this copy and may
-  diverge; re-sync from steward's canonical copy when it changes. Divergences:
-  the SKILL.md is reframed for guildmaster's inventory role and adds
-  `type: command` for the culture backend's skill loader.
+- **Vendored from guildmaster** (`agent-config`; guildmaster forked it from
+  steward, which keeps an alignment-judgment variant). Re-sync from
+  guildmaster's canonical copy when it changes. Divergences: the SKILL.md is
+  reframed for guildmaster's inventory role and adds `type: command` for the
+  culture backend's skill loader.

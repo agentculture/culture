@@ -10,9 +10,9 @@ description: >
   risks, and export a plan only once it *converges*. Use when the user says
   "spec to plan", "stp", "turn this spec into a plan", "plan this spec", "make a
   build plan", or after the /think skill exports a spec. Authored and maintained
-  in agentculture/devague (origin = devague); steward pulls this skill from here
-  and broadcasts it to the AgentCulture mesh — it is NOT vendored from steward
-  like the other skills here.
+  in agentculture/devague (origin = devague); guildmaster re-broadcasts it to the
+  AgentCulture mesh — it originates in devague, not guildmaster (the supplier
+  post steward→guildmaster cutover).
 ---
 
 # spec-to-plan — work a converged spec forwards into a buildable plan
@@ -224,7 +224,8 @@ implementation (or `superpowers:writing-plans`).
 This is a **first-party** skill — its origin is `agentculture/devague`, where the
 devague agent maintains it alongside the tool it operates (dogfooding), next to
 its sibling `/think`. It is the *inverse* of the other skills under
-`.claude/skills/`, which devague vendors **from** steward. When ready, steward
-pulls it **from** devague and broadcasts it to the rest of the AgentCulture mesh.
+`.claude/skills/`, which devague vendors **from** guildmaster. When ready,
+guildmaster pulls it **from** devague and re-broadcasts it to the rest of the
+AgentCulture mesh.
 The `cite, don't import` policy still holds: downstream repos copy it, they don't
 symlink or depend on it. See `docs/skill-sources.md`.

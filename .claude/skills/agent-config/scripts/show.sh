@@ -62,10 +62,16 @@ else
         echo "  or pass an explicit path instead of suffix '$target'" >&2
         exit 1
     fi
-    # Use a dedicated exit code (2) for "unknown suffix" so the steward CLI
-    # wrapper can distinguish user errors (typo'd suffix) from env errors
-    # (missing manifest / PyYAML).
-    if ! DIR=$(python3 - "$SERVER_YAML" "$target" <<'PY'
+    # Use a dedicated exit code (2) for "unknown suffix" so the guildmaster
+    # `guild show` wrapper can distinguish user errors (typo'd suffix) from
+    # env errors (missing manifest / PyYAML / malformed entry).
+    #
+    # culture-divergence: propagate the Python exit code instead of forcing
+    # exit 2 for *every* failure. Only the explicit `sys.exit(2)` (unknown
+    # suffix) maps to 2; a malformed manifest or missing `directory` key keeps
+    # Python's rc (1) so callers can tell a typo'd suffix from a broken
+    # manifest. Offered upstream to guildmaster (canonical script forces 2).
+    if DIR=$(python3 - "$SERVER_YAML" "$target" <<'PY'
 import sys, yaml, pathlib
 manifest_path, suffix = sys.argv[1], sys.argv[2]
 m = yaml.safe_load(pathlib.Path(manifest_path).read_text()) or {}
@@ -76,8 +82,10 @@ if entry is None:
     sys.exit(2)
 print(entry['directory'] if isinstance(entry, dict) else entry)
 PY
-); then
-        exit 2
+    ); then
+        :
+    else
+        exit "$?"
     fi
 fi
 

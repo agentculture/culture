@@ -223,10 +223,24 @@ cmd_accept() {
   fi
 
   # 1. Transition issue to ACCEPTED.
-  local transition_resp
-  transition_resp=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" \
+  #
+  # culture-divergence: validate the transition HTTP status (mirroring the
+  # add_comment step below). The canonical script POSTs with `-s` and never
+  # checks the response, so a failed transition (bad token, wrong state) is
+  # silently reported as success with status "UNKNOWN". Offered upstream to
+  # guildmaster.
+  local transition_resp transition_status
+  transition_resp=$(curl -sS -w $'\n%{http_code}' -H "Authorization: Bearer $SONAR_TOKEN" \
     -X POST "${BASE_URL}/api/issues/do_transition" \
     -d "issue=${ISSUE_KEY}&transition=accept")
+  transition_status=$(printf '%s\n' "$transition_resp" | tail -n 1)
+  transition_resp=$(printf '%s\n' "$transition_resp" | sed '$d')
+  if [[ "$transition_status" -lt 200 || "$transition_status" -ge 300 ]]; then
+    echo "Error: failed to transition issue $ISSUE_KEY to ACCEPTED (HTTP $transition_status)" >&2
+    echo "Response body:" >&2
+    printf '%s\n' "$transition_resp" >&2
+    exit 1
+  fi
 
   local status
   status=$(echo "$transition_resp" | jq -r '.issue.issueStatus // "UNKNOWN"')

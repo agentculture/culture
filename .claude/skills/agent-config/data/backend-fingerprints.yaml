@@ -1,9 +1,9 @@
-# Canonical backend fingerprint registry. Vendored from steward's agent-config
-# skill (cite-don't-import); guildmaster owns this copy. Read by the agent-config
-# show.sh (bash), which `guild show` shells out to. Upstream steward also reads
-# it from a Python detector; guildmaster has no parallel detector, so only the
-# `backends:` prompt mapping below is load-bearing here. Keep that mapping in
-# sync with upstream when re-syncing.
+# Canonical backend fingerprint registry. Vendored from guildmaster's
+# agent-config skill (cite-don't-import; guildmaster forked it from steward).
+# Read by the agent-config show.sh (bash), which `guild show` shells out to.
+# Steward also reads it from a Python detector; guildmaster has no parallel
+# detector, so only the `backends:` prompt mapping below is load-bearing here.
+# Keep that mapping in sync with upstream when re-syncing.
 #
 # `prompt`        — the backend's system-prompt filename at the repo root.
 # `steering`      — files/dirs distinctive enough to attribute to this backend.

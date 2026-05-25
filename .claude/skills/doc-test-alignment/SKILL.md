@@ -48,8 +48,8 @@ sibling-pattern contract lives in `docs/sibling-pattern.md`.
 
 - The skill directory exists, so `steward verify`'s skills-convention check
   finds the standard layout (SKILL.md + `scripts/` with an entry-point).
-- `scripts/check.sh` is the entry-point script, satisfying the steward skills
-  convention requirement that every skill ships an executable script.
+- `scripts/check.sh` is the entry-point script, satisfying the AgentCulture
+  skills convention requirement that every skill ships an executable script.
 - This `SKILL.md` is the contract for what the skill will do — when the
   implementation lands, it must satisfy this description or the description
   must move first.

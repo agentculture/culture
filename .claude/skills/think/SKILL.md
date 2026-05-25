@@ -11,8 +11,8 @@ description: >
   a spec", "announcement frame", or "devague", or when a feature request is too
   vague to build yet. Once a spec exports, hand off to the sibling /spec-to-plan
   skill to turn it into a plan. Authored and maintained in agentculture/devague
-  (origin = devague); steward pulls this skill from here and broadcasts it to the
-  AgentCulture mesh — it is NOT vendored from steward like the other skills here.
+  (origin = devague); guildmaster re-broadcasts it to the AgentCulture mesh — it
+  originates in devague, not guildmaster (the supplier post steward→guildmaster cutover).
 ---
 
 # think — work an idea backwards into a buildable spec
@@ -195,7 +195,7 @@ is **commit, then `/spec-to-plan`**.
 This is a **first-party** skill — its origin is `agentculture/devague`, where the
 devague agent maintains it alongside the tool it operates (dogfooding). It is the
 *inverse* of the other skills under `.claude/skills/`, which devague vendors
-**from** steward. When this skill is ready, steward pulls it **from** devague and
-broadcasts it to the rest of the AgentCulture mesh. The `cite, don't import`
+**from** guildmaster. When this skill is ready, guildmaster pulls it **from** devague and
+re-broadcasts it to the rest of the AgentCulture mesh. The `cite, don't import`
 policy still holds: downstream repos copy it, they don't symlink or depend on it.
 See `docs/skill-sources.md`.
