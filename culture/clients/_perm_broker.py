@@ -415,7 +415,18 @@ def write_decision(
         payload["reason"] = reason
     if pattern:
         payload["pattern"] = pattern
-    _atomic_write_json(dest, payload)
+    try:
+        _atomic_write_json(dest, payload)
+    except BaseException:
+        # On any failure after we created the O_EXCL placeholder, remove it.
+        # Otherwise a zero-byte sentinel lingers at dest: the waiting worker
+        # parses it forever (silent deadlock) and a retry is permanently
+        # blocked by DecisionExistsError.
+        try:
+            os.unlink(dest)
+        except OSError:
+            pass
+        raise
     return dest
 
 

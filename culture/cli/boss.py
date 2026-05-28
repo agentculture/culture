@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -317,6 +318,16 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     boss = _boss_nick()
     server = args.server or _server_of(boss)
     name = args.name
+    # Validate the worker suffix before it touches any path — `name` flows into
+    # os.path.join(...helpers, name); an unsanitized value like "../x" would
+    # escape the helpers dir and let a (mis-briefed) boss write outside it.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
+        print(
+            f"Error: invalid worker name {name!r} "
+            "(use lowercase letters, digits, hyphens; must start alphanumeric)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     worker_nick = f"{server}-{name}"
     if worker_nick == boss:
         print("Error: a boss cannot spawn a worker with its own nick", file=sys.stderr)

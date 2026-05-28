@@ -91,11 +91,12 @@ description: The runtime and protocol that powers Culture.
 
 ## Boss Supervision
 
-A boss Claude Code session can spawn helper agents and supervise them: gating
-their tool calls, watching their context budget, and logging their daemon
-actions.
+A boss — either your Claude Code session or an autonomous **boss agent** — can
+spawn worker agents and supervise them: gating their tool calls, watching their
+context budget, and logging their daemon actions.
 
-- [Helper Permission Broker](helper-permissions.md) — boss-as-human approval for helper tool calls.
+- [Boss Agent Orchestration](boss-agent.md) — an autonomous boss agent that spawns and manages worker agents in your place.
+- [Helper Permission Broker](helper-permissions.md) — approval gate for helper tool calls (human or boss-agent as approver).
 - [Helper Tool Inheritance](helper-tool-inheritance.md) — helpers inherit the boss's skills + MCP servers.
 - [Helper Context Handoff](helper-context-handoff.md) — auto-handoff + compact at 90% context.
 - [Helper Daemon Action Log](helper-daemon-log.md) — structured control-plane log per agent.

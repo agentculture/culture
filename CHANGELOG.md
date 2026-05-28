@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.8.0] - 2026-05-28
+
+### Added
+
+- **Boss agent orchestration** — an autonomous boss agent (a culture daemon) that manages worker agents in the human's place: spawns them, drives them over IRC like a Claude Code session, challenges their plans/implementations/claims, and approves/denies their tool requests. Spec: `docs/superpowers/specs/2026-05-28-boss-agent-orchestration-design.md`.
+- `culture boss` CLI (`culture/cli/boss.py`): `init/spawn/brief/read/pending/approve/deny/audit/log/status/close`. Reuses `_perm_broker` for queue/decision/ceiling ops. Approver flips from human → boss agent.
+- **Grant ceiling (human-over-boss gate)** — `boss-policy/<boss-nick>.yaml`; high-risk tools (MCP sends, destructive Bash) are above the boss's ceiling and escalate to the human (`approve.sh`) rather than being auto-granted. `culture boss approve` refuses them (exit 2). Reuses `match_policy`.
+- **Worker→boss permission notice** — `PermissionBroker` gains a best-effort `on_request` callback; the worker daemon DMs its owning boss (`AgentConfig.boss`) so the boss's activation handler fires (finishes #411's deferred v1.1).
+- `CULTURE_NICK` is now set in every agent's SDK subprocess env (all four backends) so an autonomous daemon agent can address its own IRC / boss sockets.
+- `culture boss init` writes the boss identity: manager `system_prompt` (with context re-grounding), seeded ceiling, copied boss skill, and the no-perm-policy deadlock guard (a boss must never be permission-supervised).
+- `docs/agentirc/boss-agent.md`; `culture/clients/claude/skill/boss/SKILL.md`.
+
+### Changed
+
+- `culture/clients/_perm_broker.py` — `on_request` callback; grant-ceiling helpers (`is_above_ceiling`, `write_default_boss_ceiling`); approver-side helpers (`list_pending`, `read_request`, `write_decision` with `O_CREAT\|O_EXCL` first-writer-wins).
+- `culture/clients/claude/{agent_runner,daemon,config}.py` — `on_perm_request` plumbing, worker→boss DM (`_on_perm_request`), `AgentConfig.boss`.
+- `culture/clients/{claude,codex,copilot,acp}/agent_runner.py` — `CULTURE_NICK` in subprocess env.
+
 ## [8.7.0] - 2026-05-28
 
 ### Added

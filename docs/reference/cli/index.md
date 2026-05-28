@@ -393,6 +393,30 @@ Restore an archived bot.
 culture bot unarchive spark-ori-ghci
 ```
 
+## Boss
+
+Orchestration commands used by an autonomous **boss agent** to manage worker
+agents. See [Boss Agent Orchestration]({{ '/agentirc/boss-agent/' | relative_url }}).
+The boss's own nick comes from `CULTURE_NICK` (set by the daemon).
+
+```bash
+culture boss init [--nick boss] [--channel '#boss'] [--cwd PATH]   # create the boss identity
+culture boss spawn <name> [--cwd PATH]   # create + start a worker under this boss
+culture boss brief <name> "<task>"       # send a task to a worker's channel
+culture boss read  <name> [--limit N]    # read a worker's recent replies
+culture boss pending                     # list pending worker permission requests
+culture boss approve <id> [--always] [--pattern P]   # grant (refused if above grant ceiling)
+culture boss deny <id> [reason...]       # deny, with a reason returned to the worker
+culture boss audit <name> [--limit N]    # worker's agent-message log (verify claims)
+culture boss log   <name> [--limit N]    # worker's daemon-action log
+culture boss status                      # workers + pending-perm count
+culture boss close <name>                # stop a worker daemon
+```
+
+`culture boss approve` refuses tools above the boss's **grant ceiling**
+(`~/.culture/boss-policy/<nick>.yaml`) — high-risk actions (MCP sends,
+destructive Bash) escalate to the human via `approve.sh`.
+
 ## Configuration
 
 All commands use `~/.culture/server.yaml` by default. Override with `--config`.

@@ -113,6 +113,44 @@ class TestApproveDeny:
         assert "CULTURE_NICK" in res.stderr
 
 
+class TestSpawnValidation:
+    def test_spawn_rejects_path_traversal_name(self, home):
+        res = _run(["spawn", "../../evil"], home)
+        assert res.returncode == 1
+        assert "invalid worker name" in res.stderr
+        # Nothing was created outside the helpers dir.
+        assert not os.path.exists(os.path.join(str(home), "..", "evil"))
+
+    def test_spawn_rejects_slash_name(self, home):
+        res = _run(["spawn", "a/b"], home)
+        assert res.returncode == 1
+        assert "invalid worker name" in res.stderr
+
+
+class TestWriteDecisionCleanup:
+    def test_failed_write_leaves_no_placeholder(self, home, monkeypatch):
+        # If the atomic write fails after the O_EXCL placeholder is created, the
+        # placeholder must be removed so the worker doesn't poll a 0-byte file
+        # forever and a retry isn't blocked.
+        import culture.clients._perm_broker as pb
+
+        monkeypatch.setenv("CULTURE_HOME", str(home))
+
+        def _boom(dest, payload):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(pb, "_atomic_write_json", _boom)
+        with pytest.raises(OSError):
+            pb.write_decision("req-fail", verdict="allow")
+        dest = os.path.join(str(home), "perm-decisions", "req-fail.json")
+        assert not os.path.exists(dest)
+        # A retry is now possible (not blocked by a stale placeholder).
+        monkeypatch.undo()
+        monkeypatch.setenv("CULTURE_HOME", str(home))
+        pb.write_decision("req-fail", verdict="allow")
+        assert os.path.exists(dest)
+
+
 class TestPending:
     def test_pending_lists_requests(self, home):
         _write_request(home, "req-1", "Edit", {"file_path": "/a.py"})

@@ -461,6 +461,8 @@ agents:
 | `thinking` | string | `"medium"` | Thinking/reasoning level (Claude only) |
 | `tags` | list | `[]` | Capability/interest tags for self-organizing rooms |
 | `acp_command` | list | `["opencode", "acp"]` | Spawn command for ACP backend (e.g. `["cline", "--acp"]`) |
+| `context_watch` | mapping | `{enabled: true, high_water: 0.90, low_water: 0.50}` | Context-watermark handoff (Claude only). See [Helper Context Handoff](../../agentirc/helper-context-handoff.md). |
+| `boss` | string | `""` | Nick of the boss agent that owns this worker; set by `culture boss spawn`. Used to DM the boss on permission requests. See [Boss Agent Orchestration](../../agentirc/boss-agent.md). |
 
 Backend-specific fields are passed through to the runner implementation.
 
