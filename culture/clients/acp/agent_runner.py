@@ -138,6 +138,10 @@ class ACPAgentRunner:
         isolated_env = dict(os.environ)
         isolated_env["XDG_DATA_HOME"] = os.path.join(self._isolated_home, ".local", "share")
         isolated_env["XDG_STATE_HOME"] = os.path.join(self._isolated_home, ".local", "state")
+        # Expose the agent's own nick so its IRC / boss skills can resolve this
+        # daemon's socket (autonomous agents can't `export` it themselves).
+        if self._nick:
+            isolated_env["CULTURE_NICK"] = self._nick
 
         cmd_label = " ".join(self.acp_command)
         try:

@@ -115,34 +115,55 @@ Requirements for the boss agent:
      a known boss nick, so a boss can't accidentally re-spawn itself as a
      supervised worker.
 
-## The orchestration skill (`culture-boss-agent`)
+## The orchestration skill — a `culture boss` CLI subcommand (in-repo)
 
-A new skill placed in the boss agent's cwd. Mirrors the human-facing culture-boss
-scripts, but documented and shaped for an **LLM caller**. It reuses the exact
-same underlying operations (and where possible the same scripts) so there is one
-implementation, not two.
+The orchestration capability ships **in the repo** as a new `culture boss` CLI
+subcommand group (`culture/cli/boss.py`), exactly mirroring how the IRC skill is
+the `culture channel` subcommand. This is testable Python that reuses the broker
++ ceiling code directly (no shelling to bash scripts), and is versioned and
+reviewable. A `SKILL.md` at `culture/clients/claude/skill/boss/` documents it for
+an LLM caller; `culture boss init` copies that skill dir into the boss agent's
+cwd `.claude/skills/` so the boss picks it up (project setting source).
 
-| Tool (Bash entry) | Purpose | Maps to |
-|---|---|---|
-| `boss spawn <name> [cwd]` | Create + start a worker, seed its policy, join its task channel. | `spawn-helper.sh` |
-| `boss brief <name> "<task>"` | Send a task/message to a worker's channel (prefixes the worker nick so its mention detector fires). | `brief.sh` |
-| `boss read <name> [limit]` | Read recent worker replies + `[N pending perms]`. | `read-replies.sh` |
-| `boss pending` | List all pending worker permission requests. | `pending-perms.sh` |
-| `boss approve <id> [always [<pattern>]]` | Grant a worker's tool request ("yes, that tool — always"). Refuses if the tool is above the boss's grant ceiling (→ escalate to human). | `approve.sh` + ceiling check |
-| `boss deny <id> [reason]` | Refuse a worker's tool request, with a reason the worker's model sees. | `deny.sh` |
-| `boss audit <name> [limit]` | Read a worker's agent-message audit log — to challenge claims. | reads `audit/<nick>.jsonl` |
-| `boss log <name> [limit]` | Read a worker's daemon-action log. | `daemon-log.sh` |
-| `boss status` | Summarize the mesh: workers, states, pending perms, last actions. | `status.sh` |
-| `boss close <name>` | Stop a worker daemon. | `close-helper.sh` |
+The boss agent's own nick comes from the `CULTURE_NICK` env var (now set by the
+agent runner — see "CULTURE_NICK prerequisite"), so `culture boss approve`
+knows whose grant ceiling to apply and IRC ops act as the boss.
+
+| Subcommand | Purpose |
+|---|---|
+| `culture boss init [--nick boss] [--channel '#boss'] [--cwd PATH]` | Create the boss agent: write its `culture.yaml` (manager `system_prompt`, `context_watch` on), seed its grant ceiling (`boss-policy/<nick>.yaml`), copy the boss skill into its cwd, **assert no `perm-policy/<nick>.yaml`**, join the boss channel. Idempotent. |
+| `culture boss spawn <name> [--cwd PATH]` | Create + start a worker (`cu agent create/start`), seed its policy (`seed_helper_policy`), set the worker's `boss:` field to `$CULTURE_NICK`, join its task channel. Refuses a `<name>` colliding with a known boss nick. |
+| `culture boss brief <name> "<task>"` | Send a task to a worker's channel (prefixes the worker nick so its mention detector fires). |
+| `culture boss read <name> [--limit N]` | Read recent worker replies. |
+| `culture boss pending` | List all pending worker permission requests. |
+| `culture boss approve <id> [--always] [--pattern P]` | Grant a worker's tool request. **Refuses (non-zero exit + escalation message) if the tool is above `$CULTURE_NICK`'s grant ceiling** (`is_above_ceiling`); writes the decision otherwise. |
+| `culture boss deny <id> [reason...]` | Refuse a worker's tool request, with a reason the worker's model sees. |
+| `culture boss audit <name> [--limit N]` | Read a worker's agent-message audit log — to challenge claims. |
+| `culture boss log <name> [--limit N]` | Read a worker's daemon-action log. |
+| `culture boss status` | Summarize the mesh: workers, states, pending perms. |
+| `culture boss close <name>` | Stop a worker daemon. |
 
 These are thin; the boss's IRC skill handles the actual conversation
 (`culture channel message #task-<name> ...` / `culture channel read ...`). The
-orchestration skill only adds what conversation can't do.
+`culture boss` subcommand only adds what conversation can't do (spawn, approve,
+read logs). The decision/queue/ceiling operations reuse `_perm_broker.py`
+directly — one implementation, callable by both the CLI and tests.
 
-**Single implementation:** the human-facing culture-boss skill and the
-boss-agent orchestration skill call the *same* scripts. The only differences are
-(a) the SKILL.md is written for an LLM operator, and (b) `CULTURE_NICK` is the
-boss agent's nick so IRC ops act as the boss.
+## CULTURE_NICK prerequisite
+
+The harness does **not** currently set `CULTURE_NICK` in the agent's SDK
+subprocess environment (verified: the Claude runner's `_make_options` sets no
+`env`; codex/copilot build an `isolated_env` without it). An autonomous daemon
+agent therefore cannot reliably address its own IRC socket — the IRC skill and
+the `culture boss` skill both resolve the daemon socket from `CULTURE_NICK`.
+
+Fix (all four backends, per the all-backends rule): each agent runner sets
+`CULTURE_NICK=<own-nick>` in the env it passes to the SDK/CLI subprocess (merged
+over `os.environ`). For the Claude runner this is `ClaudeAgentOptions(env=...)`;
+codex/copilot already build an `isolated_env` dict — add the key there; ACP
+similarly. This is a latent enabler for *any* autonomous agent using its own
+skills, not just the boss. Test: each runner's constructed options/env contains
+`CULTURE_NICK == nick`.
 
 ## Worker permission requests surface to the boss over IRC
 
@@ -311,9 +332,13 @@ individual tool calls. Documented in the backend matrix.
 ## Files
 
 New:
-- `culture/clients/claude/skill/boss/` (or a sibling skill dir) — orchestration
-  SKILL.md + a `boss` CLI/script shim that calls the shared operations, including
-  the `boss approve` grant-ceiling check (reusing `match_policy`).
+- `culture/cli/boss.py` — the `culture boss` subcommand group (init/spawn/brief/
+  read/pending/approve/deny/audit/log/status/close), reusing `_perm_broker.py`
+  for queue/decision/ceiling ops. Registered in the CLI dispatcher.
+- `culture/clients/claude/skill/boss/SKILL.md` — documents `culture boss …` for
+  an LLM boss agent. Copied into the boss cwd by `culture boss init`.
+- Per-backend runner env: `CULTURE_NICK` set in the SDK subprocess env (see
+  "CULTURE_NICK prerequisite").
 
 Changed (`on_request` plumbing path is daemon → AgentRunner → PermissionBroker,
 because the broker is constructed inside `AgentRunner.__init__`, not the daemon):

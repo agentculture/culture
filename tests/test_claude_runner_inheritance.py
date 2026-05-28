@@ -40,6 +40,16 @@ class TestSettingSources:
         opts = runner._make_options()
         assert opts.permission_mode == "bypassPermissions"
 
+    def test_culture_nick_in_subprocess_env(self, culture_root):
+        runner = _runner(nick="local-foo")
+        opts = runner._make_options()
+        assert opts.env.get("CULTURE_NICK") == "local-foo"
+
+    def test_empty_nick_no_culture_nick_env(self, culture_root):
+        runner = _runner(nick="")
+        opts = runner._make_options()
+        assert "CULTURE_NICK" not in opts.env
+
 
 class TestConditionalCanUseTool:
     def test_no_policy_file_no_callback(self, culture_root):
@@ -71,6 +81,4 @@ class TestStreamingPromptWrapper:
         from culture.clients.claude.agent_runner import _single_user_message_stream
 
         items = [item async for item in _single_user_message_stream("hello world")]
-        assert items == [
-            {"type": "user", "message": {"role": "user", "content": "hello world"}}
-        ]
+        assert items == [{"type": "user", "message": {"role": "user", "content": "hello world"}}]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import TYPE_CHECKING, Any, AsyncIterable, Awaitable, Callable
 
@@ -171,12 +172,24 @@ class AgentRunner:
             # (no boss watching the queue) forever on first non-auto-allow
             # tool call.
             can_use_tool=self._can_use_tool,
+            # Expose the agent's own nick to its Bash tools so the IRC skill
+            # (`culture channel …`) and the boss skill (`culture boss …`) can
+            # resolve this daemon's socket. Without it an autonomous daemon
+            # agent cannot address its own IRC connection.
+            env=self._subprocess_env(),
         )
         if self.system_prompt:
             opts.system_prompt = self.system_prompt
         if self._session_id:
             opts.resume = self._session_id
         return opts
+
+    def _subprocess_env(self) -> dict[str, str]:
+        """Env for the SDK subprocess: inherit ours + pin CULTURE_NICK."""
+        env = dict(os.environ)
+        if self._nick:
+            env["CULTURE_NICK"] = self._nick
+        return env
 
     def _handle_result_message(self, msg: ResultMessage) -> None:
         """Handle a ResultMessage — track session and log errors."""
