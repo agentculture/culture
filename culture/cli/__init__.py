@@ -23,9 +23,9 @@ import logging
 import sys
 
 from culture import __version__
-from culture.cli import afi, agent, bot, channel, devex, introspect, mesh, server, skills
+from culture.cli import afi, agent, boss, bot, channel, devex, introspect, mesh, server, skills
 
-GROUPS = [agent, server, mesh, channel, bot, skills, devex, afi, introspect]
+GROUPS = [agent, server, mesh, channel, bot, boss, skills, devex, afi, introspect]
 
 
 def _names_of(group) -> set[str]:

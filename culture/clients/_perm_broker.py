@@ -346,6 +346,79 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+# ---------------------------------------------------------------------------
+# Approver-side helpers (shared by the boss CLI and the human approve scripts)
+# ---------------------------------------------------------------------------
+
+
+def list_pending() -> list[dict[str, Any]]:
+    """Return all pending permission requests (parsed queue files), oldest first."""
+    queue_dir = _queue_dir()
+    out: list[dict[str, Any]] = []
+    try:
+        names = sorted(n for n in os.listdir(queue_dir) if n.endswith(".json"))
+    except OSError:
+        return out
+    for name in names:
+        try:
+            with open(os.path.join(queue_dir, name), encoding="utf-8") as handle:
+                out.append(json.load(handle))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return out
+
+
+def read_request(request_id: str) -> dict[str, Any] | None:
+    """Read a single pending request by id, or None if absent/unreadable."""
+    path = os.path.join(_queue_dir(), f"{request_id}.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+class DecisionExistsError(RuntimeError):
+    """Raised when a decision already exists for a request (first-writer-wins)."""
+
+
+def write_decision(
+    request_id: str,
+    *,
+    verdict: str,
+    scope: str = "once",
+    reason: str = "",
+    pattern: str = "",
+    decided_by: str = "boss",
+) -> str:
+    """Write a decision file (first-writer-wins via O_CREAT|O_EXCL + atomic rename).
+
+    Raises :class:`DecisionExistsError` if a decision already exists for the id.
+    Returns the decision path. Used by the boss CLI; the human scripts mirror it.
+    """
+    dest = os.path.join(_decisions_dir(), f"{request_id}.json")
+    _mkdir_secure(_decisions_dir())
+    # First-writer-wins guard on the destination path.
+    try:
+        fd = os.open(dest, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise DecisionExistsError(request_id) from exc
+    os.close(fd)
+    payload: dict[str, Any] = {
+        "id": request_id,
+        "verdict": verdict,
+        "scope": scope,
+        "decided_by": decided_by,
+        "decided_at": _now_iso(),
+    }
+    if reason:
+        payload["reason"] = reason
+    if pattern:
+        payload["pattern"] = pattern
+    _atomic_write_json(dest, payload)
+    return dest
+
+
 @dataclass
 class _PolicyCache:
     path: str
