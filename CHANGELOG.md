@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - `_perm_broker.list_pending()` now excludes requests that already have a decision (awaiting their worker to consume it), so approvers (dashboard and `culture boss pending`) don't re-act on decided requests. Surfaced by live in-browser verification of the dashboard.
 
+### Fixed
+
+- **Critical (regression from 8.7.0/8.8.0):** the Claude daemon read `agent.context_watch` / `agent.boss` directly, but at runtime it receives `culture.config.AgentConfig` (manifest config) where those live in `extras`, not as typed fields — so **every Claude agent daemon crashed on startup** (`'AgentConfig' object has no attribute 'context_watch'`). Unit tests missed it because they construct the backend-specific config. Fixed: `culture.config.AgentConfig` exposes `boss` + `context_watch` properties (reading `extras`, mirroring `acp_command`); the daemon normalizes either config flavor. Caught by the first live boss+worker bring-up.
+- The dashboard's `list_agents` used the backend-specific config loader, which rejects a real `server.yaml` (`telemetry.audit_enabled`); switched to the canonical `culture.config` loader.
+
 ## [8.8.0] - 2026-05-28
 
 ### Added

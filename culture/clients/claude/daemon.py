@@ -48,6 +48,34 @@ _ERR_CHANNEL_PREFIX = "Channel name must start with '#'"
 _MENTION_RE = re.compile(r"@([\w-]+)")
 
 
+def _context_watch_state(agent) -> ContextWatchState:
+    """Normalize an agent's context_watch config (dict / object / None) to state.
+
+    Runtime config (``culture.config.AgentConfig``) exposes it as a dict from
+    ``culture.yaml`` extras; the backend-specific config exposes a
+    ``ContextWatchConfig`` object; either may be empty/absent → defaults.
+    """
+    cw = getattr(agent, "context_watch", None)
+    if not cw:
+        return ContextWatchState()
+    if isinstance(cw, dict):
+        return ContextWatchState(
+            enabled=cw.get("enabled", True),
+            high_water=cw.get("high_water", 0.90),
+            low_water=cw.get("low_water", 0.50),
+        )
+    return ContextWatchState(
+        enabled=getattr(cw, "enabled", True),
+        high_water=getattr(cw, "high_water", 0.90),
+        low_water=getattr(cw, "low_water", 0.50),
+    )
+
+
+def _boss_nick(agent) -> str:
+    """The owning boss nick, or '' — works for both config flavors."""
+    return getattr(agent, "boss", "") or ""
+
+
 class AgentDaemon:
     """Central orchestrator that ties together the IRC transport, socket server,
     agent runner, supervisor, and webhook client for a single agent nick."""
@@ -80,12 +108,10 @@ class AgentDaemon:
         self._daemon_log: DaemonLog = DaemonLog(nick=agent.nick)
 
         # Context-watermark handoff state (Claude exposes per-turn input_tokens).
-        cw = agent.context_watch
-        self._context_watch = ContextWatchState(
-            high_water=cw.high_water,
-            low_water=cw.low_water,
-            enabled=cw.enabled,
-        )
+        # `agent.context_watch` is a dict on the runtime config (culture.config,
+        # from culture.yaml extras) or a ContextWatchConfig object on the
+        # backend-specific config (tests) — normalize both.
+        self._context_watch = _context_watch_state(agent)
 
         # Crash-recovery state
         self._crash_times: list[float] = []
@@ -506,7 +532,7 @@ class AgentDaemon:
         human-supervised case from PR #411) we post nothing — the human finds the
         request via ``pending-perms.sh``.
         """
-        boss = self.agent.boss
+        boss = _boss_nick(self.agent)
         if not boss or self._transport is None:
             return
         tool = payload.get("tool_name", "?")

@@ -92,6 +92,26 @@ class AgentConfig:
         """ACP-specific: command to spawn the ACP process."""
         return self.extras.get("acp_command", ["opencode", "acp"])
 
+    @property
+    def boss(self) -> str:
+        """Nick of the boss agent that owns this worker (empty if unmanaged).
+
+        Set by ``culture boss spawn`` into the worker's culture.yaml; the Claude
+        daemon DMs this nick on permission requests. Lives in ``extras`` like
+        other backend-specific fields.
+        """
+        return self.extras.get("boss", "")
+
+    @property
+    def context_watch(self) -> dict:
+        """Context-watermark handoff settings (Claude only), or {} for defaults.
+
+        A mapping ``{enabled, high_water, low_water}`` from culture.yaml; the
+        Claude daemon normalizes it. Lives in ``extras``.
+        """
+        cw = self.extras.get("context_watch", {})
+        return cw if isinstance(cw, dict) else {}
+
 
 @dataclass
 class ServerConfig:

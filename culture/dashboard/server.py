@@ -34,7 +34,7 @@ from culture.clients._perm_broker import (
     policy_path_for,
     write_decision,
 )
-from culture.clients.claude.config import load_config_or_default
+from culture.config import load_config_or_default
 from culture.pidfile import read_pid
 
 logger = logging.getLogger(__name__)
