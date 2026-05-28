@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.7.0] - 2026-05-28
+
+### Added
+
+- **Helper boss permission broker** — a boss Claude Code session is the human-in-the-loop for helper agents it spawns. `culture/clients/_perm_broker.py` wires the Claude Agent SDK `can_use_tool` callback to a file-backed request/decision queue under `~/.culture/`; helpers block on boss approval for any non-safe-read tool call. Safe reads (Read/Glob/Grep, read-only Bash) auto-approve via a per-helper `perm-policy/<nick>.yaml`.
+- **Helper tool inheritance** — Claude agents now load `setting_sources=["user","project","local"]`, so helpers inherit the boss's `~/.claude/` skills, MCP servers, and plugins.
+- **Context-watermark handoff (Claude)** — `culture/clients/_context_watch.py`; the daemon self-monitors per-turn `input_tokens` and at 90% of the model's context window asks the agent to write a handoff to `~/.culture/handoff/<nick>.md`, compacts, then reminds it to read the handoff after the compact. Configurable via a `context_watch` block in `culture.yaml`.
+- **Daemon action log (all backends)** — `culture/clients/_daemon_log.py`; structured JSONL control-plane log at `~/.culture/daemon-log/<nick>.jsonl` (start/stop/exit/crash/compact/handoff/…).
+- **Agent-message audit log (all backends)** — `culture/clients/_audit.py`; one JSONL line per AssistantMessage at `~/.culture/audit/<nick>.jsonl`.
+- `docs/agentirc/helper-permissions.md`, `helper-tool-inheritance.md`, `helper-context-handoff.md`, `helper-daemon-log.md`, and the design spec `docs/superpowers/specs/2026-05-28-helper-boss-permission-broker.md`.
+
+### Changed
+
+- `culture/clients/claude/agent_runner.py` — widened `setting_sources`; conditional `can_use_tool` (only when a `perm-policy/<nick>.yaml` exists, preserving today's behavior for standalone agents); streaming-prompt wrapper required by the SDK when the callback is set; new `on_usage` callback.
+- `culture/clients/claude/config.py` — new `ContextWatchConfig` on `AgentConfig`.
+- `culture/clients/{claude,codex,copilot,acp}/daemon.py` — instantiate the audit + daemon-action logs and record actions; Claude daemon also drives the context-watch handoff cycle.
+- `packages/agent-harness/culture.yaml` + `culture/clients/claude/culture.yaml` — commented `context_watch` block.
+
 ## [8.6.0] - 2026-04-26
 
 ### Added

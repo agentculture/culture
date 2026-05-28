@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 import yaml
@@ -51,6 +51,21 @@ class WebhookConfig:
 
 
 @dataclass
+class ContextWatchConfig:
+    """Context-watermark handoff settings.
+
+    When enabled, the daemon monitors per-turn input-token usage; at
+    ``high_water`` it asks the agent to write a handoff for its post-compact
+    self, compacts, then reminds it to read the handoff. ``low_water`` is the
+    fraction below which the handoff latch resets for the next fill cycle.
+    """
+
+    enabled: bool = True
+    high_water: float = 0.90
+    low_water: float = 0.50
+
+
+@dataclass
 class AgentConfig:
     """Per-agent settings."""
 
@@ -66,6 +81,7 @@ class AgentConfig:
     archived: bool = False
     archived_at: str = ""
     archived_reason: str = ""
+    context_watch: ContextWatchConfig = field(default_factory=ContextWatchConfig)
 
 
 @dataclass
@@ -122,11 +138,18 @@ def load_config(path: str | Path) -> DaemonConfig:
     telemetry = TelemetryConfig(**raw.get("telemetry", {}))
 
     agents = []
-    known_agent_fields = {f.name for f in AgentConfig.__dataclass_fields__.values()}
+    known_agent_fields = {f.name for f in fields(AgentConfig)}
     for agent_raw in raw.get("agents", []):
         # Strip unknown fields (e.g. acp_command from ACP backend configs)
         # so multi-backend configs don't crash on load.
         filtered = {k: v for k, v in agent_raw.items() if k in known_agent_fields}
+        # Coerce the nested context_watch mapping into its dataclass.
+        cw = filtered.get("context_watch")
+        if isinstance(cw, dict):
+            known_cw = {f.name for f in fields(ContextWatchConfig)}
+            filtered["context_watch"] = ContextWatchConfig(
+                **{k: v for k, v in cw.items() if k in known_cw}
+            )
         agents.append(AgentConfig(**filtered))
 
     return DaemonConfig(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, AsyncIterable, Awaitable, Callable
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -17,12 +17,25 @@ from claude_agent_sdk import (
 )
 from opentelemetry import trace as _otel_trace
 
+from culture.clients._perm_broker import PermissionBroker, has_policy_file
 from culture.clients.claude.telemetry import _HARNESS_TRACER_NAME, record_llm_call
 
 if TYPE_CHECKING:
     from culture.clients.claude.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
+
+
+async def _single_user_message_stream(text: str) -> AsyncIterable[dict[str, Any]]:
+    """Yield one user message in the SDK's streaming-mode shape.
+
+    Required by the Claude Agent SDK whenever ``can_use_tool`` is set
+    (client.py raises ``ValueError`` if ``prompt`` is a plain string).
+    """
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": text},
+    }
 
 
 def _content_block_to_dict(block: Any) -> dict[str, Any]:
@@ -68,6 +81,7 @@ class AgentRunner:
         system_prompt: str = "",
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        on_usage: Callable[[int | None], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
     ) -> None:
@@ -76,6 +90,7 @@ class AgentRunner:
         self.system_prompt = system_prompt
         self.on_exit = on_exit
         self.on_message = on_message
+        self.on_usage = on_usage
         self._metrics = metrics
         self._nick = nick
 
@@ -83,6 +98,16 @@ class AgentRunner:
         self._task: asyncio.Task | None = None
         self._stopping = False
         self._prompt_queue: asyncio.Queue[str] = asyncio.Queue()
+
+        # Permission broker — wired only when a perm-policy/<nick>.yaml exists.
+        # Standalone mesh agents (no policy file) keep today's bypassPermissions
+        # semantics: can_use_tool=None and string-prompt path preserved.
+        if nick and has_policy_file(nick):
+            self._broker: PermissionBroker | None = PermissionBroker(nick=nick)
+            self._can_use_tool = self._broker.gate
+        else:
+            self._broker = None
+            self._can_use_tool = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -134,7 +159,14 @@ class AgentRunner:
             model=self.model,
             cwd=self.directory,
             permission_mode="bypassPermissions",
-            setting_sources=["project"],
+            # Inherit user-level skills, MCP servers, plugins from
+            # ~/.claude/ when present.  Project + local still apply.
+            setting_sources=["user", "project", "local"],
+            # Conditional: only set when this helper has a perm-policy file.
+            # Setting it unconditionally would hang non-supervised agents
+            # (no boss watching the queue) forever on first non-auto-allow
+            # tool call.
+            can_use_tool=self._can_use_tool,
         )
         if self.system_prompt:
             opts.system_prompt = self.system_prompt
@@ -161,6 +193,15 @@ class AgentRunner:
         outcome = "success"
         usage_dict: dict | None = None
         failed = False
+        # The SDK requires AsyncIterable prompts whenever can_use_tool is
+        # set (client.py:54-60 enforces this).  Wrap the queued string into
+        # a one-shot async iterable in that branch; otherwise preserve the
+        # legacy string-prompt path for standalone agents.
+        prompt_arg: str | AsyncIterable[dict[str, Any]]
+        if self._can_use_tool is None:
+            prompt_arg = prompt
+        else:
+            prompt_arg = _single_user_message_stream(prompt)
         with tracer.start_as_current_span(
             "harness.llm.call",
             attributes={
@@ -171,7 +212,7 @@ class AgentRunner:
         ):
             try:
                 async for message in query(
-                    prompt=prompt,
+                    prompt=prompt_arg,
                     options=self._make_options(),
                 ):
                     if isinstance(message, ResultMessage):
@@ -199,6 +240,10 @@ class AgentRunner:
                 duration_ms=duration_ms,
                 outcome=outcome,
             )
+        # Feed per-turn input-token usage to the context watcher (daemon-side).
+        if not failed and self.on_usage is not None:
+            tokens_input = usage_dict.get("tokens_input") if usage_dict else None
+            await self.on_usage(tokens_input)
         if failed:
             return False
         return True

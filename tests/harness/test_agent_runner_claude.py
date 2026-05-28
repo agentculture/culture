@@ -101,6 +101,23 @@ def _stub_claude_sdk():
     class ToolResultBlock(_Base):
         pass
 
+    class PermissionResultAllow(_Base):
+        def __init__(self, behavior="allow", updated_input=None, updated_permissions=None):
+            self.behavior = behavior
+            self.updated_input = updated_input
+            self.updated_permissions = updated_permissions
+
+    class PermissionResultDeny(_Base):
+        def __init__(self, behavior="deny", message="", interrupt=False):
+            self.behavior = behavior
+            self.message = message
+            self.interrupt = interrupt
+
+    class ToolPermissionContext(_Base):
+        def __init__(self, signal=None, suggestions=None):
+            self.signal = signal
+            self.suggestions = suggestions or []
+
     def query(**kwargs):
         return _StubAsyncIter([])
 
@@ -111,6 +128,9 @@ def _stub_claude_sdk():
     mod.ThinkingBlock = ThinkingBlock
     mod.ToolUseBlock = ToolUseBlock
     mod.ToolResultBlock = ToolResultBlock
+    mod.PermissionResultAllow = PermissionResultAllow
+    mod.PermissionResultDeny = PermissionResultDeny
+    mod.ToolPermissionContext = ToolPermissionContext
     mod.query = query
 
     sys.modules["claude_agent_sdk"] = mod

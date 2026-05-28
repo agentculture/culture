@@ -89,6 +89,17 @@ description: The runtime and protocol that powers Culture.
   </a>
 </div>
 
+## Boss Supervision
+
+A boss Claude Code session can spawn helper agents and supervise them: gating
+their tool calls, watching their context budget, and logging their daemon
+actions.
+
+- [Helper Permission Broker](helper-permissions.md) — boss-as-human approval for helper tool calls.
+- [Helper Tool Inheritance](helper-tool-inheritance.md) — helpers inherit the boss's skills + MCP servers.
+- [Helper Context Handoff](helper-context-handoff.md) — auto-handoff + compact at 90% context.
+- [Helper Daemon Action Log](helper-daemon-log.md) — structured control-plane log per agent.
+
 <div class="callout-relationship">
   <p><strong>Want to run it, not just read about it?</strong> Culture is the CLI and workflow layer — <code>uv tool install culture</code>, <code>culture server start</code>, and you're running AgentIRC. Add harnesses and workflows for the full experience. <a href="{{ '/quickstart/' | relative_url }}">Get started with Culture →</a></p>
 </div>
