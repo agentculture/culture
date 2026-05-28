@@ -25,6 +25,7 @@ from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
     DecisionExistsError,
+    InvalidRequestIdError,
     culture_home,
     has_policy_file,
     is_above_ceiling,
@@ -164,6 +165,23 @@ def _server_of(nick: str) -> str:
     return nick.split("-", 1)[0] if "-" in nick else "local"
 
 
+# Worker suffixes become file paths via audit_path_for/daemon_log_path_for and
+# IRC channel/nick names — validate every one that comes from argv so "../x" or
+# "a/b" can't escape (path traversal). Same shape as a sanitized agent suffix.
+_SUFFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def _require_worker_suffix(name: str) -> str:
+    if not name or not _SUFFIX_RE.fullmatch(name):
+        print(
+            f"Error: invalid worker name {name!r} "
+            "(use lowercase letters, digits, hyphens; must start alphanumeric)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return name
+
+
 def _task_channel(name: str) -> str:
     return f"#task-{name}"
 
@@ -240,6 +258,9 @@ def _cmd_approve(args: argparse.Namespace) -> None:
     scope = "always" if args.always else "once"
     try:
         write_decision(args.id, verdict="allow", scope=scope, pattern=args.pattern, decided_by=boss)
+    except InvalidRequestIdError:
+        print(f"Error: invalid request id {args.id!r}", file=sys.stderr)
+        sys.exit(1)
     except DecisionExistsError:
         print(f"Error: a decision already exists for {args.id}", file=sys.stderr)
         sys.exit(1)
@@ -251,6 +272,9 @@ def _cmd_deny(args: argparse.Namespace) -> None:
     reason = " ".join(args.reason) if args.reason else ""
     try:
         write_decision(args.id, verdict="deny", scope="once", reason=reason, decided_by=boss)
+    except InvalidRequestIdError:
+        print(f"Error: invalid request id {args.id!r}", file=sys.stderr)
+        sys.exit(1)
     except DecisionExistsError:
         print(f"Error: a decision already exists for {args.id}", file=sys.stderr)
         sys.exit(1)
@@ -258,7 +282,7 @@ def _cmd_deny(args: argparse.Namespace) -> None:
 
 
 def _cmd_audit(args: argparse.Namespace) -> None:
-    nick = f"{_server_of(_boss_nick())}-{args.name}"
+    nick = f"{_server_of(_boss_nick())}-{_require_worker_suffix(args.name)}"
     rows = _tail_jsonl(audit_path_for(nick), args.limit)
     if not rows:
         print(f"No audit entries for {nick}")
@@ -271,7 +295,7 @@ def _cmd_audit(args: argparse.Namespace) -> None:
 
 
 def _cmd_log(args: argparse.Namespace) -> None:
-    nick = f"{_server_of(_boss_nick())}-{args.name}"
+    nick = f"{_server_of(_boss_nick())}-{_require_worker_suffix(args.name)}"
     rows = _tail_jsonl(daemon_log_path_for(nick), args.limit)
     if not rows:
         print(f"No daemon-log entries for {nick}")
@@ -283,8 +307,9 @@ def _cmd_log(args: argparse.Namespace) -> None:
 
 
 def _cmd_brief(args: argparse.Namespace) -> None:
-    nick = f"{_server_of(_boss_nick())}-{args.name}"
-    channel = _task_channel(args.name)
+    name = _require_worker_suffix(args.name)
+    nick = f"{_server_of(_boss_nick())}-{name}"
+    channel = _task_channel(name)
     # Prefix the worker nick so its mention detector fires.
     text = f"@{nick} {args.task}"
     resp = _boss_irc("irc_send", channel=channel, message=text)
@@ -296,7 +321,7 @@ def _cmd_brief(args: argparse.Namespace) -> None:
 
 
 def _cmd_read(args: argparse.Namespace) -> None:
-    channel = _task_channel(args.name)
+    channel = _task_channel(_require_worker_suffix(args.name))
     resp = _boss_irc("irc_read", channel=channel, limit=args.limit)
     if not resp or not resp.get("ok"):
         print(f"Error: could not read {channel}", file=sys.stderr)
@@ -317,17 +342,10 @@ def _cmd_status(args: argparse.Namespace) -> None:
 def _cmd_spawn(args: argparse.Namespace) -> None:
     boss = _boss_nick()
     server = args.server or _server_of(boss)
-    name = args.name
     # Validate the worker suffix before it touches any path — `name` flows into
     # os.path.join(...helpers, name); an unsanitized value like "../x" would
     # escape the helpers dir and let a (mis-briefed) boss write outside it.
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
-        print(
-            f"Error: invalid worker name {name!r} "
-            "(use lowercase letters, digits, hyphens; must start alphanumeric)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    name = _require_worker_suffix(args.name)
     worker_nick = f"{server}-{name}"
     if worker_nick == boss:
         print("Error: a boss cannot spawn a worker with its own nick", file=sys.stderr)
@@ -389,7 +407,7 @@ def _record_worker_boss(cwd: str, suffix: str, boss: str) -> None:
 
 
 def _cmd_close(args: argparse.Namespace) -> None:
-    worker_nick = f"{_server_of(_boss_nick())}-{args.name}"
+    worker_nick = f"{_server_of(_boss_nick())}-{_require_worker_suffix(args.name)}"
     subprocess.run([sys.executable, "-m", "culture", "agent", "stop", worker_nick], check=False)
     print(f"closed {worker_nick}")
 

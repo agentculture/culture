@@ -168,6 +168,12 @@ class TestSecurity:
         assert resp.status == 400
 
     @pytest.mark.asyncio
+    async def test_approve_rejects_traversal_id(self, client):
+        # Qodo: request-id path traversal — write_decision validates the id.
+        resp = await client.post("/api/approve", json={"id": "../../evil"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
     async def test_cross_origin_blocked(self, client):
         # A malicious page (DNS-rebinding) sends a non-loopback Origin → 403.
         resp = await client.post(

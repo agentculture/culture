@@ -49,6 +49,29 @@ def _write_decision(path: str, payload: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+class TestRequestIdValidation:
+    def test_valid_and_invalid_ids(self, culture_root):
+        from culture.clients._perm_broker import valid_request_id
+
+        assert valid_request_id("req-2026-05-29T10-00-00-000000-abc123")
+        assert not valid_request_id("../../etc/passwd")
+        assert not valid_request_id("req-a/b")
+        assert not valid_request_id("notareq")
+        assert not valid_request_id("")
+
+    @pytest.mark.asyncio
+    async def test_write_decision_rejects_traversal_id(self, culture_root):
+        from culture.clients._perm_broker import InvalidRequestIdError, write_decision
+
+        with pytest.raises(InvalidRequestIdError):
+            write_decision("../../evil", verdict="allow")
+
+    def test_read_request_rejects_traversal_id(self, culture_root):
+        from culture.clients._perm_broker import read_request
+
+        assert read_request("../../etc/passwd") is None
+
+
 class TestListPendingExcludesDecided:
     def test_decided_request_excluded_from_pending(self, culture_root):
         from culture.clients._perm_broker import list_pending

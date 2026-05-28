@@ -346,6 +346,17 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+# Request IDs are minted as ``req-<iso-with-dashes>-<hex>`` — letters, digits,
+# hyphens only. Approvers (the boss CLI, the dashboard POST body) pass ids from
+# untrusted input, so every id that becomes a file path must match this before
+# it reaches ``os.path.join`` — otherwise ``../`` / ``/`` escapes the queue dir.
+_REQUEST_ID_RE = re.compile(r"^req-[A-Za-z0-9_-]+$")
+
+
+def valid_request_id(request_id: str) -> bool:
+    return bool(request_id) and _REQUEST_ID_RE.fullmatch(request_id) is not None
+
+
 # ---------------------------------------------------------------------------
 # Approver-side helpers (shared by the boss CLI and the human approve scripts)
 # ---------------------------------------------------------------------------
@@ -379,7 +390,9 @@ def list_pending() -> list[dict[str, Any]]:
 
 
 def read_request(request_id: str) -> dict[str, Any] | None:
-    """Read a single pending request by id, or None if absent/unreadable."""
+    """Read a single pending request by id, or None if absent/unreadable/invalid."""
+    if not valid_request_id(request_id):
+        return None
     path = os.path.join(_queue_dir(), f"{request_id}.json")
     try:
         with open(path, encoding="utf-8") as handle:
@@ -390,6 +403,10 @@ def read_request(request_id: str) -> dict[str, Any] | None:
 
 class DecisionExistsError(RuntimeError):
     """Raised when a decision already exists for a request (first-writer-wins)."""
+
+
+class InvalidRequestIdError(ValueError):
+    """Raised when a request id is not a valid, path-safe broker id."""
 
 
 def write_decision(
@@ -403,9 +420,12 @@ def write_decision(
 ) -> str:
     """Write a decision file (first-writer-wins via O_CREAT|O_EXCL + atomic rename).
 
-    Raises :class:`DecisionExistsError` if a decision already exists for the id.
-    Returns the decision path. Used by the boss CLI; the human scripts mirror it.
+    Raises :class:`InvalidRequestIdError` if ``request_id`` is not path-safe
+    (approvers pass it from untrusted input), :class:`DecisionExistsError` if a
+    decision already exists. Returns the decision path.
     """
+    if not valid_request_id(request_id):
+        raise InvalidRequestIdError(request_id)
     dest = os.path.join(_decisions_dir(), f"{request_id}.json")
     _mkdir_secure(_decisions_dir())
     # First-writer-wins guard on the destination path.

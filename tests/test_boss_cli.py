@@ -127,6 +127,23 @@ class TestSpawnValidation:
         assert "invalid worker name" in res.stderr
 
 
+class TestNameValidationAllSubcommands:
+    # Qodo: every subcommand taking <name> must validate it (path safety), not
+    # just spawn — audit/log build paths via audit_path_for/daemon_log_path_for.
+    @pytest.mark.parametrize("cmd", ["audit", "log", "brief", "read", "close"])
+    def test_traversal_name_rejected(self, home, cmd):
+        argv = [cmd, "../../etc/passwd"] + (["x"] if cmd == "brief" else [])
+        res = _run(argv, home)
+        assert res.returncode == 1
+        assert "invalid worker name" in res.stderr
+
+    def test_approve_rejects_traversal_id(self, home):
+        res = _run(["approve", "../../evil"], home)
+        # read_request returns None for an invalid id → "no pending request".
+        assert res.returncode == 1
+        assert "no pending request" in res.stderr
+
+
 class TestWriteDecisionCleanup:
     def test_failed_write_leaves_no_placeholder(self, home, monkeypatch):
         # If the atomic write fails after the O_EXCL placeholder is created, the

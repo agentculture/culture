@@ -19,6 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **Critical (regression from 8.7.0/8.8.0):** the Claude daemon read `agent.context_watch` / `agent.boss` directly, but at runtime it receives `culture.config.AgentConfig` (manifest config) where those live in `extras`, not as typed fields — so **every Claude agent daemon crashed on startup** (`'AgentConfig' object has no attribute 'context_watch'`). Unit tests missed it because they construct the backend-specific config. Fixed: `culture.config.AgentConfig` exposes `boss` + `context_watch` properties (reading `extras`, mirroring `acp_command`); the daemon normalizes either config flavor. Caught by the first live boss+worker bring-up.
 - The dashboard's `list_agents` used the backend-specific config loader, which rejects a real `server.yaml` (`telemetry.audit_enabled`); switched to the canonical `culture.config` loader.
+- **Qodo review fixes:** (1) request-id path traversal — `_perm_broker.write_decision`/`read_request` now validate the id (`^req-[A-Za-z0-9_-]+$`) before building a path (approvers pass ids from untrusted input); (2) `culture boss` validated the worker `<name>` only in `spawn` — now a shared `_require_worker_suffix` guards brief/read/audit/log/close too; (3) dashboard `_last_action()` read the whole daemon-log via `readlines()` on every `/api/agents` poll — now tails the last 4 KiB (no event-loop block, scales with log growth).
 
 ## [8.8.0] - 2026-05-28
 

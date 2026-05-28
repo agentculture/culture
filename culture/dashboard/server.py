@@ -29,6 +29,7 @@ from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
     DecisionExistsError,
+    InvalidRequestIdError,
     culture_home,
     list_pending,
     policy_path_for,
@@ -84,14 +85,22 @@ def _pending_counts() -> dict[str, int]:
 
 
 def _last_action(nick: str) -> str:
-    """Most recent daemon-action for an agent (empty if none)."""
+    """Most recent daemon-action for an agent (empty if none).
+
+    Reads only the file's tail (last ~4 KiB), not the whole log — this runs for
+    every agent on every ``/api/agents`` poll, so a full ``readlines()`` would
+    block the event loop and scale with log size.
+    """
     path = daemon_log_path_for(nick)
     try:
-        with open(path, encoding="utf-8") as handle:
-            lines = handle.readlines()
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 4096))
+            tail = handle.read().decode("utf-8", "replace")
     except OSError:
         return ""
-    for line in reversed(lines):
+    for line in reversed(tail.splitlines()):
         line = line.strip()
         if not line:
             continue
@@ -281,6 +290,8 @@ async def _handle_approve(request: web.Request) -> web.Response:
             pattern=body.get("pattern", ""),
             decided_by="dashboard",
         )
+    except InvalidRequestIdError:
+        return web.json_response({"error": "invalid id"}, status=400)
     except DecisionExistsError:
         return web.json_response({"error": "decision already exists"}, status=409)
     return web.json_response({"ok": True})
@@ -298,6 +309,8 @@ async def _handle_deny(request: web.Request) -> web.Response:
             reason=str(body.get("reason", "")),
             decided_by="dashboard",
         )
+    except InvalidRequestIdError:
+        return web.json_response({"error": "invalid id"}, status=400)
     except DecisionExistsError:
         return web.json_response({"error": "decision already exists"}, status=409)
     return web.json_response({"ok": True})
