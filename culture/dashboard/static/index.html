@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Culture · Mission Control</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">culture · <span>mission control</span></div>
+    <div class="topbar-actions">
+      <span id="pending-badge" class="badge hidden">0 pending</span>
+      <button id="btn-stop-pause" class="btn btn-warn" title="Pause every running agent">Pause all</button>
+      <button id="btn-stop-kill" class="btn btn-danger" title="Kill every agent (emergency)">STOP&nbsp;ALL</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="col col-agents">
+      <h2>Agents</h2>
+      <ul id="agent-list" class="agent-list"></ul>
+    </section>
+
+    <section class="col col-stream">
+      <h2 id="stream-title">Session</h2>
+      <div class="stream-tabs">
+        <button class="tab active" data-kind="audit">Session</button>
+        <button class="tab" data-kind="daemon-log">Daemon actions</button>
+      </div>
+      <div id="stream" class="stream" aria-live="polite"></div>
+    </section>
+
+    <section class="col col-perms">
+      <h2>Pending approvals</h2>
+      <ul id="pending-list" class="pending-list"></ul>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

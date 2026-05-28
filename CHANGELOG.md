@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.9.0] - 2026-05-29
+
+### Added
+
+- **Mission Control dashboard** — a localhost web app (`culture dashboard`) to watch every agent live and intervene. Three-pane UI: agent grid (state, pending count, last action, BOSS tag), per-agent session/daemon-log SSE streams, and a pending-approvals panel. Full control surface: approve/deny (human is top authority — not ceiling-bounded), pause/resume, close, emergency stop-all (pause or kill), and grant-policy edit. `aiohttp` backend (existing dep) + vanilla-JS frontend (no build step); binds `127.0.0.1` only (refuses non-loopback without `--unsafe-bind`). Spec: `docs/superpowers/specs/2026-05-29-mission-control-dashboard-design.md`; guide: `docs/agentirc/dashboard.md`.
+- `culture/dashboard/` (server + static SPA), `culture/cli/dashboard.py` (`culture dashboard` command).
+
+### Changed
+
+- `_perm_broker.list_pending()` now excludes requests that already have a decision (awaiting their worker to consume it), so approvers (dashboard and `culture boss pending`) don't re-act on decided requests. Surfaced by live in-browser verification of the dashboard.
+
+### Fixed
+
+- **Critical (regression from 8.7.0/8.8.0):** the Claude daemon read `agent.context_watch` / `agent.boss` directly, but at runtime it receives `culture.config.AgentConfig` (manifest config) where those live in `extras`, not as typed fields — so **every Claude agent daemon crashed on startup** (`'AgentConfig' object has no attribute 'context_watch'`). Unit tests missed it because they construct the backend-specific config. Fixed: `culture.config.AgentConfig` exposes `boss` + `context_watch` properties (reading `extras`, mirroring `acp_command`); the daemon normalizes either config flavor. Caught by the first live boss+worker bring-up.
+- The dashboard's `list_agents` used the backend-specific config loader, which rejects a real `server.yaml` (`telemetry.audit_enabled`); switched to the canonical `culture.config` loader.
+- **Qodo review fixes:** (1) request-id path traversal — `_perm_broker.write_decision`/`read_request` now validate the id (`^req-[A-Za-z0-9_-]+$`) before building a path (approvers pass ids from untrusted input); (2) `culture boss` validated the worker `<name>` only in `spawn` — now a shared `_require_worker_suffix` guards brief/read/audit/log/close too; (3) dashboard `_last_action()` read the whole daemon-log via `readlines()` on every `/api/agents` poll — now tails the last 4 KiB (no event-loop block, scales with log growth).
+
+## [8.8.0] - 2026-05-28
+
+### Added
+
+- **Boss agent orchestration** — an autonomous boss agent (a culture daemon) that manages worker agents in the human's place: spawns them, drives them over IRC like a Claude Code session, challenges their plans/implementations/claims, and approves/denies their tool requests. Spec: `docs/superpowers/specs/2026-05-28-boss-agent-orchestration-design.md`.
+- `culture boss` CLI (`culture/cli/boss.py`): `init/spawn/brief/read/pending/approve/deny/audit/log/status/close`. Reuses `_perm_broker` for queue/decision/ceiling ops. Approver flips from human → boss agent.
+- **Grant ceiling (human-over-boss gate)** — `boss-policy/<boss-nick>.yaml`; high-risk tools (MCP sends, destructive Bash) are above the boss's ceiling and escalate to the human (`approve.sh`) rather than being auto-granted. `culture boss approve` refuses them (exit 2). Reuses `match_policy`.
+- **Worker→boss permission notice** — `PermissionBroker` gains a best-effort `on_request` callback; the worker daemon DMs its owning boss (`AgentConfig.boss`) so the boss's activation handler fires (finishes #411's deferred v1.1).
+- `CULTURE_NICK` is now set in every agent's SDK subprocess env (all four backends) so an autonomous daemon agent can address its own IRC / boss sockets.
+- `culture boss init` writes the boss identity: manager `system_prompt` (with context re-grounding), seeded ceiling, copied boss skill, and the no-perm-policy deadlock guard (a boss must never be permission-supervised).
+- `docs/agentirc/boss-agent.md`; `culture/clients/claude/skill/boss/SKILL.md`.
+
+### Changed
+
+- `culture/clients/_perm_broker.py` — `on_request` callback; grant-ceiling helpers (`is_above_ceiling`, `write_default_boss_ceiling`); approver-side helpers (`list_pending`, `read_request`, `write_decision` with `O_CREAT\|O_EXCL` first-writer-wins).
+- `culture/clients/claude/{agent_runner,daemon,config}.py` — `on_perm_request` plumbing, worker→boss DM (`_on_perm_request`), `AgentConfig.boss`.
+- `culture/clients/{claude,codex,copilot,acp}/agent_runner.py` — `CULTURE_NICK` in subprocess env.
+
+## [8.7.0] - 2026-05-28
+
+### Added
+
+- **Helper boss permission broker** — a boss Claude Code session is the human-in-the-loop for helper agents it spawns. `culture/clients/_perm_broker.py` wires the Claude Agent SDK `can_use_tool` callback to a file-backed request/decision queue under `~/.culture/`; helpers block on boss approval for any non-safe-read tool call. Safe reads (Read/Glob/Grep, read-only Bash) auto-approve via a per-helper `perm-policy/<nick>.yaml`.
+- **Helper tool inheritance** — Claude agents now load `setting_sources=["user","project","local"]`, so helpers inherit the boss's `~/.claude/` skills, MCP servers, and plugins.
+- **Context-watermark handoff (Claude)** — `culture/clients/_context_watch.py`; the daemon self-monitors per-turn `input_tokens` and at 90% of the model's context window asks the agent to write a handoff to `~/.culture/handoff/<nick>.md`, compacts, then reminds it to read the handoff after the compact. Configurable via a `context_watch` block in `culture.yaml`.
+- **Daemon action log (all backends)** — `culture/clients/_daemon_log.py`; structured JSONL control-plane log at `~/.culture/daemon-log/<nick>.jsonl` (start/stop/exit/crash/compact/handoff/…).
+- **Agent-message audit log (all backends)** — `culture/clients/_audit.py`; one JSONL line per AssistantMessage at `~/.culture/audit/<nick>.jsonl`.
+- `docs/agentirc/helper-permissions.md`, `helper-tool-inheritance.md`, `helper-context-handoff.md`, `helper-daemon-log.md`, and the design spec `docs/superpowers/specs/2026-05-28-helper-boss-permission-broker.md`.
+
+### Changed
+
+- `culture/clients/claude/agent_runner.py` — widened `setting_sources`; conditional `can_use_tool` (only when a `perm-policy/<nick>.yaml` exists, preserving today's behavior for standalone agents); streaming-prompt wrapper required by the SDK when the callback is set; new `on_usage` callback.
+- `culture/clients/claude/config.py` — new `ContextWatchConfig` on `AgentConfig`.
+- `culture/clients/{claude,codex,copilot,acp}/daemon.py` — instantiate the audit + daemon-action logs and record actions; Claude daemon also drives the context-watch handoff cycle.
+- `packages/agent-harness/culture.yaml` + `culture/clients/claude/culture.yaml` — commented `context_watch` block.
+
 ## [8.6.0] - 2026-04-26
 
 ### Added

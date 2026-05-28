@@ -8,6 +8,19 @@ import re
 import time
 
 from culture.aio import maybe_await
+from culture.clients._audit import AuditWriter
+from culture.clients._context_watch import (
+    ContextWatchState,
+    WatchAction,
+)
+from culture.clients._context_watch import evaluate as context_evaluate
+from culture.clients._context_watch import fraction as context_fraction
+from culture.clients._context_watch import (
+    mark_reminder_pending,
+    take_reminder,
+)
+from culture.clients._daemon_log import DaemonLog
+from culture.clients._perm_broker import handoff_path_for
 from culture.clients.claude.agent_runner import AgentRunner
 from culture.clients.claude.config import AgentConfig, DaemonConfig
 from culture.clients.claude.ipc import make_response
@@ -33,6 +46,34 @@ _ERR_CHANNEL_PREFIX = "Channel name must start with '#'"
 
 # Regex to extract @mentioned nicks from messages
 _MENTION_RE = re.compile(r"@([\w-]+)")
+
+
+def _context_watch_state(agent) -> ContextWatchState:
+    """Normalize an agent's context_watch config (dict / object / None) to state.
+
+    Runtime config (``culture.config.AgentConfig``) exposes it as a dict from
+    ``culture.yaml`` extras; the backend-specific config exposes a
+    ``ContextWatchConfig`` object; either may be empty/absent → defaults.
+    """
+    cw = getattr(agent, "context_watch", None)
+    if not cw:
+        return ContextWatchState()
+    if isinstance(cw, dict):
+        return ContextWatchState(
+            enabled=cw.get("enabled", True),
+            high_water=cw.get("high_water", 0.90),
+            low_water=cw.get("low_water", 0.50),
+        )
+    return ContextWatchState(
+        enabled=getattr(cw, "enabled", True),
+        high_water=getattr(cw, "high_water", 0.90),
+        low_water=getattr(cw, "low_water", 0.50),
+    )
+
+
+def _boss_nick(agent) -> str:
+    """The owning boss nick, or '' — works for both config flavors."""
+    return getattr(agent, "boss", "") or ""
 
 
 class AgentDaemon:
@@ -63,6 +104,14 @@ class AgentDaemon:
         self._supervisor: Supervisor | None = None
         self._tracer = None
         self._metrics = None
+        self._audit: AuditWriter = AuditWriter(nick=agent.nick)
+        self._daemon_log: DaemonLog = DaemonLog(nick=agent.nick)
+
+        # Context-watermark handoff state (Claude exposes per-turn input_tokens).
+        # `agent.context_watch` is a dict on the runtime config (culture.config,
+        # from culture.yaml extras) or a ContextWatchConfig object on the
+        # backend-specific config (tests) — normalize both.
+        self._context_watch = _context_watch_state(agent)
 
         # Crash-recovery state
         self._crash_times: list[float] = []
@@ -195,6 +244,7 @@ class AgentDaemon:
         if self._agent_runner is not None:
             await self._agent_runner.stop()
             self._agent_runner = None
+            await self._daemon_log.record("agent_stop")
 
         if self._socket_server is not None:
             await self._socket_server.stop()
@@ -301,6 +351,7 @@ class AgentDaemon:
             f"{lines}\n\n"
             "Respond naturally if any messages need your attention."
         )
+        prompt = self._maybe_prepend_reminder(prompt)
         task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -329,11 +380,16 @@ class AgentDaemon:
             system_prompt=self._build_system_prompt(),
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
+            on_usage=self._on_agent_usage,
+            on_perm_request=self._on_perm_request,
             metrics=self._metrics,
             nick=self.agent.nick,
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)
+        await self._daemon_log.record(
+            "agent_start", model=self.agent.model, directory=self.agent.directory
+        )
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
@@ -349,6 +405,7 @@ class AgentDaemon:
             prompt = self._build_channel_prompt(target, sender, text)
         else:
             prompt = self._build_dm_prompt(sender, text)
+        prompt = self._maybe_prepend_reminder(prompt)
         task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -425,10 +482,95 @@ class AgentDaemon:
 
     async def _on_agent_message(self, msg: dict) -> None:
         """Feed agent activity to the supervisor for observation."""
+        await self._audit.write(msg)
+
         if self._supervisor:
             await self._supervisor.observe(msg)
 
         self._capture_agent_status(msg)
+
+    async def _on_agent_usage(self, input_tokens: int | None) -> None:
+        """Evaluate context utilization after a turn; drive the handoff cycle."""
+        action = context_evaluate(self._context_watch, input_tokens, self.agent.model)
+        if action is WatchAction.REMINDER_DUE:
+            # Context actually dropped after the compact — arm the reminder now,
+            # so an activation that interleaved with the handoff/compact turns
+            # can't consume it early.
+            mark_reminder_pending(self._context_watch)
+            await self._daemon_log.record("handoff_reminder_armed")
+            return
+        if action is not WatchAction.WRITE_HANDOFF:
+            return
+        if self._agent_runner is None or not self._agent_runner.is_running():
+            return
+        pct = context_fraction(input_tokens, self.agent.model) or 0.0
+        handoff_path = handoff_path_for(self.agent.nick)
+        logger.info(
+            "Context watermark reached for %s (%.0f%%) — requesting handoff",
+            self.agent.nick,
+            pct * 100,
+        )
+        await self._daemon_log.record("handoff_written", pct=round(pct, 3), path=handoff_path)
+        handoff_prompt = (
+            "[context-handoff] You are approaching your context limit "
+            f"({pct * 100:.0f}% full). Before it fills, write a concise handoff "
+            f"for your post-compact self to {handoff_path}. Include: what you are "
+            "working on, key decisions made, what remains, and important file "
+            "paths. Use your Write tool (this path is pre-approved). Then stop."
+        )
+        await self._agent_runner.send_prompt(handoff_prompt)
+        # Compact runs as the next queued turn, after the handoff is written.
+        await self._agent_runner.send_prompt("/compact")
+        await self._daemon_log.record("compact", trigger="context_watermark", pct=round(pct, 3))
+
+    async def _on_perm_request(self, payload: dict) -> None:
+        """Surface a worker permission request to its boss over IRC (best-effort).
+
+        Fired by this worker's PermissionBroker when a tool call routes to the
+        boss. DMs the owning boss (``self.agent.boss``) so the boss's activation
+        handler fires and it can approve/deny. If no boss is configured (the
+        human-supervised case from PR #411) we post nothing — the human finds the
+        request via ``pending-perms.sh``.
+        """
+        boss = _boss_nick(self.agent)
+        if not boss or self._transport is None:
+            return
+        tool = payload.get("tool_name", "?")
+        req_id = payload.get("id", "?")
+        preview = self._perm_input_preview(tool, payload.get("input", {}))
+        notice = (
+            f"[perm] worker {self.agent.nick} wants {tool}: {preview} "
+            f"— id {req_id} (approve/deny)"
+        )
+        await self._transport.send_privmsg(boss, notice)
+
+    @staticmethod
+    def _perm_input_preview(tool: str, input_dict: dict) -> str:
+        """Short one-line preview of a tool's input for the perm notice."""
+        if tool == "Bash":
+            value = input_dict.get("command", "")
+        elif tool in ("Edit", "Write"):
+            value = input_dict.get("file_path", "")
+        else:
+            try:
+                import json as _json
+
+                value = _json.dumps(input_dict)
+            except (TypeError, ValueError):
+                value = repr(input_dict)
+        return str(value)[:80]
+
+    def _maybe_prepend_reminder(self, prompt: str) -> str:
+        """Prepend a post-compact handoff reminder when one is owed."""
+        if take_reminder(self._context_watch):
+            handoff_path = handoff_path_for(self.agent.nick)
+            reminder = (
+                "[context-handoff] You recently compacted. Read your handoff at "
+                f"{handoff_path} before continuing.\n\n"
+            )
+            self._log_action_bg("handoff_reminder", path=handoff_path)
+            return reminder + prompt
+        return prompt
 
     def _build_system_prompt(self) -> str:
         if self.agent.system_prompt:
@@ -447,6 +589,7 @@ class AgentDaemon:
         logger.warning("Agent %s crashed with exit code %d", self.agent.nick, exit_code)
         self._crash_times = [t for t in self._crash_times if now - t < CRASH_WINDOW_SECONDS]
         self._crash_times.append(now)
+        await self._daemon_log.record("crash", exit_code=exit_code, count=len(self._crash_times))
         if self._webhook:
             await self._webhook.fire(
                 AlertEvent(
@@ -468,6 +611,11 @@ class AgentDaemon:
                 self.agent.nick,
                 len(self._crash_times),
                 CRASH_WINDOW_SECONDS,
+            )
+            await self._daemon_log.record(
+                "circuit_open",
+                count=len(self._crash_times),
+                window_s=CRASH_WINDOW_SECONDS,
             )
             if self._webhook:
                 await self._webhook.fire(
@@ -501,6 +649,7 @@ class AgentDaemon:
 
     async def _on_agent_exit(self, exit_code: int) -> None:
         """Handle agent process exit with crash recovery and circuit breaker."""
+        await self._daemon_log.record("agent_exit", exit_code=exit_code)
         if exit_code == 0:
             logger.info("Agent %s exited cleanly", self.agent.nick)
             if self._webhook:
@@ -575,16 +724,24 @@ class AgentDaemon:
     # IPC sub-handlers
     # ------------------------------------------------------------------
 
+    def _log_action_bg(self, action: str, **detail) -> None:
+        """Fire-and-forget a daemon-log record from a synchronous context."""
+        task = asyncio.create_task(self._daemon_log.record(action, **detail))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
     def _ipc_pause(self, req_id: str, msg: dict) -> dict:
         self._paused = True
         self._manually_paused = True
         logger.info("Agent %s paused (manual)", self.agent.nick)
+        self._log_action_bg("pause", manual=True)
         return make_response(req_id, ok=True)
 
     def _ipc_resume(self, req_id: str, msg: dict) -> dict:
         self._paused = False
         self._manually_paused = False
         logger.info("Agent %s resumed", self.agent.nick)
+        self._log_action_bg("resume", manual=True)
         # NOTE: Catch-up on missed messages is not yet implemented.
         # IRCTransport does not process HISTORY responses into the buffer.
         # The agent resumes and will see new messages going forward.
@@ -832,12 +989,14 @@ class AgentDaemon:
         if self._agent_runner is None or not self._agent_runner.is_running():
             return make_response(req_id, ok=False, error="Agent runner is not running")
         await self._agent_runner.send_prompt("/compact")
+        await self._daemon_log.record("compact", trigger="ipc")
         return make_response(req_id, ok=True)
 
     async def _ipc_clear(self, req_id: str, msg: dict) -> dict:
         if self._agent_runner is None or not self._agent_runner.is_running():
             return make_response(req_id, ok=False, error="Agent runner is not running")
         await self._agent_runner.send_prompt("/clear")
+        await self._daemon_log.record("clear")
         return make_response(req_id, ok=True)
 
     def _ipc_shutdown(self, req_id: str, msg: dict) -> dict:

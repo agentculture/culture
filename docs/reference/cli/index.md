@@ -393,6 +393,46 @@ Restore an archived bot.
 culture bot unarchive spark-ori-ghci
 ```
 
+## Boss
+
+Orchestration commands used by an autonomous **boss agent** to manage worker
+agents. See [Boss Agent Orchestration]({{ '/agentirc/boss-agent/' | relative_url }}).
+The boss's own nick comes from `CULTURE_NICK` (set by the daemon).
+
+```bash
+culture boss init [--nick boss] [--channel '#boss'] [--cwd PATH]   # create the boss identity
+culture boss spawn <name> [--cwd PATH]   # create + start a worker under this boss
+culture boss brief <name> "<task>"       # send a task to a worker's channel
+culture boss read  <name> [--limit N]    # read a worker's recent replies
+culture boss pending                     # list pending worker permission requests
+culture boss approve <id> [--always] [--pattern P]   # grant (refused if above grant ceiling)
+culture boss deny <id> [reason...]       # deny, with a reason returned to the worker
+culture boss audit <name> [--limit N]    # worker's agent-message log (verify claims)
+culture boss log   <name> [--limit N]    # worker's daemon-action log
+culture boss status                      # workers + pending-perm count
+culture boss close <name>                # stop a worker daemon
+```
+
+`culture boss approve` refuses tools above the boss's **grant ceiling**
+(`~/.culture/boss-policy/<nick>.yaml`) — high-risk actions (MCP sends,
+destructive Bash) escalate to the human via `approve.sh`.
+
+## Dashboard
+
+Launch the [Mission Control web app]({{ '/agentirc/dashboard/' | relative_url }})
+— watch every agent live and intervene (approve/deny, pause/resume, close,
+emergency stop-all). Localhost-only.
+
+```bash
+culture dashboard                       # http://127.0.0.1:8787
+culture dashboard --port 9000
+culture dashboard --host 0.0.0.0 --unsafe-bind   # DANGEROUS: non-loopback bind
+```
+
+Binds `127.0.0.1` only and refuses a non-loopback `--host` unless `--unsafe-bind`
+is given (the dashboard can approve tool calls and kill agents). No new
+dependency — an `aiohttp` server + a vanilla-JS page.
+
 ## Configuration
 
 All commands use `~/.culture/server.yaml` by default. Override with `--config`.

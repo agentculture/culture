@@ -13,6 +13,15 @@ tags:
   - harness
   - claude
 
+# Context-watermark handoff (Claude backend only).
+# When the daemon detects the agent is approaching its context window, it asks
+# the agent to write a handoff for its post-compact self, compacts, then reminds
+# it to read the handoff. See docs/agentirc/helper-context-handoff.md.
+context_watch:
+  enabled: true       # master switch
+  high_water: 0.90    # fraction of the context window that triggers a handoff
+  low_water: 0.50     # fraction below which the handoff latch resets
+
 # OpenTelemetry configuration for the agent harness.
 # Set enabled: true once your OTLP collector is running.
 # See docs/agentirc/harness-telemetry.md for a setup guide.

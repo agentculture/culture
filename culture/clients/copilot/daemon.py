@@ -15,6 +15,8 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.clients._audit import AuditWriter
+from culture.clients._daemon_log import DaemonLog
 from culture.clients.copilot.agent_runner import CopilotAgentRunner
 from culture.clients.copilot.config import AgentConfig, DaemonConfig
 from culture.clients.copilot.ipc import make_response
@@ -71,6 +73,8 @@ class CopilotDaemon:
         self._supervisor: CopilotSupervisor | None = None
         self._tracer = None
         self._metrics = None
+        self._audit: AuditWriter = AuditWriter(nick=agent.nick)
+        self._daemon_log: DaemonLog = DaemonLog(nick=agent.nick)
 
         # FIFO queue of relay targets — each @mention enqueues a target,
         # each agent response dequeues one, ensuring correct routing even
@@ -206,6 +210,7 @@ class CopilotDaemon:
         if self._agent_runner is not None:
             await self._agent_runner.stop()
             self._agent_runner = None
+            await self._daemon_log.record("agent_stop")
 
         if self._socket_server is not None:
             await self._socket_server.stop()
@@ -384,6 +389,9 @@ class CopilotDaemon:
         )
         await self._agent_runner.start()
         logger.info("CopilotAgentRunner started for %s", self.agent.nick)
+        await self._daemon_log.record(
+            "agent_start", model=self.agent.model, directory=self.agent.directory
+        )
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
@@ -513,6 +521,8 @@ class CopilotDaemon:
         self._consecutive_turn_failures = 0
         await self._relay_response_to_irc(msg)
 
+        await self._audit.write(msg)
+
         if self._supervisor:
             await self._supervisor.observe(msg)
 
@@ -573,6 +583,7 @@ class CopilotDaemon:
 
     async def _on_agent_exit(self, exit_code: int) -> None:
         """Handle agent process exit with crash recovery and circuit breaker."""
+        await self._daemon_log.record("agent_exit", exit_code=exit_code)
         if exit_code == 0:
             logger.info("Agent %s exited cleanly", self.agent.nick)
             if self._webhook:
@@ -907,6 +918,7 @@ class CopilotDaemon:
         if self._agent_runner is None or not self._agent_runner.is_running():
             return make_response(req_id, ok=False, error="Agent runner is not running")
         await self._agent_runner.send_prompt("/compact")
+        await self._daemon_log.record("compact", trigger="ipc")
         return make_response(req_id, ok=True)
 
     async def _ipc_clear(self, req_id: str, msg: dict) -> dict:
