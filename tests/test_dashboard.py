@@ -108,37 +108,35 @@ class TestReadEndpoints:
 
 class TestIdleSignal:
     def test_is_idle_reflects_daemon_decision(self, home):
-        from culture.clients._audit import audit_path_for
+        # The dashboard idle signal reads the daemon-log alone (never audit size):
+        # idle iff running + boss-owned + an idle_warning not cleared by a later
+        # `engaged` or `agent_start`.
         from culture.clients._daemon_log import daemon_log_path_for
         from culture.dashboard.server import _is_idle
+
+        dl = daemon_log_path_for("local-w2")
+        os.makedirs(os.path.dirname(dl), exist_ok=True)
+
+        def log(*actions):
+            with open(dl, "w", encoding="utf-8") as f:
+                for a in actions:
+                    f.write(json.dumps({"action": a}) + "\n")
 
         # not a boss-owned worker (no boss) → never flagged (excludes boss/standalone)
         assert _is_idle("local-boss", "running", "") is False
         # stopped → never idle
-        assert _is_idle("local-w", "stopped", "local-boss") is False
-        # boss-owned + running but the daemon has NOT decided idle → not idle
-        # (no startup false-positive — defers to the daemon's grace window)
-        assert _is_idle("local-w", "running", "local-boss") is False
-
-        # daemon recorded idle_warning (after agent_start) + empty audit → IDLE
-        dl = daemon_log_path_for("local-w2")
-        os.makedirs(os.path.dirname(dl), exist_ok=True)
-        with open(dl, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"action": "agent_start"}) + "\n")
-            f.write(json.dumps({"action": "idle_warning"}) + "\n")
-        assert _is_idle("local-w2", "running", "local-boss") is True
-
-        # then it engaged (non-empty audit) → no longer idle
-        ap = audit_path_for("local-w2")
-        os.makedirs(os.path.dirname(ap), exist_ok=True)
-        with open(ap, "w", encoding="utf-8") as f:
-            f.write('{"type":"assistant","text":"working"}\n')
+        assert _is_idle("local-w2", "stopped", "local-boss") is False
+        # running boss-owned but daemon hasn't decided idle → not idle (no startup FP)
+        log("agent_start")
         assert _is_idle("local-w2", "running", "local-boss") is False
-
-        # a restart after idle (agent_start AFTER idle_warning) clears it
-        os.remove(ap)
-        with open(dl, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"action": "agent_start"}) + "\n")
+        # idle_warning after agent_start → IDLE
+        log("agent_start", "idle_warning")
+        assert _is_idle("local-w2", "running", "local-boss") is True
+        # re-driven + engaged after the idle_warning → cleared (audit-independent)
+        log("agent_start", "idle_warning", "engaged")
+        assert _is_idle("local-w2", "running", "local-boss") is False
+        # restart after idle → cleared
+        log("agent_start", "idle_warning", "agent_start")
         assert _is_idle("local-w2", "running", "local-boss") is False
 
 

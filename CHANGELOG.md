@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.17.2] - 2026-05-29
+
+### Fixed
+
+A second adversarial re-verification (round 4) found two more idle residuals; closed:
+
+- **Poll/room-invite work now counts as activation.** Previously `_last_activation`
+  was set only on an `@mention`; a worker driven by the channel poll (a boss posts
+  task context *without* `@`-tagging) or a room invite started a slow first turn
+  with no activation recorded and was still false-flagged idle. Both dispatch
+  paths now set `_last_activation`.
+- **Dashboard idle no longer depends on audit byte-size.** The daemon now records
+  an `engaged` action on a worker's first turn, and the dashboard's idle signal
+  reads the daemon-log alone — `idle_warning` cleared by a later `engaged` or
+  `agent_start`. This removes the last false-positive (an externally
+  truncated/rotated audit on a re-driven, engaged worker) and makes the daemon-log
+  the single source of truth for idle.
+
 ## [8.17.1] - 2026-05-29
 
 ### Fixed

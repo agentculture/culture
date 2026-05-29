@@ -6,6 +6,8 @@ from tests._sdk_stub import install_claude_sdk_stub
 
 install_claude_sdk_stub()
 
+import json  # noqa: E402
+import os  # noqa: E402
 from unittest.mock import AsyncMock  # noqa: E402
 
 import pytest  # noqa: E402
@@ -106,13 +108,35 @@ class TestIdleWatchdog:
         d._transport.send_privmsg.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_engagement_flag_set_on_first_turn(self, tmp_path, monkeypatch):
+    async def test_engagement_flag_and_engaged_record_on_first_turn(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
         d = _daemon(boss="local-boss")
         d._supervisor = None
         assert d._engaged is False
         await d._on_agent_message({"type": "assistant", "text": "hi", "tool_uses": []})
+        await d._on_agent_message({"type": "assistant", "text": "more", "tool_uses": []})
         assert d._engaged is True
+        # `engaged` is recorded exactly once (first turn), so the dashboard idle
+        # signal clears authoritatively without depending on audit size.
+        log_path = os.path.join(str(tmp_path), "daemon-log", "local-worker.jsonl")
+        with open(log_path, encoding="utf-8") as f:
+            actions = [json.loads(line)["action"] for line in f if line.strip()]
+        assert actions.count("engaged") == 1
+
+    @pytest.mark.asyncio
+    async def test_poll_dispatch_counts_as_activation(self, tmp_path, monkeypatch):
+        # A worker driven by the channel poll (boss posts task context WITHOUT an
+        # @mention) must count as activated, so it isn't falsely flagged idle.
+        from culture.clients.claude.message_buffer import MessageBuffer
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = _daemon(boss="local-boss")
+        d._agent_runner = AsyncMock()
+        d._buffer = MessageBuffer()
+        d._buffer.add("#task-worker", "local-boss", "here is the task context (no mention)")
+        assert d._last_activation is None
+        d._send_channel_poll("#task-worker")
+        assert d._last_activation is not None
 
 
 class TestPermInputPreview:

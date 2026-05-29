@@ -206,26 +206,24 @@ def _daemon_logged_idle(nick: str) -> bool:
             continue
         if action == "idle_warning":
             seen_idle = True
-        elif action == "agent_start":
-            seen_idle = False  # a (re)start begins a fresh idle evaluation
+        elif action in ("agent_start", "engaged"):
+            # A (re)start begins a fresh evaluation; `engaged` means the worker
+            # produced a turn → either clears a prior idle_warning.
+            seen_idle = False
     return seen_idle
 
 
 def _is_idle(nick: str, state: str, boss: str) -> bool:
     """Reflect the daemon's authoritative idle decision: a running, boss-owned
-    worker that has produced no turns and whose daemon recorded an idle_warning.
+    worker whose daemon recorded an ``idle_warning`` not superseded by a later
+    ``engaged`` or ``agent_start``.
 
-    Gating on ``boss`` (so bosses/standalone agents aren't flagged) and on the
-    daemon's own signal (not a bare audit-size guess) avoids false positives at
-    startup (the daemon waits the grace window) and on a rotated/truncated audit.
+    Gating on ``boss`` (so bosses/standalone agents aren't flagged) and reading
+    the daemon-log alone (never the audit's byte size) avoids false positives at
+    startup, on a re-driven worker, and on a rotated/truncated audit.
     """
     if state != "running" or not boss:
         return False
-    try:
-        if os.path.getsize(audit_path_for(nick)) > 0:
-            return False  # has engaged
-    except OSError:
-        pass  # no audit file → possibly idle; defer to the daemon's signal
     return _daemon_logged_idle(nick)
 
 

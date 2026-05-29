@@ -382,6 +382,9 @@ class AgentDaemon:
             "Respond naturally if any messages need your attention."
         )
         prompt = self._maybe_prepend_reminder(prompt)
+        # Poll-driven work counts as activation (a boss may post task context
+        # without an @mention) — so a busy worker isn't falsely flagged idle.
+        self._last_activation = time.time()
         task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -535,7 +538,8 @@ class AgentDaemon:
             await self._transport.send_raw(f"JOIN {channel}")
             return
 
-        # Use the agent runner to evaluate
+        # Use the agent runner to evaluate (room-invite work counts as activation)
+        self._last_activation = time.time()
         await self._agent_runner.send_prompt(prompt)
         # Note: the agent runner processes the prompt asynchronously via the
         # SDK session loop. The agent is expected to use irc_join() / irc tools
@@ -549,7 +553,11 @@ class AgentDaemon:
 
     async def _on_agent_message(self, msg: dict) -> None:
         """Feed agent activity to the supervisor for observation."""
-        self._engaged = True  # a real turn happened → no longer "never engaged"
+        if not self._engaged:
+            # First real turn → record `engaged` so the dashboard's idle signal
+            # (which reads the daemon-log, not audit size) clears authoritatively.
+            self._engaged = True
+            await self._daemon_log.record("engaged")
         await self._audit.write(msg)
 
         if self._supervisor:
