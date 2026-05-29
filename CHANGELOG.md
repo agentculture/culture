@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.17.3] - 2026-05-29
+
+### Fixed
+
+- **Idle signal reads the full daemon-log, not a fixed tail.** `_daemon_logged_idle`
+  no longer reads only the last 8 KiB — it reads the whole (small, lifecycle-only)
+  daemon-log, removing a latent coupling where a future high-volume log action on
+  an idle worker could have buried the lone `idle_warning` past the window and
+  silently un-flagged it. Closes the last (latent, currently-unreachable) note
+  from round-5 adversarial verification; the idle loop is now converged.
+
 ## [8.17.2] - 2026-05-29
 
 ### Fixed

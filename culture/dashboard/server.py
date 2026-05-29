@@ -185,18 +185,20 @@ def _agent_state(nick: str) -> str:
 
 def _daemon_logged_idle(nick: str) -> bool:
     """True if the daemon recorded an ``idle_warning`` not superseded by a later
-    restart (``agent_start``) — i.e. the daemon's authoritative idle decision."""
+    ``engaged``/``agent_start`` — the daemon's authoritative idle decision.
+
+    Reads the whole daemon-log (a small, lifecycle-only file: start/stop/engaged/
+    idle/compact/crash — not per-turn), so the idle/clear ordering can never be
+    truncated by a fixed tail window.
+    """
     path = daemon_log_path_for(nick)
     try:
-        with open(path, "rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            size = handle.tell()
-            handle.seek(max(0, size - 8192))
-            tail = handle.read().decode("utf-8", "replace")
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read()
     except OSError:
         return False
     seen_idle = False
-    for line in tail.splitlines():
+    for line in content.splitlines():
         line = line.strip()
         if not line:
             continue
