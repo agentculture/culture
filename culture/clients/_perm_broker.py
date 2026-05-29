@@ -277,13 +277,27 @@ def match_policy(
 
 # Tools a boss agent MAY NOT auto-grant to a worker; these escalate to the human.
 # Structurally a denylist, matched by reusing ``match_policy`` (as auto_deny).
+#
+# This is a COOPERATIVE best-effort guard, NOT an exhaustive sandbox: a regex
+# denylist cannot catch every destructive command (obfuscation, novel tools,
+# env-dependent aliases). It catches the common dangerous forms; the human at the
+# dashboard is the real backstop. ``(?i)`` makes it case-insensitive (so DROP
+# TABLE / GIT PUSH are caught); the boundary class includes quotes so quoted SQL
+# (``psql -c 'drop table'``) is caught; ``rm`` matches combined or split r+f flags.
 DEFAULT_BOSS_CEILING: list[dict[str, Any]] = [
     {"tool": "mcp__.*"},  # any MCP server — external side effects
     {
         "tool": "Bash",
         "input_regex": (
-            r"(^|\s|;|&&|\|\|)(rm\s+-rf|git\s+push|gh\s+(pr|release)\s+(create|merge)|"
-            r"kubectl|terraform|drop\s+table|truncate)"
+            r"(?i)(^|\s|;|&&|\|\||"
+            r"['\"]"
+            r")("
+            r"rm\s+-\w*[rf]\w*[rf]|rm\s+-[rf]\s+-[rf]|"
+            r"git\s+push|gh\s+(pr|release)\s+(create|merge)|"
+            r"kubectl|terraform|drop\s+table|truncate|"
+            r"dd\s+if=|mkfs|chmod\s+-R\s+777|"
+            r"curl[^|]*\|\s*(ba)?sh|wget[^|]*\|\s*(ba)?sh"
+            r")"
         ),
     },
 ]
@@ -354,8 +368,12 @@ def _now_iso() -> str:
 _REQUEST_ID_RE = re.compile(r"^req-[A-Za-z0-9_-]+$")
 
 
-def valid_request_id(request_id: str) -> bool:
-    return bool(request_id) and _REQUEST_ID_RE.fullmatch(request_id) is not None
+def valid_request_id(request_id: object) -> bool:
+    # Must reject non-strings too: approvers pass ids from untrusted JSON bodies,
+    # where ``{"id": 123}`` / ``true`` / ``[...]`` would make re.fullmatch raise
+    # an uncaught TypeError (a 500 at the dashboard boundary). A wrong type is an
+    # invalid id, not a crash.
+    return isinstance(request_id, str) and _REQUEST_ID_RE.fullmatch(request_id) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -525,10 +543,15 @@ class PermissionBroker:
         self,
         nick: str,
         on_request: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        boss: str = "",
     ) -> None:
         if not nick:
             raise ValueError("PermissionBroker requires a non-empty nick")
         self._nick = nick
+        # The owning boss, recorded INTO each request so approvers can attribute
+        # ownership without re-reading this worker's culture.yaml (which may be
+        # missing/corrupt) — keeps team isolation from failing open.
+        self._boss = boss or ""
         self._cache: _PolicyCache | None = None
         # Optional best-effort notification fired when a request is routed to the
         # boss (e.g. the worker daemon posts an IRC notice). Never blocks gating.
@@ -597,6 +620,7 @@ class PermissionBroker:
         payload = {
             "id": request_id,
             "helper_nick": self._nick,
+            "boss": self._boss,
             "tool_name": tool_name,
             "input": _safe_jsonable(input_dict),
             "created_at": _now_iso(),

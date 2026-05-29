@@ -354,6 +354,18 @@ class TestSecurity:
         assert resp.status == 400
 
     @pytest.mark.asyncio
+    async def test_approve_non_string_id_is_400_not_500(self, client):
+        # A non-string id must be a clean 400, not an uncaught TypeError -> 500.
+        for bad in (123, True, ["x"], {"a": 1}):
+            resp = await client.post("/api/approve", json={"id": bad})
+            assert resp.status == 400, (bad, resp.status)
+
+    @pytest.mark.asyncio
+    async def test_deny_non_string_id_is_400_not_500(self, client):
+        resp = await client.post("/api/deny", json={"id": 123, "reason": "x"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
     async def test_cross_origin_blocked(self, client):
         # A malicious page (DNS-rebinding) sends a non-loopback Origin → 403.
         resp = await client.post(

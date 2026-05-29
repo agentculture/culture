@@ -59,6 +59,14 @@ class TestRequestIdValidation:
         assert not valid_request_id("notareq")
         assert not valid_request_id("")
 
+    def test_non_string_ids_rejected_not_crash(self, culture_root):
+        # Untrusted JSON bodies can send {"id": 123} / true / [...] / {} — these
+        # must be rejected, not raise TypeError (which became a dashboard 500).
+        from culture.clients._perm_broker import valid_request_id
+
+        for bad in (123, True, None, ["x"], {"a": 1}, 1.5):
+            assert valid_request_id(bad) is False
+
     @pytest.mark.asyncio
     async def test_write_decision_rejects_traversal_id(self, culture_root):
         from culture.clients._perm_broker import InvalidRequestIdError, write_decision
@@ -70,6 +78,26 @@ class TestRequestIdValidation:
         from culture.clients._perm_broker import read_request
 
         assert read_request("../../etc/passwd") is None
+
+
+class TestRequestRecordsOwner:
+    @pytest.mark.asyncio
+    async def test_request_payload_records_boss(self, culture_root):
+        # The broker records the owning boss IN the request so approvers can
+        # attribute ownership without re-reading the worker's culture.yaml.
+        write_default_policy("local-w")
+        broker = PermissionBroker(nick="local-w", boss="local-boss2")
+        gate = asyncio.create_task(broker.gate("Edit", {"file_path": "/x"}, _ctx()))
+        queue_dir = os.path.join(str(culture_root), "perm-queue")
+        decisions_dir = os.path.join(str(culture_root), "perm-decisions")
+        rid = await _wait_for_request(queue_dir)
+        with open(os.path.join(queue_dir, f"{rid}.json"), encoding="utf-8") as f:
+            assert json.load(f)["boss"] == "local-boss2"
+        _write_decision(
+            os.path.join(decisions_dir, f"{rid}.json"),
+            {"id": rid, "verdict": "allow", "scope": "once"},
+        )
+        await asyncio.wait_for(gate, timeout=2.0)
 
 
 class TestCleanupStale:

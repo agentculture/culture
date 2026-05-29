@@ -199,6 +199,17 @@ def _require_worker_suffix(name: str) -> str:
     return name
 
 
+def _require_server(name: str) -> str:
+    if not name or not _SUFFIX_RE.fullmatch(name):
+        print(
+            f"Error: invalid server name {name!r} "
+            "(use lowercase letters, digits, hyphens; must start alphanumeric)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return name
+
+
 def _task_channel(name: str) -> str:
     return f"#task-{name}"
 
@@ -228,6 +239,20 @@ def _foreign_worker(worker_nick: str, boss: str, owners: dict[str, str] | None =
     """
     owner = (owners if owners is not None else _owner_map()).get(worker_nick, "")
     return bool(owner) and owner != boss
+
+
+def _request_is_foreign(req: dict, boss: str) -> bool:
+    """True iff a request belongs to another boss's worker.
+
+    Prefer the owner recorded IN the request payload (written by the broker at
+    request time) — it is self-contained and survives a missing/corrupt/suffix-
+    mismatched worker culture.yaml, so team isolation does not fail open. Fall
+    back to the manifest only for legacy requests that predate the recorded field.
+    """
+    owner = req.get("boss") or ""
+    if owner:
+        return owner != boss
+    return _foreign_worker(req.get("helper_nick", ""), boss)
 
 
 def _boss_irc(msg_type: str, **kwargs) -> dict | None:
@@ -278,8 +303,7 @@ def _cmd_pending(args: argparse.Namespace) -> None:
     boss = os.environ.get("CULTURE_NICK", "")
     reqs = list_pending()
     if boss:
-        owners = _owner_map()
-        reqs = [r for r in reqs if not _foreign_worker(r.get("helper_nick", ""), boss, owners)]
+        reqs = [r for r in reqs if not _request_is_foreign(r, boss)]
     if not reqs:
         return
     print(f"{'ID':<34}  {'WORKER':<16}  {'TOOL':<10}  INPUT")
@@ -297,7 +321,7 @@ def _cmd_approve(args: argparse.Namespace) -> None:
         print(f"Error: no pending request {args.id}", file=sys.stderr)
         sys.exit(1)
     worker = req.get("helper_nick", "")
-    if _foreign_worker(worker, boss):
+    if _request_is_foreign(req, boss):
         print(
             f"REFUSED: {worker} is not your worker (owned by another boss). "
             "Each boss manages only its own team.",
@@ -329,7 +353,12 @@ def _cmd_approve(args: argparse.Namespace) -> None:
 def _cmd_deny(args: argparse.Namespace) -> None:
     boss = _boss_nick()
     req = read_request(args.id)
-    if req is not None and _foreign_worker(req.get("helper_nick", ""), boss):
+    # Mirror approve: refuse a missing/unreadable request rather than writing an
+    # orphan decision for an id that was never queued.
+    if req is None:
+        print(f"Error: no pending request {args.id}", file=sys.stderr)
+        sys.exit(1)
+    if _request_is_foreign(req, boss):
         print(
             f"REFUSED: {req.get('helper_nick', '?')} is not your worker "
             "(owned by another boss). Each boss manages only its own team.",
@@ -379,9 +408,19 @@ def _channel_members(channel: str) -> list[str]:
 
 
 def _cmd_brief(args: argparse.Namespace) -> None:
+    boss = _boss_nick()
     name = _require_worker_suffix(args.name)
-    nick = f"{_server_of(_boss_nick())}-{name}"
+    nick = f"{_server_of(boss)}-{name}"
     channel = _task_channel(name)
+    # Team isolation: a boss may only brief its own workers (same gate as
+    # approve/deny/close), so it can't inject tasks into another team's worker.
+    if _foreign_worker(nick, boss):
+        print(
+            f"REFUSED: {nick} is not your worker (owned by another boss). "
+            "Each boss manages only its own team.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     # Honesty check: a brief is only "delivered" if the worker is actually in the
     # channel to hear it. Without this, briefing a worker that never joined
     # #task-<name> (e.g. one started ad-hoc into #general, not via `culture boss
@@ -414,7 +453,16 @@ def _cmd_brief(args: argparse.Namespace) -> None:
 
 
 def _cmd_read(args: argparse.Namespace) -> None:
-    channel = _task_channel(_require_worker_suffix(args.name))
+    boss = _boss_nick()
+    name = _require_worker_suffix(args.name)
+    # Team isolation: a boss may only read its own workers' channels.
+    if _foreign_worker(f"{_server_of(boss)}-{name}", boss):
+        print(
+            f"REFUSED: {_server_of(boss)}-{name} is not your worker " "(owned by another boss).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    channel = _task_channel(name)
     resp = _boss_irc("irc_read", channel=channel, limit=args.limit)
     if not resp or not resp.get("ok"):
         print(f"Error: could not read {channel}", file=sys.stderr)
@@ -472,8 +520,11 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
         sys.exit(1)
     seed_helper_policy(worker_nick)
     # A worker inherits its parent (boss)'s model unless one is given explicitly.
+    # An explicit --model overwrites; an inherited model only fills in (never
+    # clobbers a model the worker's culture.yaml already carries).
+    explicit_model = bool(args.model)
     model = args.model or _boss_model()
-    _record_worker_boss(cwd, name, boss, model=model)
+    _record_worker_boss(cwd, name, boss, model=model, overwrite_model=explicit_model)
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
     subprocess.run([sys.executable, "-m", "culture", "agent", "start", worker_nick], check=False)
     # Boss joins the worker's task channel so it sees replies + perm DMs.
@@ -482,7 +533,16 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
 
 
 def _boss_model() -> str:
-    """The calling boss's own model from the manifest ('' if unknown)."""
+    """The boss's EXPLICITLY-configured model from its culture.yaml ('' if unset).
+
+    Read raw, not via ``agent.model`` — the runtime AgentConfig.model carries a
+    hardcoded dataclass default, so reading it would make a worker "inherit" that
+    default even when the boss never set a model (illusory inheritance). Reading
+    the boss's culture.yaml directly returns a model only when the boss truly has
+    one set.
+    """
+    import yaml
+
     server_yaml = os.path.join(culture_home(), "server.yaml")
     try:
         config = load_config_or_default(server_yaml, fallback=server_yaml)
@@ -491,12 +551,26 @@ def _boss_model() -> str:
     boss = _boss_nick()
     for agent in config.agents:
         if agent.nick == boss:
-            return getattr(agent, "model", "") or ""
+            directory = getattr(agent, "directory", "") or "."
+            try:
+                with open(os.path.join(directory, "culture.yaml"), encoding="utf-8") as handle:
+                    raw = yaml.safe_load(handle) or {}
+            except (OSError, yaml.YAMLError):
+                return ""
+            model = raw.get("model", "") if isinstance(raw, dict) else ""
+            return model if isinstance(model, str) else ""
     return ""
 
 
-def _record_worker_boss(cwd: str, suffix: str, boss: str, model: str = "") -> None:
-    """Write boss/suffix/channels (and model, if given) into the worker's culture.yaml."""
+def _record_worker_boss(
+    cwd: str, suffix: str, boss: str, model: str = "", overwrite_model: bool = False
+) -> None:
+    """Write boss/suffix/channels (and model, if given) into the worker's culture.yaml.
+
+    An explicit model (``overwrite_model=True``, i.e. ``--model``) is always
+    written; an inherited model only fills in when the worker has none, so a
+    re-spawn never clobbers a model the operator hand-set on the worker.
+    """
     import yaml
 
     path = os.path.join(cwd, "culture.yaml")
@@ -511,7 +585,7 @@ def _record_worker_boss(cwd: str, suffix: str, boss: str, model: str = "") -> No
     data.setdefault("backend", "claude")
     data["boss"] = boss
     data["channels"] = ["#team", _task_channel(suffix)]
-    if model:
+    if model and (overwrite_model or "model" not in data):
         data["model"] = model
     with open(path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(data, handle, sort_keys=False)
@@ -531,8 +605,20 @@ def _cmd_close(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
-    subprocess.run([sys.executable, "-m", "culture", "agent", "stop", worker_nick], check=False)
-    print(f"closed {worker_nick}")
+    # Report the delegate's actual result — don't claim "closed" if the underlying
+    # `culture agent stop` refused (e.g. authority guard) or failed.
+    res = subprocess.run(
+        [sys.executable, "-m", "culture", "agent", "stop", worker_nick],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode == 0:
+        print(f"closed {worker_nick}")
+    else:
+        detail = (res.stderr or res.stdout or "").strip()
+        print(f"Error: could not close {worker_nick}: {detail}", file=sys.stderr)
+        sys.exit(res.returncode)
 
 
 def _cmd_cleanup(args: argparse.Namespace) -> None:
@@ -552,8 +638,12 @@ def _cmd_cleanup(args: argparse.Namespace) -> None:
 
 
 def _cmd_init(args: argparse.Namespace) -> None:
-    server = args.server or "local"
-    nick = f"{server}-{args.nick}"
+    # Validate nick + server before they flow into file paths (boss_policy_path_for,
+    # the boss cwd). Worker suffixes are already validated; the boss's own --nick/
+    # --server must be too, or `--nick ../../x` becomes an arbitrary-file-write.
+    suffix = _require_worker_suffix(args.nick)
+    server = _require_server(args.server) if args.server else "local"
+    nick = f"{server}-{suffix}"
     cwd = args.cwd or os.path.join(culture_home(), "boss")
     os.makedirs(cwd, exist_ok=True)
 
@@ -564,7 +654,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
         print(f"warning: removed stray perm-policy for boss {nick}", file=sys.stderr)
 
     write_default_boss_ceiling(nick)
-    _write_boss_yaml(cwd, args.nick, nick, args.channel, model=args.model)
+    _write_boss_yaml(cwd, suffix, nick, args.channel, model=args.model)
     _copy_boss_skill(cwd)
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
     print(

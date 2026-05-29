@@ -86,6 +86,7 @@ class AgentRunner:
         on_perm_request: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
+        boss: str = "",
     ) -> None:
         self.model = model
         self.directory = directory
@@ -96,6 +97,7 @@ class AgentRunner:
         self.on_perm_request = on_perm_request
         self._metrics = metrics
         self._nick = nick
+        self._boss = boss
 
         self._session_id: str | None = None
         self._task: asyncio.Task | None = None
@@ -107,7 +109,7 @@ class AgentRunner:
         # semantics: can_use_tool=None and string-prompt path preserved.
         if nick and has_policy_file(nick):
             self._broker: PermissionBroker | None = PermissionBroker(
-                nick=nick, on_request=on_perm_request
+                nick=nick, on_request=on_perm_request, boss=boss
             )
             self._can_use_tool = self._broker.gate
         else:

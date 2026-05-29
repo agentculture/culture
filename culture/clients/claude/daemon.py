@@ -48,26 +48,41 @@ _ERR_CHANNEL_PREFIX = "Channel name must start with '#'"
 _MENTION_RE = re.compile(r"@([\w-]+)")
 
 
+def _cw_float(value: object, default: float) -> float:
+    """Coerce a threshold to float; fall back on a bad value (e.g. a quoted YAML
+    number like ``high_water: '0.9'``) so it can't crash the per-turn evaluate()."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _cw_bool(value: object, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
 def _context_watch_state(agent) -> ContextWatchState:
     """Normalize an agent's context_watch config (dict / object / None) to state.
 
     Runtime config (``culture.config.AgentConfig``) exposes it as a dict from
     ``culture.yaml`` extras; the backend-specific config exposes a
-    ``ContextWatchConfig`` object; either may be empty/absent → defaults.
+    ``ContextWatchConfig`` object; either may be empty/absent → defaults. Values
+    are coerced (a quoted YAML number arrives as a str and must not crash).
     """
     cw = getattr(agent, "context_watch", None)
     if not cw:
         return ContextWatchState()
-    if isinstance(cw, dict):
-        return ContextWatchState(
-            enabled=cw.get("enabled", True),
-            high_water=cw.get("high_water", 0.90),
-            low_water=cw.get("low_water", 0.50),
-        )
+    get = cw.get if isinstance(cw, dict) else (lambda k, d: getattr(cw, k, d))
     return ContextWatchState(
-        enabled=getattr(cw, "enabled", True),
-        high_water=getattr(cw, "high_water", 0.90),
-        low_water=getattr(cw, "low_water", 0.50),
+        enabled=_cw_bool(get("enabled", True), True),
+        high_water=_cw_float(get("high_water", 0.90), 0.90),
+        low_water=_cw_float(get("low_water", 0.50), 0.50),
     )
 
 
@@ -384,6 +399,7 @@ class AgentDaemon:
             on_perm_request=self._on_perm_request,
             metrics=self._metrics,
             nick=self.agent.nick,
+            boss=_boss_nick(self.agent),
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)

@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.16.0] - 2026-05-29
+
+### Fixed
+
+Hardening from an adversarial verification audit of the boss stack:
+
+- **Multi-team isolation no longer fails open.** The broker now records the
+  owning boss IN each permission request (`PermissionBroker(..., boss=...)`); the
+  boss CLI attributes ownership from the request itself, so a missing/corrupt/
+  suffix-mismatched worker `culture.yaml` can't make another team's request appear
+  unowned and become approvable by the wrong boss.
+- **Dashboard returns 400, not 500, on a non-string request id.** `valid_request_id`
+  now rejects non-strings (`{"id": 123}`) instead of raising `TypeError`.
+- **`culture boss deny` no longer writes an orphan decision** for a missing/absent
+  request id (now mirrors `approve`'s guard).
+- **`culture boss brief` / `read` enforce team isolation** — a boss can no longer
+  brief or read another boss's worker (same gate as approve/deny/close).
+- **`culture boss close` reports the real result** — it no longer prints "closed"
+  when the underlying `culture agent stop` refused or failed.
+- **Model inheritance is honest** — `_boss_model` reads the boss's *explicit*
+  model (not the hardcoded dataclass default), and an inherited model never
+  clobbers a model the worker already carries (only an explicit `--model` does).
+- **`culture boss init` validates `--nick`/`--server`** (closes a `../`
+  arbitrary-file-write via the boss's own identity flags).
+- **context-watch tolerates quoted YAML numbers** — string thresholds
+  (`high_water: "0.9"`) and `enabled: "false"` are coerced instead of crashing the
+  agent loop.
+
+### Changed
+
+- **Grant ceiling tightened** (still a cooperative guard, not a sandbox): the Bash
+  denylist is now case-insensitive, fires on quoted SQL (`psql -c 'drop table'`)
+  and `rm` flag variants (`-fr`, `-r -f`), and adds `dd`, `mkfs`, `chmod -R 777`,
+  and `curl|sh` / `wget|sh`.
+
 ## [8.15.0] - 2026-05-29
 
 ### Added

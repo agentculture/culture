@@ -213,6 +213,82 @@ class TestPending:
         assert "Edit" in res.stdout and "Bash" in res.stdout
 
 
+class TestAuditHardening:
+    # Fixes confirmed by the verification workflow's adversarial pass.
+    def test_deny_nonexistent_request_refused_no_orphan(self, home):
+        # deny of a valid-format-but-absent id must NOT write an orphan decision.
+        res = _run(["deny", "req-nope-abc", "reason"], home)
+        assert res.returncode == 1, (res.returncode, res.stderr)
+        assert "no pending request" in res.stderr
+        assert _decision(home, "req-nope-abc") is None
+
+    def test_brief_foreign_worker_refused(self, home):
+        _register_worker(home, "w2", "local-boss2")
+        res = _run(["brief", "w2", "do it"], home, nick="local-boss1")
+        assert res.returncode == 2, (res.returncode, res.stderr)
+        assert "not your worker" in res.stderr
+
+    def test_read_foreign_worker_refused(self, home):
+        _register_worker(home, "w2", "local-boss2")
+        res = _run(["read", "w2"], home, nick="local-boss1")
+        assert res.returncode == 2, (res.returncode, res.stderr)
+        assert "not your worker" in res.stderr
+
+    def test_init_rejects_traversal_nick(self, home):
+        res = _run(["init", "--nick", "../../evil", "--server", "local"], home)
+        assert res.returncode == 1
+        assert "invalid worker name" in res.stderr
+
+    def test_init_rejects_bad_server(self, home):
+        res = _run(["init", "--nick", "boss", "--server", "../x"], home)
+        assert res.returncode == 1
+        assert "invalid server name" in res.stderr
+
+    def test_isolation_holds_via_recorded_owner_without_manifest(self, home):
+        # The fail-open fix: a request carrying boss=local-boss2 is foreign to
+        # local-boss1 even with NO manifest entry for the worker (worker's
+        # culture.yaml missing/corrupt). Ownership comes from the request itself.
+        qdir = os.path.join(str(home), "perm-queue")
+        os.makedirs(qdir, exist_ok=True)
+        with open(os.path.join(qdir, "req-w2.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "id": "req-w2",
+                    "helper_nick": "local-w2",
+                    "boss": "local-boss2",
+                    "tool_name": "Bash",
+                    "input": {"command": "rm -rf /important"},
+                },
+                f,
+            )
+        res = _run(["approve", "req-w2"], home, nick="local-boss1")
+        assert res.returncode == 2, (res.returncode, res.stderr)
+        assert "not your worker" in res.stderr
+        assert _decision(home, "req-w2") is None
+
+    def test_pending_hides_foreign_via_recorded_owner(self, home):
+        qdir = os.path.join(str(home), "perm-queue")
+        os.makedirs(qdir, exist_ok=True)
+        for rid, owner, nick in (
+            ("req-mine", "local-boss1", "local-w1"),
+            ("req-theirs", "local-boss2", "local-w2"),
+        ):
+            with open(os.path.join(qdir, f"{rid}.json"), "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "id": rid,
+                        "helper_nick": nick,
+                        "boss": owner,
+                        "tool_name": "Edit",
+                        "input": {"file_path": "/a"},
+                    },
+                    f,
+                )
+        res = _run(["pending"], home, nick="local-boss1")
+        assert res.returncode == 0, res.stderr
+        assert "req-mine" in res.stdout and "req-theirs" not in res.stdout
+
+
 class TestMultiBossIsolation:
     # Each boss manages only its own team: a request from a worker owned by
     # another boss must be invisible + un-actionable to this boss. The dashboard
