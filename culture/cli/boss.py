@@ -482,10 +482,10 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 def _cmd_spawn(args: argparse.Namespace) -> None:
     boss = _boss_nick()
-    server = args.server or _server_of(boss)
-    # Validate the worker suffix before it touches any path — `name` flows into
-    # os.path.join(...helpers, name); an unsanitized value like "../x" would
-    # escape the helpers dir and let a (mis-briefed) boss write outside it.
+    # Validate BOTH the worker suffix and the server before they touch any path —
+    # both flow into worker_nick = f"{server}-{name}" → seed_helper_policy →
+    # policy_path_for, so an unsanitized "../x" in either escapes CULTURE_HOME.
+    server = _require_server(args.server) if args.server else _server_of(boss)
     name = _require_worker_suffix(args.name)
     worker_nick = f"{server}-{name}"
     if worker_nick == boss:

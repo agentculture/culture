@@ -289,13 +289,15 @@ DEFAULT_BOSS_CEILING: list[dict[str, Any]] = [
     {
         "tool": "Bash",
         "input_regex": (
-            r"(?i)(^|\s|;|&&|\|\||"
-            r"['\"]"
-            r")("
-            r"rm\s+-\w*[rf]\w*[rf]|rm\s+-[rf]\s+-[rf]|"
-            r"git\s+push|gh\s+(pr|release)\s+(create|merge)|"
-            r"kubectl|terraform|drop\s+table|truncate|"
-            r"dd\s+if=|mkfs|chmod\s+-R\s+777|"
+            # Leading boundary: start, whitespace, shell separators, quotes, or a
+            # command-substitution opener ( or backtick so $(rm -rf) / `rm -rf`
+            # are caught. Trailing (?![\w-]) on bare command names avoids matching
+            # them as a substring of a longer token (git pushup, kubectl-helper).
+            r"(?i)(^|\s|;|&&|\|\||[\"'(]|\x60)("
+            r"rm\s+-\w*[rf]\w*[rf]|rm\s+-[rf]\s+-[rf]|rm\s+[^;&|]*--recursive|"
+            r"git\s+push(?![\w-])|gh\s+(pr|release)\s+(create|merge)|"
+            r"kubectl(?![\w-])|terraform(?![\w-])|drop\s+table(?![\w-])|truncate(?![\w-])|"
+            r"dd\s+if=|mkfs(?![\w-])|chmod\s+[^;&|]*777|"
             r"curl[^|]*\|\s*(ba)?sh|wget[^|]*\|\s*(ba)?sh"
             r")"
         ),

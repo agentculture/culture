@@ -87,6 +87,29 @@ class TestIsAboveCeiling:
         for cmd in ("grep -rf pattern .", "git status", "cat README.md", "echo hi"):
             assert is_above_ceiling("Bash", {"command": cmd}, "local-boss") is False, cmd
 
+    def test_residual_bypasses_now_caught(self, culture_root):
+        # Re-verification residuals: long-form rm, command substitution, chmod order.
+        write_default_boss_ceiling("local-boss")
+        for cmd in (
+            "rm --recursive --force /tmp",
+            "chmod 777 -R /",
+            "chmod -R777 /",
+            "$(rm -rf /tmp)",
+            "`rm -rf /tmp`",
+        ):
+            assert is_above_ceiling("Bash", {"command": cmd}, "local-boss") is True, cmd
+
+    def test_substring_false_positives_avoided(self, culture_root):
+        # A banned token as a substring of a longer command must NOT escalate.
+        write_default_boss_ceiling("local-boss")
+        for cmd in (
+            "git pushup",
+            "cat truncate_helper.py",
+            "kubectl-helper-doc",
+            "terraform-docs build",
+        ):
+            assert is_above_ceiling("Bash", {"command": cmd}, "local-boss") is False, cmd
+
     def test_routine_tools_in_ceiling(self, culture_root):
         write_default_boss_ceiling("local-boss")
         assert is_above_ceiling("Edit", {"file_path": "/a.py"}, "local-boss") is False

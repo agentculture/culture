@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.16.1] - 2026-05-29
+
+### Fixed
+
+Closing the two residuals an adversarial re-verification pass found after 8.16.0:
+
+- **`culture boss spawn --server` is now validated** (via `_require_server`),
+  closing the same `../` arbitrary-file-write that 8.16.0 fixed for
+  `culture boss init` — `--server` flows into `worker_nick` →
+  `seed_helper_policy` → a policy path, so it must be sanitized too.
+- **Grant-ceiling residuals tightened** (still cooperative): now also catches
+  long-form `rm --recursive --force`, command-substitution wrapping (`$(…)` /
+  backticks), and `chmod … 777` in any flag order; and a trailing word-boundary
+  removes substring false-positives (`git pushup`, `cat truncate_helper.py`,
+  `kubectl-helper-doc` no longer escalate).
+
 ## [8.16.0] - 2026-05-29
 
 ### Fixed

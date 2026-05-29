@@ -161,6 +161,12 @@ class TestSpawnValidation:
         assert res.returncode == 1
         assert "invalid worker name" in res.stderr
 
+    def test_spawn_rejects_traversal_server(self, home):
+        # --server flows into worker_nick → policy_path_for; must be validated too.
+        res = _run(["spawn", "evil", "--server", "../../escaped"], home)
+        assert res.returncode == 1
+        assert "invalid server name" in res.stderr
+
 
 class TestNameValidationAllSubcommands:
     # Qodo: every subcommand taking <name> must validate it (path safety), not
