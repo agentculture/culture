@@ -581,12 +581,33 @@ def _record_worker_boss(
         data = {}
     if not isinstance(data, dict):
         data = {}
-    data.setdefault("suffix", suffix)
-    data.setdefault("backend", "claude")
-    data["boss"] = boss
-    data["channels"] = ["#team", _task_channel(suffix)]
-    if model and (overwrite_model or "model" not in data):
-        data["model"] = model
+
+    # If the directory holds a MULTI-agent culture.yaml (an `agents:` list — which
+    # happens when several workers share one project dir), the loader uses that
+    # list, so boss/channels MUST be written into this worker's entry inside it.
+    # Writing them top-level would be silently shadowed → the worker lands
+    # unassigned in #general instead of #task-<suffix> and can never be briefed.
+    if isinstance(data.get("agents"), list):
+        entry = next(
+            (a for a in data["agents"] if isinstance(a, dict) and a.get("suffix") == suffix),
+            None,
+        )
+        if entry is None:
+            entry = {"suffix": suffix, "backend": "claude"}
+            data["agents"].append(entry)
+        target = entry
+        # Drop any stray top-level single-agent fields a prior buggy write left.
+        for stray in ("suffix", "boss", "channels", "model"):
+            data.pop(stray, None)
+    else:
+        data.setdefault("suffix", suffix)
+        data.setdefault("backend", "claude")
+        target = data
+
+    target["boss"] = boss
+    target["channels"] = ["#team", _task_channel(suffix)]
+    if model and (overwrite_model or "model" not in target):
+        target["model"] = model
     with open(path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(data, handle, sort_keys=False)
 

@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.16.2] - 2026-05-29
+
+### Fixed
+
+- **`culture boss spawn` into a multi-agent directory now records ownership
+  correctly.** When a worker's `cwd` already held a multi-agent `culture.yaml`
+  (an `agents:` list — e.g. several workers sharing one project dir),
+  `_record_worker_boss` wrote `boss`/`channels` at the top level, where the
+  loader silently shadowed them with the list entry — so the worker came up
+  **unassigned, in `#general` instead of `#task-<name>`, and could never be
+  briefed** (it sat idle while the boss believed it was working). It now writes
+  into the worker's entry within the `agents:` list (and strips the stray
+  top-level fields a prior write left behind).
+
 ## [8.16.1] - 2026-05-29
 
 ### Fixed

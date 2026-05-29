@@ -73,6 +73,37 @@ def test_explicit_model_overwrites_existing(tmp_path):
         assert yaml.safe_load(f)["model"] == "claude-opus-4-7"  # explicit --model wins
 
 
+def test_record_worker_into_multi_agent_yaml(tmp_path):
+    # Spawning into a dir that already holds a multi-agent culture.yaml must write
+    # boss/channels into THIS worker's entry in the agents list — not top-level
+    # (which the loader shadows, leaving the worker unassigned in #general).
+    cwd = str(tmp_path)
+    with open(os.path.join(cwd, "culture.yaml"), "w", encoding="utf-8") as f:
+        yaml.safe_dump(
+            {
+                "agents": [
+                    {"suffix": "ori", "backend": "claude", "channels": ["#team", "#task-ori"]},
+                    {"suffix": "qa", "backend": "claude"},
+                ]
+            },
+            f,
+        )
+    boss._record_worker_boss(cwd, "qa", "local-boss", model="claude-opus-4-7")
+    with open(os.path.join(cwd, "culture.yaml"), encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    entry = next(a for a in data["agents"] if a["suffix"] == "qa")
+    assert entry["boss"] == "local-boss"
+    assert entry["channels"] == ["#team", "#task-qa"]
+    assert entry["model"] == "claude-opus-4-7"
+    # No stray top-level single-agent fields shadowing the list.
+    assert "boss" not in data and "channels" not in data and "suffix" not in data
+    # The sibling entry is untouched.
+    assert next(a for a in data["agents"] if a["suffix"] == "ori")["channels"] == [
+        "#team",
+        "#task-ori",
+    ]
+
+
 def test_boss_model_empty_when_boss_has_no_explicit_model(tmp_path, monkeypatch):
     # The key fix: _boss_model returns '' (not the hardcoded default) when the
     # boss's culture.yaml has no model — so inheritance isn't illusory.
