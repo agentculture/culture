@@ -1,7 +1,28 @@
 "use strict";
 
 // Mission Control SPA — vanilla JS, no build step.
-const state = { selected: null, kind: "audit", es: null, chatTimer: null, view: "agents" };
+const state = {
+  selected: null,
+  kind: "audit",
+  es: null,
+  chatTimer: null,
+  view: "agents",
+  // v8.19.14: append-only chat refresh. chatLastMessages is the previously
+  // rendered message list; chatLastChannel resets the baseline on switch.
+  // Without this, refreshChat replaceChildren'd every 2.5s and any scroll-up
+  // got reset to bottom — making history unreachable.
+  chatLastMessages: [],
+  chatLastChannel: null,
+};
+
+// v8.19.14: pixel margin within which we consider the user "at the bottom"
+// of a scrollable feed. If they're within this margin we auto-scroll on
+// append; otherwise we leave scroll alone so they can read history.
+const SCROLL_BOTTOM_THRESHOLD_PX = 40;
+
+function isAtBottom(box) {
+  return box.scrollHeight - box.scrollTop - box.clientHeight < SCROLL_BOTTOM_THRESHOLD_PX;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -385,6 +406,11 @@ function selectAgent(nick) {
 function openStream() {
   if (state.es) { state.es.close(); state.es = null; }
   if (state.chatTimer) { clearInterval(state.chatTimer); state.chatTimer = null; }
+  // v8.19.14: reset the chat diff baseline when switching streams. Without
+  // this, refreshChat would see a stale chatLastMessages from the prior
+  // channel and never re-paint, leaving an empty box.
+  state.chatLastMessages = [];
+  state.chatLastChannel = null;
   const box = $("#stream");
   box.replaceChildren();
   const chatInput = $("#chat-input");
@@ -410,18 +436,61 @@ function openStream() {
 // ---- Chat (talk to an agent in its channel) --------------------------------
 
 async function refreshChat() {
+  // v8.19.14: append-only refresh. Previously this called replaceChildren()
+  // every 2.5s, nuking the user's scroll position and any history they had
+  // scrolled to. Now we compare against the previously rendered messages
+  // and only append the new tail.
   if (!state.selected || state.kind !== "chat") return;
   let data;
   try { data = await api(`/api/channel/${encodeURIComponent(state.selected)}`); }
   catch (_) { return; }
   const box = $("#stream");
-  box.replaceChildren();
-  if (!data.messages || !data.messages.length) {
-    box.appendChild(el("div", "empty", `No messages in ${data.channel} yet.`));
-  } else {
-    for (const m of data.messages) box.appendChild(el("div", "stream-line", m));
+  const messages = data.messages || [];
+
+  // Channel switch resets the baseline. selectAgent/openStream already
+  // clears the box; we just reset the diff state here.
+  if (data.channel !== state.chatLastChannel) {
+    state.chatLastChannel = data.channel;
+    state.chatLastMessages = [];
   }
-  box.scrollTop = box.scrollHeight;
+
+  const wasAtBottom = isAtBottom(box);
+
+  if (!messages.length) {
+    if (!state.chatLastMessages.length && !box.firstChild) {
+      box.appendChild(el("div", "empty", `No messages in ${data.channel} yet.`));
+    }
+    return;
+  }
+
+  // First render after channel switch: paint everything fresh.
+  if (!state.chatLastMessages.length) {
+    box.replaceChildren();
+    for (const m of messages) box.appendChild(el("div", "stream-line", m));
+    state.chatLastMessages = messages.slice();
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+
+  // Diff: find where the previously rendered tail lands in the new list.
+  // If it lands somewhere, append from there. If it's gone (server-side
+  // rotation / truncation), fall back to a full re-render.
+  const prevTail = state.chatLastMessages[state.chatLastMessages.length - 1];
+  let appendStart = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i] === prevTail) { appendStart = i + 1; break; }
+  }
+  if (appendStart === -1) {
+    box.replaceChildren();
+    for (const m of messages) box.appendChild(el("div", "stream-line", m));
+  } else {
+    for (let i = appendStart; i < messages.length; i++) {
+      box.appendChild(el("div", "stream-line", messages[i]));
+    }
+  }
+  state.chatLastMessages = messages.slice();
+
+  if (wasAtBottom) box.scrollTop = box.scrollHeight;
 }
 
 function sendChat() {
@@ -443,6 +512,10 @@ function localTs(iso) {
 }
 
 function renderActivityTurn(box, rec) {
+  // v8.19.14: snapshot scroll position BEFORE appending so we don't yank
+  // the user back to the bottom every time a turn lands. They can read
+  // history while new activity streams in.
+  const wasAtBottom = isAtBottom(box);
   const card = el("div", "turn");
   card.appendChild(el("div", "ts", localTs(rec.ts)));
   if (rec.thinking) {
@@ -476,10 +549,12 @@ function renderActivityTurn(box, rec) {
     card.appendChild(block);
   }
   box.appendChild(card);
-  box.scrollTop = box.scrollHeight;
+  if (wasAtBottom) box.scrollTop = box.scrollHeight;
 }
 
 function appendStreamLine(box, raw) {
+  // v8.19.14: same scroll-preservation contract as renderActivityTurn.
+  const wasAtBottom = isAtBottom(box);
   let rec;
   try { rec = JSON.parse(raw); } catch (_) { rec = null; }
   if (rec && state.kind === "audit") {
@@ -496,7 +571,7 @@ function appendStreamLine(box, raw) {
     line.textContent = raw;
   }
   box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
+  if (wasAtBottom) box.scrollTop = box.scrollHeight;
 }
 
 // ---- Pending approvals -----------------------------------------------------

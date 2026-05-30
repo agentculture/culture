@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.14] - 2026-05-31
+
+### Fixed
+
+- **Dashboard activity panel nuked every 2.5s, scroll-up unreachable.**
+  Channel-mode chat polled `/api/channel/<nick>` every 2.5s and called
+  `box.replaceChildren()` on every poll — wiping any scroll-up position
+  and yanking the user back to the bottom. Activity / daemon-log SSE
+  paths force-scrolled to bottom on every appended record, blocking
+  scrollback while live data was streaming.
+- **Fix is append-only + scroll-position preservation.** `refreshChat`
+  now diffs the message list, finds the previously rendered tail in
+  the new list, and appends only the delta (falls back to a full
+  re-render when the server-side log rotated). `renderActivityTurn`
+  and `appendStreamLine` snapshot `isAtBottom(box)` before appending
+  and only auto-scroll if the user was already at the bottom — if
+  they've scrolled up to read history, the scrollbar stays put.
+- New `state.chatLastMessages` / `state.chatLastChannel` diff baseline,
+  reset on `openStream` (channel switch). Threshold for "at bottom" is
+  40px to tolerate sub-pixel layout drift in the channel list.
+- Single-file change: `culture/dashboard/static/app.js`. Static asset
+  cache-busted by the version bump.
+
 ## [8.19.13] - 2026-05-31
 
 ### Fixed
