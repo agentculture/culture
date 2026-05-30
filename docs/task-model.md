@@ -40,12 +40,31 @@ A **task** lives in a channel. The channel IS the task envelope.
 | Field | Where it lives | Set by |
 |---|---|---|
 | Channel | IRC channel (`#task-<agent>` or `#joint-<name>`) | Orchestrator (auto on spawn, or explicit `irc_join`) |
-| Goal | Channel topic / first brief / `culture channel goal` | Orchestrator |
+| Goal | Channel topic / first brief / `culture channel goal` *(planned post-v8.19.x)* | Orchestrator |
 | Agents | Channel membership | Orchestrator (spawns + joins) |
-| Roles | `role:` field on each agent's `culture.yaml` | Orchestrator (spawn-time + editable) |
-| State | `active` / `archived` | Orchestrator (`culture channel archive`) |
+| Roles | `role:` field on each agent's `culture.yaml` *(planned post-v8.19.x)* | Orchestrator (spawn-time + editable) |
+| State | `active` / `archived` | Orchestrator (`culture channel archive`, v8.19.1) |
 
 The orchestrator owns the channel. Agents are tenants.
+
+> **Status note** (added during PR #25 review): some of the CLI
+> commands and config fields below are **not yet implemented** as
+> of v8.19.x. The doc captures the target shape; rows are
+> labeled *(planned post-v8.19.x)* where the actual code hasn't
+> landed yet. The shipped baseline is:
+>
+> - **v8.19.1 (PR #27)** — agent + channel archiving (`culture
+>   channel archive`, `culture agent archive`, `culture agent
+>   restore`, `culture agent unarchive`).
+> - **v8.19.0 (PR #416)** — `--channels` flag on `culture boss
+>   spawn`.
+> - **v8.18.6 (PR #24)** — model inheritance via
+>   `model_resolved` daemon-log fallback.
+>
+> Deferred to follow-ups: `role:` field, `culture channel goal`,
+> `culture agent compact`, `--ephemeral` / `--persistent` spawn
+> flags, in-mesh boss-agent autonomous mission persistence
+> (`fix-pattern-b`, blocked on all-backends propagation).
 
 ### Three task flavors
 
@@ -130,7 +149,7 @@ agent card.
 - **Default**: when a task channel is archived, the orchestrator
   decides per agent whether to archive (single-task agents) or
   keep active (persistent project agents).
-- **Hint**: `culture boss spawn --ephemeral` marks the agent for
+- **Hint** *(planned post-v8.19.x)*: `culture boss spawn --ephemeral` marks the agent for
   automatic archive when its primary channel is archived.
   `--persistent` (the implicit default for project agents) keeps
   the agent active across tasks.
@@ -162,7 +181,7 @@ the boss is DM'd within ~5 turns when handoff is overdue.
 
 ### Explicit compact for task switches
 
-`culture agent compact <nick> "<reason>"` — orchestrator triggers
+*(planned post-v8.19.x)* `culture agent compact <nick> "<reason>"` — orchestrator triggers
 compaction with the reason injected into the next-turn reminder.
 Use when:
 
