@@ -129,3 +129,57 @@ async def test_channel_name_must_start_with_hash(server, make_client):
     # Should get nothing back (no join, no error)
     join_lines = [l for l in lines if "JOIN" in l]
     assert len(join_lines) == 0
+
+
+@pytest.mark.asyncio
+async def test_peek_join_suppresses_join_event(server, make_client):
+    """Peek clients (`<server>-_peek<rand>`) must NOT fire user.join events.
+
+    Every `culture channel read` and dashboard channel-preview poll opens
+    a short-lived peek connection that joins, reads HISTORY, and parts.
+    The JOIN is required to clear the v8.18.3 HISTORY membership gate,
+    but the user.join EVENT — which lands as a PRIVMSG in every channel
+    member's buffer — is observer noise that poisons agent contexts.
+    """
+    # Pre-existing member that would see the JOIN event PRIVMSG.
+    watcher = await make_client(nick="testserv-alice", user="alice")
+    await watcher.send("JOIN #general")
+    await watcher.recv_all(timeout=0.5)
+
+    # Peek client joins #general.
+    peek = await make_client(nick="testserv-_peek1234", user="peek")
+    await peek.send("JOIN #general")
+    await peek.recv_all(timeout=0.5)
+
+    # Give the server a beat to emit (or not emit) the event.
+    lines = await watcher.recv_all(timeout=0.5)
+    join_event_lines = [
+        l for l in lines if "PRIVMSG" in l and "_peek1234" in l
+    ]
+    assert join_event_lines == [], (
+        f"peek JOIN must not emit user.join PRIVMSG, got: {join_event_lines}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_agent_join_still_broadcasts(server, make_client):
+    """Symmetry: non-peek joins must STILL broadcast JOIN + fire welcome.
+
+    Suppressing only the EVENT emission must not break the protocol-level
+    JOIN delivery — channel members must still see the IRC ``JOIN``
+    message, and the welcome bot (which fires from the user.join event
+    handler) must still greet real agents.
+    """
+    watcher = await make_client(nick="testserv-alice", user="alice")
+    await watcher.send("JOIN #general")
+    await watcher.recv_all(timeout=0.5)
+
+    real = await make_client(nick="testserv-bob", user="bob")
+    await real.send("JOIN #general")
+    await real.recv_all(timeout=0.5)
+
+    lines = await watcher.recv_all(timeout=0.5)
+    raw_join = [l for l in lines if "JOIN" in l and "testserv-bob" in l]
+    assert raw_join, f"non-peek JOIN must broadcast raw JOIN to members, got: {lines}"
+    welcome = [l for l in lines if "Welcome testserv-bob" in l]
+    assert welcome, f"welcome bot must fire on real agent join, got: {lines}"

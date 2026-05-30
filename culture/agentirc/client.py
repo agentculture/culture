@@ -603,9 +603,22 @@ class Client:
 
             # Emit event AFTER delivering all join-related numerics (topic, NAMES)
             # so that the event PRIVMSG doesn't interleave with 353/366 in client buffers.
-            await self.server.emit_event(
-                Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
-            )
+            #
+            # Suppress for peek-prefix connections (v8.19.13). Every
+            # `culture channel read` and every dashboard channel-preview poll
+            # opens a short-lived `<server>-_peekXXXX` connection that joins,
+            # reads HISTORY, and parts. The JOIN itself is needed for the
+            # post-v8.18.3 HISTORY membership gate, but the user.join EVENT
+            # — which lands as a PRIVMSG in every channel member's buffer —
+            # is pure observer noise. With dashboards refreshing on a 3s
+            # cadence, this noise dominated #team and poisoned every
+            # subscribed agent's next-turn context.
+            nick = self.nick or ""
+            suffix = nick.split("-", 1)[1] if "-" in nick else nick
+            if not suffix.startswith("_peek"):
+                await self.server.emit_event(
+                    Event(type=EventType.JOIN, channel=channel_name, nick=self.nick)
+                )
 
     async def _handle_part(self, msg: Message) -> None:
         if not msg.params:
@@ -633,14 +646,21 @@ class Client:
             for member in list(channel.members):
                 await member.send(part_msg)
 
-            await self.server.emit_event(
-                Event(
-                    type=EventType.PART,
-                    channel=channel_name,
-                    nick=self.nick,
-                    data={"reason": reason},
+            # Symmetric peek suppression (v8.19.13): peek connections part
+            # right after their HISTORY read; emitting their PART events
+            # would re-poison the channel buffers we just stopped poisoning
+            # at the JOIN site.
+            nick = self.nick or ""
+            suffix = nick.split("-", 1)[1] if "-" in nick else nick
+            if not suffix.startswith("_peek"):
+                await self.server.emit_event(
+                    Event(
+                        type=EventType.PART,
+                        channel=channel_name,
+                        nick=self.nick,
+                        data={"reason": reason},
+                    )
                 )
-            )
 
             channel.remove(self)
             self.channels.discard(channel)
