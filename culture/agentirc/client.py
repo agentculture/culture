@@ -70,6 +70,7 @@ import time as _time
 OWNER_MAP_TTL_S = 5.0
 _owner_map_cache: dict[str, str] | None = None
 _owner_map_ts: float = 0.0
+_owner_map_key: str | None = None  # resolved server.yaml path for cache validity
 
 
 def _load_owner_map() -> dict[str, str]:
@@ -80,24 +81,33 @@ def _load_owner_map() -> dict[str, str]:
     task channel; the supervising boss is also refused since we
     can't verify the relationship.
 
-    Cached for ``OWNER_MAP_TTL_S`` seconds. Manifest hot-reloads
-    propagate within the TTL window; pass through is automatic on
-    expiry without an IRCd restart.
+    Cached for ``OWNER_MAP_TTL_S`` seconds **and** keyed by the
+    resolved ``server.yaml`` path (derived from ``CULTURE_HOME``).
+    If ``CULTURE_HOME`` changes between calls (common in tests),
+    the cache is treated as a miss regardless of TTL.
     """
-    global _owner_map_cache, _owner_map_ts
+    global _owner_map_cache, _owner_map_ts, _owner_map_key
     now = _time.monotonic()
-    if _owner_map_cache is not None and (now - _owner_map_ts) < OWNER_MAP_TTL_S:
+
+    from culture.clients._perm_broker import culture_home
+
+    server_yaml = os.path.join(culture_home(), "server.yaml")
+
+    if (
+        _owner_map_cache is not None
+        and _owner_map_key == server_yaml
+        and (now - _owner_map_ts) < OWNER_MAP_TTL_S
+    ):
         return _owner_map_cache
     try:
-        from culture.clients._perm_broker import culture_home
         from culture.config import load_config_or_default
 
-        server_yaml = os.path.join(culture_home(), "server.yaml")
         config = load_config_or_default(server_yaml, fallback=server_yaml)
         _owner_map_cache = {a.nick: (getattr(a, "boss", "") or "") for a in config.agents}
     except Exception:  # noqa: BLE001 — unreadable manifest -> fail-closed
         _owner_map_cache = {}
     _owner_map_ts = now
+    _owner_map_key = server_yaml
     return _owner_map_cache
 
 
@@ -107,15 +117,22 @@ def _invalidate_owner_map_cache() -> None:
     Tests + administrative operations that mutate the manifest can call
     this to bypass the TTL.
     """
-    global _owner_map_cache, _owner_map_ts
+    global _owner_map_cache, _owner_map_ts, _owner_map_key
     _owner_map_cache = None
     _owner_map_ts = 0.0
+    _owner_map_key = None
 
 
-def _task_channel_acl(nick: str, channel_name: str) -> bool:
+def _task_channel_acl(nick: str, channel_name: str, server_name: str = "") -> bool:
     """Return True if *nick* is allowed to join *channel_name*.
 
     Only gates ``#task-*`` channels.  Everything else returns True.
+
+    *server_name* is the IRCd's configured name (e.g. ``"spark"``).
+    It is used to correctly strip the server prefix from nicks —
+    ``split("-", 1)`` breaks when the server name itself contains
+    hyphens (e.g. ``"my-server"``).  When omitted or empty, falls
+    back to ``split("-", 1)`` for backward compatibility.
 
     Rules for ``#task-<suffix>``:
     - The worker whose nick ends with ``-<suffix>`` may join (owner).
@@ -130,9 +147,16 @@ def _task_channel_acl(nick: str, channel_name: str) -> bool:
     if not task_suffix:
         return True  # Bare "#task-" — degenerate, allow.
 
-    # The owner is any nick whose suffix (after the server prefix) matches.
-    # Nick format: <server>-<suffix>.  Extract the suffix portion.
-    nick_suffix = nick.split("-", 1)[1] if "-" in nick else nick
+    # Extract the agent suffix from a nick.  When the server name is
+    # known we strip the exact prefix (handles hyphens in server names);
+    # otherwise fall back to the first-hyphen split.
+    def _agent_suffix(n: str) -> str:
+        prefix = f"{server_name}-" if server_name else ""
+        if prefix and n.startswith(prefix):
+            return n[len(prefix) :]
+        return n.split("-", 1)[1] if "-" in n else n
+
+    nick_suffix = _agent_suffix(nick)
 
     # Owner match: nick suffix == task suffix
     if nick_suffix == task_suffix:
@@ -147,7 +171,7 @@ def _task_channel_acl(nick: str, channel_name: str) -> bool:
     # find it in the manifest and check if the joining nick is its boss.
     owner_map = _load_owner_map()
     for worker_nick, boss_nick in owner_map.items():
-        w_suffix = worker_nick.split("-", 1)[1] if "-" in worker_nick else worker_nick
+        w_suffix = _agent_suffix(worker_nick)
         if w_suffix == task_suffix and boss_nick == nick:
             return True
 
@@ -550,7 +574,7 @@ class Client:
                 return
 
             # --- Task-channel ACL (v8.18.7) ---
-            if not _task_channel_acl(self.nick, channel_name):
+            if not _task_channel_acl(self.nick, channel_name, self.server.config.name):
                 await self.send_numeric(
                     replies.ERR_BANNEDFROMCHAN,
                     channel_name,

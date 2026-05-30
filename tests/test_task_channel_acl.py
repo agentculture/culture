@@ -8,6 +8,7 @@ Verifies that:
 - System channels (#team, #system) are unrestricted.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -33,7 +34,7 @@ class TestTaskChannelAclUnit:
 
     def test_owner_allowed_own_task(self):
         """Worker can join its own task channel."""
-        assert _task_channel_acl("local-worker-a", "#task-worker-a") is True
+        assert _task_channel_acl("local-worker-a", "#task-worker-a", "local") is True
 
     def test_foreign_worker_refused(self):
         """Worker cannot join another worker's task channel."""
@@ -41,7 +42,7 @@ class TestTaskChannelAclUnit:
             "culture.agentirc.client._load_owner_map",
             return_value=_mock_owner_map(),
         ):
-            assert _task_channel_acl("local-worker-b", "#task-worker-a") is False
+            assert _task_channel_acl("local-worker-b", "#task-worker-a", "local") is False
 
     def test_boss_allowed_worker_task(self):
         """Boss can join its worker's task channel."""
@@ -49,7 +50,7 @@ class TestTaskChannelAclUnit:
             "culture.agentirc.client._load_owner_map",
             return_value=_mock_owner_map(),
         ):
-            assert _task_channel_acl("local-boss", "#task-worker-a") is True
+            assert _task_channel_acl("local-boss", "#task-worker-a", "local") is True
 
     def test_wrong_boss_refused(self):
         """A different boss cannot join another boss's worker's task channel."""
@@ -57,32 +58,32 @@ class TestTaskChannelAclUnit:
             "culture.agentirc.client._load_owner_map",
             return_value=_mock_owner_map(),
         ):
-            assert _task_channel_acl("local-boss2", "#task-worker-a") is False
+            assert _task_channel_acl("local-boss2", "#task-worker-a", "local") is False
 
     def test_joint_channel_always_allowed(self):
         """#joint-* channels are open to everyone."""
-        assert _task_channel_acl("local-worker-b", "#joint-fixes") is True
-        assert _task_channel_acl("local-random", "#joint-coordination") is True
+        assert _task_channel_acl("local-worker-b", "#joint-fixes", "local") is True
+        assert _task_channel_acl("local-random", "#joint-coordination", "local") is True
 
     def test_regular_channel_allowed(self):
         """Regular channels like #team are unrestricted."""
-        assert _task_channel_acl("local-worker-a", "#team") is True
-        assert _task_channel_acl("local-worker-a", "#system") is True
-        assert _task_channel_acl("local-worker-a", "#general") is True
+        assert _task_channel_acl("local-worker-a", "#team", "local") is True
+        assert _task_channel_acl("local-worker-a", "#system", "local") is True
+        assert _task_channel_acl("local-worker-a", "#general", "local") is True
 
     def test_system_nick_always_allowed(self):
         """system-* nicks can join any task channel."""
-        assert _task_channel_acl("system-local", "#task-worker-a") is True
+        assert _task_channel_acl("system-local", "#task-worker-a", "local") is True
 
     def test_no_manifest_owner_still_joins_own(self):
         """Owner can join own channel even without manifest."""
         with patch("culture.agentirc.client._load_owner_map", return_value={}):
-            assert _task_channel_acl("local-worker-a", "#task-worker-a") is True
+            assert _task_channel_acl("local-worker-a", "#task-worker-a", "local") is True
 
     def test_no_manifest_foreign_refused(self):
         """Foreign worker refused even without manifest (fail closed)."""
         with patch("culture.agentirc.client._load_owner_map", return_value={}):
-            assert _task_channel_acl("local-worker-b", "#task-worker-a") is False
+            assert _task_channel_acl("local-worker-b", "#task-worker-a", "local") is False
 
 
 # ---------------------------------------------------------------------------
@@ -189,13 +190,15 @@ class TestOwnerMapCache:
         with patch(
             "culture.config.load_config_or_default", side_effect=AssertionError("should be cached")
         ):
-            # First call populates from the real path → but we patched
-            # load_config_or_default to raise so the cache must be the
-            # first thing the loader checks. Instead pre-seed the cache:
-            ircd_client._owner_map_cache = {"local-worker-a": "local-boss"}
+            # Pre-seed the cache with the expected data + key so the TTL
+            # check succeeds (load_config_or_default should never fire).
             import time as _t
 
+            from culture.clients._perm_broker import culture_home
+
+            ircd_client._owner_map_cache = {"local-worker-a": "local-boss"}
             ircd_client._owner_map_ts = _t.monotonic()
+            ircd_client._owner_map_key = os.path.join(culture_home(), "server.yaml")
             for _ in range(50):
                 got = ircd_client._load_owner_map()
                 assert got == {"local-worker-a": "local-boss"}
@@ -245,5 +248,86 @@ class TestOwnerMapCache:
         ircd_client._load_owner_map()
         assert calls["n"] == 1
         ircd_client._invalidate_owner_map_cache()
+        ircd_client._load_owner_map()
+        assert calls["n"] == 2
+
+
+class TestHyphenatedServerName:
+    """Qodo finding #2: server names with hyphens broke ACL suffix parsing."""
+
+    def test_hyphenated_server_owner_allowed(self):
+        """Owner on a hyphenated server can join its own task channel."""
+        assert _task_channel_acl("my-server-worker-a", "#task-worker-a", "my-server") is True
+
+    def test_hyphenated_server_foreign_refused(self):
+        """Foreign worker on hyphenated server is refused."""
+        with patch(
+            "culture.agentirc.client._load_owner_map",
+            return_value={"my-server-worker-a": "my-server-boss"},
+        ):
+            assert _task_channel_acl("my-server-worker-b", "#task-worker-a", "my-server") is False
+
+    def test_hyphenated_server_boss_allowed(self):
+        """Boss on hyphenated server can join worker's task channel."""
+        with patch(
+            "culture.agentirc.client._load_owner_map",
+            return_value={"my-server-worker-a": "my-server-boss"},
+        ):
+            assert _task_channel_acl("my-server-boss", "#task-worker-a", "my-server") is True
+
+    def test_triple_hyphen_server(self):
+        """Server name with multiple hyphens still works."""
+        assert _task_channel_acl("a-b-c-worker", "#task-worker", "a-b-c") is True
+
+    def test_no_server_name_fallback(self):
+        """Without server_name, falls back to split('-', 1) for compat."""
+        # "local-worker-a" split on first '-' -> suffix "worker-a"
+        assert _task_channel_acl("local-worker-a", "#task-worker-a") is True
+
+
+class TestCacheKeyedByCultureHome:
+    """Qodo finding #3: cache must be keyed by CULTURE_HOME path."""
+
+    def setup_method(self):
+        from culture.agentirc.client import _invalidate_owner_map_cache
+
+        _invalidate_owner_map_cache()
+
+    def teardown_method(self):
+        from culture.agentirc.client import _invalidate_owner_map_cache
+
+        _invalidate_owner_map_cache()
+
+    def test_culture_home_change_invalidates_cache(self, monkeypatch, tmp_path):
+        """Changing CULTURE_HOME causes a cache miss even within TTL."""
+        from culture.agentirc import client as ircd_client
+
+        calls = {"n": 0, "homes": []}
+
+        def fake_load(*_a, **_kw):
+            calls["n"] += 1
+
+            class _Cfg:
+                agents = []
+
+            return _Cfg()
+
+        monkeypatch.setattr("culture.config.load_config_or_default", fake_load)
+
+        # First call with home_a
+        home_a = tmp_path / "home_a"
+        home_a.mkdir()
+        monkeypatch.setenv("CULTURE_HOME", str(home_a))
+        ircd_client._load_owner_map()
+        assert calls["n"] == 1
+
+        # Second call same home — cached
+        ircd_client._load_owner_map()
+        assert calls["n"] == 1
+
+        # Switch CULTURE_HOME — should miss cache
+        home_b = tmp_path / "home_b"
+        home_b.mkdir()
+        monkeypatch.setenv("CULTURE_HOME", str(home_b))
         ircd_client._load_owner_map()
         assert calls["n"] == 2
