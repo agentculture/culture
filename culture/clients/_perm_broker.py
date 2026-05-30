@@ -173,6 +173,20 @@ def handoff_path_for(nick: str) -> str:
     return os.path.join(culture_home(), "handoff", f"{nick}.md")
 
 
+def mission_path_for(nick: str) -> str:
+    """Return the mission-persistence file path for a boss agent.
+
+    The boss daemon writes its accumulated brief here on every @mention
+    so a restart can re-load it into the SDK system prompt — the original
+    brief in the IRC channel may be too far back in history to recover
+    cheaply (v8.19.x Pattern B mission persistence).
+
+    The path is under ``~/.culture/mission/<nick>.md`` so it's
+    self-contained alongside ``handoff/`` and other per-nick state.
+    """
+    return os.path.join(culture_home(), "mission", f"{nick}.md")
+
+
 def _handoff_auto_allow_rule(nick: str) -> dict[str, Any]:
     """Auto-allow rule letting a helper write its own context-handoff file.
 

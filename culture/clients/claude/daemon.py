@@ -22,7 +22,11 @@ from culture.clients._context_watch import (
 )
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._perm_broker import handoff_path_for
+<<<<<<< HEAD
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
+=======
+from culture.clients import _mission as _mission_persistence
+>>>>>>> 6be346d (feat(boss): persistent boss mission across daemon restarts (v8.19.3))
 from culture.clients.claude.agent_runner import AgentRunner
 from culture.clients.claude.config import AgentConfig, DaemonConfig
 from culture.clients.claude.ipc import make_response
@@ -745,6 +749,14 @@ class AgentDaemon:
         task = asyncio.create_task(self._agent_runner.send_prompt(prompt))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+        # Persist for boss agents so a restart can re-load the brief.
+        # All-backends rule + Qodo pattern-b finding.
+        if _mission_persistence.is_boss_agent(self.agent):
+            _mission_persistence.persist_mention(
+                self.agent.nick,
+                sender,
+                text,
+            )
 
     def _build_channel_prompt(self, target: str, sender: str, text: str) -> str:
         """Build a prompt for a channel @mention, including thread context if present."""
@@ -995,14 +1007,18 @@ class AgentDaemon:
 
     def _build_system_prompt(self) -> str:
         if self.agent.system_prompt:
-            return self.agent.system_prompt
-        return (
-            f"You are {self.agent.nick}, an AI agent on the culture IRC network.\n"
-            "You have IRC tools available via the irc skill. Use them to communicate.\n"
-            f"Your working directory is {self.agent.directory}.\n"
-            "Check IRC channels periodically with irc_read() for new messages.\n"
-            "When you finish a task, share results in the appropriate channel with irc_send()."
-        )
+            base = self.agent.system_prompt
+        else:
+            base = (
+                f"You are {self.agent.nick}, an AI agent on the culture IRC network.\n"
+                "You have IRC tools available via the irc skill. Use them to communicate.\n"
+                f"Your working directory is {self.agent.directory}.\n"
+                "Check IRC channels periodically with irc_read() for new messages.\n"
+                "When you finish a task, share results in the appropriate channel with irc_send()."
+            )
+        # Boss agents: append persisted mission so a restart re-loads
+        # the brief into the SDK system context (all-backends).
+        return base + _mission_persistence.build_system_prompt_extension(self.agent.nick)
 
     async def _record_crash_time(self, exit_code: int) -> None:
         """Log a crash warning, prune the sliding window, record the new crash, fire agent_error."""
