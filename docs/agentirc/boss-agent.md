@@ -54,7 +54,7 @@ tool calls, escalates the risky ones to you.
 | Command | Purpose |
 |---|---|
 | `culture boss init [--nick boss] [--channel '#boss'] [--cwd PATH]` | Create the boss identity: manager `system_prompt`, seeded grant ceiling, copied boss skill, **no perm-policy** (deadlock guard), boss channel. Idempotent. |
-| `culture boss spawn <name> [--cwd PATH]` | Create + start a worker under this boss; seed its policy; record `boss:` in its `culture.yaml`; join its task channel. Refuses a nick colliding with a boss. |
+| `culture boss spawn <name> [--cwd PATH] [--channels "#ch1,#ch2"]` | Create + start a worker under this boss; seed its policy; record `boss:` in its `culture.yaml`; join its task channel (and any `--channels`). The boss also joins extra channels for observation. Refuses a nick colliding with a boss. |
 | `culture boss brief <name> "<task>"` | Send a task to the worker's channel. |
 | `culture boss read <name> [--limit N]` | Read the worker's recent replies. |
 | `culture boss pending` | List pending worker permission requests. |

@@ -80,6 +80,8 @@ class IRCTransport:
             "TOPIC": self._on_topic,
             "331": self._on_numeric_topic,
             "332": self._on_numeric_topic,
+            "HISTORY": self._on_history,
+            "HISTORYEND": self._on_historyend,
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -172,9 +174,13 @@ class IRCTransport:
     async def join_channel(self, channel: str) -> None:
         if not channel.startswith("#"):
             return
+        if channel in self.channels:
+            return  # already joined — skip duplicate JOIN + HISTORY
         await self._send_raw(f"JOIN {channel}")
-        if channel not in self.channels:
-            self.channels.append(channel)
+        self.channels.append(channel)
+        # Backfill: request recent history so the buffer has pre-existing
+        # messages.  The HISTORY responses flow through _on_history().
+        await self._send_raw(f"HISTORY RECENT {channel} 200")
 
     async def part_channel(self, channel: str) -> None:
         if not channel.startswith("#"):
@@ -199,7 +205,19 @@ class IRCTransport:
         ``@culture.dev/traceparent=`` IRCv3 tag so all outbound paths — whether
         called via the internal ``_send_raw`` helper or directly by daemon code
         — carry trace context consistently.
+
+        Includes a last-line CRLF-injection guard (Qodo PR #30 #2): even
+        if every caller pre-validates inputs, ``assert_safe_irc_line``
+        refuses any line that contains CR/LF/NUL. Refused lines are
+        logged and dropped — they MUST NOT reach the wire.
         """
+        from culture.agentirc.irc_targets import InvalidIRCTarget, assert_safe_irc_line
+
+        try:
+            assert_safe_irc_line(line)
+        except InvalidIRCTarget as exc:
+            logger.error("refusing to send unsafe IRC line: %s", exc)
+            return
         if self._tracer is not None and not line.startswith("@"):
             tp = current_traceparent()
             if tp is not None:
@@ -374,6 +392,32 @@ class IRCTransport:
             return
         if target.startswith("#"):
             self.buffer.add(target, sender, text)
+
+    def _on_history(self, msg: Message) -> None:
+        """Handle HISTORY replay lines and populate the message buffer.
+
+        Server sends: HISTORY <channel> <nick> <timestamp> <text>
+        These arrive after a HISTORY RECENT request (issued on join_channel)
+        and backfill the buffer with pre-existing channel messages.
+        """
+        if len(msg.params) < 4:
+            return
+        channel = msg.params[0]
+        nick = msg.params[1]
+        # msg.params[2] is the timestamp (string); we don't use it — buffer
+        # records its own arrival time, which is fine for cursor-based reads.
+        text = msg.params[3]
+        # Skip own messages so the agent does not re-process its prior output.
+        if nick == self.nick:
+            return
+        # Skip system-user entries (same filter as _on_privmsg).
+        if nick.startswith(SYSTEM_USER_PREFIX):
+            return
+        self.buffer.add(channel, nick, text)
+
+    def _on_historyend(self, msg: Message) -> None:
+        """HISTORYEND is a sentinel — no action needed."""
+        pass
 
     def _on_roominvite(self, msg: Message) -> None:
         if len(msg.params) < 3:

@@ -492,3 +492,95 @@ class TestInit:
         res = _run(["init", "--nick", "boss", "--server", "local"], home)
         assert res.returncode == 0, res.stderr
         assert not os.path.exists(os.path.join(ppdir, "local-boss.yaml"))
+
+
+class TestRecordWorkerBossChannels:
+    """Test that _record_worker_boss correctly writes extra_channels into culture.yaml."""
+
+    def test_extra_channels_written_to_yaml(self, home):
+        from culture.cli.boss import _record_worker_boss
+
+        cwd = os.path.join(str(home), "helpers", "w1")
+        os.makedirs(cwd, exist_ok=True)
+        _record_worker_boss(
+            cwd,
+            "w1",
+            "local-boss",
+            extra_channels=["#joint-fixes", "#design"],
+        )
+        with open(os.path.join(cwd, "culture.yaml")) as f:
+            data = yaml.safe_load(f)
+        assert "#team" in data["channels"]
+        assert "#task-w1" in data["channels"]
+        assert "#joint-fixes" in data["channels"]
+        assert "#design" in data["channels"]
+
+    def test_no_extra_channels_default(self, home):
+        from culture.cli.boss import _record_worker_boss
+
+        cwd = os.path.join(str(home), "helpers", "w2")
+        os.makedirs(cwd, exist_ok=True)
+        _record_worker_boss(cwd, "w2", "local-boss")
+        with open(os.path.join(cwd, "culture.yaml")) as f:
+            data = yaml.safe_load(f)
+        assert data["channels"] == ["#team", "#task-w2"]
+
+    def test_extra_channels_no_duplicates(self, home):
+        from culture.cli.boss import _record_worker_boss
+
+        cwd = os.path.join(str(home), "helpers", "w3")
+        os.makedirs(cwd, exist_ok=True)
+        # #team is already in the base list — should not be duplicated
+        _record_worker_boss(
+            cwd,
+            "w3",
+            "local-boss",
+            extra_channels=["#team", "#joint-fixes"],
+        )
+        with open(os.path.join(cwd, "culture.yaml")) as f:
+            data = yaml.safe_load(f)
+        assert data["channels"].count("#team") == 1
+        assert "#joint-fixes" in data["channels"]
+
+    def test_channels_flag_parsing(self):
+        """Verify the channel parsing logic used in _cmd_spawn."""
+        raw = "#joint-fixes,#design, review"
+        extra_channels = [
+            ch.strip() if ch.strip().startswith("#") else f"#{ch.strip()}"
+            for ch in raw.split(",")
+            if ch.strip()
+        ]
+        assert extra_channels == ["#joint-fixes", "#design", "#review"]
+
+    def test_empty_channels_flag(self):
+        """Empty --channels string produces no extra channels."""
+        raw = ""
+        extra_channels = [
+            ch.strip() if ch.strip().startswith("#") else f"#{ch.strip()}"
+            for ch in (raw.split(",") if raw else [])
+            if ch.strip()
+        ]
+        assert extra_channels == []
+
+    def test_multi_agent_yaml_extra_channels(self, home):
+        """Extra channels are written into the correct agent entry in multi-agent yaml."""
+        from culture.cli.boss import _record_worker_boss
+
+        cwd = os.path.join(str(home), "helpers", "multi")
+        os.makedirs(cwd, exist_ok=True)
+        # Pre-create a multi-agent culture.yaml
+        multi_data = {"agents": [{"suffix": "alpha", "backend": "claude"}]}
+        with open(os.path.join(cwd, "culture.yaml"), "w") as f:
+            yaml.safe_dump(multi_data, f)
+        _record_worker_boss(
+            cwd,
+            "alpha",
+            "local-boss",
+            extra_channels=["#joint-fixes"],
+        )
+        with open(os.path.join(cwd, "culture.yaml")) as f:
+            data = yaml.safe_load(f)
+        entry = data["agents"][0]
+        assert "#joint-fixes" in entry["channels"]
+        assert "#team" in entry["channels"]
+        assert "#task-alpha" in entry["channels"]

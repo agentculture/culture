@@ -312,3 +312,171 @@ async def test_own_dm_messages_in_buffer(server, make_client):
     msgs = buf.read("DM:testserv-ori", limit=50)
     assert any(m.text == "hello via DM" and m.nick == "testserv-bot" for m in msgs)
     await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_join_channel_backfills_history(server, make_client):
+    """When a transport joins a channel, pre-existing messages are backfilled
+    into the buffer via HISTORY RECENT."""
+    # Phase 1: another user posts messages BEFORE the transport joins
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.recv_all(timeout=0.3)
+    await human.send(f"JOIN #backfill-test")
+    await human.recv_all(timeout=0.3)
+    await human.send(f"PRIVMSG #backfill-test :message before join 1")
+    await human.send(f"PRIVMSG #backfill-test :message before join 2")
+    await asyncio.sleep(0.3)
+
+    # Phase 2: transport joins — should issue HISTORY RECENT and backfill
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    await transport.connect()
+    await asyncio.sleep(0.3)
+    await transport.join_channel("#backfill-test")
+    await asyncio.sleep(0.5)  # allow HISTORY responses to arrive
+
+    msgs = buf.read("#backfill-test", limit=50)
+    texts = [m.text for m in msgs]
+    assert "message before join 1" in texts
+    assert "message before join 2" in texts
+    await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_history_backfill_filters_system_nicks(server, make_client):
+    """When history contains system-* entries (from server events like joins),
+    they should be filtered out of the backfilled buffer."""
+    # Phase 1: create channel activity that generates system-* history entries.
+    # A user joining + posting creates both a system-<server> lifecycle event
+    # and a regular user message in the channel history.
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.recv_all(timeout=0.3)
+    await human.send("JOIN #sysfilt-test")
+    await human.recv_all(timeout=0.3)
+    await human.send("PRIVMSG #sysfilt-test :human message")
+    await asyncio.sleep(0.3)
+
+    # Phase 2: transport joins — history backfill should exclude system-* entries
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    await transport.connect()
+    await asyncio.sleep(0.3)
+    await transport.join_channel("#sysfilt-test")
+    await asyncio.sleep(0.5)
+
+    msgs = buf.read("#sysfilt-test", limit=50)
+    # The human message should appear
+    assert any(m.text == "human message" and m.nick == "testserv-ori" for m in msgs)
+    # No system-* nick messages should appear
+    assert not any(m.nick.startswith("system-") for m in msgs)
+    await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_history_backfill_filters_own_messages(server, make_client):
+    """When history contains the agent's own old messages, they should be
+    filtered out of the backfilled buffer to prevent re-processing."""
+    # Phase 1: bot posts to channel, then leaves
+    buf1 = MessageBuffer()
+    bot1 = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#selfhist-test"],
+        buffer=buf1,
+    )
+    await bot1.connect()
+    await asyncio.sleep(0.3)
+    await bot1.send_privmsg("#selfhist-test", "my old message")
+    await asyncio.sleep(0.2)
+
+    # A human also posts
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.recv_all(timeout=0.3)
+    await human.send("JOIN #selfhist-test")
+    await human.recv_all(timeout=0.3)
+    await human.send("PRIVMSG #selfhist-test :human says hi")
+    await asyncio.sleep(0.2)
+
+    # Bot leaves
+    await bot1.part_channel("#selfhist-test")
+    await asyncio.sleep(0.2)
+    await bot1.disconnect()
+
+    # Phase 2: bot re-joins — history backfill should exclude its own messages
+    buf2 = MessageBuffer()
+    bot2 = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf2,
+    )
+    await bot2.connect()
+    await asyncio.sleep(0.3)
+    await bot2.join_channel("#selfhist-test")
+    await asyncio.sleep(0.5)
+
+    msgs = buf2.read("#selfhist-test", limit=50)
+    # Human message should appear
+    assert any(m.text == "human says hi" and m.nick == "testserv-ori" for m in msgs)
+    # Own old message should NOT appear
+    assert not any(m.nick == "testserv-bot" for m in msgs)
+    await bot2.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_join_does_not_duplicate_history(server, make_client):
+    """Joining a channel the transport is already in should be a no-op,
+    preventing duplicate HISTORY backfill entries."""
+    # A human posts a message before the bot joins
+    human = await make_client(nick="testserv-ori", user="ori")
+    await human.recv_all(timeout=0.3)
+    await human.send("JOIN #dupjoin-test")
+    await human.recv_all(timeout=0.3)
+    await human.send("PRIVMSG #dupjoin-test :before join")
+    await asyncio.sleep(0.3)
+
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    await transport.connect()
+    await asyncio.sleep(0.3)
+
+    # First join — should backfill history
+    await transport.join_channel("#dupjoin-test")
+    await asyncio.sleep(0.5)
+    raw_buf = buf._buffers.get("#dupjoin-test", [])
+    count_first = len([m for m in raw_buf if m.text == "before join"])
+    assert count_first == 1
+
+    # Second join — should be a no-op (early return)
+    await transport.join_channel("#dupjoin-test")
+    await asyncio.sleep(0.5)
+    raw_buf2 = buf._buffers.get("#dupjoin-test", [])
+    count_second = len([m for m in raw_buf2 if m.text == "before join"])
+    assert count_second == count_first  # no duplicates
+
+    await transport.disconnect()

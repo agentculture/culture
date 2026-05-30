@@ -1,6 +1,3 @@
-# CITATION: Replace BACKEND with your backend name (e.g., codex, opencode)
-# After replacing BACKEND, remove the import-error/no-name-in-module disable below.
-# pylint: disable=import-error,no-name-in-module  # BACKEND placeholder imports
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +8,10 @@ from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Callable
 
 from culture.aio import maybe_await
-from culture.clients.BACKEND.message_buffer import MessageBuffer
+
+# TEMPLATE: replace "claude" below with your backend name
+from culture.clients.claude.message_buffer import MessageBuffer  # noqa: E501
+from culture.constants import SYSTEM_USER_PREFIX
 from culture.protocol.message import Message
 from culture.telemetry.context import (
     TRACEPARENT_TAG,
@@ -22,7 +22,9 @@ from culture.telemetry.context import (
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
-    from telemetry import HarnessMetricsRegistry
+
+    # TEMPLATE: replace "claude" below with your backend name
+    from culture.clients.claude.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class IRCTransport:
         icon: str | None = None,
         tracer: Tracer | None = None,
         metrics: HarnessMetricsRegistry | None = None,
-        backend: str = "harness",
+        backend: str = "harness",  # TEMPLATE: replace with your backend name,
     ):
         self.host = host
         self.port = port
@@ -81,6 +83,8 @@ class IRCTransport:
             "TOPIC": self._on_topic,
             "331": self._on_numeric_topic,
             "332": self._on_numeric_topic,
+            "HISTORY": self._on_history,
+            "HISTORYEND": self._on_historyend,
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -173,9 +177,13 @@ class IRCTransport:
     async def join_channel(self, channel: str) -> None:
         if not channel.startswith("#"):
             return
+        if channel in self.channels:
+            return  # already joined — skip duplicate JOIN + HISTORY
         await self._send_raw(f"JOIN {channel}")
-        if channel not in self.channels:
-            self.channels.append(channel)
+        self.channels.append(channel)
+        # Backfill: request recent history so the buffer has pre-existing
+        # messages.  The HISTORY responses flow through _on_history().
+        await self._send_raw(f"HISTORY RECENT {channel} 200")
 
     async def part_channel(self, channel: str) -> None:
         if not channel.startswith("#"):
@@ -201,6 +209,13 @@ class IRCTransport:
         called via the internal ``_send_raw`` helper or directly by daemon code
         — carry trace context consistently.
         """
+        from culture.agentirc.irc_targets import InvalidIRCTarget, assert_safe_irc_line
+
+        try:
+            assert_safe_irc_line(line)
+        except InvalidIRCTarget as exc:
+            logger.error("refusing to send unsafe IRC line: %s", exc)
+            return
         if self._tracer is not None and not line.startswith("@"):
             tp = current_traceparent()
             if tp is not None:
@@ -338,18 +353,17 @@ class IRCTransport:
         # These are surfaced PRIVMSGs that announce mesh events (user.join,
         # agent.connect, server.link, etc.) — they are not conversation and
         # should not enter the agent's message buffer or trigger the poll loop.
-        # NOTE: Literal "system-" is inlined here rather than imported from
-        # culture.constants because this is a reference implementation in
-        # packages/agent-harness/ that is copied (not installed) into target
-        # projects via the citation pattern — culture.constants is not
-        # reliably importable from a copied reference implementation.
-        if sender.startswith("system-"):
+        if sender.startswith(SYSTEM_USER_PREFIX):
             return
+        self._route_to_buffer(target, sender, text)
+        self._detect_and_fire_mention(target, sender, text)
+
+    def _route_to_buffer(self, target: str, sender: str, text: str) -> None:
+        """Insert the message into the appropriate buffer (channel or DM)."""
         if target.startswith("#"):
             self.buffer.add(target, sender, text)
         else:
             self.buffer.add(f"DM:{sender}", sender, text)
-        self._detect_and_fire_mention(target, sender, text)
 
     def _detect_and_fire_mention(self, target: str, sender: str, text: str) -> None:
         """Check if the message mentions this agent and fire the callback."""
@@ -372,11 +386,36 @@ class IRCTransport:
         text = msg.params[1]
         sender = msg.prefix.split("!")[0] if msg.prefix else "server"
         # Filter event NOTICEs from system-<server> for the same reason as PRIVMSG.
-        # Literal "system-" inlined; see _on_privmsg comment above.
-        if sender.startswith("system-"):
+        if sender.startswith(SYSTEM_USER_PREFIX):
             return
         if target.startswith("#"):
             self.buffer.add(target, sender, text)
+
+    def _on_history(self, msg: Message) -> None:
+        """Handle HISTORY replay lines and populate the message buffer.
+
+        Server sends: HISTORY <channel> <nick> <timestamp> <text>
+        These arrive after a HISTORY RECENT request (issued on join_channel)
+        and backfill the buffer with pre-existing channel messages.
+        """
+        if len(msg.params) < 4:
+            return
+        channel = msg.params[0]
+        nick = msg.params[1]
+        # msg.params[2] is the timestamp (string); we don't use it — buffer
+        # records its own arrival time, which is fine for cursor-based reads.
+        text = msg.params[3]
+        # Skip own messages so the agent does not re-process its prior output.
+        if nick == self.nick:
+            return
+        # Skip system-user entries (same filter as _on_privmsg).
+        if nick.startswith(SYSTEM_USER_PREFIX):
+            return
+        self.buffer.add(channel, nick, text)
+
+    def _on_historyend(self, msg: Message) -> None:
+        """HISTORYEND is a sentinel — no action needed."""
+        pass
 
     def _on_roominvite(self, msg: Message) -> None:
         if len(msg.params) < 3:

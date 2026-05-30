@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.0] - 2026-05-30
+
+Two CLI/IPC fixes from the boss-fleet audit.
+
+### Added
+
+- **`--channels` flag for `culture boss spawn`** (`culture/cli/boss.py`).
+  Workers previously joined only `#team` and `#task-<name>`. The new flag
+  accepts a comma-separated list of extra channels (e.g.
+  `--channels '#joint-fixes,#design'`). Channels without a `#` prefix are
+  auto-prefixed. The boss also joins the extra channels for observation.
+  Channels are written into the worker's `culture.yaml` alongside the
+  defaults, with deduplication.
+
+### Fixed
+
+- **Boss IPC `irc_read` returns empty for joint channels**
+  (`culture/clients/*/irc_transport.py`, `packages/agent-harness/irc_transport.py`).
+  Root cause: when a daemon joins a channel via `irc_join`, pre-existing
+  messages lived only in the server's HISTORY store and never reached the
+  daemon's `MessageBuffer`. The transport now handles `HISTORY` and
+  `HISTORYEND` IRC responses, and `join_channel()` issues
+  `HISTORY RECENT <channel> 200` after `JOIN` to backfill the buffer.
+  System-user entries (`system-*`) are filtered, matching the existing
+  `PRIVMSG` filter. Fix applied to all four backends (claude, acp, codex,
+  copilot) and the reference implementation in `packages/agent-harness/`.
+
 ## [8.18.8] - 2026-05-30
 
 Closes a daemon-IPC reachability bug surfaced by `verify-joint-w`

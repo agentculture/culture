@@ -96,6 +96,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     spawn_p.add_argument(
         "--model", default="", help="Worker model (default: inherit the boss's model)"
     )
+    spawn_p.add_argument(
+        "--channels",
+        default="",
+        help="Extra channels for the worker to join (comma-separated, e.g. '#joint-fixes,#design')",
+    )
     spawn_p.add_argument("--config", default=DEFAULT_CONFIG)
 
     brief_p = sub.add_parser("brief", help="Send a task to a worker's channel")
@@ -553,6 +558,18 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     inherited_model, inherited_thinking = _boss_inherits()
     model = args.model or inherited_model
     thinking = inherited_thinking
+    # Parse extra channels from --channels flag. parse_channels_arg
+    # validates each entry against CR/LF/NUL/space/comma/bell injection
+    # (Qodo PR #30 #2 — security). An invalid entry hard-fails with
+    # InvalidIRCTarget rather than being silently sanitized so the
+    # operator sees the offending input.
+    from culture.agentirc.irc_targets import InvalidIRCTarget, parse_channels_arg
+
+    try:
+        extra_channels = parse_channels_arg(args.channels)
+    except InvalidIRCTarget as exc:
+        print(f"Invalid --channels argument: {exc}", file=sys.stderr)
+        sys.exit(2)
     _record_worker_boss(
         cwd,
         name,
@@ -560,12 +577,16 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
         model=model,
         thinking=thinking,
         overwrite_model=explicit_model,
+        extra_channels=extra_channels,
     )
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
     subprocess.run([sys.executable, "-m", "culture", "agent", "start", worker_nick], check=False)
     # Boss joins the worker's task channel so it sees replies + perm DMs.
     _boss_irc("irc_join", channel=_task_channel(name))
-    print(f"spawned {worker_nick} (boss={boss}, cwd={cwd}); channel {_task_channel(name)}")
+    for ch in extra_channels:
+        _boss_irc("irc_join", channel=ch)
+    joined = [_task_channel(name)] + extra_channels
+    print(f"spawned {worker_nick} (boss={boss}, cwd={cwd}); channels {', '.join(joined)}")
 
 
 def _boss_inherits() -> tuple[str, str]:
@@ -650,6 +671,7 @@ def _record_worker_boss(
     model: str = "",
     thinking: str = "",
     overwrite_model: bool = False,
+    extra_channels: list[str] | None = None,
 ) -> None:
     """Write boss/suffix/channels (and model+thinking, if given) into the worker's culture.yaml.
 
@@ -691,7 +713,12 @@ def _record_worker_boss(
         target = data
 
     target["boss"] = boss
-    target["channels"] = ["#team", _task_channel(suffix)]
+    base_channels = ["#team", _task_channel(suffix)]
+    if extra_channels:
+        for ch in extra_channels:
+            if ch not in base_channels:
+                base_channels.append(ch)
+    target["channels"] = base_channels
     if model and (overwrite_model or "model" not in target):
         target["model"] = model
     if thinking and "thinking" not in target:
