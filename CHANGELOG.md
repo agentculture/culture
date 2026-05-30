@@ -4,6 +4,55 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.18.4] - 2026-05-30
+
+Surfaced + fixed during an in-mesh multi-worker dogfood. Three workers
+(`research`, `customer`, `builder`) ran concurrently under `local-boss`
+for ~12 minutes; full findings in `docs/v8.18.4-dogfood-findings.md`.
+The system delivered all three artifacts despite multiple SDK CLI
+crashes and tool-retry loops.
+
+### Added
+
+- **`stalled_in_retry_loop` watchdog class**
+  (`culture/clients/claude/daemon.py`,
+  `culture/clients/claude/agent_runner.py`). A new fourth class to the
+  unified stall watchdog. The v8.18.2 watchdog tracked
+  `_last_assistant_message_at` — recent AssistantMessages cleared the
+  `stalled_post_engagement` timer. But during the dogfood,
+  `local-customer` ran for 4+ minutes hitting the SDK CLI's
+  `Stream closed` error on every `Write personas.md`. Each retry was a
+  fresh AssistantMessage so the watchdog stayed silent — even though no
+  turn had completed and no file had landed.
+
+  `AgentRunner` now exposes an `on_turn_complete` callback fired after
+  a turn's `async for query()` loop ends cleanly (i.e. the SDK yielded
+  a final `ResultMessage`). The daemon's `_on_turn_complete` updates
+  `_last_turn_completed_at`. The watchdog's tick now checks
+  `now - last_assistant_message < STALL_GRACE` AND
+  `now - last_turn_completed >= STALL_GRACE` → DM the boss with a
+  class-specific message that names the retry-loop pattern. Three new
+  tests pin the matrix (looping fires, healthy turn-completer doesn't,
+  callback updates timestamp).
+
+### Documented (not fixed in this release)
+
+- **SDK CLI `Stream closed` / `CLIConnectionError` mid-hook (HIGH).**
+  Both `research` and `builder` crashed at the SDK level when firing
+  3+ tool calls in rapid succession; the bundled `claude` CLI's
+  `sendRequest` throws `Stream closed` when its `inputClosed` flag
+  flips during a hook callback's await. Not directly fixable on the
+  culture side — needs an upstream repro to
+  `anthropics/claude-agent-sdk`. v8.18.0 crash recovery + IRC channel
+  persistence (the brief is re-read from buffer on restart) makes
+  these losses recoverable.
+- **Off-task drift after crash recovery (MED).** `research` rewrote
+  `findings.md` on a different topic after restart because the cwd
+  name (`/tmp/dogfood-research`) and IRC channel mentions leaked
+  `"dogfooding"` into its context. Fix candidates: explicit boss
+  re-brief on `idle_warning {reason: never_briefed}`, or workers
+  persisting a `mission.md` they re-read on restart. Out of scope here.
+
 ## [8.18.3] - 2026-05-30
 
 Eight cited security findings from an in-mesh `local-secscan` dogfood

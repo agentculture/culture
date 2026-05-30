@@ -88,6 +88,7 @@ class AgentRunner:
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_usage: Callable[[int | None], Awaitable[None]] | None = None,
         on_perm_request: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        on_turn_complete: Callable[[], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
         boss: str = "",
@@ -99,6 +100,14 @@ class AgentRunner:
         self.on_message = on_message
         self.on_usage = on_usage
         self.on_perm_request = on_perm_request
+        # Fires AFTER a turn's `async for query()` loop ends cleanly — i.e.
+        # the SDK yielded a final ResultMessage and the session is back in
+        # the queue-wait state. Used by the daemon's stall watchdog to
+        # detect "looping with no progress": a worker that keeps producing
+        # AssistantMessages but never sees a turn complete is stuck in a
+        # tool-retry loop (e.g. SDK CLI Stream-closed retries that fail
+        # repeatedly without crashing the session).
+        self.on_turn_complete = on_turn_complete
         self._metrics = metrics
         self._nick = nick
         self._boss = boss
@@ -359,6 +368,15 @@ class AgentRunner:
                             usage_dict = _extract_usage(u)
                     elif isinstance(message, AssistantMessage):
                         await self._handle_assistant_message(message)
+                # The async-for ended without raising → the turn completed
+                # cleanly. Signal the daemon so the stall watchdog can
+                # distinguish "engaged + completing turns" from "engaged
+                # but stuck in a retry loop".
+                if self.on_turn_complete is not None:
+                    try:
+                        await self.on_turn_complete()
+                    except Exception:  # noqa: BLE001 — advisory callback; never break the turn loop
+                        logger.exception("on_turn_complete callback raised")
             except Exception:
                 outcome = "error"
                 failed = True

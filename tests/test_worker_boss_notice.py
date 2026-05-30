@@ -312,6 +312,70 @@ class TestIdleWatchdog:
         assert "stall" in text.lower() and "engaged" in text.lower()
 
     @pytest.mark.asyncio
+    async def test_dms_boss_when_stalled_in_retry_loop(self, tmp_path, monkeypatch):
+        # NEW v8.18.4 class — worker is engaged and producing AssistantMessages
+        # (tool calls) but no turn has completed in STALL_GRACE_SECONDS.
+        # Catches the SDK CLI "Stream closed" retry loop where every Write
+        # attempt is a fresh AssistantMessage refreshing
+        # _last_assistant_message_at, while no ResultMessage ever lands.
+        import time as _time
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        monkeypatch.setattr(daemon_mod, "IDLE_GRACE_SECONDS", 0)
+        monkeypatch.setattr(daemon_mod, "STALL_GRACE_SECONDS", 1)
+        d = _daemon(boss="local-boss")
+        d._transport = AsyncMock()
+        d._agent_runner = AsyncMock()
+        d._engaged = True
+        now = _time.time()
+        # Recent AssistantMessage but stale turn completion → looping.
+        d._last_assistant_message_at = now - 0.1
+        d._last_turn_completed_at = now - 60
+        await d._watchdog_tick(now - 1, self._wd_state())
+        d._transport.send_privmsg.assert_awaited_once()
+        target, text = d._transport.send_privmsg.await_args.args
+        assert target == "local-boss"
+        assert (
+            "retry loop" in text.lower()
+            or "no progress" in text.lower()
+            or "completed a turn" in text.lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_dm_when_engaged_and_completing_turns(self, tmp_path, monkeypatch):
+        # The complement: a healthy worker that's both producing
+        # AssistantMessages AND completing turns recently must NOT trigger
+        # stalled_in_retry_loop.
+        import time as _time
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        monkeypatch.setattr(daemon_mod, "IDLE_GRACE_SECONDS", 0)
+        monkeypatch.setattr(daemon_mod, "STALL_GRACE_SECONDS", 1)
+        d = _daemon(boss="local-boss")
+        d._transport = AsyncMock()
+        d._agent_runner = AsyncMock()
+        d._engaged = True
+        now = _time.time()
+        d._last_assistant_message_at = now - 0.1
+        d._last_turn_completed_at = now - 0.2  # recent — making progress
+        await d._watchdog_tick(now - 1, self._wd_state())
+        d._transport.send_privmsg.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_on_turn_complete_updates_timestamp(self, tmp_path, monkeypatch):
+        # The runner's _on_turn_complete callback (fired after a clean
+        # async-for query() loop) must update _last_turn_completed_at.
+        import time as _time
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = _daemon(boss="local-boss")
+        assert d._last_turn_completed_at is None
+        t0 = _time.time()
+        await d._on_turn_complete()
+        assert d._last_turn_completed_at is not None
+        assert d._last_turn_completed_at >= t0
+
+    @pytest.mark.asyncio
     async def test_warns_once_per_state(self, tmp_path, monkeypatch):
         # Calling tick twice in the same state must DM the boss only once.
         import time as _time

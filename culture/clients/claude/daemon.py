@@ -158,6 +158,15 @@ class AgentDaemon:
         # (catches "engaged then silent" as well as "activated then silent").
         # None until the first turn lands.
         self._last_assistant_message_at: float | None = None
+        # Last successful TURN completion timestamp. Distinct from
+        # ``_last_assistant_message_at`` (which fires every AssistantMessage,
+        # including the tool_use AssistantMessages that come BEFORE a
+        # ResultMessage). When a worker retries a failing tool call (e.g.
+        # the SDK CLI's "Stream closed" pattern), each retry is a new
+        # AssistantMessage and refreshes _last_assistant_message_at — but
+        # the turn never completes, so this stays stale. The watchdog's
+        # ``stalled_in_retry_loop`` class catches that gap.
+        self._last_turn_completed_at: float | None = None
 
         # Pause/sleep state
         self._paused: bool = False
@@ -469,6 +478,7 @@ class AgentDaemon:
             on_message=self._on_agent_message,
             on_usage=self._on_agent_usage,
             on_perm_request=self._on_perm_request,
+            on_turn_complete=self._on_turn_complete,
             metrics=self._metrics,
             nick=self.agent.nick,
             boss=_boss_nick(self.agent),
@@ -492,6 +502,7 @@ class AgentDaemon:
             self._engaged = False
             self._last_activation = None
             self._last_assistant_message_at = None
+            self._last_turn_completed_at = None
             self._idle_task = asyncio.create_task(self._idle_watchdog())
 
     async def _idle_watchdog(self) -> None:
@@ -549,10 +560,27 @@ class AgentDaemon:
                     new_state = "stalled_pre_engagement"
                     since_ts = self._last_activation
         else:
-            last = self._last_assistant_message_at
-            if last is not None and now - last >= STALL_GRACE_SECONDS:
+            last_msg = self._last_assistant_message_at
+            last_turn = self._last_turn_completed_at
+            # "Looping with no progress": worker is producing AssistantMessages
+            # (so _last_assistant_message_at keeps refreshing) but no turn has
+            # completed in STALL_GRACE_SECONDS. Symptom of the SDK CLI
+            # ``Stream closed`` retry pattern: same tool_use re-issued on
+            # every loop iteration, each time as a fresh AssistantMessage,
+            # but the turn never finishes. Distinct from stalled_post_
+            # engagement (which fires when AssistantMessages stop entirely).
+            # Check FIRST so the more-specific class wins over post-engagement.
+            if (
+                last_msg is not None
+                and last_turn is not None
+                and now - last_msg < STALL_GRACE_SECONDS
+                and now - last_turn >= STALL_GRACE_SECONDS
+            ):
+                new_state = "stalled_in_retry_loop"
+                since_ts = last_turn
+            elif last_msg is not None and now - last_msg >= STALL_GRACE_SECONDS:
                 new_state = "stalled_post_engagement"
-                since_ts = last
+                since_ts = last_msg
         if not new_state or new_state == state.get("warned_state"):
             return False
         state["warned_state"] = new_state
@@ -628,6 +656,14 @@ class AgentDaemon:
                 f"[stall] worker {nick} received its brief {since}s ago but "
                 f"has not produced any output — the SDK call may have hung. "
                 f"Check its audit, consider re-driving or restarting."
+            )
+        if reason == "stalled_in_retry_loop":
+            return (
+                f"[stall] worker {nick} has been issuing AssistantMessages "
+                f"(tool calls) but has not COMPLETED a turn in {since}s — "
+                f"likely a tool-retry loop (e.g. SDK CLI 'Stream closed' on "
+                f"every Write). Check its audit for the repeating tool_use, "
+                f"consider re-driving with a different approach."
             )
         return (
             f"[stall] worker {nick} engaged but has been silent for {since}s "
@@ -741,6 +777,21 @@ class AgentDaemon:
             await self._supervisor.observe(msg)
 
         self._capture_agent_status(msg)
+
+    async def _on_turn_complete(self) -> None:
+        """Record the timestamp of the last cleanly-completed turn.
+
+        Fires from ``AgentRunner._process_turn`` when its ``async for
+        query()`` loop ends without raising — i.e. the SDK yielded a
+        final ``ResultMessage`` and the session is back in the queue-wait
+        state. Distinct from ``_on_agent_message`` (which fires for every
+        AssistantMessage including mid-turn tool_use messages), so the
+        stall watchdog can distinguish "engaged + making progress" from
+        "engaged + stuck in a tool-retry loop" (v8.18.4 — observed live
+        when a worker hit the SDK CLI's ``Stream closed`` error on every
+        ``Write`` and looped retrying).
+        """
+        self._last_turn_completed_at = time.time()
 
     async def _on_agent_usage(self, input_tokens: int | None) -> None:
         """Evaluate context utilization after a turn; drive the handoff cycle."""
