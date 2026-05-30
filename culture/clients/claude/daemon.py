@@ -1327,8 +1327,15 @@ class AgentDaemon:
         channel = msg.get("channel", "")
         if not channel:
             return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
-        if not channel.startswith("#"):
-            return make_response(req_id, ok=False, error=_ERR_CHANNEL_PREFIX)
+        # Validate channel name against CR/LF/NUL injection (Qodo PR #30 #2).
+        # The prefix check is subsumed by validate_channel_name (which also
+        # accepts &/+/! per RFC 2812).
+        from culture.agentirc.irc_targets import InvalidIRCTarget, validate_channel_name
+
+        try:
+            validate_channel_name(channel)
+        except InvalidIRCTarget as exc:
+            return make_response(req_id, ok=False, error=str(exc))
         assert self._transport is not None
         await self._transport.join_channel(channel)
         return make_response(req_id, ok=True)

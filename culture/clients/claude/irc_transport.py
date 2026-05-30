@@ -204,7 +204,19 @@ class IRCTransport:
         ``@culture.dev/traceparent=`` IRCv3 tag so all outbound paths — whether
         called via the internal ``_send_raw`` helper or directly by daemon code
         — carry trace context consistently.
+
+        Includes a last-line CRLF-injection guard (Qodo PR #30 #2): even
+        if every caller pre-validates inputs, ``assert_safe_irc_line``
+        refuses any line that contains CR/LF/NUL. Refused lines are
+        logged and dropped — they MUST NOT reach the wire.
         """
+        from culture.agentirc.irc_targets import InvalidIRCTarget, assert_safe_irc_line
+
+        try:
+            assert_safe_irc_line(line)
+        except InvalidIRCTarget as exc:
+            logger.error("refusing to send unsafe IRC line: %s", exc)
+            return
         if self._tracer is not None and not line.startswith("@"):
             tp = current_traceparent()
             if tp is not None:

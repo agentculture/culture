@@ -205,6 +205,13 @@ class IRCTransport:
         called via the internal ``_send_raw`` helper or directly by daemon code
         — carry trace context consistently.
         """
+        from culture.agentirc.irc_targets import InvalidIRCTarget, assert_safe_irc_line
+
+        try:
+            assert_safe_irc_line(line)
+        except InvalidIRCTarget as exc:
+            logger.error("refusing to send unsafe IRC line: %s", exc)
+            return
         if self._tracer is not None and not line.startswith("@"):
             tp = current_traceparent()
             if tp is not None:

@@ -558,12 +558,18 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     inherited_model, inherited_thinking = _boss_inherits()
     model = args.model or inherited_model
     thinking = inherited_thinking
-    # Parse extra channels from --channels flag (comma-separated).
-    extra_channels = [
-        ch.strip() if ch.strip().startswith("#") else f"#{ch.strip()}"
-        for ch in (args.channels.split(",") if args.channels else [])
-        if ch.strip()
-    ]
+    # Parse extra channels from --channels flag. parse_channels_arg
+    # validates each entry against CR/LF/NUL/space/comma/bell injection
+    # (Qodo PR #30 #2 — security). An invalid entry hard-fails with
+    # InvalidIRCTarget rather than being silently sanitized so the
+    # operator sees the offending input.
+    from culture.agentirc.irc_targets import InvalidIRCTarget, parse_channels_arg
+
+    try:
+        extra_channels = parse_channels_arg(args.channels)
+    except InvalidIRCTarget as exc:
+        print(f"Invalid --channels argument: {exc}", file=sys.stderr)
+        sys.exit(2)
     _record_worker_boss(
         cwd,
         name,
