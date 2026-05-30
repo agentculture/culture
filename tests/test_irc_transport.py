@@ -383,3 +383,39 @@ async def test_history_handler_skips_system_nicks(server):
     assert len(msgs) == 1
     assert msgs[0].nick == "testserv-alice"
     assert msgs[0].text == "hello world"
+
+
+@pytest.mark.asyncio
+async def test_history_handler_skips_own_messages(server):
+    """HISTORY entries from the agent's own nick should be filtered out."""
+    from culture.protocol.message import Message as IRCMsg
+
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-bot",
+        user="bot",
+        channels=["#general"],
+        buffer=buf,
+    )
+    # Own message — should be skipped
+    own_msg = IRCMsg(
+        prefix="testserv",
+        command="HISTORY",
+        params=["#general", "testserv-bot", "1234567890.0", "my old message"],
+    )
+    transport._on_history(own_msg)
+    assert buf.read("#general", limit=50) == []
+
+    # Other user message — should pass through
+    other_msg = IRCMsg(
+        prefix="testserv",
+        command="HISTORY",
+        params=["#general", "testserv-alice", "1234567890.0", "their message"],
+    )
+    transport._on_history(other_msg)
+    msgs = buf.read("#general", limit=50)
+    assert len(msgs) == 1
+    assert msgs[0].nick == "testserv-alice"
+    assert msgs[0].text == "their message"

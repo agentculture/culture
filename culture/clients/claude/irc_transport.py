@@ -406,6 +406,9 @@ class IRCTransport:
         # msg.params[2] is the timestamp (string); we don't use it — buffer
         # records its own arrival time, which is fine for cursor-based reads.
         text = msg.params[3]
+        # Skip own messages so the agent does not re-process its prior output.
+        if nick == self.nick:
+            return
         # Skip system-user entries (same filter as _on_privmsg).
         if nick.startswith(SYSTEM_USER_PREFIX):
             return
