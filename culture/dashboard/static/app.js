@@ -189,57 +189,49 @@ function confirmArchive(nick) {
 // ---- Channels tab ----------------------------------------------------------
 
 async function refreshChannels() {
+  // Channels-as-tasks (v8.19.11). Render the /api/tasks endpoint
+  // which groups every boss's #boss-channel + #joint-* + #task-<worker>
+  // children under ONE TASK heading. The task title is the boss's
+  // mission.md headline; the boss state dot lets the orchestrator see
+  // at a glance whether the boss is running.
   let data;
-  try { data = await api("/api/channels"); } catch (e) { return; }
+  try { data = await api("/api/tasks"); } catch (e) { return; }
   const container = document.getElementById("channel-list");
   container.replaceChildren();
-  if (!data.channels.length) {
-    container.appendChild(el("div", "empty", "No channels found."));
+  if (!data.tasks || !data.tasks.length) {
+    container.appendChild(el("div", "empty", "No tasks active."));
     return;
   }
-  // Group by category
-  const groups = { boss: [], task: [], joint: [], shared: [], other: [] };
-  for (const ch of data.channels) {
-    const cat = ch.category || "other";
-    (groups[cat] || groups.other).push(ch);
+  for (const t of data.tasks) {
+    container.appendChild(renderTaskGroup(t));
   }
-  // Group tasks by boss
-  const tasksByBoss = {};
-  for (const ch of groups.task) {
-    const boss = ch.boss || "unassigned";
-    if (!tasksByBoss[boss]) tasksByBoss[boss] = [];
-    tasksByBoss[boss].push(ch);
-  }
+}
 
-  // Render boss channels
-  if (groups.boss.length) {
-    container.appendChild(sectionHeader("Boss Channels"));
-    for (const ch of groups.boss) container.appendChild(renderChannelCard(ch));
+function renderTaskGroup(task) {
+  // ONE task = boss + title + all the channels that boss participates in.
+  const block = el("div", "task-group");
+  const header = el("div", "task-header");
+  const dot = el("span", `task-state-dot member-dot-${task.state || "unknown"}`);
+  header.appendChild(dot);
+  const title = el("div", "task-title", task.title || (task.boss + "'s work"));
+  header.appendChild(title);
+  if (task.boss) {
+    const bossLabel = el("span", "task-boss", task.boss);
+    header.appendChild(bossLabel);
   }
+  if (task.worker_count != null) {
+    const count = el(
+      "span", "task-workers",
+      task.worker_count + " worker" + (task.worker_count === 1 ? "" : "s"),
+    );
+    header.appendChild(count);
+  }
+  block.appendChild(header);
 
-  // Render task channels grouped by team
-  for (const [boss, channels] of Object.entries(tasksByBoss)) {
-    container.appendChild(sectionHeader(`${boss} \u00B7 tasks`));
-    for (const ch of channels) container.appendChild(renderChannelCard(ch));
+  for (const ch of (task.channels || [])) {
+    block.appendChild(renderChannelCard(ch));
   }
-
-  // Joint channels
-  if (groups.joint.length) {
-    container.appendChild(sectionHeader("Joint Channels"));
-    for (const ch of groups.joint) container.appendChild(renderChannelCard(ch));
-  }
-
-  // Shared channels
-  if (groups.shared.length) {
-    container.appendChild(sectionHeader("Shared"));
-    for (const ch of groups.shared) container.appendChild(renderChannelCard(ch));
-  }
-
-  // Other
-  if (groups.other.length) {
-    container.appendChild(sectionHeader("Other"));
-    for (const ch of groups.other) container.appendChild(renderChannelCard(ch));
-  }
+  return block;
 }
 
 function sectionHeader(text) {

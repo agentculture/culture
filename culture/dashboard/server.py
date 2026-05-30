@@ -429,6 +429,162 @@ def _classify_channel(ch):
     return "other"
 
 
+def _boss_mission_title(boss_nick, max_chars=80):
+    """Read the boss's mission.md and extract the first task header line.
+
+    The mission file accumulates @mentions with ``## [<ts>] <sender>`` headers
+    + body. Take the FIRST body line of the most recent mention as the title —
+    that's typically the human's headline ask. Returns empty string when no
+    mission is set (boss hasn't been briefed yet).
+    """
+    from culture.clients._perm_broker import mission_path_for
+
+    path = mission_path_for(boss_nick)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            content = fh.read()
+    except OSError:
+        return ""
+    # Mission file format: ``\n## [ts] <sender>\n\n<body>\n`` repeated.
+    # Walk from the END to find the most-recent section, then return its
+    # first non-empty body line.
+    sections = [s for s in content.split("\n## [") if s.strip()]
+    if not sections:
+        return ""
+    last_section = sections[-1]
+    # Drop the timestamp + sender header line; rest is the body.
+    body_lines = [ln.strip() for ln in last_section.split("\n", 1)[-1].splitlines()]
+    body_lines = [ln for ln in body_lines if ln]
+    if not body_lines:
+        return ""
+    title = body_lines[0]
+    if len(title) > max_chars:
+        title = title[: max_chars - 1] + "…"
+    return title
+
+
+def list_tasks(config_path=None):
+    """Build a task-grouped channel listing (v8.19.11 — per user request).
+
+    Each TASK is a boss's currently-active scope: its #boss channel,
+    any #joint-* channels it participates in, and its #task-<worker>
+    DM lines. Replaces the by-category grouping with a by-task one so
+    the orchestrator can see at a glance what each boss is driving.
+
+    Tasks are derived directly from the manifest:
+    - One task per boss-tagged agent (and one for orphan-bosses with
+      workers but no boss tag).
+    - The task TITLE is the boss's mission.md first line, or
+      ``"<boss-nick>'s work"`` when no mission is set.
+
+    Channels with no active members are still shown under the task
+    so the orchestrator can see what a closed boss-team produced —
+    but the dot indicators tell you the agents are stopped. That's
+    different from list_channels which filters those out.
+    """
+    cfg = load_config_or_default(_config_path_or_default(config_path))
+
+    # First pass: index agents by their boss + collect boss agents.
+    workers_by_boss: dict[str, list] = {}
+    bosses: list = []
+    for a in cfg.agents:
+        if getattr(a, "archived", False):
+            continue
+        if "boss" in (getattr(a, "tags", []) or []):
+            bosses.append(a)
+        else:
+            boss_nick = getattr(a, "boss", "") or ""
+            if boss_nick:
+                workers_by_boss.setdefault(boss_nick, []).append(a)
+
+    def _member(agent):
+        return {
+            "nick": agent.nick,
+            "role": getattr(agent, "role", "") or "",
+            "is_boss": "boss" in (getattr(agent, "tags", []) or []),
+            "state": _agent_state(agent.nick),
+        }
+
+    tasks = []
+    seen_bosses: set[str] = set()
+
+    # One task per boss agent.
+    for boss in bosses:
+        seen_bosses.add(boss.nick)
+        workers = workers_by_boss.get(boss.nick, [])
+        title = _boss_mission_title(boss.nick) or f"{boss.nick}'s work"
+
+        channels = []
+        # Boss's own channel: from its config.channels, take the #boss* one
+        # if present, else default to "#boss" pattern.
+        boss_chs = [c for c in (getattr(boss, "channels", []) or []) if isinstance(c, str)]
+        for ch in boss_chs:
+            cat = _classify_channel(ch)
+            channels.append({
+                "channel": ch,
+                "category": cat,
+                "members": [_member(boss)] + [
+                    _member(w) for w in workers if ch in (getattr(w, "channels", []) or [])
+                ],
+            })
+        # Per-worker #task-<worker> channels.
+        for worker in workers:
+            wch = f"#task-{worker.nick.split('-', 1)[1] if '-' in worker.nick else worker.nick}"
+            if any(c["channel"] == wch for c in channels):
+                continue  # already included via boss's channel list
+            members = [_member(boss), _member(worker)]
+            channels.append({
+                "channel": wch,
+                "category": "task",
+                "members": members,
+            })
+
+        # Stable order: #boss first, then #joint-*, then #task-* (alphabetical).
+        def _ch_sort_key(c):
+            cat = c["category"]
+            order = {"boss": 0, "joint": 1, "task": 2, "shared": 3, "other": 4}
+            return (order.get(cat, 9), c["channel"])
+
+        channels.sort(key=_ch_sort_key)
+
+        tasks.append({
+            "boss": boss.nick,
+            "title": title,
+            "state": _agent_state(boss.nick),
+            "channels": channels,
+            "worker_count": len(workers),
+        })
+
+    # Orphan workers: bosses that have workers but no boss agent in the
+    # manifest. Group them under a synthetic "no boss" task so they don't
+    # vanish from view.
+    orphan_workers = []
+    for boss_nick, ws in workers_by_boss.items():
+        if boss_nick not in seen_bosses:
+            orphan_workers.extend(ws)
+    if orphan_workers:
+        channels = []
+        for w in orphan_workers:
+            wch = f"#task-{w.nick.split('-', 1)[1] if '-' in w.nick else w.nick}"
+            channels.append({
+                "channel": wch,
+                "category": "task",
+                "members": [_member(w)],
+            })
+        tasks.append({
+            "boss": "",
+            "title": "Unassigned workers",
+            "state": "stopped",
+            "channels": channels,
+            "worker_count": len(orphan_workers),
+        })
+
+    # Sort tasks: running bosses first, then by name.
+    tasks.sort(key=lambda t: (t["state"] != "running", t["boss"]))
+
+    return tasks
+
+
 # ---------------------------------------------------------------------------
 # HTTP / SSE handlers
 # ---------------------------------------------------------------------------
@@ -864,6 +1020,12 @@ async def _loopback_guard(request: web.Request, handler):
     return await handler(request)
 
 
+async def _handle_tasks(request: web.Request) -> web.Response:
+    """Return the task-grouped channel listing (v8.19.11)."""
+    rows = await asyncio.to_thread(list_tasks, request.app.get(_CONFIG_PATH))
+    return web.json_response({"tasks": rows})
+
+
 async def _handle_channels(request: web.Request) -> web.Response:
     return web.json_response({"channels": list_channels(request.app.get(_CONFIG_PATH))})
 
@@ -980,6 +1142,7 @@ def build_app(
     app.router.add_get("/api/policy/{nick}", _handle_policy_get)
     app.router.add_put("/api/policy/{nick}", _handle_policy_put)
     app.router.add_get("/api/channels", _handle_channels)
+    app.router.add_get("/api/tasks", _handle_tasks)
     app.router.add_get("/api/archived", _handle_archived)
     app.router.add_post("/api/archive", _handle_archive_agent)
     app.router.add_post("/api/unarchive", _handle_unarchive_agent)

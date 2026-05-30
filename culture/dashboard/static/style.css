@@ -393,3 +393,49 @@ body {
   border-radius: 3px;
   font-family: var(--mono);
 }
+
+/* ---- Tasks-grouped channels (v8.19.11) ---- */
+.task-group {
+  margin: 12px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.task-group:last-child { border-bottom: none; }
+.task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+  flex-wrap: wrap;
+}
+.task-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.task-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-boss {
+  font-size: 11px;
+  color: var(--amber);
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(227, 179, 65, 0.12);
+}
+.task-workers {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}

@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.11] - 2026-05-31
+
+User-requested restructure of the Channels tab: group by TASK (per
+the task-model doc's "channels-are-tasks" framing) instead of by
+channel category.
+
+### Added
+
+- **`/api/tasks` endpoint + `list_tasks()` builder** — returns one
+  task object per boss agent, each with `title` (read from the
+  boss's `mission.md` first body line, fallback to `<boss>'s work`),
+  `state` (running/stopped), `worker_count`, and a `channels` array
+  containing the boss's `#boss` channel + its `#joint-*` channels +
+  one `#task-<worker>` per owned worker, sorted boss→joint→task.
+- **Task group rendering** in the Channels tab — header with task
+  state dot + title + boss-nick badge + worker count, followed by
+  the task's channel cards.
+- Orphan workers (a manifest entry with `boss:` pointing at a nick
+  that has no boss-tagged agent) get a synthetic "Unassigned
+  workers" task so they don't vanish from view.
+
+### Why
+
+User asked for channels grouped as tasks — "channel title, and below
+we would see the boss channel, then group channel and then the
+channels the boss has with each agent." The old by-category grouping
+made it harder to see at a glance what each boss was driving.
+
 ## [8.19.10] - 2026-05-31
 
 Hotfix after first dashboard restart with the channels-first UI.
