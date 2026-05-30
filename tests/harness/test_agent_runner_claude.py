@@ -118,6 +118,12 @@ def _stub_claude_sdk():
             self.signal = signal
             self.suggestions = suggestions or []
 
+    class HookMatcher(_Base):
+        def __init__(self, matcher=None, hooks=None, timeout=None):
+            self.matcher = matcher
+            self.hooks = hooks or []
+            self.timeout = timeout
+
     def query(**kwargs):
         return _StubAsyncIter([])
 
@@ -131,6 +137,7 @@ def _stub_claude_sdk():
     mod.PermissionResultAllow = PermissionResultAllow
     mod.PermissionResultDeny = PermissionResultDeny
     mod.ToolPermissionContext = ToolPermissionContext
+    mod.HookMatcher = HookMatcher
     mod.query = query
 
     sys.modules["claude_agent_sdk"] = mod

@@ -9,9 +9,13 @@ from typing import TYPE_CHECKING, Any, AsyncIterable, Awaitable, Callable
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    HookMatcher,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
     TextBlock,
     ThinkingBlock,
+    ToolPermissionContext,
     ToolResultBlock,
     ToolUseBlock,
     query,
@@ -187,6 +191,67 @@ class AgentRunner:
     # Internal session loop
     # ------------------------------------------------------------------
 
+    async def _broker_pre_tool_use_hook(
+        self,
+        input_data: dict[str, Any],
+        tool_use_id: str | None,  # noqa: ARG002 — SDK hook signature
+        context: Any,  # noqa: ARG002 — SDK HookContext, currently just abort signal
+    ) -> dict[str, Any]:
+        """SDK ``PreToolUse`` hook that defers to :class:`PermissionBroker`.
+
+        Hooks are the SDK enforcement primitive that *actually* fires for every
+        tool call (verified live during v8.18.1 dogfood: ``can_use_tool`` is
+        not invoked for many tools even in ``permission_mode="default"``;
+        ``PreToolUse`` hooks are). This wrapper translates between the
+        broker's ``gate(tool_name, input, ToolPermissionContext)`` shape and
+        the SDK hook contract.
+
+        On allow → ``permissionDecision: "allow"``.
+        On deny  → ``permissionDecision: "deny"`` with ``permissionDecisionReason``.
+
+        Broker decisions can take a long time (boss may be slow to approve,
+        up to ``_PERM_DECISION_TIMEOUT_SECONDS`` 600s before broker
+        synthesises a deny). The HookMatcher timeout in ``_make_options`` is
+        set generously to cover the broker's own bound.
+        """
+        if self._broker is None:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                }
+            }
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {}) or {}
+        fake_context = ToolPermissionContext(signal=None, suggestions=[])
+        try:
+            result = await self._broker.gate(tool_name, tool_input, fake_context)
+        except Exception:  # noqa: BLE001 — fail closed; broker bug must not allow tool
+            logger.exception("Broker gate raised for tool %s; failing closed", tool_name)
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": ("Broker raised; denying for safety. See logs."),
+                }
+            }
+        if isinstance(result, PermissionResultAllow):
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                }
+            }
+        # PermissionResultDeny — pass through the broker's message
+        reason = getattr(result, "message", "denied by perm-broker")
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        }
+
     def _make_options(self) -> ClaudeAgentOptions:
         # Only pass `model` to the SDK when explicitly set. An empty model means
         # "let the SDK pick the current Claude" — that's the inheritance chain
@@ -215,6 +280,22 @@ class AgentRunner:
         }
         if self.model:
             opts_kwargs["model"] = self.model
+        # When the broker is wired, install a PreToolUse hook that defers
+        # to broker.gate. v8.18.1's permission_mode='default' was necessary
+        # but not sufficient — the CLI does not always invoke can_use_tool.
+        # Hooks fire for every tool call, so this is the real enforcement
+        # primitive. Generous timeout so the broker's own 600s perm-gate
+        # bound has slack.
+        if self._broker is not None:
+            opts_kwargs["hooks"] = {
+                "PreToolUse": [
+                    HookMatcher(
+                        matcher=None,  # match every tool
+                        hooks=[self._broker_pre_tool_use_hook],
+                        timeout=900.0,
+                    )
+                ]
+            }
         opts = ClaudeAgentOptions(**opts_kwargs)
         if self.system_prompt:
             opts.system_prompt = self.system_prompt

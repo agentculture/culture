@@ -103,6 +103,17 @@ def install_claude_sdk_stub() -> None:
             self.signal = signal
             self.suggestions = suggestions or []
 
+    class HookMatcher(_Base):
+        def __init__(
+            self,
+            matcher: Any = None,
+            hooks: list[Any] | None = None,
+            timeout: float | None = None,
+        ) -> None:
+            self.matcher = matcher
+            self.hooks = hooks or []
+            self.timeout = timeout
+
     def query(**kwargs: Any) -> _StubAsyncIter:  # noqa: ARG001
         return _StubAsyncIter([])
 
@@ -116,6 +127,7 @@ def install_claude_sdk_stub() -> None:
     mod.PermissionResultAllow = PermissionResultAllow
     mod.PermissionResultDeny = PermissionResultDeny
     mod.ToolPermissionContext = ToolPermissionContext
+    mod.HookMatcher = HookMatcher
     mod.query = query
 
     sys.modules["claude_agent_sdk"] = mod

@@ -25,6 +25,159 @@ def _daemon(boss: str) -> AgentDaemon:
     return AgentDaemon(config, agent, socket_dir="/tmp", skip_claude=True)
 
 
+class TestStopFullyDrainsTasks:
+    """v8.18.2-D: AgentDaemon.stop() must cancel every spawned task so the
+    Python process actually exits. Observed live during v8.18.1
+    verification: secscan's daemon-log recorded ``agent_stop`` but the
+    process stayed alive 5+ minutes, with the watchdog inside the zombie
+    firing ``stalled_post_engagement`` after the official stop."""
+
+    def _daemon(self) -> AgentDaemon:
+        config = DaemonConfig()
+        agent = AgentConfig(nick="local-worker", directory="/tmp", channels=["#team"], boss="")
+        return AgentDaemon(config, agent, socket_dir="/tmp", skip_claude=True)
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_remaining_background_tasks(self):
+        # A fire-and-forget background task in _background_tasks must be
+        # cancelled by stop() — otherwise the asyncio loop stays pinned and
+        # the process zombies.
+        import asyncio as _asyncio
+
+        d = self._daemon()
+        ran_to_completion = []
+
+        async def _long_running() -> None:
+            try:
+                await _asyncio.sleep(300)
+                ran_to_completion.append(True)
+            except _asyncio.CancelledError:
+                raise
+
+        task = _asyncio.create_task(_long_running())
+        d._background_tasks.add(task)
+        task.add_done_callback(d._background_tasks.discard)
+        await d.stop()
+        assert task.cancelled() or task.done()
+        assert not ran_to_completion  # never finished
+
+    @pytest.mark.asyncio
+    async def test_stop_waits_for_supervisor_evals(self):
+        # An in-flight supervisor evaluation must be drained by stop, not
+        # left running on the loop.
+        from unittest.mock import AsyncMock as _AsyncMock
+
+        d = self._daemon()
+        d._supervisor = _AsyncMock()
+        d._supervisor.wait_for_evals = _AsyncMock(return_value=None)
+        await d.stop()
+        d._supervisor.wait_for_evals.assert_awaited_once()
+
+
+class TestRejoinOwnedTaskChannels:
+    """v8.18.2-C: on start, a boss daemon must rejoin #task-<suffix> channels
+    for its owned workers. Without this, `culture boss brief <worker>` fails
+    the channel-membership pre-check after a boss restart until the
+    operator manually rejoins via IPC."""
+
+    def _boss_daemon(self) -> AgentDaemon:
+        config = DaemonConfig()
+        agent = AgentConfig(
+            nick="local-boss",
+            directory="/tmp",
+            channels=["#team", "#boss"],
+            tags=["boss"],
+        )
+        return AgentDaemon(config, agent, socket_dir="/tmp", skip_claude=True)
+
+    @staticmethod
+    def _write_manifest(home, agents: list[tuple[str, str, str]]) -> None:
+        """agents: list of (suffix, directory, boss_nick)."""
+        import os
+
+        import yaml
+
+        for suffix, directory, boss in agents:
+            os.makedirs(directory, exist_ok=True)
+            with open(os.path.join(directory, "culture.yaml"), "w", encoding="utf-8") as f:
+                yaml.safe_dump({"suffix": suffix, "backend": "claude", "boss": boss}, f)
+        server_yaml = os.path.join(str(home), "server.yaml")
+        with open(server_yaml, "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {
+                    "server": {"name": "local", "host": "127.0.0.1", "port": 6667},
+                    "agents": {suffix: directory for suffix, directory, _ in agents},
+                },
+                f,
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejoins_owned_workers_task_channels(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = self._boss_daemon()
+        self._write_manifest(
+            tmp_path,
+            [
+                ("w1", str(tmp_path / "w1"), "local-boss"),
+                ("w2", str(tmp_path / "w2"), "local-boss"),
+                ("foreign", str(tmp_path / "foreign"), "local-otherboss"),
+            ],
+        )
+        d._transport = AsyncMock()
+        await d._rejoin_owned_task_channels()
+        joined = [c.args[0] for c in d._transport.join_channel.await_args_list]
+        assert "#task-w1" in joined
+        assert "#task-w2" in joined
+        assert "#task-foreign" not in joined  # owned by another boss
+
+    @pytest.mark.asyncio
+    async def test_skips_channels_already_in_agent_config(self, tmp_path, monkeypatch):
+        # If the boss daemon already lists a task channel in its own
+        # culture.yaml `channels:`, transport.connect() already joined it;
+        # the rejoin must not duplicate.
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = self._boss_daemon()
+        d.agent = AgentConfig(
+            nick="local-boss",
+            directory="/tmp",
+            channels=["#team", "#boss", "#task-w1"],  # already joined
+            tags=["boss"],
+        )
+        self._write_manifest(
+            tmp_path,
+            [
+                ("w1", str(tmp_path / "w1"), "local-boss"),
+                ("w2", str(tmp_path / "w2"), "local-boss"),
+            ],
+        )
+        d._transport = AsyncMock()
+        await d._rejoin_owned_task_channels()
+        joined = [c.args[0] for c in d._transport.join_channel.await_args_list]
+        assert "#task-w1" not in joined  # skipped
+        assert "#task-w2" in joined  # joined
+
+    @pytest.mark.asyncio
+    async def test_no_owned_workers_no_joins(self, tmp_path, monkeypatch):
+        # A daemon that owns no workers (per manifest) does nothing.
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = self._boss_daemon()
+        self._write_manifest(
+            tmp_path,
+            [("foreign", str(tmp_path / "foreign"), "local-otherboss")],
+        )
+        d._transport = AsyncMock()
+        await d._rejoin_owned_task_channels()
+        d._transport.join_channel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_transport_is_noop(self, tmp_path, monkeypatch):
+        # Defensive: must not raise if _transport is None (start() ordering).
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        d = self._boss_daemon()
+        d._transport = None
+        await d._rejoin_owned_task_channels()
+
+
 class TestOnPermRequest:
     @pytest.mark.asyncio
     async def test_dms_boss_when_configured(self):

@@ -4,6 +4,69 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.18.2] - 2026-05-30
+
+### Security (critical)
+
+- **A — Broker actually fires now (via PreToolUse hook).** v8.18.1 changed
+  the SDK from `permission_mode="bypassPermissions"` to `"default"` —
+  necessary, but not sufficient. In-mesh dogfooding of v8.18.1 (a
+  `local-secscan` worker) confirmed via a `logger.warning` at the top of
+  `PermissionBroker.gate`: the gate **never fired** across 140+ turns
+  including non-safe Bash + Write calls. The SDK CLI in `default` mode
+  with `--permission-prompt-tool stdio` does not route every tool to the
+  `can_use_tool` callback — its built-in allow-list pre-approves most
+  tools without consulting Python. **PreToolUse hooks do fire for every
+  tool call.**
+
+  `AgentRunner._broker_pre_tool_use_hook` wraps `broker.gate` and is
+  installed via `opts.hooks["PreToolUse"]` whenever a broker is wired
+  (worker has a perm-policy file). Fail-closed: hook returns deny if
+  `broker.gate` raises; broker bugs can't become permission bypasses.
+  Generous `HookMatcher` timeout (900s) covers the broker's own 600s
+  `_PERM_DECISION_TIMEOUT_SECONDS`. `can_use_tool` wiring kept as
+  defense-in-depth. Verified live: `perm_request_notified` daemon-log
+  action fired for both `ToolSearch` and `Write` from the secscan
+  worker — the first time the broker has actually been invoked end-to-end
+  in production.
+
+### Fixed
+
+- **C — Boss daemon auto-rejoins owned task channels on restart.** After
+  `culture agent stop local-boss && culture agent start local-boss`, the
+  restarted boss was no longer in any `#task-<worker>` channel, so
+  `culture boss brief <worker>` failed its channel-membership pre-check.
+  `AgentDaemon.start` now reads the manifest, finds every agent whose
+  `boss:` field equals this daemon's nick, and rejoins their
+  `#task-<suffix>` channels. Skips channels already in the daemon's own
+  `agent.channels` (no double-join).
+
+- **D — `culture agent stop` actually terminates the process.** Observed
+  live during v8.18.1 verification: `agent_stop` logged at 05:00:40,
+  process PID 38387 stayed alive 5+ minutes, watchdog inside the zombie
+  fired `stalled_post_engagement` 305s later. `AgentDaemon.stop` now (a)
+  drains supervisor evaluation tasks via `Supervisor.wait_for_evals` and
+  (b) cancels every remaining task in `_background_tasks`.
+  `_run_single_agent` adds a defense-in-depth pass cancelling any
+  asyncio tasks the daemon's stop didn't track, so the loop drains and
+  the process exits.
+
+## [8.18.1] - 2026-05-30
+
+### Security (critical, but incomplete — superseded by 8.18.2-A)
+
+- **Permission broker was a no-op in production.** When the worker daemon
+  configured the Claude Agent SDK with `permission_mode="bypassPermissions"`
+  AND `can_use_tool=<broker.gate>`, the CLI binary literally interpreted
+  bypassPermissions as "Allow all tools" (`claude_agent_sdk/query.py:58`)
+  and never invoked the `can_use_tool` callback. Switching to
+  `permission_mode="default"` was necessary (bypass mode was demonstrably
+  wrong) but as of 8.18.2 we know it was not sufficient — the SDK's
+  `default` mode still does not route every tool through `can_use_tool`.
+  v8.18.2-A switches enforcement to the SDK's `PreToolUse` hook system,
+  which DOES fire for every tool. v8.18.1's mode change is kept (it's
+  semantically more accurate than bypass even with the hook path).
+
 ## [8.18.0] - 2026-05-30
 
 This release closes 12 ranked findings (8 stall classes from audit1's

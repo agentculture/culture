@@ -628,6 +628,20 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
     logger.info("Shutting down %s", agent.nick)
     await daemon.stop()
 
+    # v8.18.2-D: defense-in-depth — cancel any asyncio tasks that the daemon's
+    # stop() didn't track or that re-spawned during teardown. Without this,
+    # `culture agent stop` could log `agent_exit`+`agent_stop` cleanly but the
+    # Python process would stay alive holding the IRC nick + socket file, and
+    # the watchdog inside the zombie could keep firing post-stop. Observed
+    # live during v8.18.1 verification: a stopped secscan daemon's watchdog
+    # fired `stalled_post_engagement` ~5 min after `agent_stop` was logged.
+    current = asyncio.current_task()
+    pending = [t for t in asyncio.all_tasks() if t is not current and not t.done()]
+    for t in pending:
+        t.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
 
 def _run_multi_agents(config: DaemonConfig, agents: list[AgentConfig]) -> None:
     """Fork each agent into its own background process."""

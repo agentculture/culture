@@ -216,6 +216,106 @@ def test_make_options_keeps_bypass_for_standalone_agents():
     assert opts.permission_mode == "bypassPermissions"
 
 
+def test_make_options_wires_pretooluse_hook_when_broker_present():
+    """SECURITY (v8.18.2-A): can_use_tool isn't actually called by the SDK CLI
+    for every tool (verified live during v8.18.1 dogfood). PreToolUse hooks
+    are. When a broker is wired, the options must include a PreToolUse hook
+    that defers to broker.gate."""
+    runner = AgentRunner(model="m", directory="/tmp")
+
+    class _FakeBroker:
+        pass
+
+    runner._broker = _FakeBroker()
+    runner._can_use_tool = lambda *a, **k: None  # broker.gate stub
+    opts = runner._make_options()
+    assert hasattr(opts, "hooks") and opts.hooks
+    assert "PreToolUse" in opts.hooks
+    matchers = opts.hooks["PreToolUse"]
+    assert len(matchers) == 1
+    matcher = matchers[0]
+    assert runner._broker_pre_tool_use_hook in matcher.hooks
+    # Generous timeout — the broker's own perm-gate timeout is 600s.
+    assert matcher.timeout and matcher.timeout >= 600
+
+
+def test_make_options_omits_hooks_for_standalone_agents():
+    """No broker → no PreToolUse hook (would create a no-op overhead)."""
+    runner = AgentRunner(model="m", directory="/tmp")
+    runner._broker = None
+    runner._can_use_tool = None
+    opts = runner._make_options()
+    # Either no hooks attribute or empty dict — both acceptable.
+    assert not getattr(opts, "hooks", None)
+
+
+@pytest.mark.asyncio
+async def test_broker_hook_allows_when_broker_allows():
+    """Hook callback returns allow when broker.gate returns PermissionResultAllow."""
+    from claude_agent_sdk import PermissionResultAllow
+
+    runner = AgentRunner(model="m", directory="/tmp")
+
+    class _FakeBroker:
+        async def gate(self, tool_name, tool_input, ctx):
+            return PermissionResultAllow()
+
+    runner._broker = _FakeBroker()
+    out = await runner._broker_pre_tool_use_hook(
+        {"tool_name": "Read", "tool_input": {"file_path": "/x"}}, None, object()
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_broker_hook_denies_with_reason_when_broker_denies():
+    """Hook callback returns deny with broker's message when broker denies."""
+    from claude_agent_sdk import PermissionResultDeny
+
+    runner = AgentRunner(model="m", directory="/tmp")
+
+    class _FakeBroker:
+        async def gate(self, tool_name, tool_input, ctx):
+            return PermissionResultDeny(message="nope: above ceiling")
+
+    runner._broker = _FakeBroker()
+    out = await runner._broker_pre_tool_use_hook(
+        {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}, None, object()
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "ceiling" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.asyncio
+async def test_broker_hook_fails_closed_when_broker_raises():
+    """If broker.gate raises, the hook MUST deny (fail-closed) — never
+    silently allow. A broker bug must not become a permission bypass."""
+    runner = AgentRunner(model="m", directory="/tmp")
+
+    class _ExplodingBroker:
+        async def gate(self, *a, **k):
+            raise RuntimeError("broker dead")
+
+    runner._broker = _ExplodingBroker()
+    out = await runner._broker_pre_tool_use_hook(
+        {"tool_name": "Bash", "tool_input": {"command": "x"}}, None, object()
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+@pytest.mark.asyncio
+async def test_broker_hook_allows_when_no_broker():
+    """If the hook somehow fires without a broker, it must allow (no-op).
+    A daemon never wires the hook when there's no broker, but defense-in-
+    depth here is cheap."""
+    runner = AgentRunner(model="m", directory="/tmp")
+    runner._broker = None
+    out = await runner._broker_pre_tool_use_hook(
+        {"tool_name": "Read", "tool_input": {}}, None, object()
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
 @pytest.mark.asyncio
 async def test_send_prompt(monkeypatch):
     """send_prompt queues a prompt that is consumed by the next turn."""

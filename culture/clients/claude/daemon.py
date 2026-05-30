@@ -232,6 +232,12 @@ class AgentDaemon:
         )
         await self._transport.connect()
 
+        # 2.5. If this daemon is a boss for any registered workers, rejoin
+        # their #task-<suffix> channels. Without this, after a boss restart
+        # `culture boss brief <worker>` fails the channel-membership
+        # pre-check until the operator manually rejoins (v8.18.2-C).
+        await self._rejoin_owned_task_channels()
+
         # 3. Webhook client (uses transport for IRC-based alerts)
         self._webhook = WebhookClient(
             config=self.config.webhooks,
@@ -272,7 +278,17 @@ class AgentDaemon:
         logger.info("AgentDaemon started for %s (socket=%s)", self.agent.nick, self._socket_path)
 
     async def stop(self) -> None:
-        """Cleanly shut down all components."""
+        """Cleanly shut down all components.
+
+        Cancels every spawned background task — watchdog, poll, sleep
+        scheduler, fire-and-forget background_tasks set, supervisor
+        evaluation tasks — so the asyncio loop drains and the process
+        actually exits. Without the comprehensive cancel, the daemon-log
+        records ``agent_stop`` but the Python process stays alive holding
+        its IRC nick + socket file, and the watchdog inside it can keep
+        firing post-stop (v8.18.2-D: observed live during v8.18.1
+        verification).
+        """
         if self._idle_task is not None:
             self._idle_task.cancel()
             await asyncio.gather(self._idle_task, return_exceptions=True)
@@ -292,6 +308,22 @@ class AgentDaemon:
             await self._agent_runner.stop()
             self._agent_runner = None
             await self._daemon_log.record("agent_stop")
+
+        # Drain in-flight supervisor evaluations: these run off the SDK
+        # consumer pump (v8.18.0 #8) and would otherwise keep the loop
+        # alive past stop().
+        if self._supervisor is not None:
+            await self._supervisor.wait_for_evals()
+
+        # Cancel any remaining fire-and-forget background tasks. Without
+        # this, an in-flight DM send / hand-off / send_prompt would keep
+        # the asyncio loop pinned and the process zombied.
+        if self._background_tasks:
+            for t in list(self._background_tasks):
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            self._background_tasks.clear()
 
         if self._socket_server is not None:
             await self._socket_server.stop()
@@ -532,6 +564,44 @@ class AgentDaemon:
             since_seconds=since,
         )
         return False
+
+    async def _rejoin_owned_task_channels(self) -> None:
+        """Rejoin ``#task-<suffix>`` channels for workers whose manifest-
+        recorded boss is this daemon's nick. Without this, after a boss
+        restart, ``culture boss brief <worker>`` fails the channel-
+        membership pre-check until the operator manually rejoins via IPC
+        — a real bug observed live during v8.18.1 dogfooding.
+
+        Best-effort: a transport / manifest read error logs a warning but
+        does not block startup. A channel already in ``self.agent.channels``
+        was joined by transport.connect() and is skipped.
+        """
+        if self._transport is None:
+            return
+        try:
+            from culture.clients._perm_broker import culture_home
+            from culture.config import load_config_or_default
+
+            server_yaml = os.path.join(culture_home(), "server.yaml")
+            config = load_config_or_default(server_yaml, fallback=server_yaml)
+        except Exception:  # noqa: BLE001 — bad manifest must not block startup
+            logger.warning("Failed to load manifest for task-channel rejoin", exc_info=True)
+            return
+        me = self.agent.nick
+        already = set(self.agent.channels)
+        for ag in config.agents:
+            if getattr(ag, "boss", "") != me:
+                continue
+            nick = getattr(ag, "nick", "")
+            suffix = nick.split("-", 1)[1] if "-" in nick else nick
+            channel = f"#task-{suffix}"
+            if channel in already:
+                continue
+            try:
+                await self._transport.join_channel(channel)
+                logger.info("Rejoined owned task channel %s", channel)
+            except Exception:  # noqa: BLE001 — one channel failure must not stop the rest
+                logger.warning("Failed to rejoin %s", channel, exc_info=True)
 
     def _maybe_rearm_watchdog(self) -> None:
         """Start a fresh idle watchdog task if this is a boss-owned worker and
