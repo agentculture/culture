@@ -173,13 +173,37 @@ class IRCObserver:
     async def read_channel(self, channel: str, limit: int = 50) -> list[str]:
         """Read recent messages from a channel using HISTORY RECENT.
 
-        Returns list of formatted strings: "<nick> message" with timestamp info.
+        Joins the channel before issuing HISTORY because the server-side
+        membership gate (v8.18.3 ``_client_may_read_history``) refuses
+        non-members. Without the pre-JOIN, this endpoint silently
+        returns empty for any channel the observer wasn't already in —
+        which is all of them, since each observer connection is
+        short-lived. Per Qodo PR #28 #3 (Correctness).
+
+        Returns list of formatted strings: "<nick> message" with
+        timestamp info.
         """
-        return await self._irc_query(
-            f"HISTORY RECENT {channel} {limit}",
-            {"HISTORYEND"},
-            self._parse_history_line,
-        )
+        reader, writer, _nick = await self._connect_and_register()
+        try:
+            # JOIN to clear the membership gate; drain its reply (353/366).
+            writer.write(f"JOIN {channel}\r\n".encode())
+            await writer.drain()
+            await self._recv_lines(reader, timeout=1.0)
+
+            # Now HISTORY against a channel we're in.
+            writer.write(f"HISTORY RECENT {channel} {limit}\r\n".encode())
+            await writer.drain()
+            results: list[str] = []
+            messages = await self._recv_lines(reader, timeout=2.0)
+            for msg in messages:
+                if msg.command == "HISTORYEND":
+                    break
+                parsed = self._parse_history_line(msg)
+                if parsed is not None:
+                    results.append(parsed)
+            return results
+        finally:
+            await self._disconnect(writer)
 
     @staticmethod
     def _parse_history_line(msg):

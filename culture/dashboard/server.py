@@ -393,7 +393,13 @@ async def _handle_index(request: web.Request) -> web.StreamResponse:
 
 
 async def _handle_agents(request: web.Request) -> web.Response:
-    return web.json_response({"agents": list_agents(request.app.get(_CONFIG_PATH))})
+    # list_agents() does file-tail reads per agent (last_action,
+    # last_assistant, last_brief). The frontend polls every 2.5s; on a
+    # 20-agent mesh that's ~80 sync file reads per poll on the asyncio
+    # event loop, blocking other requests including SSE streams. Push
+    # to a thread so the loop stays responsive (Qodo PR #28 #5 — Perf).
+    rows = await asyncio.to_thread(list_agents, request.app.get(_CONFIG_PATH))
+    return web.json_response({"agents": rows})
 
 
 async def _handle_pending(request: web.Request) -> web.Response:

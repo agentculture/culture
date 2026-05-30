@@ -257,18 +257,18 @@ function renderChannelCard(ch) {
     card.appendChild(members);
   }
 
-  // Click to view channel chat
+  // Click to view channel chat — bind to the CHANNEL, not the agent.
+  // Qodo PR #28 #2 fix: selectChannel sets channelOverride so refreshChat
+  // reads by channel name; selectAgent (used for per-agent panels)
+  // clears the override so it falls back to the per-agent path.
   card.onclick = () => {
-    // Find a member agent to read the channel via
-    if (ch.members && ch.members.length) {
-      selectAgent(ch.members[0]);
-      // Switch to chat tab
-      state.kind = "chat";
-      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-      document.querySelector('.tab[data-kind="chat"]').classList.add("active");
-      openStream();
-      updateStreamTitle();
-    }
+    if (!ch.members || !ch.members.length) return;
+    selectChannel(ch.channel, ch.members[0]);
+    state.kind = "chat";
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelector('.tab[data-kind="chat"]').classList.add("active");
+    openStream();
+    updateStreamTitle();
   };
   card.style.cursor = "pointer";
 
@@ -343,6 +343,19 @@ function updateStreamTitle() {
 
 function selectAgent(nick) {
   state.selected = nick;
+  // Qodo PR #28 #2: a per-agent selection clears any channel override
+  // so the chat stream falls back to the agent's #task-<nick>.
+  state.channelOverride = null;
+  refreshAgents();
+  openStream();
+  updateStreamTitle();
+}
+
+function selectChannel(channel, viaAgent) {
+  // Channel-card path: persist the clicked channel so refreshChat
+  // reads BY CHANNEL, not by the agent's preferred #task-* fallback.
+  state.selected = viaAgent;
+  state.channelOverride = channel;
   refreshAgents();
   openStream();
   updateStreamTitle();
@@ -376,14 +389,30 @@ function openStream() {
 // ---- Chat (talk to an agent in its channel) --------------------------------
 
 async function refreshChat() {
-  if (!state.selected || state.kind !== "chat") return;
+  if (state.kind !== "chat") return;
+  // Qodo PR #28 #2: when a channel CARD was clicked, the chat must
+  // show THAT channel's history — not the per-agent #task-<nick>
+  // channel the server falls back to via /api/channel/<nick>.
+  // state.channelOverride is set by the card click handler; cleared
+  // by selectAgent() when the user picks a per-agent stream instead.
   let data;
-  try { data = await api(`/api/channel/${encodeURIComponent(state.selected)}`); }
-  catch (_) { return; }
+  try {
+    if (state.channelOverride) {
+      const name = state.channelOverride.startsWith("#")
+        ? state.channelOverride.slice(1)
+        : state.channelOverride;
+      data = await api(`/api/channels/${encodeURIComponent(name)}/messages`);
+    } else if (state.selected) {
+      data = await api(`/api/channel/${encodeURIComponent(state.selected)}`);
+    } else {
+      return;
+    }
+  } catch (_) { return; }
   const box = $("#stream");
   box.replaceChildren();
+  const label = data.channel || state.channelOverride || state.selected;
   if (!data.messages || !data.messages.length) {
-    box.appendChild(el("div", "empty", `No messages in ${data.channel} yet.`));
+    box.appendChild(el("div", "empty", `No messages in ${label} yet.`));
   } else {
     for (const m of data.messages) box.appendChild(el("div", "stream-line", m));
   }
