@@ -284,9 +284,7 @@ def _last_assistant_text(nick, max_chars=80):
 def _last_brief_preview(nick, config_path, max_chars=80):
     """Preview of the last brief addressed to this agent."""
     ch = _agent_channel(nick, config_path)
-    p = os.path.join(
-        culture_home(), "data", "channels", ch.lstrip("#") + ".jsonl"
-    )
+    p = os.path.join(culture_home(), "data", "channels", ch.lstrip("#") + ".jsonl")
     try:
         with open(p, "rb") as fh:
             fh.seek(0, os.SEEK_END)
@@ -318,57 +316,90 @@ def list_agents(config_path: str | None = None) -> list[dict]:
             continue
         nick = agent.nick
         st = _agent_state(nick)
-        chs = [c for c in (getattr(agent, "channels", []) or [])
-               if isinstance(c, str)]
-        rows.append({
-            "nick": nick, "state": st,
-            "pending": pending.get(nick, 0),
-            "last_action": _last_action(nick),
-            "is_boss": "boss" in (getattr(agent, "tags", []) or []),
-            "boss": getattr(agent, "boss", "") or "",
-            "idle": _is_idle(nick, st, getattr(agent, "boss", "") or ""),
-            "channels": chs,
-            "last_assistant": _last_assistant_text(nick),
-            "last_brief": _last_brief_preview(nick, config_path),
-        })
+        chs = [c for c in (getattr(agent, "channels", []) or []) if isinstance(c, str)]
+        rows.append(
+            {
+                "nick": nick,
+                "state": st,
+                "pending": pending.get(nick, 0),
+                "last_action": _last_action(nick),
+                "is_boss": "boss" in (getattr(agent, "tags", []) or []),
+                "boss": getattr(agent, "boss", "") or "",
+                "idle": _is_idle(nick, st, getattr(agent, "boss", "") or ""),
+                "channels": chs,
+                "last_assistant": _last_assistant_text(nick),
+                "last_brief": _last_brief_preview(nick, config_path),
+                # role: free-text who-does-what declaration (v8.19.4).
+                # Surfaced on every card; the channels-first view also
+                # renders it on each member chip inside a channel.
+                "role": getattr(agent, "role", "") or "",
+            }
+        )
     return rows
 
 
 def list_archived_agents(config_path=None):
     """Archived agents from config."""
     cfg = load_config_or_default(_config_path_or_default(config_path))
-    return [{
-        "nick": a.nick,
-        "archived_at": getattr(a, "archived_at", "") or "",
-        "archived_reason": getattr(a, "archived_reason", "") or "",
-        "is_boss": "boss" in (getattr(a, "tags", []) or []),
-        "boss": getattr(a, "boss", "") or "",
-        "channels": [c for c in (getattr(a, "channels", []) or [])
-                     if isinstance(c, str)],
-    } for a in cfg.agents if getattr(a, "archived", False)]
+    return [
+        {
+            "nick": a.nick,
+            "archived_at": getattr(a, "archived_at", "") or "",
+            "archived_reason": getattr(a, "archived_reason", "") or "",
+            "is_boss": "boss" in (getattr(a, "tags", []) or []),
+            "boss": getattr(a, "boss", "") or "",
+            "channels": [c for c in (getattr(a, "channels", []) or []) if isinstance(c, str)],
+        }
+        for a in cfg.agents
+        if getattr(a, "archived", False)
+    ]
 
 
 def list_channels(config_path=None):
-    """Build a channel list from known agents."""
+    """Build a channel list from known agents.
+
+    Each channel carries the structured members list — nick + role +
+    is_boss + state — so the channels-first dashboard renders member
+    chips inline without a second round-trip. Members are sorted boss
+    first, then by nick.
+    """
     cfg = load_config_or_default(_config_path_or_default(config_path))
     seen = {}
     for a in cfg.agents:
         if getattr(a, "archived", False):
             continue
-        chs = [c for c in (getattr(a, "channels", []) or [])
-               if isinstance(c, str)]
+        chs = [c for c in (getattr(a, "channels", []) or []) if isinstance(c, str)]
         boss = getattr(a, "boss", "") or ""
         ib = "boss" in (getattr(a, "tags", []) or [])
+        member_entry = {
+            "nick": a.nick,
+            "role": getattr(a, "role", "") or "",
+            "is_boss": ib,
+            "state": _agent_state(a.nick),
+        }
         for ch in chs:
             if ch not in seen:
-                seen[ch] = {"channel": ch, "members": [],
-                            "boss": "", "category": _classify_channel(ch)}
-            seen[ch]["members"].append(a.nick)
+                seen[ch] = {
+                    "channel": ch,
+                    "members": [],
+                    "boss": "",
+                    "category": _classify_channel(ch),
+                }
+            seen[ch]["members"].append(member_entry)
             if ib:
                 seen[ch]["boss"] = a.nick
             elif boss and not seen[ch]["boss"]:
                 seen[ch]["boss"] = boss
-    return list(seen.values())
+    # Sort each channel's members: boss first, then by nick.
+    for ch in seen.values():
+        ch["members"].sort(key=lambda m: (not m["is_boss"], m["nick"]))
+    # Sort channels: joint coordination first (cross-team focus), then
+    # task channels, then shared, then boss, then other.
+    category_order = {"joint": 0, "task": 1, "shared": 2, "boss": 3, "other": 4}
+    return sorted(
+        seen.values(),
+        key=lambda c: (category_order.get(c["category"], 9), c["channel"]),
+    )
 
 
 def _classify_channel(ch):
@@ -393,13 +424,7 @@ async def _handle_index(request: web.Request) -> web.StreamResponse:
 
 
 async def _handle_agents(request: web.Request) -> web.Response:
-    # list_agents() does file-tail reads per agent (last_action,
-    # last_assistant, last_brief). The frontend polls every 2.5s; on a
-    # 20-agent mesh that's ~80 sync file reads per poll on the asyncio
-    # event loop, blocking other requests including SSE streams. Push
-    # to a thread so the loop stays responsive (Qodo PR #28 #5 — Perf).
-    rows = await asyncio.to_thread(list_agents, request.app.get(_CONFIG_PATH))
-    return web.json_response({"agents": rows})
+    return web.json_response({"agents": list_agents(request.app.get(_CONFIG_PATH))})
 
 
 async def _handle_pending(request: web.Request) -> web.Response:
@@ -824,22 +849,23 @@ async def _loopback_guard(request: web.Request, handler):
     return await handler(request)
 
 
-
-
 async def _handle_channels(request: web.Request) -> web.Response:
-    return web.json_response(
-        {"channels": list_channels(request.app.get(_CONFIG_PATH))}
-    )
+    return web.json_response({"channels": list_channels(request.app.get(_CONFIG_PATH))})
 
 
 async def _handle_archived(request: web.Request) -> web.Response:
-    return web.json_response(
-        {"agents": list_archived_agents(request.app.get(_CONFIG_PATH))}
-    )
+    return web.json_response({"agents": list_archived_agents(request.app.get(_CONFIG_PATH))})
 
 
 async def _handle_archive_agent(request: web.Request) -> web.Response:
-    """Archive an agent using the config module's archive function."""
+    """Archive an agent using the config module's archive function.
+
+    Refuses if the daemon is currently running and a stop attempt fails —
+    archiving a still-running daemon leaves the manifest claiming the
+    agent is retired while the process keeps consuming resources and
+    emitting events. Caller must explicitly stop first OR retry the
+    archive after the daemon settles.
+    """
     body = await _json_body(request)
     nick = body.get("nick")
     if not nick:
@@ -848,10 +874,26 @@ async def _handle_archive_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "invalid nick"}, status=400)
     config_path = _config_path_or_default(request.app.get(_CONFIG_PATH))
     reason = str(body.get("reason", ""))
-    # Stop if running before archiving
+    # If the daemon is running, stop it first AND check the stop succeeded —
+    # don't archive a still-running daemon (per PR #28 audit MED finding).
     st = _agent_state(nick)
     if st == "running":
-        await asyncio.to_thread(_agent_stop, nick)
+        stop_res = await asyncio.to_thread(_agent_stop, nick)
+        if stop_res.returncode != 0:
+            return web.json_response(
+                {
+                    "error": f"agent {nick} is running and stop failed; refusing to archive",
+                    "stop_stderr": (stop_res.stderr or "").strip()[:500],
+                },
+                status=409,
+            )
+        # Verify the stop actually took effect before archiving — guards
+        # against race where stop returned 0 but the daemon is still alive.
+        if _agent_state(nick) == "running":
+            return web.json_response(
+                {"error": f"agent {nick} still running after stop; refusing to archive"},
+                status=409,
+            )
     try:
         archive_manifest_agent(config_path, nick, reason)
     except (ValueError, OSError) as exc:

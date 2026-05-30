@@ -333,3 +333,63 @@ body {
 .toast.hidden { display: none; }
 .toast.err { border-color: var(--red); color: var(--red); }
 .empty { color: var(--muted); font-style: italic; padding: 8px; }
+
+/* ---- Channels-first (v8.19.7) ---- */
+.channel-list { display: flex; flex-direction: column; gap: 10px; padding: 6px 0; }
+.channel-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease;
+}
+.channel-card:hover { border-color: var(--accent); }
+.channel-card-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.channel-title { font-weight: 600; color: var(--text); font-family: var(--mono); }
+.channel-cat {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--border);
+  color: var(--muted);
+}
+.channel-cat-joint { background: rgba(74, 163, 255, 0.15); color: var(--accent); }
+.channel-cat-task { background: rgba(65, 214, 122, 0.12); color: var(--green); }
+.channel-cat-shared { background: rgba(138, 151, 163, 0.15); color: var(--muted); }
+.channel-cat-boss { background: rgba(227, 179, 65, 0.15); color: var(--amber); }
+.channel-members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.channel-members.empty { color: var(--muted); font-style: italic; gap: 0; }
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(31, 39, 48, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.1s ease;
+}
+.member-chip:hover { background: var(--border); }
+.member-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+.member-dot-running { background: var(--green); }
+.member-dot-stopped { background: var(--muted); }
+.member-dot-unknown { background: var(--amber); }
+.member-nick { color: var(--text); }
+.member-nick.is-boss { color: var(--amber); font-weight: 600; }
+.role-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(74, 163, 255, 0.2);
+  color: var(--accent);
+  border-radius: 3px;
+  font-family: var(--mono);
+}

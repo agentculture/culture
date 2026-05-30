@@ -248,22 +248,64 @@ function sectionHeader(text) {
 }
 
 function renderChannelCard(ch) {
+  // Channels-first card (v8.19.7). Renders the channel as a discrete
+  // task envelope: title + category tag + member chips with role badges
+  // (boss first). Clicking a member chip opens that member's stream;
+  // clicking elsewhere opens the channel's chat stream via the boss
+  // (or the first member if no boss).
   const card = el("div", "channel-card");
-  const title = el("div", "channel-title", ch.channel);
-  card.appendChild(title);
+  card.dataset.channel = ch.channel;
 
+  const header = el("div", "channel-card-header");
+  const title = el("div", "channel-title", ch.channel);
+  header.appendChild(title);
+  if (ch.category) {
+    const tag = el("span", `channel-cat channel-cat-${ch.category}`, ch.category);
+    header.appendChild(tag);
+  }
+  card.appendChild(header);
+
+  // Member chips — each shows nick + role badge + state dot.
   if (ch.members && ch.members.length) {
-    const members = el("div", "channel-members", ch.members.join(", "));
-    card.appendChild(members);
+    // members is now a list of objects {nick, role, is_boss, state};
+    // tolerate the legacy flat-string shape for back-compat.
+    const memberList = el("div", "channel-members");
+    for (const m of ch.members) {
+      const memberObj = (typeof m === "string") ? { nick: m, role: "", is_boss: false, state: "" } : m;
+      const chip = el("span", "member-chip");
+      const dot = el("span", `member-dot member-dot-${memberObj.state || "unknown"}`);
+      chip.appendChild(dot);
+      const nickEl = el("span", "member-nick", memberObj.nick);
+      if (memberObj.is_boss) nickEl.classList.add("is-boss");
+      chip.appendChild(nickEl);
+      if (memberObj.role) {
+        const rb = el("span", "role-badge", memberObj.role);
+        chip.appendChild(rb);
+      }
+      chip.onclick = (ev) => {
+        ev.stopPropagation();
+        selectAgent(memberObj.nick);
+        state.kind = "audit";
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        document.querySelector('.tab[data-kind="audit"]').classList.add("active");
+        openStream();
+        updateStreamTitle();
+      };
+      memberList.appendChild(chip);
+    }
+    card.appendChild(memberList);
+  } else {
+    card.appendChild(el("div", "channel-members empty", "no members"));
   }
 
-  // Click to view channel chat — bind to the CHANNEL, not the agent.
-  // Qodo PR #28 #2 fix: selectChannel sets channelOverride so refreshChat
-  // reads by channel name; selectAgent (used for per-agent panels)
-  // clears the override so it falls back to the per-agent path.
+  // Click anywhere else: open the channel chat through the boss
+  // (or first non-boss member when there's no boss listed).
   card.onclick = () => {
     if (!ch.members || !ch.members.length) return;
-    selectChannel(ch.channel, ch.members[0]);
+    const pick = ch.members.find((m) => m && typeof m === "object" && m.is_boss)
+      || ch.members[0];
+    const nick = typeof pick === "string" ? pick : pick.nick;
+    selectAgent(nick);
     state.kind = "chat";
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     document.querySelector('.tab[data-kind="chat"]').classList.add("active");
@@ -343,19 +385,6 @@ function updateStreamTitle() {
 
 function selectAgent(nick) {
   state.selected = nick;
-  // Qodo PR #28 #2: a per-agent selection clears any channel override
-  // so the chat stream falls back to the agent's #task-<nick>.
-  state.channelOverride = null;
-  refreshAgents();
-  openStream();
-  updateStreamTitle();
-}
-
-function selectChannel(channel, viaAgent) {
-  // Channel-card path: persist the clicked channel so refreshChat
-  // reads BY CHANNEL, not by the agent's preferred #task-* fallback.
-  state.selected = viaAgent;
-  state.channelOverride = channel;
   refreshAgents();
   openStream();
   updateStreamTitle();
@@ -389,30 +418,14 @@ function openStream() {
 // ---- Chat (talk to an agent in its channel) --------------------------------
 
 async function refreshChat() {
-  if (state.kind !== "chat") return;
-  // Qodo PR #28 #2: when a channel CARD was clicked, the chat must
-  // show THAT channel's history — not the per-agent #task-<nick>
-  // channel the server falls back to via /api/channel/<nick>.
-  // state.channelOverride is set by the card click handler; cleared
-  // by selectAgent() when the user picks a per-agent stream instead.
+  if (!state.selected || state.kind !== "chat") return;
   let data;
-  try {
-    if (state.channelOverride) {
-      const name = state.channelOverride.startsWith("#")
-        ? state.channelOverride.slice(1)
-        : state.channelOverride;
-      data = await api(`/api/channels/${encodeURIComponent(name)}/messages`);
-    } else if (state.selected) {
-      data = await api(`/api/channel/${encodeURIComponent(state.selected)}`);
-    } else {
-      return;
-    }
-  } catch (_) { return; }
+  try { data = await api(`/api/channel/${encodeURIComponent(state.selected)}`); }
+  catch (_) { return; }
   const box = $("#stream");
   box.replaceChildren();
-  const label = data.channel || state.channelOverride || state.selected;
   if (!data.messages || !data.messages.length) {
-    box.appendChild(el("div", "empty", `No messages in ${label} yet.`));
+    box.appendChild(el("div", "empty", `No messages in ${data.channel} yet.`));
   } else {
     for (const m of data.messages) box.appendChild(el("div", "stream-line", m));
   }
@@ -580,8 +593,12 @@ $("#chat-send").onclick = sendChat;
 $("#chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
 
 // ---- Boot ------------------------------------------------------------------
+// Channels-first (v8.19.7): Channels is the default tab, so prime it.
+// Agents still refreshes in background so the tab switch is instant.
 
+refreshChannels();
 refreshAgents();
 refreshPending();
+setInterval(refreshChannels, 3000);
 setInterval(refreshAgents, 2500);
 setInterval(refreshPending, 2000);

@@ -16,19 +16,19 @@
     </div>
   </header>
   <nav class="main-tabs">
-    <button class="main-tab active" data-view="agents">Agents</button>
-    <button class="main-tab" data-view="channels">Channels</button>
+    <button class="main-tab active" data-view="channels">Channels</button>
+    <button class="main-tab" data-view="agents">Agents</button>
     <button class="main-tab" data-view="archived">Archived</button>
   </nav>
   <main class="layout">
     <section class="col col-agents">
-      <div id="view-agents">
+      <div id="view-channels">
+        <h2>Channels &mdash; live tasks</h2>
+        <div id="channel-list" class="channel-list"></div>
+      </div>
+      <div id="view-agents" class="hidden">
         <h2>Agents</h2>
         <ul id="agent-list" class="agent-list"></ul>
-      </div>
-      <div id="view-channels" class="hidden">
-        <h2>Channels = Tasks</h2>
-        <div id="channel-list"></div>
       </div>
       <div id="view-archived" class="hidden">
         <h2>Archived</h2>
