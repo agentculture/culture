@@ -183,10 +183,31 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     unarchive_parser.add_argument("nick", help="Agent nick to unarchive")
     unarchive_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
 
+<<<<<<< HEAD
     # -- restore --------------------------------------------------------------
     restore_parser = agent_sub.add_parser("restore", help="Restore an archived agent to stopped")
     restore_parser.add_argument("nick", help="Agent nick to restore")
     restore_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+=======
+    # -- compact --------------------------------------------------------------
+    compact_parser = agent_sub.add_parser(
+        "compact",
+        help=(
+            "Trigger context compaction with a reason — for the explicit "
+            "task-switch pattern (per docs/task-model.md)."
+        ),
+    )
+    compact_parser.add_argument("nick", help="Agent nick to compact")
+    compact_parser.add_argument(
+        "reason",
+        help=(
+            "Reason injected into pre/post-compact prompts. The agent's "
+            "handoff captures the transition context; the post-compact "
+            "reminder explains why context shrunk."
+        ),
+    )
+    compact_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+>>>>>>> 1cf1e1f (feat(agent): culture agent compact <nick> <reason> command (v8.19.5))
 
     # -- delete ---------------------------------------------------------------
     delete_parser = agent_sub.add_parser("delete", help="Remove an agent from config entirely")
@@ -238,7 +259,11 @@ def dispatch(args: argparse.Namespace) -> None:
         "read": _cmd_read,
         "archive": _cmd_archive,
         "unarchive": _cmd_unarchive,
+<<<<<<< HEAD
         "restore": _cmd_restore,
+=======
+        "compact": _cmd_compact,
+>>>>>>> 1cf1e1f (feat(agent): culture agent compact <nick> <reason> command (v8.19.5))
         "delete": _cmd_delete,
         "register": _cmd_register,
         "unregister": _cmd_unregister,
@@ -1058,11 +1083,38 @@ def _cmd_unarchive(args: argparse.Namespace) -> None:
     print(f"\nStart with: culture agent start {args.nick}")
 
 
+<<<<<<< HEAD
 # ``culture agent restore`` is the canonical name for the un-archive transition
 # (matches the doc/task-model.md state diagram). ``culture agent unarchive`` is
 # kept as a synonym for back-compat with the v8.19.1 initial ship and is what
 # the legacy ``archive_manifest_agent`` flow expects.
 _cmd_restore = _cmd_unarchive
+=======
+def _cmd_compact(args: argparse.Namespace) -> None:
+    """Trigger context compaction with an orchestrator-supplied reason.
+
+    Per ``docs/task-model.md`` — the explicit task-switch pattern.
+    Sends an ``ipc_request("compact", reason=...)`` to the agent's
+    running daemon, which fires pre/post-compact prompts so the
+    agent's handoff captures the transition context and the
+    post-compact reminder explains why its context shrunk.
+    """
+    nick = args.nick
+    pid = read_pid(f"agent-{nick}")
+    if not pid or not is_process_alive(pid):
+        print(
+            f"Agent '{nick}' is not running. Start it first with: " f"culture agent start {nick}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    sock = agent_socket_path(nick)
+    res = asyncio.run(ipc_request(sock, "compact", reason=args.reason))
+    if not (res and res.get("ok")):
+        err = (res or {}).get("error", "no response from daemon")
+        print(f"compact failed: {err}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Compaction triggered for {nick}: {args.reason}")
+>>>>>>> 1cf1e1f (feat(agent): culture agent compact <nick> <reason> command (v8.19.5))
 
 
 def _cmd_delete(args: argparse.Namespace) -> None:

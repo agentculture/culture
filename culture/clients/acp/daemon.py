@@ -972,8 +972,28 @@ class ACPDaemon:
     async def _ipc_compact(self, req_id: str, msg: dict) -> dict:
         if self._agent_runner is None or not self._agent_runner.is_running():
             return make_response(req_id, ok=False, error="Agent runner is not running")
+        reason = (msg.get("reason") or "").strip()
+        if reason:
+            await self._agent_runner.send_prompt(
+                "[orchestrator-compact] You are about to compact your "
+                "context. Reason from orchestrator: " + reason + "
+
+"
+                "Write your handoff with this reason in mind, then let the "
+                "compact happen — you'll be reminded to re-read on the next "
+                "turn."
+            )
         await self._agent_runner.send_prompt("/compact")
-        await self._daemon_log.record("compact", trigger="ipc")
+        if reason:
+            await self._agent_runner.send_prompt(
+                "[post-compact] You just compacted at the orchestrator's "
+                "request. The reason was: " + reason + "
+
+"
+                "Re-read your handoff at handoff/<your-nick>.md to recover "
+                "the prior context, then continue with the new direction."
+            )
+        await self._daemon_log.record("compact", trigger="ipc", reason=reason)
         return make_response(req_id, ok=True)
 
     async def _ipc_clear(self, req_id: str, msg: dict) -> dict:
