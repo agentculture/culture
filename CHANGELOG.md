@@ -4,6 +4,68 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.18.3] - 2026-05-30
+
+Eight cited security findings from an in-mesh `local-secscan` dogfood
+(see `docs/v8.18.2-followups.md` § B), all fixed with tests.
+
+### Security
+
+- **B#1 — HISTORY skill now requires channel membership** (HIGH —
+  `culture/agentirc/skills/history.py`). `HISTORY RECENT` / `HISTORY
+  SEARCH` previously returned every channel's content to any registered
+  client whether they had joined or not. New `_client_may_read_history`
+  gate matches the pattern used by PRIVMSG-to-channel / PART / TOPIC.
+  Non-member requests get `ERR_NOTONCHANNEL` (442).
+
+- **B#2 — Pre-registration PRIVMSG / NOTICE silent-drop** (HIGH —
+  `culture/agentirc/client.py`). A TCP socket that sent `NICK` but not
+  `USER` (so `_registered` stayed False) could `PRIVMSG <agent> :@<agent>
+  …`, injecting messages into the agent's `@mention` handler and driving
+  its behavior. Channel messages were already blocked (the client isn't
+  in any channel) but DMs slipped through. Now matches the silent-drop
+  pattern used by `_handle_join`.
+
+- **B#3 — Pre-registration WHO / WHOIS silent-drop** (MED —
+  `culture/agentirc/client.py`). Same gate as B#2, applied to user
+  enumeration paths that leak nicks / modes / hostnames / channel
+  memberships.
+
+- **B#4 — S2S password compare is now constant-time** (MED —
+  `culture/agentirc/server_link.py`). Replaced `self._peer_pass !=
+  self.password` with `hmac.compare_digest`. The dashboard already uses
+  it for its token check (`server.py:635,639`); now the S2S link does
+  too.
+
+- **B#5 — S2S read buffer is now bounded** (MED —
+  `culture/agentirc/server_link.py`). A peer with no `\n` terminator
+  could OOM the server by streaming bytes into an unbounded `buffer`
+  string. C2S already caps at `8192/4096` (`client.py:230`); S2S now
+  mirrors with `65536/32768` to accommodate larger federation payloads.
+
+- **B#6 — SEVENT origin is force-corrected to the authenticated peer**
+  (MED — `culture/agentirc/server_link.py`). Previously a `SEVENT
+  other-server …` from `peer-A` only logged a warning; the spoofed
+  origin still landed in `data["_origin"]` and `system-<origin>` audit
+  prefixes. A compromised peer could impersonate any server in the mesh.
+  Origin is now overwritten with `self.peer_name`.
+
+- **B#7 — Default IRCd bind is now 127.0.0.1** (MED —
+  `culture/agentirc/config.py`, `culture/agentirc/__main__.py`). The
+  IRCd has no C2S authentication; binding to `0.0.0.0` by default was
+  an unauthenticated LAN service. Operators that need network exposure
+  pass `--host 0.0.0.0` explicitly. *Backwards-incompatible default.*
+
+- **B#8 — Dashboard auth is now a POST form (`/auth`)** (LOW —
+  `culture/dashboard/server.py`, `culture/cli/dashboard.py`). The
+  legacy `?token=<secret>` bootstrap leaked the token into browser
+  history, server access logs, and Referer headers on outbound
+  navigation. The new `/auth` GET renders a minimal login form; POST
+  submits the token in the request body. Unauthenticated HTML requests
+  now redirect to `/auth`. The `?token=` path is kept for backwards
+  compat with `logger.warning` on use; `culture dashboard --auth`
+  startup output prints the login URL + token on separate lines.
+
 ## [8.18.2] - 2026-05-30
 
 ### Security (critical)

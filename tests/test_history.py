@@ -202,15 +202,58 @@ async def test_history_recent_includes_nick_and_timestamp(server, make_client):
 
 @pytest.mark.asyncio
 async def test_history_recent_empty_channel(server, make_client):
+    # v8.18.2-B #1: HISTORY now requires membership. Join the empty channel
+    # first; the response is still an empty history (no messages there yet).
     alice = await make_client(nick="testserv-alice", user="alice")
+    await alice.send("JOIN #empty")
+    await alice.recv_all()
 
     await alice.send("HISTORY RECENT #empty 10")
     lines = await alice.recv_all(timeout=1.0)
 
     history_lines = [l for l in lines if "HISTORY" in l and "HISTORYEND" not in l]
     end_lines = [l for l in lines if "HISTORYEND" in l]
-    assert len(history_lines) == 0
+    # The join itself records a lifecycle history entry, so 1 line is
+    # expected here — the security gate accepted because alice IS in #empty.
     assert len(end_lines) == 1
+    # No content messages — only the join event (if any).
+    assert all("PRIVMSG" not in l for l in history_lines)
+
+
+@pytest.mark.asyncio
+async def test_history_recent_denied_for_non_member(server, make_client):
+    # SECURITY (v8.18.2-B #1): a client that has NOT joined a channel must
+    # NOT be able to read its history — otherwise any registered client
+    # leaks every channel's content. ERR_NOTONCHANNEL is returned.
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+    await alice.send("JOIN #private")
+    await alice.recv_all()
+    await alice.send("PRIVMSG #private :secret message")
+    await asyncio.sleep(0.05)
+
+    # bob never joined #private — must be refused.
+    await bob.send("HISTORY RECENT #private 10")
+    lines = await bob.recv_all(timeout=1.0)
+    # ERR_NOTONCHANNEL = 442. No HISTORY content lines for bob.
+    assert any("442" in l for l in lines)
+    assert not any("secret message" in l for l in lines)
+
+
+@pytest.mark.asyncio
+async def test_history_search_denied_for_non_member(server, make_client):
+    # SECURITY (v8.18.2-B #1): same gate as RECENT.
+    alice = await make_client(nick="testserv-alice", user="alice")
+    bob = await make_client(nick="testserv-bob", user="bob")
+    await alice.send("JOIN #private")
+    await alice.recv_all()
+    await alice.send("PRIVMSG #private :credentials inside")
+    await asyncio.sleep(0.05)
+
+    await bob.send("HISTORY SEARCH #private :credentials")
+    lines = await bob.recv_all(timeout=1.0)
+    assert any("442" in l for l in lines)
+    assert not any("credentials inside" in l for l in lines)
 
 
 @pytest.mark.asyncio
@@ -518,6 +561,9 @@ async def test_history_persists_across_restart():
         carol = IRCTestClient(reader3, writer3)
         await carol.send("NICK testserv-carol")
         await carol.send("USER carol 0 * :carol")
+        await carol.recv_all(timeout=0.5)
+        # v8.18.2-B #1: must join #test to read its history.
+        await carol.send("JOIN #test")
         await carol.recv_all(timeout=0.5)
 
         # Query history — should still have the messages (plus persisted join events).

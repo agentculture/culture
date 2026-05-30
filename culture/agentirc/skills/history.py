@@ -123,6 +123,18 @@ class HistorySkill(Skill):
         entries = list(buf)
         return entries[-count:]
 
+    def _client_may_read_history(self, client: Client, channel_name: str) -> bool:
+        """A client may read a channel's history only if it is a current
+        member of the channel. Mirrors the gate used by PART / TOPIC /
+        PRIVMSG-to-channel paths in client.py. An unknown channel is
+        treated as forbidden — a client that joins it implicitly creates
+        it, but until then the history is not theirs to see.
+        """
+        channel_obj = self.server.channels.get(channel_name)
+        if channel_obj is None:
+            return False
+        return client in channel_obj.members
+
     def search(self, channel: str, term: str) -> list[HistoryEntry]:
         buf = self._channels.get(channel)
         if not buf:
@@ -159,6 +171,13 @@ class HistorySkill(Skill):
             return
 
         channel = msg.params[1]
+        # SECURITY (v8.18.2-B #1): without a membership check, any registered
+        # client could read every channel's full history — leaking
+        # conversation content + potentially credentials. Match the pattern
+        # used by client.py:_handle_part / _handle_topic etc.
+        if not self._client_may_read_history(client, channel):
+            await client.send_numeric(replies.ERR_NOTONCHANNEL, channel, replies.MSG_NOTONCHANNEL)
+            return
         try:
             count = int(msg.params[2])
         except ValueError:
@@ -206,6 +225,10 @@ class HistorySkill(Skill):
             return
 
         channel = msg.params[1]
+        # SECURITY (v8.18.2-B #1) — same gate as _handle_recent.
+        if not self._client_may_read_history(client, channel):
+            await client.send_numeric(replies.ERR_NOTONCHANNEL, channel, replies.MSG_NOTONCHANNEL)
+            return
         term = msg.params[2]
         entries = self.search(channel, term)
         for entry in entries:

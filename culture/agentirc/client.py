@@ -846,6 +846,14 @@ class Client:
             return True
 
     async def _handle_privmsg(self, msg: Message) -> None:
+        # SECURITY (v8.18.2-B #2): without a registration gate, a TCP socket
+        # that sent only NICK (no USER, so _registered is still False) can
+        # PRIVMSG agents — injecting messages into the @mention handler and
+        # driving agent behavior. Channel messages are already blocked
+        # (client isn't in any channel), but DMs slip through. Match the
+        # silent-drop pattern used by _handle_join (line 413).
+        if not self._registered:
+            return
         if len(msg.params) < 2:
             await self.send_numeric(
                 replies.ERR_NEEDMOREPARAMS, "PRIVMSG", replies.MSG_NEEDMOREPARAMS
@@ -924,7 +932,11 @@ class Client:
                 await target_client.send(notice)
 
     async def _handle_notice(self, msg: Message) -> None:
-        # Same as PRIVMSG but no error replies per RFC 2812
+        # Same as PRIVMSG but no error replies per RFC 2812.
+        # SECURITY (v8.18.2-B #2): registration gate — silent drop (NOTICE
+        # does not emit error replies per RFC 2812).
+        if not self._registered:
+            return
         if len(msg.params) < 2:
             return
 
@@ -973,6 +985,12 @@ class Client:
         )
 
     async def _handle_who(self, msg: Message) -> None:
+        # SECURITY (v8.18.2-B #3): pre-registration WHO leaks user
+        # enumeration (every connected nick, mode, hostname, channel
+        # membership) — recon for targeting agents. Silent drop matches
+        # the existing _handle_join / privmsg pattern.
+        if not self._registered:
+            return
         if not msg.params:
             await self.send_numeric(replies.RPL_ENDOFWHO, "*", replies.MSG_ENDOFWHO)
             return
@@ -999,6 +1017,10 @@ class Client:
     async def _handle_whois(self, msg: Message) -> None:
         from culture.agentirc.remote_client import RemoteClient
 
+        # SECURITY (v8.18.2-B #3): pre-registration WHOIS leaks identity +
+        # channel-membership info. Same gate as WHO.
+        if not self._registered:
+            return
         if not msg.params:
             await self.send_numeric(replies.ERR_NONICKNAMEGIVEN, "No nickname given")
             return

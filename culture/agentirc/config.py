@@ -40,7 +40,11 @@ class ServerConfig:
     """Configuration for a culture server instance."""
 
     name: str = "culture"
-    host: str = "0.0.0.0"
+    # SECURITY (v8.18.2-B #7): default to loopback — operators who need
+    # network exposure opt in explicitly via `--host 0.0.0.0` or yaml. The
+    # IRCd has no C2S authentication, so a 0.0.0.0 default was an
+    # unauthenticated LAN service.
+    host: str = "127.0.0.1"
     port: int = 6667
     webhook_port: int = 7680
     data_dir: str = ""

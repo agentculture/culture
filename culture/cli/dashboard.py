@@ -65,9 +65,14 @@ def dispatch(args: argparse.Namespace) -> None:
     trusted = args.trusted_host or []
     if auth_token:
         hosts = trusted or ["<your-trusted-host>"]
-        print("Dashboard auth is ON. Open this URL once on each device to log in:")
+        print("Dashboard auth is ON. Open the login page and paste your token:")
         for host in hosts:
-            print(f"  https://{host}/?token={auth_token}")
+            print(f"  https://{host}/auth")
+        print(f"  Token: {auth_token}")
+        print(
+            "  (form-submitted token — does not appear in browser history, server "
+            "access logs, or Referer)"
+        )
         if not trusted:
             print(
                 "  (no --trusted-host given; add your tunnel hostname, "

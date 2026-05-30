@@ -595,9 +595,12 @@ async def _handle_policy_put(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 
 
-def _token_cookie_response(request: web.Request, token: str) -> web.Response:
-    """Set the auth cookie from a ``?token=`` bootstrap, then redirect to a clean URL."""
-    resp = web.HTTPFound(request.path)
+def _token_cookie_response(request: web.Request, token: str, redirect_to: str = "") -> web.Response:
+    """Set the auth cookie and redirect to ``redirect_to`` (default: clean
+    URL = ``request.path``). Used by both the legacy ``?token=`` bootstrap
+    and the POST ``/auth`` form path."""
+    target = redirect_to or request.path
+    resp = web.HTTPFound(target)
     secure = request.secure or request.headers.get("X-Forwarded-Proto", "") == "https"
     resp.set_cookie(
         _AUTH_COOKIE,
@@ -608,6 +611,57 @@ def _token_cookie_response(request: web.Request, token: str) -> web.Response:
         max_age=_COOKIE_MAX_AGE,
     )
     return resp
+
+
+_AUTH_FORM_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>culture · sign in</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0d1117; color: #c7d0d9;
+           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    form { background: #11161b; border: 1px solid #1f2730; border-radius: 8px;
+           padding: 24px 28px; min-width: 320px; }
+    h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+    p { color: #8a97a3; font-size: 12px; margin: 0 0 14px; }
+    input { width: 100%; padding: 8px 10px; background: #0d1117; color: #c7d0d9;
+            border: 1px solid #1f2730; border-radius: 4px; font: inherit; box-sizing: border-box; }
+    button { margin-top: 12px; padding: 8px 14px; background: #4aa3ff; color: #000;
+             border: 0; border-radius: 4px; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <form method="post" action="/auth">
+    <h1>culture · mission control</h1>
+    <p>Paste your dashboard token. It's sent in the request body, not in the URL —
+       so it won't appear in browser history, server logs, or the Referer header.</p>
+    <input type="password" name="token" placeholder="dashboard token" autofocus required />
+    <button type="submit">Sign in</button>
+  </form>
+</body>
+</html>"""
+
+
+async def _handle_auth_get(request: web.Request) -> web.Response:
+    """Render the POST login form. Token is submitted in the body — no leak
+    to access logs, browser history, or Referer (v8.18.2-B #8)."""
+    if request.app[_AUTH_TOKEN] is None:
+        return web.Response(status=404, text="dashboard auth is disabled")
+    return web.Response(text=_AUTH_FORM_HTML, content_type="text/html")
+
+
+async def _handle_auth_post(request: web.Request) -> web.Response:
+    """Verify the form-submitted token and set the auth cookie."""
+    token = request.app[_AUTH_TOKEN]
+    if token is None:
+        return web.Response(status=404, text="dashboard auth is disabled")
+    form = await request.post()
+    submitted = form.get("token", "")
+    if not isinstance(submitted, str) or not hmac.compare_digest(submitted, token):
+        raise web.HTTPUnauthorized(text="invalid dashboard token")
+    raise _token_cookie_response(request, token, redirect_to="/")
 
 
 @web.middleware
@@ -630,8 +684,22 @@ async def _loopback_guard(request: web.Request, handler):
 
     token = request.app[_AUTH_TOKEN]
     if token is not None:
+        # /auth GET (form) + POST (submit) are reachable without prior
+        # auth — that's the login path.
+        if request.path == "/auth":
+            return await handler(request)
         bootstrap = request.query.get("token")
         if bootstrap is not None:
+            # SECURITY (v8.18.2-B #8): ``?token=`` puts the secret in the
+            # URL → browser history, server access logs, Referer on any
+            # outbound navigation. Kept for backwards compat with the
+            # original print-and-click flow, but emit a warning so
+            # operators move to ``/auth`` POST.
+            logger.warning(
+                "Deprecated ?token= bootstrap from %s — use POST /auth (form-submitted "
+                "token, no URL leak) instead.",
+                request.remote,
+            )
             if not hmac.compare_digest(bootstrap, token):
                 raise web.HTTPUnauthorized(text="invalid dashboard token")
             raise _token_cookie_response(request, token)
@@ -639,10 +707,10 @@ async def _loopback_guard(request: web.Request, handler):
         if not (cookie and hmac.compare_digest(cookie, token)):
             if request.path.startswith("/api"):
                 raise web.HTTPUnauthorized(text="missing or invalid dashboard token")
-            raise web.HTTPUnauthorized(
-                text="Unauthorized. Open this dashboard via the ?token=… URL "
-                "printed by `culture dashboard --auth`."
-            )
+            # Redirect to the login form instead of returning 401 text so
+            # the operator just sees the form rather than having to read
+            # an error.
+            raise web.HTTPFound("/auth")
     return await handler(request)
 
 
@@ -656,6 +724,8 @@ def build_app(
     app[_AUTH_TOKEN] = auth_token
     app[_TRUSTED_HOSTS] = frozenset(trusted_hosts or ())
     app.router.add_get("/", _handle_index)
+    app.router.add_get("/auth", _handle_auth_get)
+    app.router.add_post("/auth", _handle_auth_post)
     app.router.add_get("/api/agents", _handle_agents)
     app.router.add_get("/api/pending", _handle_pending)
     app.router.add_get("/api/channel/{nick}", _handle_channel_read)

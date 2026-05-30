@@ -31,7 +31,11 @@ def parse_link(value: str) -> LinkConfig:
 async def main() -> None:
     parser = argparse.ArgumentParser(description="culture IRC server")
     parser.add_argument("--name", default="culture", help="Server name (used in nick prefix)")
-    parser.add_argument("--host", default="0.0.0.0", help="Listen address")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Listen address (default 127.0.0.1; pass 0.0.0.0 to opt into LAN exposure — note the IRCd has no C2S auth)",
+    )
     parser.add_argument("--port", type=int, default=6667, help="Listen port")
     parser.add_argument(
         "--link",

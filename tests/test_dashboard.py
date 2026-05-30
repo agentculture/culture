@@ -354,6 +354,37 @@ class TestAuth:
         resp = await client.get("/api/agents")
         assert resp.status == 200
 
+    @pytest.mark.asyncio
+    async def test_auth_form_served(self, auth_client):
+        # SECURITY (v8.18.2-B #8): the new login form is reachable without
+        # prior auth (so the user can submit their token) and posts the
+        # token in the body, not the URL.
+        resp = await auth_client.get("/auth")
+        assert resp.status == 200
+        body = await resp.text()
+        assert 'method="post"' in body and 'action="/auth"' in body
+        assert "<input" in body and 'name="token"' in body
+
+    @pytest.mark.asyncio
+    async def test_auth_post_correct_token_sets_cookie(self, auth_client):
+        resp = await auth_client.post("/auth", data={"token": "s3cret"}, allow_redirects=False)
+        assert resp.status == 302
+        assert resp.headers.get("Location") == "/"
+        assert "culture_dash=s3cret" in resp.headers.get("Set-Cookie", "")
+
+    @pytest.mark.asyncio
+    async def test_auth_post_wrong_token_401(self, auth_client):
+        resp = await auth_client.post("/auth", data={"token": "wrong"}, allow_redirects=False)
+        assert resp.status == 401
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_html_redirects_to_login_form(self, auth_client):
+        # Non-/api unauthenticated requests redirect to /auth so the user
+        # sees the form rather than a bare 401.
+        resp = await auth_client.get("/", allow_redirects=False)
+        assert resp.status == 302
+        assert resp.headers.get("Location") == "/auth"
+
     def test_empty_host_rejected_once_trusted_configured(self):
         # A headerless request must not bypass the host gate in remote mode.
         from culture.dashboard.server import _host_allowed

@@ -12,6 +12,13 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.context import Context as _OtelContext
 
 from culture.agentirc.remote_client import RemoteClient
+
+# Cap on the S2S read buffer (bytes-ish; the buffer holds UTF-8 text).
+# Larger than the C2S cap because legitimate federation messages can carry
+# full event payloads, but bounded so a peer that withholds `\n` cannot OOM
+# the server.
+_S2S_BUFFER_CAP = 65536
+_S2S_BUFFER_TAIL = 32768
 from culture.agentirc.skill import Event, EventType
 from culture.aio import maybe_await
 from culture.bots.virtual_client import VirtualClient
@@ -194,6 +201,13 @@ class ServerLink:
                         break
                     buffer += data.decode("utf-8", errors="replace")
                     buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
+                    # SECURITY (v8.18.2-B #5): cap the buffer so a peer
+                    # with no `\n` terminator can't OOM the server.
+                    # client.py:230 uses the same shape (8192/4096); S2S
+                    # gets a larger cap because legitimate federation
+                    # messages can be bigger (full event payloads).
+                    if len(buffer) > _S2S_BUFFER_CAP:
+                        buffer = buffer[-_S2S_BUFFER_TAIL:]
                     buffer = await self._process_buffer(buffer)
             except (ConnectionError, asyncio.IncompleteReadError):
                 pass
@@ -292,7 +306,15 @@ class ServerLink:
 
         Sends ERROR and raises ConnectionError on any failure.
         """
-        if self._peer_pass != self.password:
+        # SECURITY (v8.18.2-B #4): use constant-time compare. Python's
+        # ``!=`` on strings short-circuits on the first differing byte; a
+        # network-adjacent attacker can measure response-time differences
+        # to recover the link password byte-by-byte. ``hmac.compare_digest``
+        # is the standard mitigation (the dashboard already uses it for
+        # its token check at server.py:635,639).
+        import hmac
+
+        if not hmac.compare_digest(self._peer_pass or "", self.password or ""):
             logger.warning("Bad password from peer %s", self.peer_name)
             self.server.metrics.s2s_link_events.add(
                 1, {"peer": self.peer_name or "", "event": "auth_fail"}
@@ -897,8 +919,15 @@ class ServerLink:
         origin, _seq, type_str, target, b64 = msg.params[:5]
         channel = None if target == "*" else target
 
+        # SECURITY (v8.18.2-B #6): force-correct the origin to the
+        # authenticated peer name. Previously this only warned; the
+        # spoofed value still landed in ``data["_origin"]`` and in
+        # ``system-<origin>`` audit prefixes — letting a compromised
+        # peer impersonate any server in the mesh and poison audit
+        # trails.
         if origin != self.peer_name:
-            logger.warning("SEVENT origin %s != peer %s", origin, self.peer_name)
+            logger.warning("SEVENT origin %s != peer %s — forcing to peer", origin, self.peer_name)
+            origin = self.peer_name
 
         if channel is not None and not self._check_incoming_trust(channel):
             return
