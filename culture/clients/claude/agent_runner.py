@@ -193,9 +193,22 @@ class AgentRunner:
         # the boss/worker stack relies on (no hardcoded model strings in code
         # or yaml; new Claude versions are inherited automatically via the SDK's
         # own default tracking).
+        #
+        # ``permission_mode`` interaction with ``can_use_tool`` matters here:
+        # ``"bypassPermissions"`` literally means "Allow all tools" per the SDK
+        # docs (claude_agent_sdk/query.py:58). The CLI binary skips the
+        # can_use_tool callback entirely in that mode — so a boss-supervised
+        # worker with a wired-up PermissionBroker would have all tool calls
+        # silently auto-allowed, defeating the broker, the ceiling, the
+        # handoff anchor, the ownership gate, and the perm-gate timeout. Use
+        # ``"default"`` ONLY when a broker is wired (the worker has a
+        # perm-policy file); standalone agents keep the bypass semantics that
+        # have always been their default.
         opts_kwargs: dict[str, Any] = {
             "cwd": self.directory,
-            "permission_mode": "bypassPermissions",
+            "permission_mode": (
+                "default" if self._can_use_tool is not None else "bypassPermissions"
+            ),
             "setting_sources": ["user", "project", "local"],
             "can_use_tool": self._can_use_tool,
             "env": self._subprocess_env(),

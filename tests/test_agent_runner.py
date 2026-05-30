@@ -193,6 +193,29 @@ async def test_on_task_done_does_not_fire_on_clean_exit(monkeypatch):
     assert exit_codes == [0]
 
 
+def test_make_options_uses_default_mode_when_broker_wired():
+    """SECURITY: when can_use_tool is wired (worker has a perm-policy), the
+    SDK must call it. With permission_mode='bypassPermissions', the CLI
+    binary literally allows every tool without ever calling the callback —
+    silently defeating the broker, the ceiling, the handoff anchor, the
+    ownership gate, and the perm-gate timeout."""
+    runner = AgentRunner(model="m", directory="/tmp")
+    # Simulate a wired broker by setting _can_use_tool to a stub.
+    runner._can_use_tool = lambda *a, **k: None
+    opts = runner._make_options()
+    assert opts.permission_mode == "default"
+
+
+def test_make_options_keeps_bypass_for_standalone_agents():
+    """Standalone agents (no perm-policy file, _can_use_tool is None) keep
+    the bypassPermissions semantics they've always had — there's no broker
+    to consult, so prompting the user would hang the daemon."""
+    runner = AgentRunner(model="m", directory="/tmp")
+    runner._can_use_tool = None
+    opts = runner._make_options()
+    assert opts.permission_mode == "bypassPermissions"
+
+
 @pytest.mark.asyncio
 async def test_send_prompt(monkeypatch):
     """send_prompt queues a prompt that is consumed by the next turn."""
