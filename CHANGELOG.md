@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.18.8] - 2026-05-30
+
+Closes a daemon-IPC reachability bug surfaced by `verify-joint-w`
+during the three-layer-vision audit dogfood: the daemon binds its
+Unix socket in `$XDG_RUNTIME_DIR` or `/tmp`, but the
+`culture channel` CLI resolves sockets via `~/.culture/run/`. When
+the two diverge (the common case on macOS where
+`XDG_RUNTIME_DIR` is unset) the CLI can't reach the daemon.
+
+### Added
+
+- **`culture/clients/_socket_link.py`** — `ensure_socket_symlink` +
+  `remove_socket_symlink` helpers. `ensure_socket_symlink` creates
+  an atomic symlink (mkstemp → unlink → symlink → rename, the
+  standard POSIX atomic-symlink-replace) from the CLI-visible path
+  to the real socket path; `remove_socket_symlink` cleans up on
+  daemon stop. Idempotent on missing files; safe against stale
+  symlinks and regular-file collisions.
+
+### Changed
+
+- All four backend daemons (`claude`, `codex`, `acp`, `copilot`) +
+  the `packages/agent-harness/` template now call
+  `ensure_socket_symlink` immediately after `socket_server.start()`
+  and `remove_socket_symlink` immediately before
+  `socket_server.stop()`. Satisfies the all-backends rule.
+
+### Tests
+
+- 10 new tests in `tests/test_socket_link.py`: creates fresh,
+  replaces stale symlink, replaces regular file, no-op when paths
+  already match, XDG honored, fallback to `~/.culture/run`,
+  permissions enforced (0o700), idempotent remove.
+
+### Surfacing
+
+Surfaced during the three-layer-vision verification dogfood — see
+`verify-joint-w`'s GAP 2 in `#joint-vision-audit`. Closed by
+mesh worker `local-fix-symlink-w`; orchestrator shipped the
+commit on behalf since the daemon stopped silently before push
+(co-authored attribution in commit footer).
+
 ## [8.18.7] - 2026-05-30
 
 ### Security

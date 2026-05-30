@@ -17,6 +17,7 @@ from collections import deque
 from culture.aio import maybe_await
 from culture.clients._audit import AuditWriter
 from culture.clients._daemon_log import DaemonLog
+from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.codex.agent_runner import CodexAgentRunner
 from culture.clients.codex.config import AgentConfig, DaemonConfig
 from culture.clients.codex.ipc import make_response
@@ -87,6 +88,7 @@ class CodexDaemon:
         # each agent response dequeues one, ensuring correct routing even
         # when multiple mentions arrive while the agent is busy.
         self._mention_targets: deque[str] = deque()
+        self._socket_link_path: str | None = None
 
         # Crash-recovery state
         self._crash_times: list[float] = []
@@ -178,6 +180,7 @@ class CodexDaemon:
             handler=self._handle_ipc,
         )
         await self._socket_server.start()
+        self._socket_link_path = ensure_socket_symlink(self._socket_path, self.agent.nick)
 
         # 5. Supervisor using codex exec
         self._supervisor = CodexSupervisor(
@@ -219,6 +222,8 @@ class CodexDaemon:
             self._agent_runner = None
             await self._daemon_log.record("agent_stop")
 
+        remove_socket_symlink(self._socket_link_path)
+        self._socket_link_path = None
         if self._socket_server is not None:
             await self._socket_server.stop()
             self._socket_server = None

@@ -28,6 +28,12 @@ def culture_runtime_dir() -> str:
     systemd/logind).  Otherwise creates a user-private subdirectory
     under the system temp dir so sockets never live in a publicly
     writable location.
+
+    .. note::
+        This logic is duplicated in ``culture/clients/_socket_link.py``
+        (``_cli_runtime_dir``) to avoid a CLI import dependency in the
+        daemon.  If you change the resolution order here, update that
+        copy too.
     """
     xdg = os.environ.get("XDG_RUNTIME_DIR")
     if xdg:

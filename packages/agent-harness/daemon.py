@@ -22,6 +22,7 @@ from typing import Any
 
 # These imports point to YOUR backend's copies of these files:
 from culture.aio import maybe_await
+from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.BACKEND.config import AgentConfig, DaemonConfig
 from culture.clients.BACKEND.ipc import make_response
 from culture.clients.BACKEND.irc_transport import IRCTransport
@@ -84,6 +85,7 @@ class AgentDaemon:
         from collections import deque
 
         self._mention_targets: deque[str] = deque()
+        self._socket_link_path: str | None = None
 
         # Crash-recovery state
         self._consecutive_turn_failures: int = 0
@@ -164,6 +166,7 @@ class AgentDaemon:
             handler=self._handle_ipc,
         )
         await self._socket_server.start()
+        self._socket_link_path = ensure_socket_symlink(self._socket_path, self.agent.nick)
 
         # 5. Start agent runner (REPLACE THIS in your backend)
         if not self.skip_agent:
@@ -187,6 +190,8 @@ class AgentDaemon:
             await asyncio.gather(self._sleep_task, return_exceptions=True)
             self._sleep_task = None
 
+        remove_socket_symlink(self._socket_link_path)
+        self._socket_link_path = None
         if self._socket_server:
             await self._socket_server.stop()
         if self._transport:

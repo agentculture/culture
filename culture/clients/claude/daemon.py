@@ -22,6 +22,7 @@ from culture.clients._context_watch import (
 )
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._perm_broker import handoff_path_for
+from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.claude.agent_runner import AgentRunner
 from culture.clients.claude.config import AgentConfig, DaemonConfig
 from culture.clients.claude.ipc import make_response
@@ -209,6 +210,7 @@ class AgentDaemon:
 
         # Background tasks (prevent GC of fire-and-forget tasks)
         self._background_tasks: set[asyncio.Task] = set()
+        self._socket_link_path: str | None = None
 
         # Graceful shutdown
         self._stop_event: asyncio.Event | None = None
@@ -288,6 +290,7 @@ class AgentDaemon:
             handler=self._handle_ipc,
         )
         await self._socket_server.start()
+        self._socket_link_path = ensure_socket_symlink(self._socket_path, self.agent.nick)
 
         # 5. Supervisor with SDK-based evaluator
         self._supervisor = Supervisor(
@@ -363,6 +366,8 @@ class AgentDaemon:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
             self._background_tasks.clear()
 
+        remove_socket_symlink(self._socket_link_path)
+        self._socket_link_path = None
         if self._socket_server is not None:
             await self._socket_server.stop()
             self._socket_server = None
