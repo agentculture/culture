@@ -150,3 +150,100 @@ async def test_regular_channels_unrestricted(server, make_client):
     joined = " ".join(lines)
     assert "JOIN" in joined
     assert "#team" in joined
+
+
+# ---------------------------------------------------------------------------
+# Owner-map cache tests (v8.18.7 — closes audit HIGH on disk I/O per JOIN)
+# ---------------------------------------------------------------------------
+
+
+class TestOwnerMapCache:
+    """The owner-map cache amortizes manifest reads across burst JOINs.
+
+    Closes the HIGH audit finding that a 20-agent mesh did ~21 file
+    reads per #task-* JOIN on the asyncio event loop. The cache holds
+    for ``OWNER_MAP_TTL_S`` seconds and refreshes past that.
+    """
+
+    def setup_method(self):
+        # Always start with a clean cache.
+        from culture.agentirc.client import _invalidate_owner_map_cache
+
+        _invalidate_owner_map_cache()
+
+    def teardown_method(self):
+        from culture.agentirc.client import _invalidate_owner_map_cache
+
+        _invalidate_owner_map_cache()
+
+    def test_cache_amortizes_repeated_calls(self):
+        """The expensive load runs ONCE within the TTL even with N calls."""
+        from culture.agentirc import client as ircd_client
+
+        calls = {"n": 0}
+
+        def fake_load():
+            calls["n"] += 1
+            return {"local-worker-a": "local-boss"}
+
+        with patch(
+            "culture.config.load_config_or_default", side_effect=AssertionError("should be cached")
+        ):
+            # First call populates from the real path → but we patched
+            # load_config_or_default to raise so the cache must be the
+            # first thing the loader checks. Instead pre-seed the cache:
+            ircd_client._owner_map_cache = {"local-worker-a": "local-boss"}
+            import time as _t
+
+            ircd_client._owner_map_ts = _t.monotonic()
+            for _ in range(50):
+                got = ircd_client._load_owner_map()
+                assert got == {"local-worker-a": "local-boss"}
+
+    def test_cache_refreshes_after_ttl(self, monkeypatch):
+        """Past the TTL, the next call re-reads the manifest."""
+        from culture.agentirc import client as ircd_client
+
+        fake_now = [1000.0]
+        monkeypatch.setattr(ircd_client._time, "monotonic", lambda: fake_now[0])
+
+        calls = {"n": 0}
+
+        def fake_load(*_a, **_kw):
+            calls["n"] += 1
+
+            class _Cfg:
+                agents = []
+
+            return _Cfg()
+
+        monkeypatch.setattr("culture.config.load_config_or_default", fake_load)
+        ircd_client._load_owner_map()
+        ircd_client._load_owner_map()
+        assert calls["n"] == 1  # cached
+        # Advance past TTL.
+        fake_now[0] += ircd_client.OWNER_MAP_TTL_S + 0.1
+        ircd_client._load_owner_map()
+        assert calls["n"] == 2  # refreshed
+
+    def test_invalidate_forces_refresh(self, monkeypatch):
+        """_invalidate_owner_map_cache bypasses the TTL on demand."""
+        from culture.agentirc import client as ircd_client
+
+        calls = {"n": 0}
+
+        def fake_load(*_a, **_kw):
+            calls["n"] += 1
+
+            class _Cfg:
+                agents = []
+
+            return _Cfg()
+
+        monkeypatch.setattr("culture.config.load_config_or_default", fake_load)
+        ircd_client._load_owner_map()
+        ircd_client._load_owner_map()
+        assert calls["n"] == 1
+        ircd_client._invalidate_owner_map_cache()
+        ircd_client._load_owner_map()
+        assert calls["n"] == 2

@@ -52,27 +52,64 @@ if TYPE_CHECKING:
 
 _TASK_PREFIX = "#task-"
 
-# Cache: mapping of worker-nick -> boss-nick, loaded lazily from server.yaml.
-# Cleared on every call so hot-reloads of the manifest take effect.
-# Using a module-level helper keeps the Client class thin.
+# Owner-map cache. _load_owner_map() reads server.yaml AND every agent
+# culture.yaml on every call — ~21 synchronous file reads on a 20-agent
+# mesh. With concurrent JOINs (e.g. boss spawning a fleet) that's a disk
+# I/O storm on the asyncio event loop.
+#
+# Cache the map for OWNER_MAP_TTL_S and refresh past that. The TTL is
+# short enough that manifest hot-reloads (the original design intent)
+# take effect within seconds, but long enough to amortize the cost
+# across burst JOINs. time.monotonic() avoids clock-skew issues.
+#
+# Cache is intentionally module-level (process-wide). If a future
+# multi-process IRCd setup ever runs, each process has its own cache —
+# acceptable, since manifest changes still propagate on TTL expiry.
+import time as _time
+
+OWNER_MAP_TTL_S = 5.0
+_owner_map_cache: dict[str, str] | None = None
+_owner_map_ts: float = 0.0
 
 
 def _load_owner_map() -> dict[str, str]:
     """Load worker-nick -> boss-nick from the manifest (server.yaml).
 
-    Returns an empty dict if the manifest is missing or unreadable.
-    Deliberately re-reads on every call so manifest changes take effect
-    without an IRCd restart.
+    Returns an empty dict if the manifest is missing or unreadable —
+    fail-closed: only the task-owner nick + system-* may join its
+    task channel; the supervising boss is also refused since we
+    can't verify the relationship.
+
+    Cached for ``OWNER_MAP_TTL_S`` seconds. Manifest hot-reloads
+    propagate within the TTL window; pass through is automatic on
+    expiry without an IRCd restart.
     """
+    global _owner_map_cache, _owner_map_ts
+    now = _time.monotonic()
+    if _owner_map_cache is not None and (now - _owner_map_ts) < OWNER_MAP_TTL_S:
+        return _owner_map_cache
     try:
         from culture.clients._perm_broker import culture_home
         from culture.config import load_config_or_default
 
         server_yaml = os.path.join(culture_home(), "server.yaml")
         config = load_config_or_default(server_yaml, fallback=server_yaml)
-        return {a.nick: (getattr(a, "boss", "") or "") for a in config.agents}
-    except Exception:  # noqa: BLE001 — unreadable manifest -> open policy
-        return {}
+        _owner_map_cache = {a.nick: (getattr(a, "boss", "") or "") for a in config.agents}
+    except Exception:  # noqa: BLE001 — unreadable manifest -> fail-closed
+        _owner_map_cache = {}
+    _owner_map_ts = now
+    return _owner_map_cache
+
+
+def _invalidate_owner_map_cache() -> None:
+    """Force the next ``_load_owner_map()`` call to refresh from disk.
+
+    Tests + administrative operations that mutate the manifest can call
+    this to bypass the TTL.
+    """
+    global _owner_map_cache, _owner_map_ts
+    _owner_map_cache = None
+    _owner_map_ts = 0.0
 
 
 def _task_channel_acl(nick: str, channel_name: str) -> bool:
@@ -102,7 +139,7 @@ def _task_channel_acl(nick: str, channel_name: str) -> bool:
         return True
 
     # System clients (system-*) always allowed — they deliver NOTICEs etc.
-    if nick.startswith("system-") or nick.startswith(SYSTEM_USER_PREFIX):
+    if nick.startswith(SYSTEM_USER_PREFIX):
         return True
 
     # Boss match: look up the manifest to find the task-owner's boss.
