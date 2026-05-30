@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Callable
 
 from culture.aio import maybe_await
-from culture.clients.claude.message_buffer import MessageBuffer
+from culture.clients.copilot.message_buffer import MessageBuffer
 from culture.constants import SYSTEM_USER_PREFIX
 from culture.protocol.message import Message
 from culture.telemetry.context import (
@@ -21,7 +21,7 @@ from culture.telemetry.context import (
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
-    from culture.clients.claude.telemetry import HarnessMetricsRegistry
+    from culture.clients.copilot.telemetry import HarnessMetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class IRCTransport:
         icon: str | None = None,
         tracer: Tracer | None = None,
         metrics: HarnessMetricsRegistry | None = None,
-        backend: str = "claude",
+        backend: str = "copilot",
     ):
         self.host = host
         self.port = port
