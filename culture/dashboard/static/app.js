@@ -24,6 +24,44 @@ function isAtBottom(box) {
   return box.scrollHeight - box.scrollTop - box.clientHeight < SCROLL_BOTTOM_THRESHOLD_PX;
 }
 
+// v8.19.14 round 2: the channel/agent/pending lists previously called
+// replaceChildren() on every poll (every 2.5–3s), nuking the DOM even
+// when the data was identical. The user saw the entire left panel
+// flicker every few seconds. Fix:
+//   1. JSON-snapshot the incoming data and skip the re-render entirely
+//      when it matches the previous snapshot — the common case for an
+//      idle mesh, so most polls become DOM-free.
+//   2. When the data DID change, snapshot the parent scroll container's
+//      scrollTop BEFORE replaceChildren and restore it AFTER, so the
+//      user doesn't get yanked to the top of a long list.
+// state.listSnapshots holds the previous JSON-serialized payload per
+// list id; same-payload = same DOM = skip.
+state.listSnapshots = {};
+
+function scrollContainerOf(el) {
+  // Walk up from `el` to find the nearest ancestor with overflow-y auto/scroll.
+  // For the three left/middle/right columns this is the wrapping <section>.
+  for (let n = el?.parentElement; n; n = n.parentElement) {
+    const ov = getComputedStyle(n).overflowY;
+    if (ov === "auto" || ov === "scroll") return n;
+  }
+  return null;
+}
+
+function withListSnapshot(listId, data, render) {
+  // Returns true if a re-render happened; false if the data was identical
+  // and we skipped. Pass `data` as the raw payload; we stringify here.
+  const next = JSON.stringify(data);
+  if (state.listSnapshots[listId] === next) return false;
+  state.listSnapshots[listId] = next;
+  const el = document.getElementById(listId);
+  const sc = el ? scrollContainerOf(el) : null;
+  const savedTop = sc ? sc.scrollTop : 0;
+  render();
+  if (sc) sc.scrollTop = savedTop;
+  return true;
+}
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -161,23 +199,25 @@ function renderAgentItem(a, isWorker) {
 async function refreshAgents() {
   let data;
   try { data = await api("/api/agents"); } catch (e) { return; }
-  const list = $("#agent-list");
-  list.replaceChildren();
-  if (!data.agents.length) {
-    list.appendChild(el("div", "empty", "No agents registered."));
-    return;
-  }
-  const { teams, unassigned } = groupTeams(data.agents);
-  for (const [bossNick, t] of teams) {
-    const label = t.boss ? `${bossNick} \u00B7 team` : `${bossNick} \u00B7 team (boss offline)`;
-    list.appendChild(teamHeader(label, t.workers.length, "worker"));
-    if (t.boss) list.appendChild(renderAgentItem(t.boss, false));
-    for (const w of t.workers) list.appendChild(renderAgentItem(w, true));
-  }
-  if (unassigned.length) {
-    list.appendChild(teamHeader("unassigned", unassigned.length, "agent"));
-    for (const a of unassigned) list.appendChild(renderAgentItem(a, false));
-  }
+  withListSnapshot("agent-list", data, () => {
+    const list = $("#agent-list");
+    list.replaceChildren();
+    if (!data.agents.length) {
+      list.appendChild(el("div", "empty", "No agents registered."));
+      return;
+    }
+    const { teams, unassigned } = groupTeams(data.agents);
+    for (const [bossNick, t] of teams) {
+      const label = t.boss ? `${bossNick} \u00B7 team` : `${bossNick} \u00B7 team (boss offline)`;
+      list.appendChild(teamHeader(label, t.workers.length, "worker"));
+      if (t.boss) list.appendChild(renderAgentItem(t.boss, false));
+      for (const w of t.workers) list.appendChild(renderAgentItem(w, true));
+    }
+    if (unassigned.length) {
+      list.appendChild(teamHeader("unassigned", unassigned.length, "agent"));
+      for (const a of unassigned) list.appendChild(renderAgentItem(a, false));
+    }
+  });
 }
 
 function ctlBtn(action, label, nick) {
@@ -217,15 +257,17 @@ async function refreshChannels() {
   // at a glance whether the boss is running.
   let data;
   try { data = await api("/api/tasks"); } catch (e) { return; }
-  const container = document.getElementById("channel-list");
-  container.replaceChildren();
-  if (!data.tasks || !data.tasks.length) {
-    container.appendChild(el("div", "empty", "No tasks active."));
-    return;
-  }
-  for (const t of data.tasks) {
-    container.appendChild(renderTaskGroup(t));
-  }
+  withListSnapshot("channel-list", data, () => {
+    const container = document.getElementById("channel-list");
+    container.replaceChildren();
+    if (!data.tasks || !data.tasks.length) {
+      container.appendChild(el("div", "empty", "No tasks active."));
+      return;
+    }
+    for (const t of data.tasks) {
+      container.appendChild(renderTaskGroup(t));
+    }
+  });
 }
 
 function renderTaskGroup(task) {
@@ -335,6 +377,10 @@ function renderChannelCard(ch) {
 async function refreshArchived() {
   let data;
   try { data = await api("/api/archived"); } catch (e) { return; }
+  withListSnapshot("archived-list", data, () => { renderArchivedList(data); });
+}
+
+function renderArchivedList(data) {
   const container = document.getElementById("archived-list");
   container.replaceChildren();
   if (!data.agents || !data.agents.length) {
@@ -579,37 +625,39 @@ function appendStreamLine(box, raw) {
 async function refreshPending() {
   let data;
   try { data = await api("/api/pending"); } catch (_) { return; }
-  const list = $("#pending-list");
-  list.replaceChildren();
-  const badge = $("#pending-badge");
-  if (!data.pending.length) {
-    list.appendChild(el("div", "empty", "Nothing waiting."));
-    badge.classList.add("hidden");
-    return;
-  }
-  badge.textContent = data.pending.length + " pending";
-  badge.classList.remove("hidden");
-  for (const p of data.pending) {
-    const item = el("li", "pending-item");
-    item.appendChild(el("div", "ptool", p.tool_name || "?"));
-    item.appendChild(el("div", "pworker", p.helper_nick || ""));
-    item.appendChild(el("div", "pinput", inputPreview(p)));
-    const actions = el("div", "pending-actions");
-    const ok = el("button", "btn btn-sm btn-ok", "Approve");
-    ok.onclick = () => decide("approve", p.id, { id: p.id });
-    const okAlways = el("button", "btn btn-sm btn-ok", "Always");
-    okAlways.onclick = () => decide("approve", p.id, { id: p.id, always: true });
-    const no = el("button", "btn btn-sm btn-danger", "Deny");
-    no.onclick = () => {
-      const reason = prompt("Deny reason (optional):") || "";
-      decide("deny", p.id, { id: p.id, reason });
-    };
-    actions.appendChild(ok);
-    actions.appendChild(okAlways);
-    actions.appendChild(no);
-    item.appendChild(actions);
-    list.appendChild(item);
-  }
+  withListSnapshot("pending-list", data, () => {
+    const list = $("#pending-list");
+    list.replaceChildren();
+    const badge = $("#pending-badge");
+    if (!data.pending.length) {
+      list.appendChild(el("div", "empty", "Nothing waiting."));
+      badge.classList.add("hidden");
+      return;
+    }
+    badge.textContent = data.pending.length + " pending";
+    badge.classList.remove("hidden");
+    for (const p of data.pending) {
+      const item = el("li", "pending-item");
+      item.appendChild(el("div", "ptool", p.tool_name || "?"));
+      item.appendChild(el("div", "pworker", p.helper_nick || ""));
+      item.appendChild(el("div", "pinput", inputPreview(p)));
+      const actions = el("div", "pending-actions");
+      const ok = el("button", "btn btn-sm btn-ok", "Approve");
+      ok.onclick = () => decide("approve", p.id, { id: p.id });
+      const okAlways = el("button", "btn btn-sm btn-ok", "Always");
+      okAlways.onclick = () => decide("approve", p.id, { id: p.id, always: true });
+      const no = el("button", "btn btn-sm btn-danger", "Deny");
+      no.onclick = () => {
+        const reason = prompt("Deny reason (optional):") || "";
+        decide("deny", p.id, { id: p.id, reason });
+      };
+      actions.appendChild(ok);
+      actions.appendChild(okAlways);
+      actions.appendChild(no);
+      item.appendChild(actions);
+      list.appendChild(item);
+    }
+  });
 }
 
 function inputPreview(p) {

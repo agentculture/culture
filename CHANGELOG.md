@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.15] - 2026-05-31
+
+### Fixed
+
+- **Dashboard left-panel flicker, round 2 (the actual user-reported bug).**
+  v8.19.14 fixed the stream/chat panel but the user kept seeing the
+  display "nuked every couple of seconds" — root cause was different:
+  `refreshChannels` (every 3s), `refreshAgents` (every 2.5s), and
+  `refreshPending` (every 2s) each unconditionally called
+  `container.replaceChildren()` plus a full re-render even when the
+  data was identical. The user saw the channel/agent list flicker
+  every poll cycle and any scroll position into a long list reset.
+- **Fix is JSON-snapshot skip-when-unchanged + scroll preservation.**
+  New `withListSnapshot(listId, data, render)` helper:
+  (a) `JSON.stringify`s the incoming payload and compares against the
+  previous snapshot — same payload = same DOM, so the render callback
+  is SKIPPED entirely (no replaceChildren, no flicker, no scroll
+  reset); (b) on a real data change, snapshots the parent scroll
+  container's `scrollTop` BEFORE the rebuild and restores it AFTER so
+  a long-list scroll position survives an update.
+- Wired through `refreshChannels`, `refreshAgents`, `refreshPending`,
+  `refreshArchived`. Live-verified in a real browser via st4ck:
+  tagged child elements survived 8s of poll cycles on `#channel-list`
+  and `#agent-list`; scrollTop=200 on the parent SECTION survived
+  multiple poll cycles unchanged.
+- Single-file change: `culture/dashboard/static/app.js`.
+
 ## [8.19.14] - 2026-05-31
 
 ### Fixed
