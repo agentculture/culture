@@ -4,6 +4,75 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.20] - 2026-05-31
+
+### Added — edge-case test fleet (67 new tests across 5 files)
+
+In response to *"did you test both backend and front end testing for
+everything? especially edge cases"* — the honest answer was *not
+comprehensively*, so this ships the missing coverage.
+
+- **Functional UI walkthrough via st4ck browse** against the live
+  v8.19.19 dashboard: 3 main-tab + 3 stream-tab paths, channel-card
+  click → chat-stream open, member-chip click → audit-stream open,
+  seed-brief expand/collapse with lazy-fetch full body, 12-cycle
+  rapid tab switching with zero console errors, MutationObserver
+  confirmed 0 mutations on idle, scrollTop=250 preserved across
+  multiple poll cycles, cache headers + asset version-busting,
+  endpoint contracts (200/400/404).
+- **`tests/test_watcher_alerts_edges.py`** (22 tests). Direct
+  `AlertRouter` coverage — formatting helpers (severity prefix
+  mapping, subject + body, webhook payload), `irc_recipients`
+  gates, every `send_email` config gate, SMTP failure tolerance,
+  `send_webhook` empty-URL / unreachable-URL fallback, real
+  localhost HTTP server with secret-header verification,
+  `from_config_dict` tolerance for missing / None-valued subkeys
+  + list-to-tuple coercion.
+- **`tests/test_watcher_io_edges.py`** (20 tests). `_read_jsonl_tail`
+  IO edges (missing, empty, malformed mixed with valid, max_lines
+  returns LAST N, trailing newlines, UTF-8 content, post-truncation).
+  Threshold boundaries for `detect_crash_burst` (exactly `min_count`,
+  mixed inside/outside window), `detect_token_spike` (exactly at
+  threshold is silent — uses `>`; alternate `input` key; non-numeric
+  rejected), `detect_mission_stuck` (engaged inside window).
+  Aggregator gates: empty `enabled` set, missing `pidfile_dir`
+  skips `silent_death`, missing `action` field handled.
+- **`tests/test_watcher_service_edges.py`** (10 tests). Dispatch
+  isolation (IRC failure does not block email + webhook; email
+  failure does not block webhook). Intra-batch cooldown dedupe.
+  `run_forever` responds to `stop_event` within poll interval.
+  `run_once` with empty globs is a no-op.
+  `WatcherConfig.from_dict` tolerates mixed string/dict patterns
+  and a YAML list at root. `_persistent_observer_lifecycle` wires
+  `app[_OBSERVER]` at startup and calls `close()` at shutdown
+  (verified via aiohttp `TestClient`); fallback to `None` when
+  observer construction throws (endpoints still 200).
+- **`tests/test_dashboard_seed_integration.py`** (7 tests).
+  End-to-end seed flow against the real `list_tasks` output:
+  per-channel `seed_preview` populated, task title falls back
+  through seed → mission.md → `<nick>'s work`, 80-char truncation
+  with ellipsis, leading-blank-line skip, multi-worker
+  first-seed-wins preference.
+- **`tests/test_persistent_observer_edges.py`** (8 tests). HISTORY
+  timeout path (returns what it has, no crash), unreachable-port
+  returns `[]` not raise, CRLF injection guard on `send_message`
+  target, pure-newline body short-circuits before connect,
+  `close()` resets writer/reader/nick (next read reconnects with
+  fresh nick), `close()` on never-connected is no-op + idempotent,
+  nick uses `_peek` prefix so v8.19.13 server-side suppression
+  still applies, three concurrent `read_channel` calls all return
+  cleanly via the lock.
+
+### Fixed
+
+- **Intra-batch cooldown dedupe** in
+  `culture.watcher.service.WatcherService.cooldown_filter`.
+  Previously a single dispatch batch with two events sharing the
+  same `pattern:target` key would fire BOTH (state.in_cooldown
+  was only updated by `record_firing` between events, not within
+  a batch). Now `cooldown_filter` tracks `seen_keys` per call.
+  Caught by `test_cooldown_filter_dedupes_same_key_within_one_batch`.
+
 ## [8.19.19] - 2026-05-31
 
 ### Added

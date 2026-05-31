@@ -173,10 +173,19 @@ class WatcherService:
         )
 
     def cooldown_filter(self, events: Iterable[PatternEvent]) -> list[PatternEvent]:
+        # v8.19.20 edge fix: ALSO deduplicate within a single batch.
+        # Without `seen_keys` two events with identical keys in one
+        # dispatch would both fire — only the second would be cooldowned
+        # by the time the next pass ran. Caught by
+        # test_cooldown_filter_dedupes_same_key_within_one_batch.
         survivors: list[PatternEvent] = []
+        seen_keys: set[str] = set()
         for ev in events:
+            if ev.key in seen_keys:
+                continue
             if self.state.in_cooldown(ev.key, self.config.cooldown_seconds):
                 continue
+            seen_keys.add(ev.key)
             survivors.append(ev)
         return survivors
 
