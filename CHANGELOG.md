@@ -4,6 +4,55 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.23] - 2026-05-31
+
+### Fixed — orchestrator-friction bugs
+
+A fresh Claude Code session asked to drive a worker via the
+documented `culture boss …` flow had to debug the harness instead of
+using it. Captured the friction in
+`docs/v8.19.22-orchestrator-friction.md` and fixed the top four
+items.
+
+- **Manifest-warning flood.** `resolve_agents` printed one
+  `WARNING culture.yaml missing for <nick>` per stale manifest entry
+  on every CLI invocation — 10+ lines of noise on a long-running
+  mesh, drowning real output. Now: per-entry detail logged at
+  `DEBUG`, ONE summary line at `WARNING` saying how many entries
+  point at missing paths and what command cleans them up. New test
+  `test_resolve_agents_many_missing_yields_one_summary_warning`.
+- **`culture boss spawn` printed a confusing multi-agent error.**
+  Spawning a worker into a cwd whose `culture.yaml` defines multiple
+  agents printed `Multiple agents in <path>. Use --suffix...` then
+  continued anyway. The worker came up correctly but the operator
+  thought it had failed. Fixed by passing `--suffix=<name>` through
+  to the underlying `culture agent register` call — spawn already
+  knows the suffix (it's the worker name).
+- **`culture boss brief` failed with no recovery path.**
+  Without the boss daemon running, brief returned
+  `Error: could not brief <nick> (is the boss daemon running?)`.
+  True, but the orchestrator now has to know that "boss daemon" is
+  distinct from "boss identity" AND that `culture boss status`
+  doesn't surface the daemon state. Error message now prints the
+  exact fix command:
+  `Start it with: culture agent start <boss>`.
+- **`culture boss status` was silent on the boss's own daemon.**
+  The worker table didn't surface whether `brief`/`approve`/`deny`
+  could actually run. New leading `BOSS <nick> <state> <pid>` row,
+  with an inline hint when the daemon is down. `sys.stdout.flush()`
+  before the subprocess so the row prints first under pipes.
+
+### Captured (not fixed yet)
+
+- `culture boss init` — single command that ensures server + boss
+  daemon are up. Tracked in `docs/v8.19.22-orchestrator-friction.md`
+  item #5.
+- Living per-channel brief (`~/.culture/briefs/<channel>.md`) so
+  new workers get onboarded with current project state rather than
+  just IRC HISTORY. User-flagged as the more important sibling to
+  the v8.19.18 seed (which is write-once initial only). Tracked as
+  item #6. Coming as v8.19.24.
+
 ## [8.19.22] - 2026-05-31
 
 ### Changed — Channel data-model reframe (user clarification)

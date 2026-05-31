@@ -505,7 +505,20 @@ def _cmd_brief(args: argparse.Namespace) -> None:
                     irc_topic = irc_topic[:197] + "..."
                 _boss_irc("irc_topic", channel=channel, topic=irc_topic)
     else:
-        print(f"Error: could not brief {nick} (is the boss daemon running?)", file=sys.stderr)
+        # v8.19.23: actionable error. Without this the orchestrator has to
+        # guess: is the IRC server down? Did the worker crash? Is "boss
+        # daemon" a thing distinct from "boss identity"? Tell them exactly
+        # what to run.
+        boss = _boss_nick()
+        print(
+            f"Error: could not brief {nick} — the boss daemon ({boss}) is not\n"
+            f"reachable over IPC. Start it with:\n"
+            f"\n"
+            f"    culture agent start {boss}\n"
+            f"\n"
+            f"Then re-run this brief.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -529,6 +542,22 @@ def _cmd_read(args: argparse.Namespace) -> None:
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
+    # v8.19.23: lead with the BOSS's own daemon state. The orchestrator
+    # needs to know "can I brief workers right now?" — the brief verb
+    # depends on the boss daemon being up, but the worker table doesn't
+    # surface that. The header line collapses the question into one row.
+    from culture.pidfile import is_process_alive, read_pid
+
+    boss = _boss_nick()
+    boss_pid = read_pid(f"agent-{boss}")
+    boss_alive = bool(boss_pid and is_process_alive(boss_pid))
+    boss_state = "running" if boss_alive else "stopped"
+    pid_label = str(boss_pid) if boss_alive else "-"
+    print(f"BOSS  {boss:<28} {boss_state:<12} {pid_label}")
+    if not boss_alive:
+        print(f"      ↳ brief/approve/deny will fail until you run: culture agent start {boss}")
+    print()
+    sys.stdout.flush()  # flush before subprocess so the boss row prints first under pipes
     # Worker/agent states come from `culture agent status`; pending perms from
     # the queue.
     subprocess.run([sys.executable, "-m", "culture", "agent", "status"], check=False)
@@ -608,7 +637,15 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
         extra_channels=extra_channels,
         role=args.role,
     )
-    subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
+    # v8.19.23: pass --suffix so the register call succeeds when the cwd has
+    # a multi-agent culture.yaml. Previously this printed "Multiple agents
+    # in <path> — use --suffix" and continued, looking like a noisy error
+    # while the worker actually came up. Spawn already KNOWS the suffix
+    # (it's `name`), so passing it through is free.
+    subprocess.run(
+        [sys.executable, "-m", "culture", "agent", "register", cwd, "--suffix", name],
+        check=False,
+    )
     subprocess.run([sys.executable, "-m", "culture", "agent", "start", worker_nick], check=False)
     # Boss joins the worker's task channel so it sees replies + perm DMs.
     task_chan = _task_channel(name)

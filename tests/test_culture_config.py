@@ -271,6 +271,40 @@ def test_resolve_agents_missing_culture_yaml(tmp_path):
     assert len(config.agents) == 0
 
 
+def test_resolve_agents_many_missing_yields_one_summary_warning(tmp_path, caplog):
+    """v8.19.23: N missing manifest entries → ONE summary warning, not N.
+
+    Prior behaviour: every CLI invocation flooded with one WARNING per
+    stale entry (10+ lines on a real long-running mesh). The orchestrator
+    couldn't see real output through the noise. Now: per-entry detail at
+    DEBUG, one summary line at WARNING.
+    """
+    import logging
+
+    from culture.config import ServerConfig, ServerConnConfig, resolve_agents
+
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={
+            "ghost-1": str(tmp_path / "gone-1"),
+            "ghost-2": str(tmp_path / "gone-2"),
+            "ghost-3": str(tmp_path / "gone-3"),
+            "ghost-4": str(tmp_path / "gone-4"),
+            "ghost-5": str(tmp_path / "gone-5"),
+        },
+    )
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        resolve_agents(config)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    # Exactly ONE summary line, not 5.
+    assert (
+        len(warnings) == 1
+    ), f"expected 1 summary warning, got {len(warnings)}: {[r.message for r in warnings]}"
+    assert "5 manifest entries" in warnings[0].getMessage()
+    assert "culture agent unregister" in warnings[0].getMessage()
+
+
 def test_resolve_agents_multi_agent_directory(tmp_path):
     """Two manifest entries pointing to same multi-agent directory."""
     from culture.config import ServerConfig, ServerConnConfig, resolve_agents

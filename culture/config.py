@@ -264,26 +264,40 @@ def load_server_config(path: str | Path) -> ServerConfig:
 
 
 def resolve_agents(config: ServerConfig) -> None:
-    """Resolve agent configs from manifest paths."""
+    """Resolve agent configs from manifest paths.
+
+    v8.19.23: collapsed the per-missing-entry WARNING into ONE summary
+    line. Previously, every CLI invocation flooded with 10+ "culture.yaml
+    missing for <nick> at <path> — skipping" lines from stale worktree
+    refs in the manifest — actively obscuring real output for a fresh
+    orchestrator session. The per-entry detail is now DEBUG-level; the
+    summary tells the operator how many entries point at missing paths
+    and how to clean them up.
+    """
     config.agents = []
     server_name = config.server.name
+
+    missing_nicks: list[str] = []
+    errored_nicks: list[str] = []
 
     for suffix, directory in config.manifest.items():
         try:
             agents = load_culture_yaml(directory, suffix=suffix)
         except FileNotFoundError:
-            logger.warning(
-                "culture.yaml missing for %s-%s at %s — skipping",
-                server_name,
-                suffix,
+            nick = f"{server_name}-{suffix}"
+            missing_nicks.append(nick)
+            logger.debug(
+                "culture.yaml missing for %s at %s — skipping",
+                nick,
                 directory,
             )
             continue
         except ValueError as e:
-            logger.warning(
-                "Error loading %s-%s from %s: %s — skipping",
-                server_name,
-                suffix,
+            nick = f"{server_name}-{suffix}"
+            errored_nicks.append(nick)
+            logger.debug(
+                "Error loading %s from %s: %s — skipping",
+                nick,
                 directory,
                 e,
             )
@@ -292,6 +306,22 @@ def resolve_agents(config: ServerConfig) -> None:
         for agent in agents:
             agent.nick = f"{server_name}-{agent.suffix}"
             config.agents.append(agent)
+
+    if missing_nicks:
+        logger.warning(
+            "%d manifest entries point at missing paths (%s%s). "
+            "Run `culture agent unregister <nick>` to clean each up.",
+            len(missing_nicks),
+            ", ".join(missing_nicks[:3]),
+            "..." if len(missing_nicks) > 3 else "",
+        )
+    if errored_nicks:
+        logger.warning(
+            "%d manifest entries failed to load (%s%s). " "Re-run with --verbose for details.",
+            len(errored_nicks),
+            ", ".join(errored_nicks[:3]),
+            "..." if len(errored_nicks) > 3 else "",
+        )
 
 
 def _load_legacy_config(path: str | Path) -> ServerConfig:
