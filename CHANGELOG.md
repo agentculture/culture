@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.2.1] - 2026-05-31
+
+### Added
+
+- vendor outsource skill (explore/review/write) from guildmaster — hand a scoped repo task to convertible for a diverse second opinion
+
 ## [13.2.0] - 2026-05-25
 
 ### Added
