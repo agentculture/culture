@@ -228,7 +228,34 @@ body {
 .archived-reason { color: var(--muted); font-size: 11px; font-style: italic; margin-top: 2px; }
 .archived-channels { color: var(--muted); font-size: 10px; margin-top: 2px; }
 
-.stream-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+/* v8.19.22: stream tabs (Activity / Daemon actions / Chat) stick to the
+ * top of the centre column so they're always reachable when the user
+ * scrolls deep into history. The middle SECTION is the scroll container
+ * (overflow-y:auto via .col), so sticky-top:0 anchors against it.
+ *
+ * The stream-title (h2) gets the same treatment so the header doesn't
+ * scroll out from above the tabs. Background is solid (not transparent)
+ * so scrolled content doesn't bleed through.
+ */
+#stream-title {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+  padding: 4px 0;
+  margin: 0 0 8px;
+}
+.stream-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  position: sticky;
+  top: 32px;
+  background: var(--bg);
+  z-index: 2;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
 .tab { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 8px; font-family: var(--mono); border-bottom: 2px solid transparent; }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 
@@ -358,16 +385,20 @@ body {
 }
 .channel-cat-joint { background: rgba(74, 163, 255, 0.15); color: var(--accent); }
 .channel-cat-task { background: rgba(65, 214, 122, 0.12); color: var(--green); }
+.channel-cat-worker { background: rgba(65, 214, 122, 0.12); color: var(--green); }
 .channel-cat-shared { background: rgba(138, 151, 163, 0.15); color: var(--muted); }
 .channel-cat-boss { background: rgba(227, 179, 65, 0.15); color: var(--amber); }
 .channel-tokens-total {
+  /* v8.19.22: demoted to subtle per-room sub-cost. The prominent
+   * channel-wide total lives on `.task-tokens-total` in the heading;
+   * this badge says "how much THIS room cost" — useful but secondary. */
   margin-left: auto;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(74, 163, 255, 0.15);
-  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(138, 151, 163, 0.10);
+  color: var(--muted);
   letter-spacing: 0.4px;
   font-family: var(--mono);
 }
@@ -455,6 +486,28 @@ body {
   height: 8px;
   border-radius: 50%;
   display: inline-block;
+}
+.channel-scope-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(74, 163, 255, 0.18);
+  color: var(--accent);
+}
+.task-tokens-total {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: rgba(74, 163, 255, 0.22);
+  color: var(--accent);
+  letter-spacing: 0.4px;
+  font-family: var(--mono);
+  border: 1px solid rgba(74, 163, 255, 0.35);
 }
 .task-title {
   font-size: 13px;

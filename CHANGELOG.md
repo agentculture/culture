@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.22] - 2026-05-31
+
+### Changed — Channel data-model reframe (user clarification)
+
+User flagged that calling each `#task-<worker>` a "task" was
+confusing — *the Channel IS the Task*. Inside one Channel are
+several rooms: the group chat, the boss board, and one private
+boss↔worker dialog per worker. Adopted that model:
+
+- Group heading now reads `CHANNEL <task title>` with the
+  channel-level token total prominently rendered.
+- Channel-level `tokens_total` counts each member exactly once
+  via a unique-nicks set so the boss isn't N-times counted.
+- Per-`#task-<worker>` room tag changed from `TASK` to `WORKER`.
+- Per-card `tokens_total` demoted to a subtle grey sub-cost; the
+  primary total lives on the Channel heading.
+
+### Fixed
+
+- **Chat tab showed empty for many rooms.** Card-body click
+  selected the agent and fetched `/api/channel/<agent>` — which
+  resolves to that agent's home `#task-<worker>`, NOT the room
+  the user clicked. So clicking `#team` showed an empty
+  `#task-<first-member>` instead of the `#team` history.
+  New `state.selectedChannel` carries the clicked room. Card
+  click sets it (route to room); chip click clears it (revert
+  to agent's home). `refreshChat` routes through
+  `/api/channels/<name>/messages` when set, falling back to
+  `/api/channel/<nick>` otherwise. Live-verified: clicking
+  `#team` → 50 messages, `#boss` → 11 messages.
+- **Stream tabs + title now sticky** at the top of the centre
+  column (`position: sticky` on `#stream-title` and
+  `.stream-tabs`). Scrolling deep into a long chat no longer
+  hides Activity / Daemon actions / Chat.
+
+### Tests
+
+- 2 new in `tests/test_dashboard_seed_integration.py`:
+  channel-level `tokens_total` uniqueness (boss not
+  double-counted across rooms), per-`#task-<worker>` category
+  is `"worker"`.
+
 ## [8.19.21] - 2026-05-31
 
 ### Added

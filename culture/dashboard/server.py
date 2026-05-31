@@ -588,7 +588,10 @@ def list_tasks(config_path=None):
                     "tokens_total": _channel_token_total(ch_members),
                 }
             )
-        # Per-worker #task-<worker> channels.
+        # Per-worker #task-<worker> rooms — labeled WORKER (v8.19.22) to
+        # distinguish them from the Channel-level task scope above. Each
+        # of these is a 1:1 boss↔worker dialog room within the larger
+        # Channel/Task.
         for worker in workers:
             wch = f"#task-{worker.nick.split('-', 1)[1] if '-' in worker.nick else worker.nick}"
             if any(c["channel"] == wch for c in channels):
@@ -597,7 +600,7 @@ def list_tasks(config_path=None):
             channels.append(
                 {
                     "channel": wch,
-                    "category": "task",
+                    "category": "worker",
                     "members": members,
                     "seed_preview": _seed_preview(wch),
                     "tokens_total": _channel_token_total(members),
@@ -607,11 +610,30 @@ def list_tasks(config_path=None):
         # Stable order: #boss first, then #joint-*, then #task-* (alphabetical).
         def _ch_sort_key(c):
             cat = c["category"]
-            order = {"boss": 0, "joint": 1, "task": 2, "shared": 3, "other": 4}
+            order = {
+                "boss": 0,
+                "joint": 1,
+                "shared": 2,
+                "worker": 3,  # v8.19.22: was "task"
+                "task": 3,
+                "other": 4,
+            }
             return (order.get(cat, 9), c["channel"])
 
         channels.sort(key=_ch_sort_key)
 
+        # v8.19.22: Channel-level token total = sum over UNIQUE members.
+        # The boss appears in every room within a channel; if we summed
+        # the per-room totals here, the boss's tokens would multi-count.
+        # The set comprehension keeps each agent counted exactly once.
+        unique_nicks: set[str] = set()
+        channel_total_tokens = 0
+        for c in channels:
+            for m in c["members"]:
+                nick = m.get("nick", "") if isinstance(m, dict) else ""
+                if nick and nick not in unique_nicks:
+                    unique_nicks.add(nick)
+                    channel_total_tokens += int(m.get("tokens_used", 0) or 0)
         tasks.append(
             {
                 "boss": boss.nick,
@@ -619,6 +641,7 @@ def list_tasks(config_path=None):
                 "state": _agent_state(boss.nick),
                 "channels": channels,
                 "worker_count": len(workers),
+                "tokens_total": channel_total_tokens,
             }
         )
 
@@ -637,12 +660,20 @@ def list_tasks(config_path=None):
             channels.append(
                 {
                     "channel": wch,
-                    "category": "task",
+                    "category": "worker",
                     "members": ch_members,
                     "seed_preview": _seed_preview(wch),
                     "tokens_total": _channel_token_total(ch_members),
                 }
             )
+        unique_nicks = set()
+        channel_total_tokens = 0
+        for c in channels:
+            for m in c["members"]:
+                nick = m.get("nick", "") if isinstance(m, dict) else ""
+                if nick and nick not in unique_nicks:
+                    unique_nicks.add(nick)
+                    channel_total_tokens += int(m.get("tokens_used", 0) or 0)
         tasks.append(
             {
                 "boss": "",
@@ -650,6 +681,7 @@ def list_tasks(config_path=None):
                 "state": "stopped",
                 "channels": channels,
                 "worker_count": len(orphan_workers),
+                "tokens_total": channel_total_tokens,
             }
         )
 

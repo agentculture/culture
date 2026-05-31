@@ -3,6 +3,12 @@
 // Mission Control SPA — vanilla JS, no build step.
 const state = {
   selected: null,
+  // v8.19.22: explicit room/channel override. When a user clicks a card
+  // body (a "room" inside the Channel), the Chat tab should show THAT
+  // room's history — not the worker's home #task-<worker> channel.
+  // selectedChannel carries the room name; null means "use the selected
+  // agent's home channel" (the legacy behaviour for chip clicks).
+  selectedChannel: null,
   kind: "audit",
   es: null,
   chatTimer: null,
@@ -283,11 +289,18 @@ async function refreshChannels() {
 }
 
 function renderTaskGroup(task) {
-  // ONE task = boss + title + all the channels that boss participates in.
+  // v8.19.22: a TASK GROUP renders one Channel (per the user's data
+  // model: Channel === Task scope). Inside the Channel are rooms — the
+  // boss board, group chat, joint channels, and per-worker dialogs.
   const block = el("div", "task-group");
   const header = el("div", "task-header");
   const dot = el("span", `task-state-dot member-dot-${task.state || "unknown"}`);
   header.appendChild(dot);
+  // Explicit "Channel:" label so the unit of scope is obvious — the
+  // <task title> is the channel's purpose (from seed → mission → boss
+  // nick) and the per-room cards below are the rooms within it.
+  const channelLabel = el("span", "channel-scope-label", "Channel");
+  header.appendChild(channelLabel);
   const title = el("div", "task-title", task.title || (task.boss + "'s work"));
   header.appendChild(title);
   if (task.boss) {
@@ -300,6 +313,18 @@ function renderTaskGroup(task) {
       task.worker_count + " worker" + (task.worker_count === 1 ? "" : "s"),
     );
     header.appendChild(count);
+  }
+  // Channel-level token total — sum over UNIQUE members so the boss
+  // (who appears in every room) is counted exactly once. This is the
+  // true task total, distinct from per-room sub-totals on each card.
+  if (task.tokens_total && task.tokens_total > 0) {
+    const tt = el(
+      "span",
+      "task-tokens-total",
+      formatTokens(task.tokens_total),
+    );
+    tt.title = `Total tokens used in this Channel/Task (${task.tokens_total.toLocaleString()} across all unique members)`;
+    header.appendChild(tt);
   }
   block.appendChild(header);
 
@@ -404,6 +429,10 @@ function renderChannelCard(ch) {
       }
       chip.onclick = (ev) => {
         ev.stopPropagation();
+        // v8.19.22: chip click follows the AGENT (not the room) — clear
+        // selectedChannel so the Chat tab reverts to the agent's home
+        // channel via /api/channel/<nick>.
+        state.selectedChannel = null;
         selectAgent(memberObj.nick);
         state.kind = "audit";
         document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
@@ -432,9 +461,13 @@ function renderChannelCard(ch) {
     );
     const pick = workers[0] || ch.members[0];
     const nick = typeof pick === "string" ? pick : pick.nick;
+    // v8.19.22: card body click follows THE ROOM. Set selectedChannel
+    // so the Chat tab loads THIS channel's history (was loading the
+    // worker's #task-<worker> instead, which is empty when the convo
+    // happened in #team or another room). Audit + daemon-log still
+    // follow the worker — those are per-agent streams.
+    state.selectedChannel = ch.channel;
     selectAgent(nick);
-    // Keep the user's current stream-tab kind; don't snap them to Chat
-    // every time they click a card.
     openStream();
     updateStreamTitle();
   };
@@ -508,9 +541,16 @@ function renderArchivedList(data) {
 const KIND_LABEL = { audit: "Activity", "daemon-log": "Daemon actions", chat: "Chat" };
 
 function updateStreamTitle() {
-  const nick = state.selected || "\u2014";
+  // v8.19.22: when the user has clicked a ROOM (card body), show the
+  // room name in the Chat tab title. For audit/daemon-log we still
+  // show the agent because those streams are per-agent regardless of
+  // which room the user opened them from.
   const label = KIND_LABEL[state.kind] || state.kind;
-  $("#stream-title").textContent = `${nick} \u00B7 ${label}`;
+  const subject =
+    state.kind === "chat" && state.selectedChannel
+      ? state.selectedChannel
+      : state.selected || "\u2014";
+  $("#stream-title").textContent = `${subject} \u00B7 ${label}`;
 }
 
 function selectAgent(nick) {
@@ -558,9 +598,21 @@ async function refreshChat() {
   // scrolled to. Now we compare against the previously rendered messages
   // and only append the new tail.
   if (!state.selected || state.kind !== "chat") return;
+  // v8.19.22: prefer the room the user clicked (state.selectedChannel)
+  // over the agent's home channel. Clicking #team should show #team's
+  // history — not the empty #task-<first-worker> the legacy path
+  // resolved to.
   let data;
-  try { data = await api(`/api/channel/${encodeURIComponent(state.selected)}`); }
-  catch (_) { return; }
+  try {
+    if (state.selectedChannel) {
+      const roomName = state.selectedChannel.replace(/^#/, "");
+      data = await api(`/api/channels/${encodeURIComponent(roomName)}/messages`);
+    } else {
+      data = await api(`/api/channel/${encodeURIComponent(state.selected)}`);
+    }
+  } catch (_) {
+    return;
+  }
   const box = $("#stream");
   const messages = data.messages || [];
 

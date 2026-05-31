@@ -201,6 +201,35 @@ def test_list_tasks_zero_tokens_when_no_records(isolated_home):
             assert m["tokens_used"] == 0
 
 
+def test_list_tasks_channel_level_tokens_total_counts_unique_members_once(isolated_home):
+    """v8.19.22: task.tokens_total = sum of UNIQUE members (no double-counting boss).
+
+    The boss appears in every room (#boss, #task-w1, #task-w2). If we
+    summed per-room totals, the boss's tokens would multi-count by N
+    rooms. The channel-level total must count each agent exactly once.
+    """
+    from culture.clients._usage import record_turn_usage_sync
+    from culture.dashboard.server import list_tasks
+
+    config_path = _build_manifest(isolated_home, "boss", ["w1", "w2"])
+    record_turn_usage_sync("local-boss", tokens_input=10_000, tokens_output=2_000)
+    record_turn_usage_sync("local-w1", tokens_input=20_000, tokens_output=4_000)
+    record_turn_usage_sync("local-w2", tokens_input=30_000, tokens_output=6_000)
+    tasks = list_tasks(config_path)
+    # Channel total = 12k boss + 24k w1 + 36k w2 = 72k (NOT 12k*3 + 24k + 36k).
+    assert tasks[0]["tokens_total"] == 72_000
+
+
+def test_list_tasks_worker_room_uses_worker_category(isolated_home):
+    """v8.19.22: per-#task-<worker> rooms get category=worker (was 'task')."""
+    from culture.dashboard.server import list_tasks
+
+    config_path = _build_manifest(isolated_home, "boss", ["w1"])
+    tasks = list_tasks(config_path)
+    task_room = next(c for c in tasks[0]["channels"] if c["channel"] == "#task-w1")
+    assert task_room["category"] == "worker"
+
+
 def test_list_tasks_per_member_token_cache_within_one_call(isolated_home, monkeypatch):
     """list_tasks memoizes sum_tokens per nick within a single call.
 
