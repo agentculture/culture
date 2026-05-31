@@ -4,6 +4,66 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.19] - 2026-05-31
+
+### Added
+
+- **Deterministic mesh-state watcher** (the user's "ask 1" — *"a
+  deterministic system watcher that keeps looking at the activity
+  table, looking for patterns and sending an email to me + nudging
+  you as boss"*). Background process; reads
+  `~/.culture/daemon-log/*.jsonl`, `~/.culture/audit/*.jsonl`,
+  `~/.culture/perm-queue/`; evaluates 5 MVP failure patterns;
+  ships alerts over IRC/email/webhook with per-pattern cooldown
+  dedupe. Out-of-process, no LLM token quota, survives every
+  other component's restart. Closed-loop guard.
+- **5 MVP patterns** in `culture/watcher/patterns.py`:
+  `silent_death` (agent_start with no agent_exit + pidfile PID
+  gone), `crash_burst` (≥3 crash records in 5 min), `token_spike`
+  (>50 000 input tokens in 10 min), `perm_escalation_above_ceiling`
+  (pending request names a boss-denylisted tool), `mission_stuck`
+  (boss running ≥2 h with no engaged or assistant activity).
+- **3 alert sinks** in `culture/watcher/alerts.py`. IRC is on by
+  default; routes to `target_nick` (the boss/orchestrator) AND
+  `#alerts`. Email is opt-in (SMTP, STARTTLS, password sourced
+  from `password_env` — never the literal). Webhook is opt-in
+  (JSON POST, optional `X-Culture-Watcher-Secret` header). All
+  sink errors are logged but never propagate.
+- **Persistent cooldown cache** in
+  `culture/watcher/state.py`. Per-firing key is
+  `pattern_name:target`; default 600 s window. Atomic file rename
+  on save; corrupt JSON → treated as empty (degrades to "first
+  run" semantics rather than crashing).
+- **`culture watcher {start,once,status,test}` CLI** plus
+  `python -m culture.watcher` entry. `test` synthesizes a fake
+  silent-death event and bypasses cooldown — useful for wiring a
+  new SMTP relay.
+- **Config schema** in `~/.culture/watcher.yaml` (sample at
+  `culture/watcher/watcher.example.yaml`). Missing file →
+  defaults; bad fields warned + ignored.
+- **`PersistentObserver` re-use** for IRC alerts. The watcher
+  reuses the same long-lived class the dashboard introduced in
+  v8.19.17 so a 30 s poll never opens + tears down a TCP+IRC
+  handshake every pass.
+- **Documentation**: `docs/watcher.md` (pattern list, sink
+  table, sample config, CLI cheatsheet, scope limits).
+
+### Tests
+
+- 17 in `tests/test_watcher_patterns.py`: each detector covered
+  with fire-condition + 2–3 silent-condition cases; aggregator
+  honors the `enabled` set; `PatternEvent.key` stable across
+  same-target firings.
+- 12 in `tests/test_watcher_service.py`: state persistence +
+  reload, cooldown window math, GC, corrupt-state-file
+  tolerance, config parsing (defaults + explicit), dispatch
+  routing to IRC, cooldown suppresses repeats, different keys
+  both fire, full `run_once` end-to-end against a synthetic
+  `culture_home` with a silent-death pidfile.
+- **Live verification**: `culture watcher once` against the
+  active dev mesh found 19 real silent-death/mission-stuck
+  alerts from past worker generations.
+
 ## [8.19.18] - 2026-05-31
 
 ### Added

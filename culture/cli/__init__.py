@@ -35,9 +35,23 @@ from culture.cli import (
     mesh,
     server,
     skills,
+    watcher,
 )
 
-GROUPS = [agent, server, mesh, channel, bot, boss, dashboard, skills, devex, afi, introspect]
+GROUPS = [
+    agent,
+    server,
+    mesh,
+    channel,
+    bot,
+    boss,
+    dashboard,
+    watcher,
+    skills,
+    devex,
+    afi,
+    introspect,
+]
 
 
 def _names_of(group) -> set[str]:

@@ -1,0 +1,40 @@
+# Culture watcher configuration template (v8.19.19).
+#
+# Copy to ~/.culture/watcher.yaml and edit. A missing file is treated as
+# defaults (all 5 patterns on, IRC alerts only). Run `culture watcher
+# once` to confirm the patterns trigger as you expect; `culture watcher
+# test` to confirm sinks ship.
+
+poll_interval_seconds: 30
+cooldown_seconds: 600
+
+patterns:
+  - silent_death
+  - crash_burst
+  - token_spike
+  - perm_escalation_above_ceiling
+  - mission_stuck
+
+# Tools the boss CANNOT auto-approve — perm_escalation_above_ceiling
+# fires when a pending request names one of these tools.
+boss_ceiling:
+  local-boss: []
+
+alerts:
+  irc:
+    enabled: true
+    target_nick: local-boss
+    fallback_channel: "#alerts"
+  email:
+    enabled: false
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    smtp_user: ""
+    password_env: WATCHER_SMTP_PASSWORD
+    from_addr: ""
+    to_addrs: []
+    use_starttls: true
+  webhook:
+    enabled: false
+    url: ""
+    secret_env: WATCHER_WEBHOOK_SECRET
