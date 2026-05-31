@@ -6,10 +6,59 @@ nav_order: 26
 
 # Mission Control Dashboard
 
-**Status:** Draft (partially superseded — see v8.19.x update below)
+**Status:** Draft (partially superseded — see v8.19.26-v8.19.42 update + v8.19.x update below)
 **Date:** 2026-05-29
 **Depends on:** #411 (permission broker, audit + daemon logs) and #412 (boss agent, `culture boss`, grant ceiling)
 **Branch:** `feat/mission-control-dashboard`
+
+## v8.19.26-v8.19.42 update — 2026-06-01
+
+Status: the v8.19.26-v8.19.42 session shipped 17 PRs (#420–#436). The headline finds were:
+
+- **The model/effort inheritance was decorative the project's whole life** — `AgentConfig.thinking` was recorded into `daemon-log` `agent_start` but never reached the Claude SDK. Workers ran at the bundled CLI's default tier regardless of yaml.
+- **The permission-broker had a silent-bypass class** — `culture boss approve --always` persisted bare `{tool: Bash}` rules with no `input_regex`, so one approval of `Bash ls /tmp` ended up auto-allowing **every Bash call thereafter**. Live audit on the dev box found 80 such rules across 51 worker policies.
+- **The IRC transport silently dropped boss briefs** — `IRCTransport.join_channel` optimistically appended channels to `self.channels` before the server confirmed the JOIN. When the server's owner_map cache raced ahead, the JOIN was refused; the transport thought it had joined; subsequent `send_privmsg` calls fired into a channel the server didn't consider the boss a member of, returning `ERR_CANNOTSENDTOCHAN` (404), silently ignored. Boss CLI logged "briefed"; worker got nothing.
+
+The PRs are grouped below by what they touched.
+
+### Docs / UX
+
+- **#420 v8.19.26** — `docs/agentirc/dashboard.md` catch-up to v8.19.x reality. The doc was last touched at v8.15.0 and predated the channel/rooms reframe, persistent observer, living brief, archive controls, and v8.19.x token / seed-preview / pending-count surfaces.
+- **#424 v8.19.28** — 4 critical/high UX findings from the v8.19.24 evaluation: timeline (`started_at` + `last_activity` per task → "Started 2h ago — last active 3m ago" subtitle), brief subtitle (first 1-2 sentences of `/api/channels/<name>/brief` as Channel-level subtitle), watcher health dot (green/yellow/red per nick from `~/.culture/watcher-state.json`), per-channel pending-perm badge (count from `list_pending()` filtered by member helper-nicks).
+
+### Model / effort inheritance — the field had been decorative
+
+- **#421 v8.19.27** — wire `AgentConfig.thinking` → SDK `--effort`. `AgentRunner` gains `effort: str`; `_make_options()` forwards to `ClaudeAgentOptions.effort` which the SDK translates to `--effort <tier>` on the CLI. `AgentDaemon._start_agent_runner` passes `self.agent.thinking` as `effort` so the existing yaml field drives behavior its name implied.
+- **#431 v8.19.37** — `culture boss tier` verb surfaces model + effort per registered agent so tier mismatches (`worker on claude-opus-4-6` while `boss on claude-opus-4-8`) are visible in one shot without `cat`-ing each yaml.
+- **#432 v8.19.38** — Opus 4.8 5-tier vocabulary (`low / medium / high / xhigh / max`), `claude-agent-sdk` upgrade 0.1.50 → 0.2.87, `AgentConfig.thinking` default flipped `high → xhigh` per Anthropic's official agentic-workload recommendation. `CULTURE_THINKING_TIERS` constant + `validate_thinking_tier()` raise a clear error at config-load time on typos.
+
+### Permission-broker security stack (3-layer defense)
+
+- **#425 v8.19.30** — `PermissionBroker.gate()` request-enqueue path wraps `_mkdir_secure` + `_atomic_write_json` in `try/except OSError`. On failure: log the error with full attribution, scrub the partial artifact, return `PermissionResultDeny`. **Fail closed**, never silent allow.
+- **#426 v8.19.32** — `culture boss approve --always` requires `--input-regex` for high-risk tools (Edit/Write/Bash/mcp__.*). New `HIGH_RISK_STICKY_TOOLS` constant + `BareStickyApproveRefusedError`. `_append_sticky_rule` emits `{tool: X, input_regex: Y}` instead of bare `{tool: X}`.
+- **#429 v8.19.35** + **#430 v8.19.36** — Detect existing bad rules. `culture boss audit-policies` scans `~/.culture/perm-policy/*.yaml` and reports every dangerous bare-tool entry that pre-dates the v8.19.32 gate. The broker now also emits a WARNING at policy load when it sees such a rule (`_warn_on_bare_high_risk` in `_load_policy`).
+- **#433 v8.19.39** — `culture boss audit-policies --fix` adds the remediation path. Safe-edit pattern: pure-function strip on a deepcopy → `shutil.copy2` writes a `.bak` BEFORE the rewrite → `tempfile.mkstemp` + `yaml.safe_dump` + `os.fsync` + `os.replace` (atomic rename) → original mode bits preserved. **Live remediation removed 80 dangerous rules across 51 policy files** on the dev box with `.bak` backups for full rollback.
+
+**Migration step**: run `culture boss audit-policies --fix` once after upgrading. Workers will re-route the stripped tools to the boss on next use; the v8.19.32 gate then requires `--input-regex` on re-approval.
+
+### Orchestration / observability
+
+- **#422 v8.19.29** — propagate v8.19.25's SDK async-iteration inactivity timeout to codex/copilot/acp `agent_runner.py`. Each backend's iteration loop wraps `__anext__()` in `asyncio.wait_for(timeout=SDK_INACTIVITY_TIMEOUT_SECONDS)`; same env var (`CULTURE_SDK_INACTIVITY_TIMEOUT`, default 180s).
+- **#423 v8.19.31** — `culture boss launch <name> "<purpose>" [--workers N]` one-shot bootstrap (channel + seed + workers in one command). Named `launch` not `init` because `init` already creates the boss's own identity.
+- **#428 v8.19.33** — `culture boss watch <nick> [--limit N] [--follow]` codifies the SKILL.md Monitor recipe as a CLI verb. Polls both `~/.culture/audit/local-<nick>.jsonl` and `~/.culture/daemon-log/local-<nick>.jsonl`, filters to significant events.
+- **#435 v8.19.41** — `IDLE_GRACE_SECONDS` 90 → 600s defensive bump. *Note: the original v8.19.41 hypothesis (SDK 0.2.x cold-start) was wrong — the real cause was the v8.19.42 IRC transport bug. The grace bump is kept as a defensive tunable (`CULTURE_IDLE_GRACE_SECONDS=90` restores the old cadence) but isn't load-bearing once v8.19.42 lands.*
+- **#436 v8.19.42 (CRITICAL)** — confirmation-based channel membership tracking. `join_channel` no longer pre-appends; the server's JOIN echo flips tracking. New `JOIN` / `PART` / `KICK` / `404` (`ERR_CANNOTSENDTOCHAN`) / `474` (`ERR_BANNEDFROMCHAN`) / `ERROR` handlers in the transport — silent drops become loud WARNINGs. **Live-verified**: brief reached worker in 9 seconds after the fix; before, the same brief was being silently swallowed.
+
+### Hygiene
+
+- **#427 v8.19.34** — gitignore session-local artifacts that polluted the repo root: `culture.yaml`, `agents.yaml`, `.claude/settings.json`, `.st4ck/`.
+- **#434 v8.19.40** — `tests/conftest.py` session-scoped autouse fixture captures `culture.yaml` + `agents.yaml` mtime at the repo root before the suite runs and writes a loud stderr warning if either changes after. Advisory, not a hard fail.
+
+### What's deferred (real this time)
+
+- **owner_map cache invalidation hook** — the IRC server's task-channel ACL caches the owner_map for 5s. A boss daemon that restarts immediately after a worker spawn races ahead of the next cache refresh and gets ERR_BANNEDFROMCHAN on the JOIN. v8.19.42 makes the symptom recoverable. The clean fix is a manifest-write hook in `culture.config.add_to_manifest` / `culture.cli.agent.create` that calls `culture.agentirc.client._invalidate_owner_map_cache()` so the next ACL check reads fresh.
+
+>>> See: original spec sections below describe the v8.9 baseline. Read this update block first; the architecture diagram and several behavior notes are superseded by what shipped in v8.19.0–v8.19.42.
 
 ## v8.19.x update — 2026-05-31
 
@@ -114,6 +163,9 @@ needs **no new dependency and no build step**. Desktop (Electron/Tauri) would ad
 packaging overhead for no gain on a single-user local machine.
 
 ## Architecture
+
+>>> See "v8.19.26-v8.19.42 update" at the top: the architecture below describes the v8.9 baseline; channel data model, persistent observer, security model, and effort inheritance all changed.
+
 
 ```text
  browser (SPA, vanilla JS + EventSource)

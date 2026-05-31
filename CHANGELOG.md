@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.43] - 2026-06-01
+
+### Docs — PRD update for v8.19.26-v8.19.42 (17 PRs)
+
+Adds a new top-of-doc update block to `docs/superpowers/specs/2026-05-29-mission-control-dashboard-design.md` capturing the v8.19.26-v8.19.42 session's 17 PRs (#420-#436), grouped into:
+
+- Docs / UX (#420, #424)
+- Model / effort inheritance (#421, #431, #432)
+- Permission-broker security stack — 3-layer defense (#425, #426, #429, #430, #433)
+- Orchestration / observability (#422, #423, #428, #435, #436)
+- Hygiene (#427, #434)
+
+Plus a cross-ref pointer above the existing `## Architecture` section so readers landing on the v8.9 baseline diagram know it has been superseded.
+
+Headline finds the update calls out: (1) `AgentConfig.thinking` was decorative the project's whole life — never reached the SDK; (2) the permission-broker `--always` sticky rule had no input constraint, letting one approval whitelist every future call; (3) the IRC transport optimistically tracked channel membership without server confirmation, causing silent brief-drops with no error path.
+
+Docs-only.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner
