@@ -25,6 +25,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# v8.19.29: per-turn inactivity timeout, propagated from the claude backend
+# (v8.19.25). ACP streams a turn over JSON-RPC: ``session/prompt`` returns a
+# stopReason and ``session/update`` notifications deliver message chunks. Two
+# wedge points exist — the ``session/prompt`` request itself and the trailing
+# busy-wait that drains chunks. If the backing agent goes silent at either,
+# the prompt loop would block indefinitely. We bound both on
+# SDK_INACTIVITY_TIMEOUT_SECONDS (the busy-wait as a true *inactivity* timer
+# reset by each chunk via ``_last_activity``) so silence becomes the existing
+# ``on_turn_error`` recovery path. Shares claude's
+# ``CULTURE_SDK_INACTIVITY_TIMEOUT`` env var (seconds, float) so one knob
+# tunes every backend; default 180s.
+SDK_INACTIVITY_TIMEOUT_SECONDS = float(os.environ.get("CULTURE_SDK_INACTIVITY_TIMEOUT", "180"))
+
 
 class ACPAgentRunner:
     """Manages an ACP session for the culture daemon.
@@ -69,6 +82,10 @@ class ACPAgentRunner:
         self._request_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._accumulated_text = ""
+        # Monotonic timestamp of the last sign of life from the backing agent
+        # during an in-flight turn (set on each session/update chunk). Used by
+        # the trailing busy-wait to enforce a true inactivity timeout.
+        self._last_activity: float = 0.0
 
     def is_running(self) -> bool:
         return self._running
@@ -377,6 +394,8 @@ class ACPAgentRunner:
 
     async def _handle_session_update(self, params: dict) -> None:
         """Process a session/update notification."""
+        # Any session/update is a sign of life — refresh the inactivity timer.
+        self._last_activity = time.monotonic()
         update = params.get("update", params)
         update_type = update.get("sessionUpdate", "")
 
@@ -421,7 +440,7 @@ class ACPAgentRunner:
             return await self._send_request(
                 "session/prompt",
                 prompt_params,
-                timeout=300,
+                timeout=SDK_INACTIVITY_TIMEOUT_SECONDS,
             )
         except TimeoutError:
             logger.warning(
@@ -431,7 +450,7 @@ class ACPAgentRunner:
             return await self._send_request(
                 "session/prompt",
                 prompt_params,
-                timeout=300,
+                timeout=SDK_INACTIVITY_TIMEOUT_SECONDS,
             )
 
     async def _handle_prompt_result(self, resp: dict) -> None:
@@ -441,7 +460,16 @@ class ACPAgentRunner:
             await self._flush_accumulated_text()
             self._busy = False
 
+        # v8.19.29: drain trailing chunks, but bound on inactivity. Each
+        # session/update chunk refreshes ``_last_activity``; if the backing
+        # agent goes silent for SDK_INACTIVITY_TIMEOUT_SECONDS while still
+        # flagged busy, treat the stream as wedged and surface a turn failure.
         while self._busy and self._running:
+            if time.monotonic() - self._last_activity > SDK_INACTIVITY_TIMEOUT_SECONDS:
+                raise RuntimeError(
+                    f"ACP stream inactivity timeout "
+                    f"({SDK_INACTIVITY_TIMEOUT_SECONDS}s with no session/update)"
+                )
             await asyncio.sleep(0.1)
 
     async def _execute_single_prompt(self, text: str) -> None:
@@ -459,6 +487,7 @@ class ACPAgentRunner:
         ):
             try:
                 self._busy = True
+                self._last_activity = time.monotonic()
                 resp = await self._send_prompt_with_retry(text)
                 await self._handle_prompt_result(resp)
             except TimeoutError:  # bubbles from _send_prompt_with_retry's retry-then-fail

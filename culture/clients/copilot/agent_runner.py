@@ -20,6 +20,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# v8.19.29: per-turn inactivity timeout, propagated from the claude backend
+# (v8.19.25). The Copilot SDK exposes a single blocking ``send_and_wait``
+# per turn rather than a message stream the harness iterates; if the SDK
+# subprocess wedges, that call would hang forever. Bounding it on
+# SDK_INACTIVITY_TIMEOUT_SECONDS surfaces the silence as the existing
+# ``asyncio.TimeoutError`` -> ``_handle_turn_error`` -> ``on_exit(1)``
+# recovery path so the daemon restarts the session. Shares claude's
+# ``CULTURE_SDK_INACTIVITY_TIMEOUT`` env var (seconds, float) so one knob
+# tunes every backend; default 180s.
+SDK_INACTIVITY_TIMEOUT_SECONDS = float(os.environ.get("CULTURE_SDK_INACTIVITY_TIMEOUT", "180"))
+
 
 class CopilotAgentRunner:
     """Manages a GitHub Copilot SDK session for the culture daemon."""
@@ -200,7 +211,9 @@ class CopilotAgentRunner:
                 },
             ):
                 try:
-                    response = await self._session.send_and_wait(text, timeout=120.0)
+                    response = await self._session.send_and_wait(
+                        text, timeout=SDK_INACTIVITY_TIMEOUT_SECONDS
+                    )
                     await self._handle_turn_response(response)
                 except asyncio.TimeoutError:
                     outcome = "timeout"

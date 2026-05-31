@@ -21,6 +21,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# v8.19.29: per-turn inactivity timeout, propagated from the claude backend
+# (v8.19.25). The codex app-server streams a turn via JSON-RPC notifications
+# and signals completion with ``turn/completed``; the harness waits on
+# ``_turn_done``. If the app-server wedges (dropped stdio pipe, hung tool,
+# stuck model call) that event never fires and the prompt loop would block
+# forever. Bounding the wait converts the silence into the existing
+# ``outcome="timeout"`` + ``on_turn_error`` recovery path so the daemon can
+# restart the session. Shares claude's ``CULTURE_SDK_INACTIVITY_TIMEOUT`` env
+# var (seconds, float) so one knob tunes every backend; default 180s.
+SDK_INACTIVITY_TIMEOUT_SECONDS = float(os.environ.get("CULTURE_SDK_INACTIVITY_TIMEOUT", "180"))
+
 
 class CodexAgentRunner:
     """Manages a Codex app-server session for the culture daemon."""
@@ -370,12 +381,18 @@ class CodexAgentRunner:
                         "input": [{"type": "text", "text": text}],
                     },
                 )
-                # Wait for turn/completed notification via the event
-                async with asyncio.timeout(300):
+                # Wait for turn/completed notification via the event.
+                # v8.19.29: bound the wait on SDK_INACTIVITY_TIMEOUT_SECONDS so
+                # a wedged app-server (no turn/completed) surfaces as a turn
+                # failure instead of blocking the prompt loop indefinitely.
+                async with asyncio.timeout(SDK_INACTIVITY_TIMEOUT_SECONDS):
                     await self._turn_done.wait()
             except asyncio.TimeoutError:
                 outcome = "timeout"
-                logger.warning("Codex turn timed out after 300s")
+                logger.warning(
+                    "Codex turn timed out after %ss with no turn/completed",
+                    SDK_INACTIVITY_TIMEOUT_SECONDS,
+                )
                 self._turn_done.set()
                 if self.on_turn_error:
                     await maybe_await(self.on_turn_error())

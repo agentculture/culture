@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.29] - 2026-06-01
+
+### Fixed — SDK inactivity timeout propagated to codex / copilot / acp
+
+v8.19.25 added a per-message inactivity timeout to the claude backend by
+wrapping the SDK `async for query(...)` iteration's `__anext__()` in
+`asyncio.wait_for(timeout=SDK_INACTIVITY_TIMEOUT_SECONDS)`. The other three
+backends do **not** use that SDK async-iteration shape — they drive their
+agents over JSON-RPC / SDK request-response loops — so the literal
+`__anext__` wrap does not apply. This release propagates the *intent* (an
+all-backends rule): every backend now shares the same
+`SDK_INACTIVITY_TIMEOUT_SECONDS` constant, sourced from the same
+`CULTURE_SDK_INACTIVITY_TIMEOUT` env var (seconds, float; default 180s), so
+one knob bounds a wedged session on every backend and routes the silence
+into that backend's existing failure → daemon crash-recovery path.
+
+Per-backend mapping (each backend's natural analog of "the SDK went
+silent mid-turn"):
+
+- **codex** (`culture/clients/codex/agent_runner.py`): the turn waits on the
+  `turn/completed` notification via `_turn_done`. The hardcoded
+  `asyncio.timeout(300)` is replaced with
+  `asyncio.timeout(SDK_INACTIVITY_TIMEOUT_SECONDS)`. On expiry the existing
+  `outcome="timeout"` + `on_turn_error` path fires.
+- **copilot** (`culture/clients/copilot/agent_runner.py`): the SDK exposes a
+  single blocking `send_and_wait(text, timeout=...)` per turn. The hardcoded
+  `120.0` becomes `SDK_INACTIVITY_TIMEOUT_SECONDS`; a hang raises
+  `asyncio.TimeoutError` → `_handle_turn_error` → `on_exit(1)`.
+- **acp** (`culture/clients/acp/agent_runner.py`): two wedge points are now
+  bounded — the `session/prompt` request (was `timeout=300`, now the
+  constant, retried once as before) **and** the previously *unbounded*
+  trailing busy-wait that drains `session/update` chunks. The busy-wait is
+  now a true inactivity timer: each chunk refreshes `_last_activity`, and
+  silence for the budget raises `RuntimeError("ACP stream inactivity
+  timeout ...")` → existing `on_turn_error` path. This closes a real
+  hang (a stuck backing agent could spin the loop until the daemon died).
+
+No new public API. The env var override (`CULTURE_SDK_INACTIVITY_TIMEOUT`)
+is shared with claude and documented above; raise it for backends or
+models whose legitimate turns can exceed 180s of silence.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner
