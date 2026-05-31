@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.21] - 2026-05-31
+
+### Added
+
+- **Per-agent + per-task token-usage badges in the dashboard.**
+  Each channel card now shows a total-tokens badge in the header
+  (sum of every member's cumulative usage) and each member chip
+  shows its own contribution. The header badge is the *task total*
+  per the user's clarification that channel ≈ task — the grouping
+  heading (`<boss>'s work`) is one level higher.
+- New `culture/clients/_usage.py`. Persists per-turn token records
+  to `~/.culture/usage/<nick>.jsonl` — one line per LLM turn,
+  shape: `{"ts": "...", "in": N, "out": M, "model": "..."}`.
+  Helpers: `record_turn_usage` / `record_turn_usage_sync` /
+  `sum_tokens` / `clear_usage` / `usage_path_for`. Disk write
+  errors are swallowed — usage is advisory, must NOT block the
+  agent loop.
+- Wired through all 4 backends per the all-backends rule
+  (`culture/clients/claude/agent_runner.py`,
+  `culture/clients/codex/agent_runner.py`,
+  `culture/clients/copilot/agent_runner.py`,
+  `culture/clients/acp/agent_runner.py`). Claude actively records
+  `tokens_input`/`tokens_output` from the SDK `ResultMessage.usage`;
+  codex/copilot/acp pass `None`/`None` today (no-op) until their
+  SDKs expose token counts (issues #298 / #299) — the call sites
+  stay so when usage arrives, only the dict needs to be threaded.
+- `list_tasks` (`culture/dashboard/server.py`) stamps every
+  member with `tokens_used` / `tokens_in` / `tokens_out` and every
+  channel with `tokens_total`. Internal per-call memoization
+  prevents reading the boss's usage file once per channel (the
+  boss is in every channel of its task).
+- Frontend (`app.js`) renders `.channel-tokens-total` at the top
+  of each card (only when > 0) and `.token-badge` per member chip
+  (only when > 0). New `formatTokens` helper: 999→`999t`,
+  12 345→`12.3k`, 4 567 890→`4.6M`.
+
+### Fixed
+
+- **Card click stuck on `local-boss` regardless of which task you
+  clicked.** Previously every `#task-*` card defaulted to the boss
+  member (the boss is in every task channel) AND auto-switched
+  the stream tab to Chat, so the Activity tab never changed
+  content when the user clicked different tasks. Now the card
+  click picks the FIRST WORKER (non-boss member) and PRESERVES
+  the user's currently-active stream tab — clicking a task while
+  on Activity now actually shows that task's worker's activity.
+  Live-verified via st4ck browse: `#task-builder` →
+  `local-builder · Activity`, `#task-research` →
+  `local-research · Activity`.
+
+### Tests
+
+- 12 new tests in `tests/test_usage.py`: record + sum roundtrip,
+  multi-turn append, both-None no-op, input-only / output-only
+  paths, negative-value rejected, missing file → zeros, malformed
+  line skip, clear idempotent, file under culture_home, async
+  wrapper, OSError swallowed.
+- 4 new tests in `tests/test_dashboard_seed_integration.py`:
+  per-member tokens_used stamping, channel tokens_total sum,
+  zero-when-no-records, per-nick cache prevents N reads of the
+  boss's file inside one `list_tasks` call.
+- Live-verified token rendering in real browser: 23 of 26 cards
+  show totals when seeded with realistic data; per-chip badges
+  populated; format readable (`245k`, `380k`).
+
 ## [8.19.20] - 2026-05-31
 
 ### Added — edge-case test fleet (67 new tests across 5 files)

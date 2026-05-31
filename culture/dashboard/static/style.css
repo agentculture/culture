@@ -360,6 +360,27 @@ body {
 .channel-cat-task { background: rgba(65, 214, 122, 0.12); color: var(--green); }
 .channel-cat-shared { background: rgba(138, 151, 163, 0.15); color: var(--muted); }
 .channel-cat-boss { background: rgba(227, 179, 65, 0.15); color: var(--amber); }
+.channel-tokens-total {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(74, 163, 255, 0.15);
+  color: var(--accent);
+  letter-spacing: 0.4px;
+  font-family: var(--mono);
+}
+.token-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(138, 151, 163, 0.15);
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-left: 2px;
+}
 .channel-seed {
   margin: 6px 0 4px 0;
   font-size: 12px;

@@ -399,6 +399,19 @@ class CodexAgentRunner:
                 duration_ms=duration_ms,
                 outcome=outcome,
             )
+        # v8.19.21 all-backends parity with claude: append a usage record to
+        # ~/.culture/usage/<nick>.jsonl so the dashboard's per-task tokens
+        # badge is wired here too. No-op today (codex SDK does not expose
+        # token counts — issue #298); the call site stays so when the SDK
+        # gains usage, only the dict needs to be threaded.
+        from culture.clients._usage import record_turn_usage
+
+        await record_turn_usage(
+            self._nick,
+            tokens_input=None,
+            tokens_output=None,
+            model=self.model,
+        )
 
     async def _prompt_loop(self) -> None:
         """Process queued prompts one at a time."""

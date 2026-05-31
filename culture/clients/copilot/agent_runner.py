@@ -222,6 +222,19 @@ class CopilotAgentRunner:
                     duration_ms=duration_ms,
                     outcome=outcome,
                 )
+            # v8.19.21 all-backends parity with claude: dashboard token
+            # bookkeeping in ~/.culture/usage/<nick>.jsonl. No-op today
+            # (copilot SDK does not expose tokens — issue #299); call
+            # site stays so when the SDK gains usage, only the dict
+            # needs to be threaded.
+            from culture.clients._usage import record_turn_usage
+
+            await record_turn_usage(
+                self._nick,
+                tokens_input=None,
+                tokens_output=None,
+                model=self.model,
+            )
         return exit_signal
 
     async def _prompt_loop(self) -> None:

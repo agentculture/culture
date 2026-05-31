@@ -518,13 +518,39 @@ def list_tasks(config_path=None):
             if boss_nick:
                 workers_by_boss.setdefault(boss_nick, []).append(a)
 
+    # v8.19.21: cache per-nick token sums for THIS list_tasks call. A nick
+    # appears in multiple channels (the boss is in every channel, workers
+    # may be in #task + #team); the file sum is identical each time, so we
+    # memoize for the duration of this call.
+    from culture.clients._usage import sum_tokens
+
+    _token_cache: dict[str, dict] = {}
+
+    def _tokens_of(nick: str) -> dict:
+        if nick not in _token_cache:
+            _token_cache[nick] = sum_tokens(nick)
+        return _token_cache[nick]
+
     def _member(agent):
+        # tokens_used: cumulative input + output across this agent's
+        # lifetime. 0 if the backend (codex / copilot) doesn't expose
+        # usage counts yet.
+        toks = _tokens_of(agent.nick)
         return {
             "nick": agent.nick,
             "role": getattr(agent, "role", "") or "",
             "is_boss": "boss" in (getattr(agent, "tags", []) or []),
             "state": _agent_state(agent.nick),
+            "tokens_used": toks["total"],
+            "tokens_in": toks["in"],
+            "tokens_out": toks["out"],
         }
+
+    def _channel_token_total(members: list[dict]) -> int:
+        # The TASK total at the top of each channel card — sum of every
+        # member's tokens_used. Mirrors what the user asked: "total task
+        # tokens used calculating all agent's tokens for that task".
+        return sum(int(m.get("tokens_used", 0) or 0) for m in members)
 
     tasks = []
     seen_bosses: set[str] = set()
@@ -550,13 +576,16 @@ def list_tasks(config_path=None):
         boss_chs = [c for c in (getattr(boss, "channels", []) or []) if isinstance(c, str)]
         for ch in boss_chs:
             cat = _classify_channel(ch)
+            ch_members = [_member(boss)] + [
+                _member(w) for w in workers if ch in (getattr(w, "channels", []) or [])
+            ]
             channels.append(
                 {
                     "channel": ch,
                     "category": cat,
-                    "members": [_member(boss)]
-                    + [_member(w) for w in workers if ch in (getattr(w, "channels", []) or [])],
+                    "members": ch_members,
                     "seed_preview": _seed_preview(ch),
+                    "tokens_total": _channel_token_total(ch_members),
                 }
             )
         # Per-worker #task-<worker> channels.
@@ -571,6 +600,7 @@ def list_tasks(config_path=None):
                     "category": "task",
                     "members": members,
                     "seed_preview": _seed_preview(wch),
+                    "tokens_total": _channel_token_total(members),
                 }
             )
 
@@ -603,12 +633,14 @@ def list_tasks(config_path=None):
         channels = []
         for w in orphan_workers:
             wch = f"#task-{w.nick.split('-', 1)[1] if '-' in w.nick else w.nick}"
+            ch_members = [_member(w)]
             channels.append(
                 {
                     "channel": wch,
                     "category": "task",
-                    "members": [_member(w)],
+                    "members": ch_members,
                     "seed_preview": _seed_preview(wch),
+                    "tokens_total": _channel_token_total(ch_members),
                 }
             )
         tasks.append(

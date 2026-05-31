@@ -413,6 +413,21 @@ class AgentRunner:
                 duration_ms=duration_ms,
                 outcome=outcome,
             )
+        # v8.19.21: append the per-turn token usage to the on-disk
+        # ``~/.culture/usage/<nick>.jsonl`` so the dashboard can show
+        # "tokens used" per agent + per channel (task) without depending
+        # on a running OTLP collector. Best-effort — disk errors are
+        # swallowed inside record_turn_usage; we never block the agent
+        # loop on usage bookkeeping.
+        if not failed and usage_dict is not None:
+            from culture.clients._usage import record_turn_usage
+
+            await record_turn_usage(
+                self._nick,
+                tokens_input=usage_dict.get("tokens_input"),
+                tokens_output=usage_dict.get("tokens_output"),
+                model=self.model,
+            )
         # Feed per-turn input-token usage to the context watcher (daemon-side).
         if not failed and self.on_usage is not None:
             tokens_input = usage_dict.get("tokens_input") if usage_dict else None

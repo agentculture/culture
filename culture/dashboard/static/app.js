@@ -24,6 +24,18 @@ function isAtBottom(box) {
   return box.scrollHeight - box.scrollTop - box.clientHeight < SCROLL_BOTTOM_THRESHOLD_PX;
 }
 
+// v8.19.21: compact token formatter for the per-agent + per-task badges.
+// 999 → "999t", 12_345 → "12.3k", 4_567_890 → "4.6M". Stays inside the
+// chip width budget while preserving order-of-magnitude readability.
+function formatTokens(n) {
+  if (n == null) return "";
+  const x = Number(n);
+  if (!isFinite(x) || x <= 0) return "";
+  if (x < 1000) return x.toFixed(0) + "t";
+  if (x < 1_000_000) return (x / 1000).toFixed(x < 10_000 ? 1 : 0) + "k";
+  return (x / 1_000_000).toFixed(x < 10_000_000 ? 1 : 0) + "M";
+}
+
 // v8.19.14 round 2: the channel/agent/pending lists previously called
 // replaceChildren() on every poll (every 2.5–3s), nuking the DOM even
 // when the data was identical. The user saw the entire left panel
@@ -318,6 +330,14 @@ function renderChannelCard(ch) {
     const tag = el("span", `channel-cat channel-cat-${ch.category}`, ch.category);
     header.appendChild(tag);
   }
+  // v8.19.21: task-total tokens at the top of the card (sum of every
+  // member's tokens_used). Hidden when 0 to avoid noise on channels with
+  // backends that don't expose token counts (codex/copilot today).
+  if (ch.tokens_total && ch.tokens_total > 0) {
+    const tt = el("span", "channel-tokens-total", formatTokens(ch.tokens_total));
+    tt.title = `Total tokens used in this task (${formatTokens(ch.tokens_total)} across ${ch.members.length} member(s))`;
+    header.appendChild(tt);
+  }
   card.appendChild(header);
 
   // v8.19.18: seed preview line shown right under the channel title.
@@ -373,6 +393,15 @@ function renderChannelCard(ch) {
         const rb = el("span", "role-badge", memberObj.role);
         chip.appendChild(rb);
       }
+      // v8.19.21: per-agent token badge. Hidden at 0 so the chip stays
+      // clean for backends that don't expose usage yet.
+      if (memberObj.tokens_used && memberObj.tokens_used > 0) {
+        const tb = el("span", "token-badge", formatTokens(memberObj.tokens_used));
+        const ti = memberObj.tokens_in || 0;
+        const to = memberObj.tokens_out || 0;
+        tb.title = `${ti.toLocaleString()} in + ${to.toLocaleString()} out`;
+        chip.appendChild(tb);
+      }
       chip.onclick = (ev) => {
         ev.stopPropagation();
         selectAgent(memberObj.nick);
@@ -389,17 +418,23 @@ function renderChannelCard(ch) {
     card.appendChild(el("div", "channel-members empty", "no members"));
   }
 
-  // Click anywhere else: open the channel chat through the boss
-  // (or first non-boss member when there's no boss listed).
+  // v8.19.21: card click follows THE WORKER, not the boss. Previously
+  // every #task-* card picked the boss member (it appears in every task
+  // channel) and the Activity tab stayed glued to local-boss no matter
+  // which task the user clicked — confusing and broken. Now we pick the
+  // first non-boss member of the channel (the worker doing the actual
+  // task) and PRESERVE the user's currently-active stream tab so the
+  // Activity tab actually changes content when they click around.
   card.onclick = () => {
     if (!ch.members || !ch.members.length) return;
-    const pick = ch.members.find((m) => m && typeof m === "object" && m.is_boss)
-      || ch.members[0];
+    const workers = ch.members.filter(
+      (m) => m && typeof m === "object" && !m.is_boss
+    );
+    const pick = workers[0] || ch.members[0];
     const nick = typeof pick === "string" ? pick : pick.nick;
     selectAgent(nick);
-    state.kind = "chat";
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelector('.tab[data-kind="chat"]').classList.add("active");
+    // Keep the user's current stream-tab kind; don't snap them to Chat
+    // every time they click a card.
     openStream();
     updateStreamTitle();
   };
