@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.26] - 2026-05-31
+
+### Docs — dashboard.md catch-up to v8.19.x reality
+
+`docs/agentirc/dashboard.md` was last touched at v8.15.0 and predated
+the channel/rooms data-model reframe, the persistent observer, the
+living channel brief, archive controls, and the v8.19.x token /
+seed-preview / pending-count surfaces. Brought the doc forward so
+the AgentIRC docs site matches the shipping dashboard.
+
+Also added a cross-reference pointer at the top of the design spec's
+"Architecture" section back to the spec's "v8.19.x update" block —
+so a reader landing on the architecture diagram is told up front it
+reflects the v8.9 baseline, not the current behaviour.
+
+Docs-only — no code or schema changes.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

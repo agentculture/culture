@@ -115,6 +115,8 @@ packaging overhead for no gain on a single-user local machine.
 
 ## Architecture
 
+>>> See "v8.19.x update" at top for current behaviour.
+
 ```text
  browser (SPA, vanilla JS + EventSource)
         │  GET /  /static/*           (UI)
