@@ -523,6 +523,41 @@ class InvalidRequestIdError(ValueError):
     """Raised when a request id is not a valid, path-safe broker id."""
 
 
+HIGH_RISK_STICKY_TOOLS: tuple[str, ...] = ("Edit", "Write", "Bash", "mcp__.*")
+"""Tools that mutate state or reach external services. A sticky ``--always``
+allow for any of these MUST include an ``input_regex`` constraint — a bare
+``{tool: X}`` rule on these would auto-allow every future call (e.g. ``Bash``
+with arbitrary commands) and silently bypass the boss's grant ceiling. The
+boss CLI raises :class:`BareStickyApproveRefusedError` when a high-risk
+``--always`` is attempted without a constraint."""
+
+
+class BareStickyApproveRefusedError(Exception):
+    """Raised when a high-risk ``--always`` allow lacks an ``input_regex``.
+
+    Carries the tool name so the boss CLI can surface a clear remediation
+    message ("re-run with --input-regex '<...>'").
+    """
+
+    def __init__(self, tool_name: str) -> None:
+        super().__init__(
+            f"Refusing to write a bare sticky allow for high-risk tool {tool_name!r}: "
+            "without an input_regex constraint, this rule would auto-allow EVERY "
+            "future call (incl. unrelated inputs). Re-run with "
+            "--input-regex '<regex>' to pin the rule to a specific input shape, "
+            "or use approve without --always for a one-time grant."
+        )
+        self.tool_name = tool_name
+
+
+def _tool_is_high_risk(tool_name: str) -> bool:
+    """True iff a sticky allow on ``tool_name`` requires an input_regex constraint."""
+    for pattern in HIGH_RISK_STICKY_TOOLS:
+        if _tool_matches(tool_name, pattern):
+            return True
+    return False
+
+
 def write_decision(
     request_id: str,
     *,
@@ -530,14 +565,31 @@ def write_decision(
     scope: str = "once",
     reason: str = "",
     pattern: str = "",
+    input_regex: str = "",
+    tool_name: str = "",
     decided_by: str = "boss",
 ) -> str:
     """Write a decision file (first-writer-wins via O_CREAT|O_EXCL + atomic rename).
 
     Raises :class:`InvalidRequestIdError` if ``request_id`` is not path-safe
     (approvers pass it from untrusted input), :class:`DecisionExistsError` if a
-    decision already exists. Returns the decision path.
+    decision already exists. Raises :class:`BareStickyApproveRefusedError` if
+    a high-risk sticky allow lacks an ``input_regex`` constraint (see
+    :data:`HIGH_RISK_STICKY_TOOLS`). Returns the decision path.
+
+    ``input_regex`` and ``tool_name`` are recorded into the payload so
+    :meth:`PermissionBroker._append_sticky_rule` can emit an input-constrained
+    rule (``{"tool": X, "input_regex": Y}``) rather than the unsafe bare
+    ``{"tool": X}`` form.
     """
+    if (
+        verdict == "allow"
+        and scope == "always"
+        and not input_regex
+        and tool_name
+        and _tool_is_high_risk(tool_name)
+    ):
+        raise BareStickyApproveRefusedError(tool_name)
     if not valid_request_id(request_id):
         raise InvalidRequestIdError(request_id)
     dest = os.path.join(_decisions_dir(), f"{request_id}.json")
@@ -559,6 +611,8 @@ def write_decision(
         payload["reason"] = reason
     if pattern:
         payload["pattern"] = pattern
+    if input_regex:
+        payload["input_regex"] = input_regex
     try:
         _atomic_write_json(dest, payload)
     except BaseException:
@@ -805,8 +859,14 @@ class PermissionBroker:
         if not isinstance(rules, list):
             rules = []
         # Decision may carry an override pattern in ``decision["pattern"]``;
-        # otherwise the rule is an exact-tool-name match.
+        # otherwise the rule is an exact-tool-name match. ``input_regex``
+        # (v8.19.32) is the constraint that pins the rule to a specific input
+        # shape — required for high-risk tools (Edit/Write/Bash/mcp__.*) so
+        # one approval can't silently whitelist every future invocation.
         rule: dict[str, Any] = {"tool": decision.get("pattern") or tool_name}
+        sticky_input_regex = decision.get("input_regex")
+        if sticky_input_regex:
+            rule["input_regex"] = sticky_input_regex
         # Avoid duplicating an identical rule.
         if rule not in rules:
             rules.append(rule)

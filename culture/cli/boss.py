@@ -24,6 +24,7 @@ import sys
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
+    BareStickyApproveRefusedError,
     DecisionExistsError,
     InvalidRequestIdError,
     cleanup_stale,
@@ -143,6 +144,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     approve_p.add_argument("id", help="Request id")
     approve_p.add_argument("--always", action="store_true", help="Save a sticky allow rule")
     approve_p.add_argument("--pattern", default="", help="Tool pattern for the sticky rule")
+    approve_p.add_argument(
+        "--input-regex",
+        default="",
+        dest="input_regex",
+        help=(
+            "Input regex to constrain a sticky --always rule. Required for "
+            "high-risk tools (Edit/Write/Bash/mcp__.*); without it those tools "
+            "would auto-allow every future call regardless of input. "
+            "Example: --input-regex '^ls(\\s|$)'"
+        ),
+    )
 
     deny_p = sub.add_parser("deny", help="Deny a worker permission request")
     deny_p.add_argument("id", help="Request id")
@@ -379,13 +391,24 @@ def _cmd_approve(args: argparse.Namespace) -> None:
         sys.exit(2)
     scope = "always" if args.always else "once"
     try:
-        write_decision(args.id, verdict="allow", scope=scope, pattern=args.pattern, decided_by=boss)
+        write_decision(
+            args.id,
+            verdict="allow",
+            scope=scope,
+            pattern=args.pattern,
+            input_regex=args.input_regex,
+            tool_name=tool,
+            decided_by=boss,
+        )
     except InvalidRequestIdError:
         print(f"Error: invalid request id {args.id!r}", file=sys.stderr)
         sys.exit(1)
     except DecisionExistsError:
         print(f"Error: a decision already exists for {args.id}", file=sys.stderr)
         sys.exit(1)
+    except BareStickyApproveRefusedError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        sys.exit(2)
     print(f"approved {args.id} (scope={scope})")
 
 

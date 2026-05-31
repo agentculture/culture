@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.32] - 2026-06-01
+
+### Fixed — `culture boss approve --always` could silently whitelist every input
+
+`PermissionBroker._append_sticky_rule` persisted approved sticky rules as a
+bare ``{tool: X}`` match — no input constraint. So if a boss did
+``culture boss approve <id> --always`` for one specific Bash command
+(e.g. ``ls /tmp``), every subsequent Bash call (``rm -rf``, anything)
+auto-allowed without re-asking. Found via dogfood by inspecting active
+worker policy files: every worker's policy had bare ``- tool: Bash`` and
+``- tool: Edit`` entries appended by earlier ``--always`` approvals,
+effectively bypassing the boss's gating.
+
+Fix:
+
+- ``write_decision`` now accepts ``input_regex`` and ``tool_name``.
+- A new ``HIGH_RISK_STICKY_TOOLS`` constant lists tools that mutate state
+  or reach external services (``Edit``, ``Write``, ``Bash``, ``mcp__.*``).
+- ``write_decision`` raises ``BareStickyApproveRefusedError`` if a sticky
+  ``--always`` allow targets a high-risk tool without an ``input_regex``.
+- ``_append_sticky_rule`` emits the constraint into the persisted policy:
+  ``{tool: X, input_regex: Y}`` instead of bare ``{tool: X}``.
+- ``culture boss approve`` gains an ``--input-regex`` flag; refuses with
+  a clear remediation message if missing on a high-risk sticky allow.
+
+Tests: ``tests/test_perm_broker.py::TestHighRiskStickyApprove`` covers
+refuse-without-regex, allow-with-regex, once-grants-OK, safe-tool-OK,
+mcp__-refused, and persisted-rule-shape.
+
+**Migration:** existing policy files at ``~/.culture/perm-policy/*.yaml``
+may contain bare ``- tool: Bash`` / ``- tool: Edit`` entries from prior
+``--always`` approvals. Audit each file and delete bare high-risk
+entries; the worker will re-route those tools to the boss on next use
+and the new gate will require ``--input-regex`` on the re-approval.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

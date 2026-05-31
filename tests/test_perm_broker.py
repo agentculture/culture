@@ -458,3 +458,130 @@ def _write_decision_atomic(path: str, payload: dict[str, Any]) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# v8.19.32 — sticky --always must include input_regex for high-risk tools
+# ---------------------------------------------------------------------------
+
+
+class TestHighRiskStickyApprove:
+    """A sticky ``--always`` allow on a high-risk tool (Edit/Write/Bash/mcp__.*)
+    MUST include an ``input_regex`` constraint. Without it, one approved
+    Bash call would whitelist every future Bash call — the silent-bypass
+    case found via dogfood. Boss CLI surfaces a refusal; non-sticky and
+    safe-tool flows are unchanged.
+    """
+
+    def test_high_risk_always_without_input_regex_refuses(self, culture_root):
+        from culture.clients._perm_broker import (
+            BareStickyApproveRefusedError,
+            
+            write_decision,
+        )
+
+        # No queue entry needed — write_decision's guard fires before any I/O.
+        with pytest.raises(BareStickyApproveRefusedError) as excinfo:
+            write_decision(
+                "req-test-12345",
+                verdict="allow",
+                scope="always",
+                tool_name="Bash",
+                decided_by="local-boss",
+            )
+        assert "Bash" in str(excinfo.value)
+        assert excinfo.value.tool_name == "Bash"
+
+    def test_high_risk_always_with_input_regex_allowed(self, culture_root):
+        from culture.clients._perm_broker import write_decision
+
+        dest = write_decision(
+            "req-test-12346",
+            verdict="allow",
+            scope="always",
+            tool_name="Bash",
+            input_regex=r"^ls(\s|$)",
+            decided_by="local-boss",
+        )
+        with open(dest, encoding="utf-8") as f:
+            payload = json.load(f)
+        assert payload["scope"] == "always"
+        assert payload["input_regex"] == r"^ls(\s|$)"
+
+    def test_high_risk_once_without_input_regex_ok(self, culture_root):
+        """Once-grants don't write a sticky rule; no input_regex required."""
+        from culture.clients._perm_broker import write_decision
+
+        dest = write_decision(
+            "req-test-12347",
+            verdict="allow",
+            scope="once",
+            tool_name="Bash",
+            decided_by="local-boss",
+        )
+        with open(dest, encoding="utf-8") as f:
+            payload = json.load(f)
+        assert payload["scope"] == "once"
+        assert "input_regex" not in payload
+
+    def test_safe_tool_always_without_input_regex_ok(self, culture_root):
+        """Read/Glob/Grep are safe — bare sticky allow is fine."""
+        from culture.clients._perm_broker import write_decision
+
+        dest = write_decision(
+            "req-test-12348",
+            verdict="allow",
+            scope="always",
+            tool_name="Read",
+            decided_by="local-boss",
+        )
+        with open(dest, encoding="utf-8") as f:
+            payload = json.load(f)
+        assert payload["scope"] == "always"
+
+    def test_mcp_tool_always_without_input_regex_refuses(self, culture_root):
+        """Any mcp__* tool is high-risk (external side effects)."""
+        from culture.clients._perm_broker import (
+            BareStickyApproveRefusedError,
+            write_decision,
+        )
+
+        with pytest.raises(BareStickyApproveRefusedError):
+            write_decision(
+                "req-test-12349",
+                verdict="allow",
+                scope="always",
+                tool_name="mcp__playwright__browser_click",
+                decided_by="local-boss",
+            )
+
+    def test_append_sticky_rule_includes_input_regex(self, culture_root, monkeypatch):
+        """When a decision carries input_regex, the persisted policy rule
+        constrains future matches to that input shape — not a bare tool match."""
+        from culture.clients._perm_broker import (
+            PermissionBroker,
+            policy_path_for,
+            write_decision,
+            write_default_policy,
+        )
+
+        nick = "local-test-w"
+        write_default_policy(nick)
+
+        broker = PermissionBroker(nick=nick, boss="local-boss")
+        decision = {
+            "verdict": "allow",
+            "scope": "always",
+            "input_regex": r"^ls(\s|$)",
+        }
+        broker._append_sticky_rule("allow", "Bash", decision)
+
+        with open(policy_path_for(nick), encoding="utf-8") as f:
+            policy = yaml.safe_load(f)
+        rules = policy["auto_allow"]
+        match = [
+            r
+            for r in rules
+            if r.get("tool") == "Bash" and r.get("input_regex") == r"^ls(\s|$)"
+        ]
+        assert match, f"expected the input-constrained Bash rule, got {rules!r}"
