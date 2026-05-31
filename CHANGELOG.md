@@ -4,6 +4,79 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.42] - 2026-06-01
+
+### Fixed — boss briefs silently dropped after race-y rejoin (CRITICAL)
+
+THE BUG. ``IRCTransport.join_channel`` in
+``culture/clients/claude/irc_transport.py`` was tracking confirmed
+membership **optimistically** — it appended the channel to
+``self.channels`` BEFORE the server confirmed the JOIN. When the
+server rejected the JOIN (e.g. task-channel ACL refused because the
+owner_map cache was stale at the exact moment the boss tried to
+re-join a freshly-spawned worker's ``#task-<suffix>`` channel), the
+transport still thought it had joined.
+
+Every subsequent ``send_privmsg`` from the boss to that channel
+fired PRIVMSG into a channel the IRC server didn't consider the boss
+a member of, and the server returned ``ERR_CANNOTSENDTOCHAN`` (404).
+The transport had no 404 handler, so the response was silently
+ignored. From the boss CLI's perspective the brief was "delivered"
+(boss-side log + ``_channel_members`` showed the worker in the
+channel); from the worker's perspective the brief never arrived.
+The worker daemon's IRC buffer for ``#task-<suffix>`` showed
+``messages: []`` and the worker's idle watchdog would fire
+``never_briefed`` warnings 90s after spawn. Looked exactly like
+"daemon doesn't process IRC PRIVMSGs" — but the message had never
+been delivered.
+
+Diagnosed live by:
+1. Confirming worker WHOIS shows the daemon connected to its task channel.
+2. Querying the daemon's IPC ``irc_read`` — empty buffer despite "briefed" log.
+3. Confirming a direct ``PRIVMSG <worker_nick>`` (DM) lands in the
+   buffer normally.
+4. WHOISing the boss — boss NOT listed as a member of the worker's
+   ``#task-<suffix>`` channel despite the boss daemon's
+   ``Rejoined owned task channel #task-<suffix>`` log line.
+
+### Fix — confirmation-based membership tracking
+
+- ``join_channel`` no longer pre-appends to ``self.channels``. JOIN
+  is sent; the server's JOIN echo (delivered to all channel members
+  including the joiner) is what flips the tracking to "joined".
+- ``part_channel`` is symmetric — PART tracking happens only on the
+  server's PART echo.
+- New ``JOIN`` / ``PART`` / ``KICK`` handlers check the message's
+  prefix against ``self.nick`` and update tracking only on our own
+  echoes; other members' joins/parts are not tracked (consistent
+  with prior behavior).
+- New ``404 ERR_CANNOTSENDTOCHAN`` handler drops the channel from
+  ``self.channels`` and logs a loud WARNING that names the silent-
+  drop class of bug — so the next operator who hits it sees what
+  happened in the log instead of debugging an empty buffer for an
+  hour.
+- New ``474 ERR_BANNEDFROMCHAN`` handler does the same on JOIN
+  rejection.
+- New generic ``ERROR`` handler so server-initiated ERRORs aren't
+  silently swallowed either.
+
+### Why the racing happened
+
+Spawning a worker writes its registration to ``~/.culture/server.yaml``
+and starts the worker daemon. Restarting the boss daemon
+``_rejoin_owned_task_channels`` reads the manifest and joins every
+``#task-<suffix>`` where the worker's ``boss`` field matches the
+boss nick. The IRC server's task-channel ACL
+(``culture/agentirc/client.py:_task_channel_acl``) checks against a
+cached ``owner_map`` with a 5s TTL. If the boss rejoin races ahead of
+the IRC server's next cache refresh, the JOIN is refused.
+Pre-v8.19.42 the transport assumed success regardless.
+
+The deeper fix — a manifest-change hook that invalidates the IRC
+server's owner_map cache — is queued for a follow-up; transport-side
+confirmation makes the symptom recoverable in the meantime (the next
+``join_channel`` actually re-attempts the JOIN now).
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner
