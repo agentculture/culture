@@ -43,7 +43,7 @@ from .shared.ipc import agent_socket_path, get_observer, ipc_request
 
 NAME = "boss"
 
-_ALL_CMDS = "init|spawn|brief|read|pending|approve|deny|audit|log|status|close|cleanup"
+_ALL_CMDS = "init|spawn|brief|read|pending|approve|deny|audit|log|watch|status|close|cleanup"
 
 _MANAGER_PROMPT = """\
 You are {nick}, a manager agent on the culture mesh. A human briefs you in your
@@ -156,6 +156,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     log_p.add_argument("name", help="Worker suffix")
     log_p.add_argument("--limit", "-n", type=int, default=30)
 
+    watch_p = sub.add_parser(
+        "watch",
+        help="Tail a worker's significant events (audit turns + daemon lifecycle)",
+    )
+    watch_p.add_argument("name", help="Worker suffix")
+    watch_p.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=20,
+        help="Number of recent events to print (default: 20)",
+    )
+    watch_p.add_argument(
+        "--follow",
+        "-f",
+        action="store_true",
+        help="Keep streaming new events until interrupted (Ctrl-C)",
+    )
+
     sub.add_parser("status", help="Summarize workers + pending perms")
 
     close_p = sub.add_parser("close", help="Stop a worker daemon")
@@ -182,6 +201,7 @@ def dispatch(args: argparse.Namespace) -> None:
         "deny": _cmd_deny,
         "audit": _cmd_audit,
         "log": _cmd_log,
+        "watch": _cmd_watch,
         "status": _cmd_status,
         "close": _cmd_close,
         "cleanup": _cmd_cleanup,
@@ -456,6 +476,120 @@ def _cmd_log(args: argparse.Namespace) -> None:
         detail = r.get("detail", {})
         detail_str = " ".join(f"{k}={v}" for k, v in detail.items()) if detail else ""
         print(f"{r.get('ts', '')}  {r.get('action', '?'):<18}  {detail_str}")
+
+
+# Actions on the daemon-log we consider "significant" — what an outside
+# observer needs to know about. Routine items (compact / context_handoff /
+# whisper / engaged) are filtered out by default. Matches the regex baked
+# into the culture-boss SKILL.md Monitor recipe so behaviour is consistent.
+_WATCH_SIGNIFICANT_ACTIONS: frozenset[str] = frozenset(
+    {
+        "agent_start",
+        "agent_exit",
+        "agent_stop",
+        "crash",
+        "idle_warning",
+        "stalled_post_engagement",
+        "stalled_in_retry_loop",
+        "stalled_in_failed_retry",
+    }
+)
+
+
+def _watch_format_audit(row: dict) -> str:
+    """One-line render of an AssistantMessage audit row."""
+    text = (row.get("text") or "").replace("\n", " ")[:120]
+    tools = ",".join(t.get("name", "") for t in row.get("tool_uses", []))
+    suffix = f"  [tools: {tools}]" if tools else ""
+    return f"{row.get('ts', '')}  ASSISTANT          {text}{suffix}"
+
+
+def _watch_format_daemon(row: dict) -> str:
+    """One-line render of a daemon-action row."""
+    detail = row.get("detail", {})
+    detail_str = " ".join(f"{k}={v}" for k, v in detail.items()) if detail else ""
+    action = row.get("action", "?")
+    return f"{row.get('ts', '')}  {action.upper():<18}  {detail_str}"
+
+
+def _watch_collect_recent(audit_path: str, daemon_path: str, limit: int) -> list[tuple[str, str]]:
+    """Read both logs, filter to significant events, merge by ts, return (ts, line)."""
+    items: list[tuple[str, str]] = []
+    for row in _tail_jsonl(audit_path, limit * 2):  # generous head-cap; filter below
+        items.append((row.get("ts", ""), _watch_format_audit(row)))
+    for row in _tail_jsonl(daemon_path, limit * 2):
+        if row.get("action") in _WATCH_SIGNIFICANT_ACTIONS:
+            items.append((row.get("ts", ""), _watch_format_daemon(row)))
+    items.sort(key=lambda pair: pair[0])
+    return items[-limit:]
+
+
+def _cmd_watch(args: argparse.Namespace) -> None:
+    """Tail a worker's significant events from both audit + daemon-log.
+
+    Replaces the inline ``Monitor`` tail-F-and-grep recipe baked into the
+    culture-boss SKILL.md by codifying the same filter into the CLI. Default
+    invocation prints the last ``--limit`` significant events and exits;
+    ``--follow`` keeps streaming until Ctrl-C.
+
+    Significance criteria mirror the SKILL.md Monitor regex:
+      - every AssistantMessage (audit log) — what the worker is doing
+      - daemon-log lifecycle events (start / exit / stop / crash / idle / stalled)
+
+    Routine daemon-log noise (compact, whisper, engaged, model_resolved) is
+    filtered to keep the relay legible without burying it in housekeeping.
+    """
+    boss = _boss_nick()
+    nick = f"{_server_of(boss)}-{_require_worker_suffix(args.name)}"
+    # Team isolation: same gate as audit / log / approve / deny / brief / close.
+    if _foreign_worker(nick, boss):
+        print(
+            f"REFUSED: {nick} is not your worker (owned by another boss).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    audit_path = audit_path_for(nick)
+    daemon_path = daemon_log_path_for(nick)
+
+    recent = _watch_collect_recent(audit_path, daemon_path, args.limit)
+    if not recent and not args.follow:
+        print(f"No significant events for {nick}")
+        return
+    for _ts, line in recent:
+        print(line)
+        sys.stdout.flush()
+
+    if not args.follow:
+        return
+
+    # Follow mode: poll both files for appends. Track the last-seen ts per
+    # file so a restart of the daemon (which can rewrite the trailing fsync
+    # window) doesn't re-emit lines we've already printed.
+    last_audit_ts = recent[-1][0] if recent and "ASSISTANT" in recent[-1][1] else ""
+    last_daemon_ts = recent[-1][0] if recent and "ASSISTANT" not in recent[-1][1] else ""
+
+    import time
+
+    try:
+        while True:
+            # Audit: just read tail and emit ones strictly after last_audit_ts.
+            for row in _tail_jsonl(audit_path, 50):
+                ts = row.get("ts", "")
+                if ts and ts > last_audit_ts:
+                    print(_watch_format_audit(row))
+                    sys.stdout.flush()
+                    last_audit_ts = ts
+            for row in _tail_jsonl(daemon_path, 50):
+                ts = row.get("ts", "")
+                action = row.get("action")
+                if ts and ts > last_daemon_ts and action in _WATCH_SIGNIFICANT_ACTIONS:
+                    print(_watch_format_daemon(row))
+                    sys.stdout.flush()
+                    last_daemon_ts = ts
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        # Quiet exit on Ctrl-C — boss is just stopping the tail, not crashing.
+        return
 
 
 def _channel_members(channel: str) -> list[str]:

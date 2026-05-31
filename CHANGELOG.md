@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.33] - 2026-06-01
+
+### Added — `culture boss watch <nick>` codifies the SKILL.md Monitor recipe
+
+The culture-boss SKILL.md baked in a ``Monitor`` command pattern that
+tail -F's both ``~/.culture/audit/local-<nick>.jsonl`` and
+``~/.culture/daemon-log/local-<nick>.jsonl`` with a grep filter for
+significant events (assistant turns, agent_exit/stop/crash, stalled
+classes). Codifying it as a CLI verb saves the boss from typing the
+filter regex and routes through the same team-isolation gate as
+``audit`` / ``log`` / ``approve``.
+
+Surface::
+
+    culture boss watch <nick> [--limit N] [--follow]
+
+- Default: print last N (default 20) significant events, exit.
+- ``--follow``: poll-loop until Ctrl-C; tracks last-seen ts per
+  stream so a daemon restart's trailing-fsync window doesn't
+  re-emit lines.
+
+Significance criteria mirror the SKILL.md regex: every
+``AssistantMessage`` from audit + a curated set of daemon-log
+lifecycle events (start / exit / stop / crash / idle / stalled). The
+routine noise (compact, whisper, engaged, model_resolved) is filtered
+to keep the relay legible.
+
+Tests: ``tests/test_boss_cli.py::TestBossWatchCmd`` — interleaved-ts
+ordering, limit truncates to most-recent, routine-actions filtered.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

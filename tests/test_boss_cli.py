@@ -584,3 +584,97 @@ class TestRecordWorkerBossChannels:
         assert "#joint-fixes" in entry["channels"]
         assert "#team" in entry["channels"]
         assert "#task-alpha" in entry["channels"]
+
+
+# ---------------------------------------------------------------------------
+# v8.19.33 — `culture boss watch <nick>` (interleaved audit + daemon-log tail)
+# ---------------------------------------------------------------------------
+
+
+class TestBossWatchCmd:
+    """Watch interleaves significant events from audit + daemon-log, sorted by ts.
+
+    Default invocation prints the last --limit lines and exits; --follow stays
+    alive until interrupted (tested via the public helper, not the loop).
+    """
+
+    def _seed_logs(self, culture_home, nick, audit_rows, daemon_rows):
+        from culture.clients._audit import audit_path_for
+        from culture.clients._daemon_log import daemon_log_path_for
+
+        audit_path = audit_path_for(nick)
+        daemon_path = daemon_log_path_for(nick)
+        os.makedirs(os.path.dirname(audit_path), exist_ok=True)
+        os.makedirs(os.path.dirname(daemon_path), exist_ok=True)
+        with open(audit_path, "w", encoding="utf-8") as fh:
+            for row in audit_rows:
+                fh.write(json.dumps(row) + "\n")
+        with open(daemon_path, "w", encoding="utf-8") as fh:
+            for row in daemon_rows:
+                fh.write(json.dumps(row) + "\n")
+
+    def test_collects_interleaved_by_ts(self, tmp_path, monkeypatch):
+        from culture.cli.boss import _watch_collect_recent
+        from culture.clients._audit import audit_path_for
+        from culture.clients._daemon_log import daemon_log_path_for
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        nick = "local-foo-w"
+        audit_rows = [
+            {"ts": "2026-06-01T00:00:01Z", "text": "Hello", "tool_uses": []},
+            {"ts": "2026-06-01T00:00:03Z", "text": "World", "tool_uses": [{"name": "Read"}]},
+        ]
+        daemon_rows = [
+            {"ts": "2026-06-01T00:00:00Z", "action": "agent_start", "detail": {}},
+            {"ts": "2026-06-01T00:00:02Z", "action": "engaged", "detail": {}},
+            {"ts": "2026-06-01T00:00:04Z", "action": "crash", "detail": {"exit_code": 1}},
+        ]
+        self._seed_logs(tmp_path, nick, audit_rows, daemon_rows)
+
+        recent = _watch_collect_recent(audit_path_for(nick), daemon_log_path_for(nick), limit=10)
+        # `engaged` is filtered out (routine noise); 4 significant events remain.
+        assert len(recent) == 4
+        # Sorted by ts: start (00), Hello (01), World (03), crash (04).
+        assert recent[0][1].startswith("2026-06-01T00:00:00Z  AGENT_START")
+        assert "Hello" in recent[1][1]
+        assert "World" in recent[2][1] and "tools: Read" in recent[2][1]
+        assert recent[3][1].startswith("2026-06-01T00:00:04Z  CRASH")
+
+    def test_limit_truncates_to_most_recent(self, tmp_path, monkeypatch):
+        from culture.cli.boss import _watch_collect_recent
+        from culture.clients._audit import audit_path_for
+        from culture.clients._daemon_log import daemon_log_path_for
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        nick = "local-foo-w"
+        # 5 assistant turns
+        audit_rows = [
+            {"ts": f"2026-06-01T00:00:0{i}Z", "text": f"m{i}", "tool_uses": []} for i in range(5)
+        ]
+        self._seed_logs(tmp_path, nick, audit_rows, [])
+
+        recent = _watch_collect_recent(audit_path_for(nick), daemon_log_path_for(nick), limit=2)
+        assert len(recent) == 2
+        assert "m3" in recent[0][1]
+        assert "m4" in recent[1][1]
+
+    def test_filters_routine_daemon_actions(self, tmp_path, monkeypatch):
+        from culture.cli.boss import _watch_collect_recent
+        from culture.clients._audit import audit_path_for
+        from culture.clients._daemon_log import daemon_log_path_for
+
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+        nick = "local-foo-w"
+        # 4 routine actions, 1 significant.
+        daemon_rows = [
+            {"ts": "2026-06-01T00:00:00Z", "action": "model_resolved", "detail": {}},
+            {"ts": "2026-06-01T00:00:01Z", "action": "engaged", "detail": {}},
+            {"ts": "2026-06-01T00:00:02Z", "action": "compact", "detail": {}},
+            {"ts": "2026-06-01T00:00:03Z", "action": "whisper", "detail": {}},
+            {"ts": "2026-06-01T00:00:04Z", "action": "crash", "detail": {"exit_code": 1}},
+        ]
+        self._seed_logs(tmp_path, nick, [], daemon_rows)
+
+        recent = _watch_collect_recent(audit_path_for(nick), daemon_log_path_for(nick), limit=10)
+        assert len(recent) == 1
+        assert "CRASH" in recent[0][1]
