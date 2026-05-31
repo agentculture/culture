@@ -101,10 +101,19 @@ class AgentRunner:
         metrics: HarnessMetricsRegistry | None = None,
         nick: str = "",
         boss: str = "",
+        effort: str = "",
     ) -> None:
         self.model = model
         self.directory = directory
         self.system_prompt = system_prompt
+        # v8.19.27: ``effort`` is culture's per-agent thinking-depth tier,
+        # surfaced in the agent yaml as ``thinking:`` (legacy name kept for
+        # backward compat). Maps directly to the SDK's ClaudeAgentOptions
+        # ``effort`` field which the CLI forwards as ``--effort <tier>``.
+        # Opus 4.7+ uses adaptive thinking + effort instead of explicit
+        # budget_tokens; older models accept --effort gracefully so the
+        # mapping is safe across the model fleet. Empty → SDK default.
+        self.effort = effort
         self.on_exit = on_exit
         self.on_message = on_message
         self.on_usage = on_usage
@@ -305,6 +314,8 @@ class AgentRunner:
         }
         if self.model:
             opts_kwargs["model"] = self.model
+        if self.effort:
+            opts_kwargs["effort"] = self.effort
         # When the broker is wired, install a PreToolUse hook that defers
         # to broker.gate. v8.18.1's permission_mode='default' was necessary
         # but not sufficient — the CLI does not always invoke can_use_tool.

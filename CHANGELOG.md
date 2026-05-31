@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.27] - 2026-05-31
+
+### Fixed — `thinking:` was decorative; now wired to SDK `--effort`
+
+`AgentConfig.thinking` was recorded in `daemon-log` agent_start but
+never reached the Claude SDK. The bundled CLI defaulted whatever
+effort tier it picked, ignoring the per-agent yaml value. Every
+worker ran at SDK default regardless of what the yaml said.
+
+Fix: `AgentRunner` gains an `effort: str` constructor parameter;
+`_make_options()` forwards it to `ClaudeAgentOptions.effort`, which
+the SDK translates to the CLI's `--effort <tier>` flag.
+`AgentDaemon._start_agent_runner` passes `self.agent.thinking` as
+`effort` so the existing yaml field drives the behavior its name
+implied. The CLI's accepted tiers are currently `low / medium /
+high / max` (bundled `claude-agent-sdk` 0.1.50); `xhigh` is
+reserved for a future CLI bump.
+
+### Fixed — boss "inherit from launcher" leaked the launcher's stale CLI default
+
+`~/.culture/boss/culture.yaml` previously omitted `model:` and
+`thinking:` with the comment "inherit from launcher (SDK default /
+env)". In practice the launcher's bundled-CLI default drifted to
+`claude-opus-4-6` even when the human's Claude session was on a
+newer tier; workers then inherited 4-6 too via `_boss_inherits()`.
+
+Recommended migration (manual; this file isn't part of the
+repo):
+
+```yaml
+# ~/.culture/boss/culture.yaml — add these two lines
+model: claude-opus-4-8
+thinking: max
+```
+
+After editing, `culture agent stop local-boss && culture agent
+start local-boss`. Worker yamls under `~/.culture/helpers/<name>/`
+should match (`model: claude-opus-4-8`, `thinking: max`) since
+`_boss_inherits()` reads the boss's `model_resolved` record but
+the spawn time of pre-existing workers froze the older tier into
+their yamls.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

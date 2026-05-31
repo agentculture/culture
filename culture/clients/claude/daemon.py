@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from culture.aio import maybe_await
+from culture.clients import _mission as _mission_persistence
 from culture.clients._audit import AuditWriter
 from culture.clients._context_watch import (
     ContextWatchState,
@@ -21,7 +22,6 @@ from culture.clients._context_watch import (
     take_reminder,
 )
 from culture.clients._daemon_log import DaemonLog
-from culture.clients import _mission as _mission_persistence
 from culture.clients._perm_broker import handoff_path_for
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.claude.agent_runner import AgentRunner
@@ -528,6 +528,7 @@ class AgentDaemon:
             metrics=self._metrics,
             nick=self.agent.nick,
             boss=_boss_nick(self.agent),
+            effort=self.agent.thinking,
         )
         await self._agent_runner.start()
         logger.info("AgentRunner started via SDK for %s", self.agent.nick)
