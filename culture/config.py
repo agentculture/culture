@@ -66,6 +66,40 @@ AGENT_STATE_ARCHIVED = "archived"
 AGENT_STATES = {AGENT_STATE_ACTIVE, AGENT_STATE_ARCHIVED}
 
 
+# v8.19.38: official Opus 4.8 effort tiers, in ascending order of compute
+# spend. Sourced from platform.claude.com/docs/en/build-with-claude/effort:
+#
+#   low      — minimal extended thinking; fast / cheap; baseline behaviour
+#   medium   — moderate budget; practical default for knowledge work
+#   high     — the platform default on Claude API + Claude Code
+#   xhigh    — "extended capability for long-horizon work" — Anthropic's
+#              official recommendation for coding + agentic workloads
+#   max      — absolute ceiling; no constraint on token spend
+#
+# Culture's ``thinking:`` yaml field drives the SDK's ``effort`` parameter
+# (v8.19.27 fix); the SDK forwards it to the bundled CLI as ``--effort``.
+# Bosses and workers default to ``xhigh`` per the official agentic-workload
+# recommendation.
+CULTURE_THINKING_TIERS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+
+
+def validate_thinking_tier(value: str, *, field_name: str = "thinking") -> str:
+    """Return ``value`` if it's a known tier; raise ``ValueError`` otherwise.
+
+    Empty strings pass through (the SDK falls through to its own default).
+    Validation lives here so the failure surface points at the yaml file
+    rather than the bundled CLI rejecting ``--effort foo`` mid-session.
+    """
+    if not value:
+        return value
+    if value not in CULTURE_THINKING_TIERS:
+        raise ValueError(
+            f"invalid {field_name} tier {value!r}; expected one of "
+            f"{', '.join(CULTURE_THINKING_TIERS)} (Opus 4.8 effort levels)"
+        )
+    return value
+
+
 @dataclass
 class AgentConfig:
     """Per-agent settings loaded from culture.yaml."""
@@ -74,7 +108,7 @@ class AgentConfig:
     backend: str = "claude"
     channels: list[str] = field(default_factory=lambda: ["#general"])
     model: str = ""
-    thinking: str = "high"
+    thinking: str = "xhigh"
     system_prompt: str = ""
     tags: list[str] = field(default_factory=list)
     icon: str | None = None
@@ -95,7 +129,10 @@ class AgentConfig:
     directory: str = "."
 
     def __post_init__(self):
-        """Sync state and archived for backward compatibility."""
+        """Validate tier + sync state and archived for backward compatibility."""
+        # v8.19.38: surface tier typos at config-load time, not at SDK
+        # subprocess spawn (where the error becomes "Stream-closed" noise).
+        validate_thinking_tier(self.thinking, field_name="thinking")
         if self.archived and self.state == AGENT_STATE_ACTIVE:
             self.state = AGENT_STATE_ARCHIVED
         elif self.state == AGENT_STATE_ARCHIVED:

@@ -95,7 +95,7 @@ agents:
             # No hardcoded model default — agent inherits at runtime via the
             # boss→worker chain (or the SDK picks current Claude when empty).
             assert agent.model == ""
-            assert agent.thinking == "high"
+            assert agent.thinking == "xhigh"  # v8.19.38 Opus 4.8 default
         finally:
             os.unlink(f.name)
 

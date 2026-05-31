@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.38] - 2026-06-01
+
+### Added — Opus 4.8 effort tier vocabulary (low / medium / high / xhigh / max)
+
+Anthropic's official Opus 4.8 effort tiers per
+[platform.claude.com/docs/en/build-with-claude/effort](https://platform.claude.com/docs/en/build-with-claude/effort)
+are five named levels in ascending compute spend:
+
+- **low** — minimal extended thinking; fast / cheap baseline.
+- **medium** — moderate budget; practical default for knowledge work.
+- **high** — platform default on Claude API and Claude Code.
+- **xhigh** — *"extended capability for long-horizon work"* —
+  Anthropic's official recommendation for coding + agentic workloads.
+- **max** — absolute ceiling; no constraint on token spend.
+
+Culture's ``thinking:`` yaml field (wired to the SDK's ``--effort``
+in v8.19.27) now formally enforces this vocabulary:
+
+- ``culture.config.CULTURE_THINKING_TIERS`` constant — the canonical
+  tuple of accepted tiers.
+- ``validate_thinking_tier()`` — raises ValueError with the full
+  list of valid tiers when the yaml carries a typo.
+- ``AgentConfig.__post_init__`` calls the validator so the failure
+  surface points at the yaml file at load time, not at the SDK
+  subprocess spawn where the error becomes Stream-closed noise.
+- ``AgentConfig.thinking`` default flipped ``high → xhigh`` per
+  Anthropic's coding/agentic recommendation. Existing yamls that
+  carry an explicit ``thinking:`` are unaffected.
+- Bundled SDK upgraded ``claude-agent-sdk 0.1.50 → 0.2.87`` — the
+  newer SDK and its bundled CLI binary both accept ``xhigh``
+  (the 0.1.50 binary only accepted low/medium/high/max).
+
+Boss + worker yamls should be flipped from ``max`` to ``xhigh`` for
+the official recommendation; ``max`` stays valid for unbounded runs.
+
+### Tests
+
+``tests/test_culture_config.py::TestThinkingTierValidator`` — five
+cases: default is xhigh, all 5 tiers accepted, empty passes through,
+invalid tier rejected, error message enumerates valid tiers.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

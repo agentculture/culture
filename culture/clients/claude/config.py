@@ -26,6 +26,10 @@ class SupervisorConfig:
     """Supervisor sub-agent settings."""
 
     model: str = "claude-sonnet-4-6"
+    # Supervisor's job is short evaluations of recent context, not deep
+    # agentic work — `medium` is the practical default per Opus 4.8 effort
+    # docs (platform.claude.com/docs/en/build-with-claude/effort). For agentic
+    # WORK use ``AgentConfig.thinking`` which now defaults to ``xhigh``.
     thinking: str = "medium"
     window_size: int = 20
     eval_interval: int = 5
@@ -74,7 +78,12 @@ class AgentConfig:
     directory: str = "."
     channels: list[str] = field(default_factory=lambda: ["#general"])
     model: str = ""
-    thinking: str = "high"
+    # v8.19.38: default to ``xhigh`` per Anthropic's official Opus 4.8
+    # recommendation for coding + agentic workloads. The 5 accepted tiers
+    # are low / medium / high / xhigh / max (see culture.config
+    # ``CULTURE_THINKING_TIERS``); culture.config.AgentConfig validates the
+    # value at load time.
+    thinking: str = "xhigh"
     system_prompt: str = ""
     tags: list[str] = field(default_factory=list)
     icon: str | None = None

@@ -13,7 +13,7 @@ def test_agent_config_defaults():
     # and the boss→worker inheritance chain has nothing stale to propagate.
     assert agent.model == ""
     # Thinking defaults to the highest level when no explicit value is set.
-    assert agent.thinking == "high"
+    assert agent.thinking == "xhigh"  # v8.19.38 Opus 4.8 default
     assert agent.system_prompt == ""
     assert agent.tags == []
     assert agent.icon is None
@@ -534,3 +534,54 @@ def test_remove_from_manifest_not_found(tmp_path):
 
     with pytest.raises(ValueError, match="not found"):
         remove_from_manifest(str(path), "ghost")
+
+
+# ---------------------------------------------------------------------------
+# v8.19.38 — Opus 4.8 effort tier vocabulary + validator
+# ---------------------------------------------------------------------------
+
+
+class TestThinkingTierValidator:
+    """The thinking field must match one of Opus 4.8's 5 official effort tiers.
+
+    Source: platform.claude.com/docs/en/build-with-claude/effort.
+    """
+
+    def test_default_is_xhigh(self):
+        from culture.config import AgentConfig
+
+        assert AgentConfig(suffix="t").thinking == "xhigh"
+
+    def test_all_five_tiers_accepted(self):
+        from culture.config import AgentConfig
+
+        for tier in ("low", "medium", "high", "xhigh", "max"):
+            AgentConfig(suffix=f"t-{tier}", thinking=tier)
+
+    def test_empty_string_passes_through(self):
+        """Empty thinking → falls through to SDK default. Not an error."""
+        from culture.config import AgentConfig
+
+        a = AgentConfig(suffix="t", thinking="")
+        assert a.thinking == ""
+
+    def test_invalid_tier_rejected(self):
+        import pytest
+
+        from culture.config import AgentConfig
+
+        with pytest.raises(ValueError, match="invalid thinking tier"):
+            AgentConfig(suffix="t", thinking="ultraplus")
+
+    def test_validate_function_lists_known_tiers(self):
+        import pytest
+
+        from culture.config import validate_thinking_tier
+
+        with pytest.raises(ValueError) as excinfo:
+            validate_thinking_tier("bogus")
+        # The error message must enumerate the valid tiers so the user can fix
+        # the yaml without reading source.
+        msg = str(excinfo.value)
+        for tier in ("low", "medium", "high", "xhigh", "max"):
+            assert tier in msg
