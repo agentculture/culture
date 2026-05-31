@@ -1,8 +1,17 @@
-"""Ephemeral IRC client for read-only observation commands.
+"""Ephemeral and persistent IRC observer clients.
 
-Connects to the IRC server, registers with a temporary nick, executes
-a single query, collects the response, and disconnects. Designed for
-CLI use — no persistent state, no daemon required.
+``IRCObserver`` — opens a fresh TCP connection, registers with a peek
+nick, issues one query, disconnects. CLI-shaped, no shared state.
+
+``PersistentObserver`` (v8.19.17) — one long-lived TCP connection that
+the dashboard reuses across every chat-read poll. Channels are joined
+lazily on first read and stay joined for the dashboard's lifetime;
+auto-reconnect re-JOINs the membership set after a server bounce.
+Replaces 24 ephemeral peek connections per minute (every 2.5 s in
+chat mode) with one persistent connection. Compatible with the
+v8.19.13 server-side event suppression: the persistent observer's nick
+still begins with ``_peek``, so its lazy JOINs don't fire ``user.join``
+events into channel buffers.
 """
 
 from __future__ import annotations
@@ -19,6 +28,14 @@ logger = logging.getLogger(__name__)
 RECV_TIMEOUT = 5.0
 # Timeout for the full connect + register cycle
 REGISTER_TIMEOUT = 10.0
+# How long to wait for the response to a HISTORY query before giving up.
+# IRC HISTORY replies are interleaved with PRIVMSGs from other channels;
+# we keep reading until HISTORYEND or this deadline.
+PERSISTENT_HISTORY_TIMEOUT = 2.0
+# How long to wait for the JOIN reply (RPL_ENDOFNAMES) before assuming the
+# server accepted us. Short — JOIN is cheap and the client-may-read-history
+# membership gate only needs the channel registered, not the NAMES list.
+PERSISTENT_JOIN_TIMEOUT = 1.5
 
 
 class IRCObserver:
@@ -290,6 +307,26 @@ class IRCObserver:
         )
         return sorted(channels)
 
+    @staticmethod
+    def _parse_history_message(msg: Message, channel: str) -> str | None:
+        """Static helper used by both IRCObserver and PersistentObserver."""
+        from culture.formatting import relative_time
+
+        if msg.command != "HISTORY":
+            return None
+        if len(msg.params) >= 4 and msg.params[0] != channel:
+            return None
+        if len(msg.params) >= 4:
+            entry_nick, ts, text = msg.params[1], msg.params[2], msg.params[3]
+            try:
+                label = relative_time(float(ts))
+            except (ValueError, TypeError):
+                label = ts
+            return f"[{label}] <{entry_nick}> {text}"
+        if len(msg.params) >= 3:
+            return f"<{msg.params[1]}> {msg.params[2]}"
+        return None
+
     async def archive_channel(self, channel: str) -> bool:
         """Archive a channel by sending CHANARCHIVE.
 
@@ -331,3 +368,251 @@ class IRCObserver:
             return False
         finally:
             await self._disconnect(writer)
+
+
+class PersistentObserver:
+    """Long-lived IRC observer for the dashboard (v8.19.17).
+
+    Holds one TCP connection + IRC registration across the dashboard's
+    entire lifetime. ``read_channel`` lazy-joins each channel on first
+    request and the membership stays open thereafter — so 24 polls/min
+    in chat mode cost one register + one JOIN per channel, not 24 of
+    each. Auto-reconnects and re-JOINs the membership set when the
+    connection drops.
+
+    Nick prefix is ``_peek`` so the server-side suppression added in
+    v8.19.13 (``Client._handle_join`` / ``_handle_part``) keeps this
+    observer's JOINs from emitting ``user.join`` events into other
+    channel members' buffers.
+
+    Concurrency: a single asyncio.Lock serializes requests, since the
+    IRC response stream demuxes by channel only on HISTORY replies
+    (other server traffic — pings, NOTICEs — has to be drained between
+    user-facing reads). Dashboard chat polls are infrequent (2.5 s
+    cadence) and reads are sub-second, so serialization is not a
+    bottleneck.
+    """
+
+    def __init__(self, host: str, port: int, server_name: str):
+        self.host = host
+        self.port = port
+        self.server_name = server_name
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
+        self._nick: str | None = None
+        self._joined: set[str] = set()
+        self._lock = asyncio.Lock()
+        self._buffer = ""
+
+    @property
+    def nick(self) -> str | None:
+        return self._nick
+
+    @property
+    def joined_channels(self) -> frozenset[str]:
+        return frozenset(self._joined)
+
+    def _new_nick(self) -> str:
+        # Keep the ``_peek`` prefix so v8.19.13 event suppression
+        # continues to silence our JOINs; the ``DASH`` infix makes the
+        # observer identifiable in connection lists.
+        return f"{self.server_name}-_peekDASH{secrets.token_hex(2)}"
+
+    def _is_connected(self) -> bool:
+        return (
+            self._writer is not None and not self._writer.is_closing() and self._reader is not None
+        )
+
+    async def _ensure_connected(self) -> None:
+        if self._is_connected():
+            return
+        await self._connect()
+
+    async def _connect(self) -> None:
+        """Open the connection, register, and re-JOIN every channel in the set."""
+        # Reset any half-open state from a prior connection drop.
+        self._buffer = ""
+        self._reader, self._writer = await asyncio.wait_for(
+            asyncio.open_connection(self.host, self.port),
+            timeout=REGISTER_TIMEOUT,
+        )
+        self._nick = self._new_nick()
+        self._writer.write(f"NICK {self._nick}\r\n".encode())
+        self._writer.write(b"USER _peek 0 * :culture dashboard observer\r\n")
+        await self._writer.drain()
+        # Wait for RPL_WELCOME (001); handle a NICK collision by re-rolling.
+        await self._await_registration()
+        # Re-JOIN every channel we used to be in. Failures are non-fatal —
+        # the next read_channel will JOIN on demand.
+        previous = list(self._joined)
+        self._joined.clear()
+        for channel in previous:
+            try:
+                await self._join(channel)
+            except (OSError, asyncio.TimeoutError):
+                logger.warning("re-JOIN of %s failed after reconnect", channel)
+
+    async def _await_registration(self) -> None:
+        assert self._reader is not None and self._writer is not None
+        deadline_loop = asyncio.get_running_loop()
+        deadline = deadline_loop.time() + REGISTER_TIMEOUT
+        while True:
+            remaining = deadline - deadline_loop.time()
+            if remaining <= 0:
+                raise ConnectionError("registration timed out")
+            msg = await self._next_message(timeout=remaining)
+            if msg is None:
+                continue
+            if msg.command == "001":
+                return
+            if msg.command == "433":
+                self._nick = self._new_nick()
+                self._writer.write(f"NICK {self._nick}\r\n".encode())
+                await self._writer.drain()
+            elif msg.command == "PING":
+                token = msg.params[0] if msg.params else ""
+                self._writer.write(f"PONG :{token}\r\n".encode())
+                await self._writer.drain()
+
+    async def _next_message(self, timeout: float) -> Message | None:
+        """Read one IRC line from the connection, parsed. Returns None on a partial read."""
+        assert self._reader is not None
+        while "\r\n" not in self._buffer:
+            try:
+                data = await asyncio.wait_for(self._reader.read(4096), timeout=timeout)
+            except asyncio.TimeoutError:
+                return None
+            if not data:
+                raise ConnectionError("server closed connection")
+            self._buffer += data.decode(errors="replace")
+        line, self._buffer = self._buffer.split("\r\n", 1)
+        line = line.strip()
+        if not line:
+            return None
+        return Message.parse(line)
+
+    async def _send_raw(self, line: str) -> None:
+        assert self._writer is not None
+        self._writer.write((line + "\r\n").encode())
+        await self._writer.drain()
+
+    async def _join(self, channel: str) -> None:
+        """JOIN a channel and wait for RPL_ENDOFNAMES (366) or RPL_NAMREPLY (353)."""
+        await self._send_raw(f"JOIN {channel}")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + PERSISTENT_JOIN_TIMEOUT
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                logger.debug(
+                    "JOIN %s — no end-of-names within %ss", channel, PERSISTENT_JOIN_TIMEOUT
+                )
+                self._joined.add(channel)
+                return
+            msg = await self._next_message(timeout=remaining)
+            if msg is None:
+                continue
+            if msg.command == "PING":
+                token = msg.params[0] if msg.params else ""
+                await self._send_raw(f"PONG :{token}")
+                continue
+            if msg.command in ("366", "353"):
+                self._joined.add(channel)
+                return
+            if msg.command in ("403", "473", "474", "475"):
+                # No such channel / invite-only / banned / +k — give up.
+                logger.info("JOIN %s rejected by server (%s)", channel, msg.command)
+                return
+
+    async def read_channel(self, channel: str, limit: int = 50) -> list[str]:
+        """Return up to ``limit`` recent messages from ``channel`` via HISTORY RECENT.
+
+        On a dropped connection the request is retried once with a fresh
+        reconnect + re-JOIN of the membership set. A second failure
+        returns ``[]`` rather than raising — the dashboard renders an
+        empty channel rather than a 500.
+        """
+        async with self._lock:
+            try:
+                await self._ensure_connected()
+                if channel not in self._joined:
+                    await self._join(channel)
+                return await self._read_history(channel, limit)
+            except (OSError, asyncio.IncompleteReadError, ConnectionError) as exc:
+                logger.info("persistent observer reconnecting after %s", exc)
+                await self._close_quietly()
+                try:
+                    await self._ensure_connected()
+                    if channel not in self._joined:
+                        await self._join(channel)
+                    return await self._read_history(channel, limit)
+                except (OSError, ConnectionError, asyncio.TimeoutError) as exc2:
+                    logger.warning("persistent observer read_channel %s failed: %s", channel, exc2)
+                    return []
+
+    async def _read_history(self, channel: str, limit: int) -> list[str]:
+        await self._send_raw(f"HISTORY RECENT {channel} {limit}")
+        results: list[str] = []
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + PERSISTENT_HISTORY_TIMEOUT
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return results
+            msg = await self._next_message(timeout=remaining)
+            if msg is None:
+                continue
+            if msg.command == "HISTORYEND":
+                return results
+            if msg.command == "PING":
+                token = msg.params[0] if msg.params else ""
+                await self._send_raw(f"PONG :{token}")
+                continue
+            if msg.command == "HISTORY":
+                parsed = IRCObserver._parse_history_message(msg, channel)
+                if parsed is not None:
+                    results.append(parsed)
+
+    async def send_message(self, target: str, text: str) -> None:
+        """Send a PRIVMSG over the persistent connection.
+
+        Mirrors ``IRCObserver.send_message`` semantics: real-newline split
+        into one PRIVMSG per line, drop empty lines, strip CRLF from the
+        target. Goes through the same channel-JOIN gate as ``read_channel``
+        for channel targets (we lazy-JOIN once and stay joined).
+        """
+        target = target.replace("\r", "").replace("\n", "")
+        lines = [ln for ln in text.replace("\r", "").split("\n") if ln]
+        if not lines:
+            return
+        async with self._lock:
+            try:
+                await self._ensure_connected()
+                if target.startswith("#") and target not in self._joined:
+                    await self._join(target)
+                for line in lines:
+                    await self._send_raw(f"PRIVMSG {target} :{line}")
+            except (OSError, ConnectionError) as exc:
+                logger.warning("persistent observer send to %s failed: %s", target, exc)
+                await self._close_quietly()
+
+    async def close(self) -> None:
+        async with self._lock:
+            await self._close_quietly()
+
+    async def _close_quietly(self) -> None:
+        if self._writer is None:
+            return
+        try:
+            self._writer.write(b"QUIT :dashboard observer shutdown\r\n")
+            await self._writer.drain()
+        except OSError:
+            pass
+        try:
+            self._writer.close()
+            await self._writer.wait_closed()
+        except OSError:
+            pass
+        self._reader = None
+        self._writer = None
+        self._buffer = ""

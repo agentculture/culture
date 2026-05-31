@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.17] - 2026-05-31
+
+### Added
+
+- **`PersistentObserver` for the dashboard.** New class in
+  `culture/observer.py` that holds ONE TCP connection + IRC
+  registration across the dashboard's lifetime. Channels are joined
+  lazily on first read and stay joined; auto-reconnect re-JOINs the
+  membership set after a server bounce. Replaces ~24 ephemeral peek
+  connections per minute (every 2.5 s chat poll) with one persistent
+  connection.
+- **Nick prefix is `_peekDASH<hex>`** so the v8.19.13 server-side
+  event suppression continues to silence the observer's JOINs — its
+  membership remains invisible to other channel members.
+- **Single asyncio.Lock around the connection** serializes requests so
+  HISTORY responses can be demuxed cleanly. Dashboard polls are
+  infrequent (sub-second reads at 2.5 s cadence) so serialization is
+  not a bottleneck.
+- **Dashboard wiring** via aiohttp `cleanup_ctx`: one observer is
+  built in `_persistent_observer_lifecycle` and exposed at
+  `app[_OBSERVER]`. New `_observer_for(request)` helper prefers the
+  persistent observer and falls back to the ephemeral `get_observer()`
+  if instantiation failed at boot.
+- Wired through `/api/channel/{nick}`, `/api/message`, and
+  `/api/channels/{name}/messages`.
+
+### Tests
+
+- 5 new tests in `tests/test_persistent_observer.py` against a real
+  IRCd: repeated reads of the same channel JOIN once (10 reads → 1
+  JOIN line broadcast), reads on a new channel lazy-JOIN, send_message
+  reuses the same nick, `close()` shuts down, auto-reconnect after a
+  forced writer close re-JOINs the membership set.
+- 45 dashboard tests still pass — chat-related tests updated to
+  monkeypatch `server._observer_for` for clean DI.
+
 ## [8.19.16] - 2026-05-31
 
 ### Fixed

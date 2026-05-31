@@ -211,7 +211,10 @@ class TestChat:
         from culture.dashboard import server
 
         fake = _FakeObserver()
-        monkeypatch.setattr(server, "get_observer", lambda cfg: fake)
+        # v8.19.17: tests override the persistent observer slot directly.
+        # The dashboard prefers app[_OBSERVER] when set; this is the
+        # explicit DI seam.
+        monkeypatch.setattr(server, "_observer_for", lambda req: fake)
         resp = await client.post("/api/message", json={"nick": "local-w", "text": "do the thing"})
         assert resp.status == 200
         data = await resp.json()
@@ -242,7 +245,8 @@ class TestChat:
             async def send_message(self, *a):
                 raise OSError("mesh down")
 
-        monkeypatch.setattr(server, "get_observer", lambda cfg: _Boom())
+        boom = _Boom()
+        monkeypatch.setattr(server, "_observer_for", lambda req: boom)
         resp = await client.post("/api/message", json={"nick": "local-w", "text": "x"})
         assert resp.status == 502
 
@@ -259,7 +263,8 @@ class TestChat:
     async def test_channel_read_returns_messages(self, client, monkeypatch):
         from culture.dashboard import server
 
-        monkeypatch.setattr(server, "get_observer", lambda cfg: _FakeObserver())
+        fake = _FakeObserver()
+        monkeypatch.setattr(server, "_observer_for", lambda req: fake)
         resp = await client.get("/api/channel/local-w")
         assert resp.status == 200
         data = await resp.json()
@@ -274,7 +279,8 @@ class TestChat:
             async def read_channel(self, *a, **k):
                 raise OSError("mesh down")
 
-        monkeypatch.setattr(server, "get_observer", lambda cfg: _Boom())
+        boom = _Boom()
+        monkeypatch.setattr(server, "_observer_for", lambda req: boom)
         resp = await client.get("/api/channel/local-w")
         assert resp.status == 200
         assert (await resp.json())["messages"] == []

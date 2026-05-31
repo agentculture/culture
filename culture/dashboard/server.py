@@ -63,6 +63,9 @@ _CHANNEL_READ_DEFAULT = 50
 _CONFIG_PATH: web.AppKey[str | None] = web.AppKey("config_path", object)  # type: ignore[arg-type]
 _AUTH_TOKEN: web.AppKey[str | None] = web.AppKey("auth_token", object)  # type: ignore[arg-type]
 _TRUSTED_HOSTS: web.AppKey[frozenset] = web.AppKey("trusted_hosts", frozenset)
+# v8.19.17: long-lived shared observer for chat reads / writes. Replaces
+# the ephemeral get_observer() peek-connection per call.
+_OBSERVER: web.AppKey[object] = web.AppKey("persistent_observer", object)
 
 _AUTH_COOKIE = "culture_dash"
 _COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days — keep a phone logged in across sessions
@@ -647,7 +650,7 @@ async def _handle_channel_read(request: web.Request) -> web.Response:
     config_path = request.app.get(_CONFIG_PATH)
     channel = _agent_channel(nick, config_path)
     try:
-        observer = get_observer(_config_path_or_default(config_path))
+        observer = _observer_for(request)
         messages = await observer.read_channel(channel, limit)
     except Exception as exc:  # noqa: BLE001 — mesh unreachable → empty, not a 500
         logger.warning("channel read failed for %s (%s): %s", nick, channel, exc)
@@ -676,7 +679,7 @@ async def _handle_message(request: web.Request) -> web.Response:
     channel = _agent_channel(nick, config_path)
     payload = f"@{nick} {text}"
     try:
-        observer = get_observer(_config_path_or_default(config_path))
+        observer = _observer_for(request)
         await observer.send_message(channel, payload)
     except Exception as exc:  # noqa: BLE001 — surface a clean 502, not a 500
         logger.warning("message send failed for %s (%s): %s", nick, channel, exc)
@@ -1140,14 +1143,60 @@ async def _handle_channel_messages(request: web.Request) -> web.Response:
     except (TypeError, ValueError):
         limit = _CHANNEL_READ_DEFAULT
     limit = max(1, min(limit, _CHANNEL_READ_MAX))
-    config_path = request.app.get(_CONFIG_PATH)
     try:
-        observer = get_observer(_config_path_or_default(config_path))
+        observer = _observer_for(request)
         messages = await observer.read_channel(channel, limit)
     except Exception as exc:  # noqa: BLE001
         logger.warning("channel read for %s failed: %s", channel, exc)
         messages = []
     return web.json_response({"channel": channel, "messages": messages})
+
+
+async def _persistent_observer_lifecycle(app: web.Application):
+    """v8.19.17: provision one PersistentObserver per dashboard process.
+
+    Lifecycle pattern is aiohttp's ``cleanup_ctx`` — yields the live
+    instance, then closes the connection on app shutdown. If the
+    persistent observer can't be built (no config file yet, or
+    instantiation throws), we log and leave ``app[_OBSERVER] = None``;
+    handlers detect this and fall back to the ephemeral observer so
+    the dashboard still works even before the IRCd is up.
+    """
+    from culture.observer import PersistentObserver
+
+    observer: PersistentObserver | None = None
+    try:
+        config = load_config_or_default(app.get(_CONFIG_PATH))
+        observer = PersistentObserver(
+            host=config.server.host,
+            port=config.server.port,
+            server_name=config.server.name,
+        )
+        app[_OBSERVER] = observer
+        logger.info("persistent observer ready (host=%s)", config.server.host)
+    except Exception as exc:  # noqa: BLE001 — startup must never block
+        logger.warning("persistent observer disabled: %s", exc)
+        app[_OBSERVER] = None
+    try:
+        yield
+    finally:
+        if observer is not None:
+            try:
+                await observer.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("persistent observer close failed: %s", exc)
+
+
+def _observer_for(request: web.Request):
+    """Return the persistent observer if available, else a fresh ephemeral one.
+
+    Falls back automatically so a missing config or a not-yet-started
+    IRCd does not break read/write paths during dev iteration.
+    """
+    obs = request.app.get(_OBSERVER)
+    if obs is not None:
+        return obs
+    return get_observer(_config_path_or_default(request.app.get(_CONFIG_PATH)))
 
 
 def build_app(
@@ -1159,6 +1208,7 @@ def build_app(
     app[_CONFIG_PATH] = config_path
     app[_AUTH_TOKEN] = auth_token
     app[_TRUSTED_HOSTS] = frozenset(trusted_hosts or ())
+    app.cleanup_ctx.append(_persistent_observer_lifecycle)
     app.router.add_get("/", _handle_index)
     app.router.add_get("/auth", _handle_auth_get)
     app.router.add_post("/auth", _handle_auth_post)
