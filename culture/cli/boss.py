@@ -24,9 +24,11 @@ import sys
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
+    HIGH_RISK_STICKY_TOOLS,
     BareStickyApproveRefusedError,
     DecisionExistsError,
     InvalidRequestIdError,
+    _tool_matches,
     cleanup_stale,
     culture_home,
     has_policy_file,
@@ -44,7 +46,9 @@ from .shared.ipc import agent_socket_path, get_observer, ipc_request
 
 NAME = "boss"
 
-_ALL_CMDS = "init|spawn|brief|read|pending|approve|deny|audit|log|status|close|cleanup"
+_ALL_CMDS = (
+    "init|spawn|brief|read|pending|approve|deny|audit|log|status|close|cleanup|audit-policies"
+)
 
 _MANAGER_PROMPT = """\
 You are {nick}, a manager agent on the culture mesh. A human briefs you in your
@@ -170,6 +174,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     sub.add_parser("status", help="Summarize workers + pending perms")
 
+    sub.add_parser(
+        "audit-policies",
+        help="Scan worker perm-policy files for dangerously-bare high-risk auto_allow rules",
+    )
+
     close_p = sub.add_parser("close", help="Stop a worker daemon")
     close_p.add_argument("name", help="Worker suffix")
 
@@ -194,6 +203,7 @@ def dispatch(args: argparse.Namespace) -> None:
         "deny": _cmd_deny,
         "audit": _cmd_audit,
         "log": _cmd_log,
+        "audit-policies": _cmd_audit_policies,
         "status": _cmd_status,
         "close": _cmd_close,
         "cleanup": _cmd_cleanup,
@@ -479,6 +489,86 @@ def _cmd_log(args: argparse.Namespace) -> None:
         detail = r.get("detail", {})
         detail_str = " ".join(f"{k}={v}" for k, v in detail.items()) if detail else ""
         print(f"{r.get('ts', '')}  {r.get('action', '?'):<18}  {detail_str}")
+
+
+def _bare_high_risk_rules(policy: dict) -> list[dict]:
+    """Return the auto_allow rules that match a high-risk tool with no input
+    constraint — i.e. rules that auto-allow EVERY future call of a tool that
+    can mutate state or reach external services."""
+    if not isinstance(policy, dict):
+        return []
+    rules = policy.get("auto_allow", []) or []
+    if not isinstance(rules, list):
+        return []
+    findings: list[dict] = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        tool_pattern = rule.get("tool", "")
+        if not isinstance(tool_pattern, str):
+            continue
+        if rule.get("input_regex"):
+            continue
+        # The rule's tool is the literal/pattern the boss approved. We treat
+        # it as high-risk if it MATCHES one of the high-risk tool patterns
+        # (e.g. literal "Bash" matches "Bash"; literal "mcp__playwright__x"
+        # matches "mcp__.*"). Bare safe tools (Read, Glob, Grep) are fine
+        # without input_regex and are excluded here.
+        for hr_pattern in HIGH_RISK_STICKY_TOOLS:
+            if _tool_matches(tool_pattern, hr_pattern):
+                findings.append(rule)
+                break
+    return findings
+
+
+def _cmd_audit_policies(args: argparse.Namespace) -> None:  # noqa: ARG001 — argparse signature
+    """Scan worker perm-policy files for bare high-risk auto_allow rules.
+
+    Companion to v8.19.32's ``BareStickyApproveRefusedError``: existing
+    policies may carry rules that pre-date the new gate (e.g. earlier
+    ``culture boss approve <id> --always`` calls that wrote
+    ``- tool: Bash`` with no ``input_regex``). Each such rule auto-allows
+    EVERY future invocation of that tool. This verb surfaces them so the
+    boss can remediate by editing the policy file by hand and removing
+    the bare entry — next time the worker invokes that tool the broker
+    will re-route to the boss, who can re-approve with ``--input-regex``.
+    """
+    import glob
+
+    policy_dir = os.path.join(culture_home(), "perm-policy")
+    if not os.path.isdir(policy_dir):
+        print(f"No policy directory at {policy_dir} — nothing to audit.")
+        return
+
+    files = sorted(glob.glob(os.path.join(policy_dir, "*.yaml")))
+    total_findings = 0
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                import yaml
+
+                policy = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError):
+            print(f"  ! {path} — could not parse; skipping")
+            continue
+        findings = _bare_high_risk_rules(policy)
+        if not findings:
+            continue
+        nick = os.path.basename(path)[: -len(".yaml")]
+        print(f"\n{nick}  ({path})")
+        for rule in findings:
+            print(f"    DANGEROUS: tool={rule.get('tool')!r}  (no input_regex)")
+        total_findings += len(findings)
+
+    if total_findings == 0:
+        print(f"No dangerous bare-tool rules found across {len(files)} policy file(s). ✓")
+    else:
+        print(
+            f"\n{total_findings} dangerous rule(s) found. "
+            "Edit each policy file by hand and delete the listed entry; the "
+            "worker will re-route the tool to the boss on next use, and the "
+            "v8.19.32 gate will require --input-regex on the re-approval."
+        )
 
 
 def _channel_members(channel: str) -> list[str]:

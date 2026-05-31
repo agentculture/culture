@@ -584,3 +584,51 @@ class TestRecordWorkerBossChannels:
         assert "#joint-fixes" in entry["channels"]
         assert "#team" in entry["channels"]
         assert "#task-alpha" in entry["channels"]
+
+
+# ---------------------------------------------------------------------------
+# v8.19.35 — `culture boss audit-policies` surfaces bare high-risk rules
+# ---------------------------------------------------------------------------
+
+
+class TestBossAuditPolicies:
+    def test_finds_bare_bash_and_edit(self, tmp_path, monkeypatch, capsys):
+        import yaml as _yaml
+
+        from culture.cli.boss import _bare_high_risk_rules
+
+        policy = {
+            "auto_allow": [
+                {"tool": "Read"},  # safe — ignored
+                {"tool": "Bash", "input_regex": "^ls$"},  # constrained — ignored
+                {"tool": "Bash"},  # DANGEROUS bare
+                {"tool": "Edit"},  # DANGEROUS bare
+                {"tool": "mcp__playwright__browser_click"},  # DANGEROUS bare (mcp__)
+            ],
+        }
+        findings = _bare_high_risk_rules(policy)
+        assert len(findings) == 3
+        tools_flagged = sorted(r["tool"] for r in findings)
+        assert tools_flagged == ["Bash", "Edit", "mcp__playwright__browser_click"]
+
+    def test_returns_empty_when_only_constrained_or_safe(self):
+        from culture.cli.boss import _bare_high_risk_rules
+
+        policy = {
+            "auto_allow": [
+                {"tool": "Read"},
+                {"tool": "Grep"},
+                {"tool": "Bash", "input_regex": "^ls$"},
+                {"tool": "Edit", "input_regex": "^/safe/path$"},
+            ],
+        }
+        assert _bare_high_risk_rules(policy) == []
+
+    def test_handles_malformed_policy_gracefully(self):
+        from culture.cli.boss import _bare_high_risk_rules
+
+        assert _bare_high_risk_rules({}) == []
+        assert _bare_high_risk_rules({"auto_allow": "not a list"}) == []
+        assert _bare_high_risk_rules({"auto_allow": [{"not_a_tool": 1}]}) == []
+        # A rule with tool=None or non-string also has to be skipped.
+        assert _bare_high_risk_rules({"auto_allow": [{"tool": 42}]}) == []
