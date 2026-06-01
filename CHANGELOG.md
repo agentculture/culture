@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.44] - 2026-06-01
+
+### Fixed — IRC server's owner_map cache could miss a race-recent worker
+
+Companion to v8.19.42. The IRC server's task-channel ACL caches the
+worker→boss owner_map for performance (lookup happens on every JOIN to
+a ``#task-*`` channel). Pre-v8.19.44 the cache had a 5s TTL, which
+created a race window: a boss daemon that restarted within ~5s of a
+worker spawning could ARRive ahead of the cache's next refresh, get
+``ERR_BANNEDFROMCHAN`` on its JOIN, and (pre-v8.19.42) silently believe
+it had joined. v8.19.42 made the symptom recoverable transport-side;
+v8.19.44 eliminates the race window itself.
+
+Fix: cache keyed by ``(server_yaml_path, mtime_ns)`` instead of TTL.
+Any write to the manifest bumps its mtime; the next ACL check sees
+the new mtime, mismatches the cached key, and reloads from disk. One
+``stat()`` per check — cheaper than the prior ``monotonic()`` +
+TTL-check arithmetic on cache hit, and **strictly correct** on cache
+miss (no time window where a freshly-spawned worker is invisible).
+
+Module-level cache is still process-local — multi-process IRCd would
+have each process refresh independently when the manifest changes,
+which is what we want.
+
+``OWNER_MAP_TTL_S`` constant retained for backward compat with anything
+importing it (e.g. external tests); has no runtime effect with mtime
+caching.
+
+Tests in ``tests/test_task_channel_acl.py``:
+- ``test_cache_amortizes_repeated_calls`` — 50 calls on stable manifest → 1 load
+- ``test_cache_refreshes_when_manifest_mtime_changes`` — manifest write → next call refreshes (replaces the prior TTL test)
+- ``test_invalidate_forces_refresh`` — explicit invalidate still works for tests + administrative ops
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner

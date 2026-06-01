@@ -57,48 +57,66 @@ _TASK_PREFIX = "#task-"
 # mesh. With concurrent JOINs (e.g. boss spawning a fleet) that's a disk
 # I/O storm on the asyncio event loop.
 #
-# Cache the map for OWNER_MAP_TTL_S and refresh past that. The TTL is
-# short enough that manifest hot-reloads (the original design intent)
-# take effect within seconds, but long enough to amortize the cost
-# across burst JOINs. time.monotonic() avoids clock-skew issues.
+# v8.19.44 — mtime-keyed cache, dropping the TTL race window. Reading the
+# manifest's mtime is one ``stat()`` syscall; pinning the cache to (path,
+# mtime) means any write to server.yaml invalidates the cache on the next
+# lookup with zero coupling between writer and reader processes. Replaces
+# the v8.19.x 5-second-TTL design where a freshly-spawned worker's
+# ``boss`` relationship could be invisible to the task-channel ACL for up
+# to 5s — race window that caused boss briefs to silently drop after
+# rapid spawn+restart sequences (see PR #436 / v8.19.42 for the symptom).
 #
-# Cache is intentionally module-level (process-wide). If a future
-# multi-process IRCd setup ever runs, each process has its own cache —
-# acceptable, since manifest changes still propagate on TTL expiry.
+# Cache is intentionally module-level (process-wide). The mtime-key makes
+# it correct under multi-process IRCd too: each process refreshes only
+# when the manifest file changes on disk, which is the actual signal.
 import time as _time
 
+# Legacy constant — retained for backward compat with anything importing
+# it. mtime invalidation makes the TTL effectively infinite (always
+# refresh on actual change), so this is reference-only now.
 OWNER_MAP_TTL_S = 5.0
+
 _owner_map_cache: dict[str, str] | None = None
-_owner_map_ts: float = 0.0
-_owner_map_key: str | None = None  # resolved server.yaml path for cache validity
+_owner_map_path: str | None = None  # resolved server.yaml path for cache validity
+_owner_map_mtime_ns: int | None = None  # mtime of the cached manifest
 
 
 def _load_owner_map() -> dict[str, str]:
     """Load worker-nick -> boss-nick from the manifest (server.yaml).
 
     Returns an empty dict if the manifest is missing or unreadable —
-    fail-closed: only the task-owner nick + system-* may join its
-    task channel; the supervising boss is also refused since we
-    can't verify the relationship.
+    fail-closed: only the task-owner nick + system-* may join its task
+    channel; the supervising boss is also refused since we can't verify
+    the relationship.
 
-    Cached for ``OWNER_MAP_TTL_S`` seconds **and** keyed by the
-    resolved ``server.yaml`` path (derived from ``CULTURE_HOME``).
-    If ``CULTURE_HOME`` changes between calls (common in tests),
-    the cache is treated as a miss regardless of TTL.
+    v8.19.44: cache is keyed by the resolved ``server.yaml`` path AND
+    its ``mtime_ns``. Reading the mtime is one ``stat()``; mismatch ⇒
+    reload. This makes the cache strictly correct: any write to the
+    manifest invalidates it on the next ACL check, with no race window
+    between manifest writer and IRC-server reader. Replaces the prior
+    5s TTL that caused boss briefs to silently drop after rapid
+    spawn+restart sequences (see PR #436 / v8.19.42).
     """
-    global _owner_map_cache, _owner_map_ts, _owner_map_key
-    now = _time.monotonic()
+    global _owner_map_cache, _owner_map_path, _owner_map_mtime_ns
 
     from culture.clients._perm_broker import culture_home
 
     server_yaml = os.path.join(culture_home(), "server.yaml")
 
+    try:
+        current_mtime_ns = os.stat(server_yaml).st_mtime_ns
+    except OSError:
+        # Manifest missing — fail closed (drop any stale cache so a later
+        # appearance of the manifest is picked up immediately).
+        current_mtime_ns = None
+
     if (
         _owner_map_cache is not None
-        and _owner_map_key == server_yaml
-        and (now - _owner_map_ts) < OWNER_MAP_TTL_S
+        and _owner_map_path == server_yaml
+        and _owner_map_mtime_ns == current_mtime_ns
     ):
         return _owner_map_cache
+
     try:
         from culture.config import load_config_or_default
 
@@ -106,21 +124,24 @@ def _load_owner_map() -> dict[str, str]:
         _owner_map_cache = {a.nick: (getattr(a, "boss", "") or "") for a in config.agents}
     except Exception:  # noqa: BLE001 — unreadable manifest -> fail-closed
         _owner_map_cache = {}
-    _owner_map_ts = now
-    _owner_map_key = server_yaml
+    _owner_map_path = server_yaml
+    _owner_map_mtime_ns = current_mtime_ns
     return _owner_map_cache
 
 
 def _invalidate_owner_map_cache() -> None:
     """Force the next ``_load_owner_map()`` call to refresh from disk.
 
-    Tests + administrative operations that mutate the manifest can call
-    this to bypass the TTL.
+    v8.19.44: with mtime-keyed caching, an explicit invalidate is rarely
+    needed (any manifest write triggers an automatic refresh on next
+    read). Retained for tests and the rare case where a test mutates
+    the cache contents in-place; production code should rely on mtime
+    invalidation alone.
     """
-    global _owner_map_cache, _owner_map_ts, _owner_map_key
+    global _owner_map_cache, _owner_map_path, _owner_map_mtime_ns
     _owner_map_cache = None
-    _owner_map_ts = 0.0
-    _owner_map_key = None
+    _owner_map_path = None
+    _owner_map_mtime_ns = None
 
 
 def _task_channel_acl(nick: str, channel_name: str, server_name: str = "") -> bool:

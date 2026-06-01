@@ -177,38 +177,40 @@ class TestOwnerMapCache:
 
         _invalidate_owner_map_cache()
 
-    def test_cache_amortizes_repeated_calls(self):
-        """The expensive load runs ONCE within the TTL even with N calls."""
+    def test_cache_amortizes_repeated_calls(self, monkeypatch, tmp_path):
+        """v8.19.44: cache is keyed by manifest (path, mtime_ns) — repeated
+        calls return cached data as long as the file's mtime is unchanged."""
         from culture.agentirc import client as ircd_client
+
+        # Real manifest at tmp_path/server.yaml so os.stat works.
+        server_yaml = tmp_path / "server.yaml"
+        server_yaml.write_text("server:\n  name: local\nagents: {}\n")
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
 
         calls = {"n": 0}
 
-        def fake_load():
+        def fake_load(*_a, **_kw):
             calls["n"] += 1
-            return {"local-worker-a": "local-boss"}
 
-        with patch(
-            "culture.config.load_config_or_default", side_effect=AssertionError("should be cached")
-        ):
-            # Pre-seed the cache with the expected data + key so the TTL
-            # check succeeds (load_config_or_default should never fire).
-            import time as _t
+            class _Cfg:
+                agents = []
 
-            from culture.clients._perm_broker import culture_home
+            return _Cfg()
 
-            ircd_client._owner_map_cache = {"local-worker-a": "local-boss"}
-            ircd_client._owner_map_ts = _t.monotonic()
-            ircd_client._owner_map_key = os.path.join(culture_home(), "server.yaml")
-            for _ in range(50):
-                got = ircd_client._load_owner_map()
-                assert got == {"local-worker-a": "local-boss"}
+        monkeypatch.setattr("culture.config.load_config_or_default", fake_load)
+        for _ in range(50):
+            ircd_client._load_owner_map()
+        # 50 calls, manifest mtime unchanged → exactly ONE load.
+        assert calls["n"] == 1
 
-    def test_cache_refreshes_after_ttl(self, monkeypatch):
-        """Past the TTL, the next call re-reads the manifest."""
+    def test_cache_refreshes_when_manifest_mtime_changes(self, monkeypatch, tmp_path):
+        """v8.19.44: a write to server.yaml invalidates the cache on the
+        very next read — no TTL race window."""
         from culture.agentirc import client as ircd_client
 
-        fake_now = [1000.0]
-        monkeypatch.setattr(ircd_client._time, "monotonic", lambda: fake_now[0])
+        server_yaml = tmp_path / "server.yaml"
+        server_yaml.write_text("server:\n  name: local\nagents: {}\n")
+        monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
 
         calls = {"n": 0}
 
@@ -223,11 +225,15 @@ class TestOwnerMapCache:
         monkeypatch.setattr("culture.config.load_config_or_default", fake_load)
         ircd_client._load_owner_map()
         ircd_client._load_owner_map()
-        assert calls["n"] == 1  # cached
-        # Advance past TTL.
-        fake_now[0] += ircd_client.OWNER_MAP_TTL_S + 0.1
+        assert calls["n"] == 1  # cached on stable mtime
+
+        # Mutate the manifest → mtime ticks → next call refreshes.
+        import time as _t
+
+        _t.sleep(0.02)  # ensure mtime_ns advances even on coarse FS
+        server_yaml.write_text("server:\n  name: local\nagents:\n  newworker: /tmp/path\n")
         ircd_client._load_owner_map()
-        assert calls["n"] == 2  # refreshed
+        assert calls["n"] == 2  # refreshed because mtime changed
 
     def test_invalidate_forces_refresh(self, monkeypatch):
         """_invalidate_owner_map_cache bypasses the TTL on demand."""
