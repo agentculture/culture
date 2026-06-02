@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [8.19.45] - 2026-06-02
+
+### Docs — Mission Control PRD amended to include #438 v8.19.44
+
+Audit by mesh worker `local-prd-check-w` flagged that PR #437's PRD
+update block (covering #420-#436 = 17 PRs) shipped before #438 landed,
+so the doc still listed `owner_map cache invalidation` as deferred even
+though #438 had implemented it via an mtime-keyed cache.
+
+Four small edits to the PRD on `docs/v8.19.42-prd-update` branch:
+
+1. Section heading bumped `v8.19.26-v8.19.42` → `v8.19.26-v8.19.44`
+2. Status sentence: 17 PRs → 18 PRs (added the late-session #438)
+3. New `#438 v8.19.44` entry added under "Orchestration / observability"
+4. "What's deferred" section: the owner_map item struck through and replaced
+   with a "shipped in #438" note pointing at the new entry, noting the
+   implementation diverged from the deferred-section's proposed
+   explicit-invalidation hook in favour of the cleaner mtime-keyed
+   approach (same item, better mechanism)
+5. Cross-ref pointer above `## Architecture` bumped to v8.19.26-v8.19.44
+
 ## [8.19.43] - 2026-06-01
 
 ### Docs — PRD update for v8.19.26-v8.19.42 (17 PRs)

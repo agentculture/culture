@@ -6,14 +6,14 @@ nav_order: 26
 
 # Mission Control Dashboard
 
-**Status:** Draft (partially superseded — see v8.19.26-v8.19.42 update + v8.19.x update below)
+**Status:** Draft (partially superseded — see v8.19.26-v8.19.44 update + v8.19.x update below)
 **Date:** 2026-05-29
 **Depends on:** #411 (permission broker, audit + daemon logs) and #412 (boss agent, `culture boss`, grant ceiling)
 **Branch:** `feat/mission-control-dashboard`
 
-## v8.19.26-v8.19.42 update — 2026-06-01
+## v8.19.26-v8.19.44 update — 2026-06-01
 
-Status: the v8.19.26-v8.19.42 session shipped 17 PRs (#420–#436). The headline finds were:
+Status: the v8.19.26-v8.19.44 session shipped 18 PRs (#420–#436 plus the late-session #438 owner_map mtime cache). The headline finds were:
 
 - **The model/effort inheritance was decorative the project's whole life** — `AgentConfig.thinking` was recorded into `daemon-log` `agent_start` but never reached the Claude SDK. Workers ran at the bundled CLI's default tier regardless of yaml.
 - **The permission-broker had a silent-bypass class** — `culture boss approve --always` persisted bare `{tool: Bash}` rules with no `input_regex`, so one approval of `Bash ls /tmp` ended up auto-allowing **every Bash call thereafter**. Live audit on the dev box found 80 such rules across 51 worker policies.
@@ -48,17 +48,20 @@ The PRs are grouped below by what they touched.
 - **#428 v8.19.33** — `culture boss watch <nick> [--limit N] [--follow]` codifies the SKILL.md Monitor recipe as a CLI verb. Polls both `~/.culture/audit/local-<nick>.jsonl` and `~/.culture/daemon-log/local-<nick>.jsonl`, filters to significant events.
 - **#435 v8.19.41** — `IDLE_GRACE_SECONDS` 90 → 600s defensive bump. *Note: the original v8.19.41 hypothesis (SDK 0.2.x cold-start) was wrong — the real cause was the v8.19.42 IRC transport bug. The grace bump is kept as a defensive tunable (`CULTURE_IDLE_GRACE_SECONDS=90` restores the old cadence) but isn't load-bearing once v8.19.42 lands.*
 - **#436 v8.19.42 (CRITICAL)** — confirmation-based channel membership tracking. `join_channel` no longer pre-appends; the server's JOIN echo flips tracking. New `JOIN` / `PART` / `KICK` / `404` (`ERR_CANNOTSENDTOCHAN`) / `474` (`ERR_BANNEDFROMCHAN`) / `ERROR` handlers in the transport — silent drops become loud WARNINGs. **Live-verified**: brief reached worker in 9 seconds after the fix; before, the same brief was being silently swallowed.
+- **#438 v8.19.44** — mtime-keyed `owner_map` cache eliminates the ACL race window upstream of v8.19.42. Cache is now keyed by `(server_yaml_path, mtime_ns)` — one `os.stat()` per ACL check, strictly correct (any manifest write invalidates the cache on the very next check, no time window). Replaces the prior 5s TTL design. Companion to #436: v8.19.42 made the symptom recoverable; v8.19.44 closes the underlying race. `OWNER_MAP_TTL_S` constant retained for backward compat (no runtime effect).
 
 ### Hygiene
 
 - **#427 v8.19.34** — gitignore session-local artifacts that polluted the repo root: `culture.yaml`, `agents.yaml`, `.claude/settings.json`, `.st4ck/`.
 - **#434 v8.19.40** — `tests/conftest.py` session-scoped autouse fixture captures `culture.yaml` + `agents.yaml` mtime at the repo root before the suite runs and writes a loud stderr warning if either changes after. Advisory, not a hard fail.
 
-### What's deferred (real this time)
+### What's deferred
 
-- **owner_map cache invalidation hook** — the IRC server's task-channel ACL caches the owner_map for 5s. A boss daemon that restarts immediately after a worker spawn races ahead of the next cache refresh and gets ERR_BANNEDFROMCHAN on the JOIN. v8.19.42 makes the symptom recoverable. The clean fix is a manifest-write hook in `culture.config.add_to_manifest` / `culture.cli.agent.create` that calls `culture.agentirc.client._invalidate_owner_map_cache()` so the next ACL check reads fresh.
+All session-deferred items closed before the session ended:
 
->>> See: original spec sections below describe the v8.9 baseline. Read this update block first; the architecture diagram and several behavior notes are superseded by what shipped in v8.19.0–v8.19.42.
+- ~~**owner_map cache invalidation hook**~~ — **shipped in #438 v8.19.44** (see "Orchestration / observability" above). Implementation diverged from the original deferred-section proposal (which expected an explicit invalidation hook in `add_to_manifest`); #438 took the cleaner approach of an mtime-keyed cache so any manifest write is its own invalidation signal, no coupling needed between writer and reader. Same item, better mechanism.
+
+>>> See: original spec sections below describe the v8.9 baseline. Read this update block first; the architecture diagram and several behavior notes are superseded by what shipped in v8.19.0–v8.19.44.
 
 ## v8.19.x update — 2026-05-31
 
@@ -164,7 +167,7 @@ packaging overhead for no gain on a single-user local machine.
 
 ## Architecture
 
->>> See "v8.19.26-v8.19.42 update" at the top: the architecture below describes the v8.9 baseline; channel data model, persistent observer, security model, and effort inheritance all changed.
+>>> See "v8.19.26-v8.19.44 update" at the top: the architecture below describes the v8.9 baseline; channel data model, persistent observer, security model, and effort inheritance all changed.
 
 
 ```text
