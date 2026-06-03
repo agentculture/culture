@@ -43,26 +43,53 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Task-channel ACL — enforce team isolation at the JOIN layer (v8.18.7).
+# Channel-class ACL — enforce per-class membership at the JOIN layer.
 #
-# #task-<suffix> channels are private to the worker whose nick ends with
-# that suffix, plus the worker's boss (from the manifest).  All other
-# clients are refused.  #joint-* / #team / #system are open to everyone.
+# Originally introduced as task-channel ACL in v8.18.7; extended in the
+# mesh-rearchitecture (2026-06-03) to a unified per-class contract:
+#
+#   #task-<suffix>     — the worker whose nick ends with -<suffix>, that
+#                        worker's boss (from the manifest), and system-*
+#                        nicks may join. Everyone else is refused.
+#   #team              — frozen post-AD-4. Refused for ALL nicks
+#                        (system-* included). Existing channel history in
+#                        SQLite is preserved but no new client may join.
+#   #system / #boss*   — bosses and humans may join; workers are refused.
+#                        A boss is a manifest entry with `boss` tag; a
+#                        human is any nick that does not appear in the
+#                        manifest at all.
+#   #team-<project>    — per-boss sibling fireplace. The boss named
+#                        <project> and every worker whose `boss` field
+#                        equals <project> may join. Others refused.
+#   #joint-*           — open to everyone for now. Phase 3 of the
+#                        mesh-rearchitecture will gate these by invite.
+#
+# Trust anchor: the IRCd reads the manifest (server.yaml) to identify each
+# nick's role + project. Nicks absent from the manifest are treated as
+# humans (first-class participants per binding rule 3).
 # ---------------------------------------------------------------------------
 
 _TASK_PREFIX = "#task-"
+_TEAM_PROJECT_PREFIX = "#team-"
+_JOINT_PREFIX = "#joint-"
+_BOSS_PREFIX = "#boss"
+_BOSS_TAG = "boss"
 
-# Owner-map cache. _load_owner_map() reads server.yaml AND every agent
-# culture.yaml on every call — ~21 synchronous file reads on a 20-agent
-# mesh. With concurrent JOINs (e.g. boss spawning a fleet) that's a disk
-# I/O storm on the asyncio event loop.
+# Channel names that — like #team — are restricted to bosses+humans (no
+# workers). #boss* is matched by prefix; #system is an exact name.
+_BOSSES_ONLY_EXACT = {"#system"}
+
+# Owner-map cache. _load_owner_map()/`_load_role_map()` reads server.yaml
+# AND every agent culture.yaml on every call — ~21 synchronous file reads
+# on a 20-agent mesh. With concurrent JOINs (e.g. boss spawning a fleet)
+# that's a disk I/O storm on the asyncio event loop.
 #
-# Cache the map for OWNER_MAP_TTL_S and refresh past that. The TTL is
+# Cache the maps for OWNER_MAP_TTL_S and refresh past that. The TTL is
 # short enough that manifest hot-reloads (the original design intent)
 # take effect within seconds, but long enough to amortize the cost
 # across burst JOINs. time.monotonic() avoids clock-skew issues.
 #
-# Cache is intentionally module-level (process-wide). If a future
+# Caches are intentionally module-level (process-wide). If a future
 # multi-process IRCd setup ever runs, each process has its own cache —
 # acceptable, since manifest changes still propagate on TTL expiry.
 import time as _time
@@ -71,6 +98,11 @@ OWNER_MAP_TTL_S = 5.0
 _owner_map_cache: dict[str, str] | None = None
 _owner_map_ts: float = 0.0
 _owner_map_key: str | None = None  # resolved server.yaml path for cache validity
+
+# Parallel role map (see _load_role_map). Shares the TTL constant.
+_role_map_cache: dict[str, dict] | None = None
+_role_map_ts: float = 0.0
+_role_map_key: str | None = None
 
 
 def _load_owner_map() -> dict[str, str]:
@@ -111,71 +143,195 @@ def _load_owner_map() -> dict[str, str]:
     return _owner_map_cache
 
 
+def _load_role_map() -> dict[str, dict]:
+    """Load nick -> {role, boss, project} from the manifest.
+
+    Returns an empty dict when the manifest is missing or unreadable —
+    fail-closed: every check that depends on knowing the joiner's role
+    will deny the join (a worker can't prove it's a worker, a boss can't
+    prove it's a boss).
+
+    The returned record's shape:
+
+    - ``role``: ``"boss"`` when the agent's ``tags`` include ``"boss"``;
+      otherwise ``"worker"``.
+    - ``boss``: the worker's supervising boss nick (empty string when
+      the agent IS a boss or is unmanaged).
+    - ``project``: derived. For a worker, project = its boss nick. For a
+      boss, project = its own nick. Empty string when neither applies.
+
+    Nicks absent from the returned map represent humans (first-class
+    participants who are not registered as agents).
+
+    Cached for ``OWNER_MAP_TTL_S`` seconds and keyed by the resolved
+    ``server.yaml`` path — same pattern as ``_load_owner_map`` so a single
+    ``CULTURE_HOME`` switch in tests invalidates both caches consistently.
+    """
+    global _role_map_cache, _role_map_ts, _role_map_key
+    now = _time.monotonic()
+
+    from culture.clients._perm_broker import culture_home
+
+    server_yaml = os.path.join(culture_home(), "server.yaml")
+
+    if (
+        _role_map_cache is not None
+        and _role_map_key == server_yaml
+        and (now - _role_map_ts) < OWNER_MAP_TTL_S
+    ):
+        return _role_map_cache
+    try:
+        from culture.config import load_config_or_default
+
+        config = load_config_or_default(server_yaml, fallback=server_yaml)
+        result: dict[str, dict] = {}
+        for agent in config.agents:
+            tags = list(getattr(agent, "tags", []) or [])
+            boss_nick = getattr(agent, "boss", "") or ""
+            if _BOSS_TAG in tags:
+                role = "boss"
+                project = agent.nick
+                boss_field: str | None = None
+            else:
+                role = "worker"
+                # Worker's project is the boss it reports to. Unmanaged
+                # workers have no project — empty string keeps them out
+                # of every #team-<project> channel.
+                project = boss_nick
+                boss_field = boss_nick or None
+            result[agent.nick] = {
+                "role": role,
+                "boss": boss_field,
+                "project": project,
+            }
+        _role_map_cache = result
+    except Exception:  # noqa: BLE001 — unreadable manifest -> fail-closed
+        _role_map_cache = {}
+    _role_map_ts = now
+    _role_map_key = server_yaml
+    return _role_map_cache
+
+
 def _invalidate_owner_map_cache() -> None:
-    """Force the next ``_load_owner_map()`` call to refresh from disk.
+    """Force the next ``_load_owner_map()`` / ``_load_role_map()`` to refresh.
 
     Tests + administrative operations that mutate the manifest can call
-    this to bypass the TTL.
+    this to bypass the TTL. Both caches are flushed together — they read
+    the same manifest and would otherwise drift.
     """
     global _owner_map_cache, _owner_map_ts, _owner_map_key
+    global _role_map_cache, _role_map_ts, _role_map_key
     _owner_map_cache = None
     _owner_map_ts = 0.0
     _owner_map_key = None
+    _role_map_cache = None
+    _role_map_ts = 0.0
+    _role_map_key = None
+
+
+def _classify_nick(nick: str, role_map: dict[str, dict]) -> dict:
+    """Return ``{role, project}`` for *nick*.
+
+    - Nick in role_map: returns the stored record.
+    - Nick starts with ``system-``: ``{role: "system", project: ""}``.
+    - Otherwise: ``{role: "human", project: ""}`` — humans are first-class
+      mesh participants per binding rule 3.
+    """
+    if nick in role_map:
+        return role_map[nick]
+    if nick.startswith(SYSTEM_USER_PREFIX):
+        return {"role": "system", "boss": None, "project": ""}
+    return {"role": "human", "boss": None, "project": ""}
 
 
 def _task_channel_acl(nick: str, channel_name: str, server_name: str = "") -> bool:
     """Return True if *nick* is allowed to join *channel_name*.
 
-    Only gates ``#task-*`` channels.  Everything else returns True.
+    Implements the unified channel-class ACL described in the module
+    header. Per-class behaviour:
+
+    - ``#team`` (exact): refused for ALL nicks (frozen per AD-4).
+    - ``#system`` / ``#boss*``: only bosses + humans may join.
+    - ``#team-<project>``: the boss named ``<project>`` and every worker
+      whose manifest ``boss`` field equals ``<project>`` may join. Humans
+      may also join (they collaborate from outside the agent hierarchy).
+      Workers from other projects are refused.
+    - ``#task-<suffix>``: the owning worker, that worker's boss, and
+      ``system-*`` nicks may join. Everyone else is refused.
+    - ``#joint-*``: open to everyone today. Phase 3 will add invite gating.
+    - Any other channel name: unrestricted (default-allow).
 
     *server_name* is the IRCd's configured name (e.g. ``"spark"``).
-    It is used to correctly strip the server prefix from nicks —
-    ``split("-", 1)`` breaks when the server name itself contains
-    hyphens (e.g. ``"my-server"``).  When omitted or empty, falls
-    back to ``split("-", 1)`` for backward compatibility.
-
-    Rules for ``#task-<suffix>``:
-    - The worker whose nick ends with ``-<suffix>`` may join (owner).
-    - That worker's boss (from manifest) may join (supervisor).
-    - The ``system-*`` prefix is always allowed (server bots / system).
-    - Everyone else is refused.
+    Used to strip the server prefix when deriving the agent suffix —
+    ``split("-", 1)`` would break on hyphenated server names.
     """
-    if not channel_name.startswith(_TASK_PREFIX):
-        return True  # Not a task channel — no restriction.
+    # ---- #team is frozen ----
+    if channel_name == "#team":
+        return False
 
-    task_suffix = channel_name[len(_TASK_PREFIX) :]
-    if not task_suffix:
-        return True  # Bare "#task-" — degenerate, allow.
-
-    # Extract the agent suffix from a nick.  When the server name is
-    # known we strip the exact prefix (handles hyphens in server names);
-    # otherwise fall back to the first-hyphen split.
+    # ---- Extract the agent suffix from a nick (used by #task-*) ----
     def _agent_suffix(n: str) -> str:
         prefix = f"{server_name}-" if server_name else ""
         if prefix and n.startswith(prefix):
             return n[len(prefix) :]
         return n.split("-", 1)[1] if "-" in n else n
 
-    nick_suffix = _agent_suffix(nick)
+    role_map = _load_role_map()
+    classification = _classify_nick(nick, role_map)
+    nick_role = classification["role"]
 
-    # Owner match: nick suffix == task suffix
-    if nick_suffix == task_suffix:
+    # ---- #system / #boss* — bosses + humans, no workers ----
+    if channel_name in _BOSSES_ONLY_EXACT or channel_name.startswith(_BOSS_PREFIX):
+        return nick_role in ("boss", "human", "system")
+
+    # ---- #team-<project> — opt-in per-boss fireplace ----
+    if channel_name.startswith(_TEAM_PROJECT_PREFIX):
+        project = channel_name[len(_TEAM_PROJECT_PREFIX) :]
+        if not project:
+            return True  # degenerate bare #team-, allow
+        if nick_role == "system":
+            return True
+        if nick_role == "human":
+            # Humans collaborate across project lines; admit them.
+            return True
+        if nick_role == "boss":
+            # The boss whose own nick == project owns the channel.
+            return nick == project
+        if nick_role == "worker":
+            return classification.get("project") == project
+        return False
+
+    # ---- #joint-* — open today (Phase 3 adds invite gating) ----
+    if channel_name.startswith(_JOINT_PREFIX):
         return True
 
-    # System clients (system-*) always allowed — they deliver NOTICEs etc.
-    if nick.startswith(SYSTEM_USER_PREFIX):
-        return True
+    # ---- #task-<suffix> — preserved existing logic ----
+    if channel_name.startswith(_TASK_PREFIX):
+        task_suffix = channel_name[len(_TASK_PREFIX) :]
+        if not task_suffix:
+            return True  # Bare "#task-" — degenerate, allow.
 
-    # Boss match: look up the manifest to find the task-owner's boss.
-    # The task owner's full nick is <server>-<task_suffix>.  We need to
-    # find it in the manifest and check if the joining nick is its boss.
-    owner_map = _load_owner_map()
-    for worker_nick, boss_nick in owner_map.items():
-        w_suffix = _agent_suffix(worker_nick)
-        if w_suffix == task_suffix and boss_nick == nick:
+        # System clients always allowed — they deliver NOTICEs etc.
+        if nick_role == "system":
             return True
 
-    return False
+        nick_suffix = _agent_suffix(nick)
+
+        # Owner match: nick suffix == task suffix
+        if nick_suffix == task_suffix:
+            return True
+
+        # Boss match: look up the manifest to find the task-owner's boss.
+        owner_map = _load_owner_map()
+        for worker_nick, boss_nick in owner_map.items():
+            w_suffix = _agent_suffix(worker_nick)
+            if w_suffix == task_suffix and boss_nick == nick:
+                return True
+
+        return False
+
+    # ---- Any other channel: default-allow ----
+    return True
 
 
 class Client:

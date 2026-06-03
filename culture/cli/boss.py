@@ -135,7 +135,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     note_p.add_argument(
         "channel_or_name",
-        help="Channel name (e.g. '#team') OR a worker suffix (note lands in #task-<name>)",
+        help="Channel name (e.g. '#general' or '#task-foo') OR a worker suffix (note lands in #task-<name>)",
     )
     note_p.add_argument("text", help="Note text — appended as a dated section to the channel brief")
     note_p.add_argument("--title", default="note", help="Section title; defaults to 'note'")
@@ -850,7 +850,11 @@ def _record_worker_boss(
         target = data
 
     target["boss"] = boss
-    base_channels = ["#team", _task_channel(suffix)]
+    # #team is removed entirely in the mesh rearchitecture (AD-4):
+    # workers default to #task-<own> only. Sibling fireplaces
+    # (#team-<project>) and cross-boss coordination (#joint-*) are
+    # explicit opt-ins via --channels / mesh invite.
+    base_channels = [_task_channel(suffix)]
     if extra_channels:
         for ch in extra_channels:
             if ch not in base_channels:
@@ -955,7 +959,10 @@ def _write_boss_yaml(cwd: str, suffix: str, nick: str, channel: str, model: str 
     data = {
         "suffix": suffix,
         "backend": "claude",
-        "channels": ["#team", channel],
+        # #team is removed entirely (AD-4 of the mesh rearchitecture).
+        # The boss joins ONLY its own management channel by default;
+        # cross-boss coordination happens via #joint-* (opt-in).
+        "channels": [channel],
         "system_prompt": _MANAGER_PROMPT.format(nick=nick, channel=channel),
         "tags": ["boss"],
     }

@@ -95,11 +95,14 @@ def test_record_worker_into_multi_agent_yaml(tmp_path):
         data = yaml.safe_load(f)
     entry = next(a for a in data["agents"] if a["suffix"] == "qa")
     assert entry["boss"] == "local-boss"
-    assert entry["channels"] == ["#team", "#task-qa"]
+    # #team is removed from defaults (AD-4 of the mesh rearchitecture);
+    # workers default to #task-<own> only.
+    assert entry["channels"] == ["#task-qa"]
+    assert "#team" not in entry["channels"]
     assert entry["model"] == "claude-opus-4-7"
     # No stray top-level single-agent fields shadowing the list.
     assert "boss" not in data and "channels" not in data and "suffix" not in data
-    # The sibling entry is untouched.
+    # The sibling entry is untouched (pre-existing data is preserved verbatim).
     assert next(a for a in data["agents"] if a["suffix"] == "ori")["channels"] == [
         "#team",
         "#task-ori",

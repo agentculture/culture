@@ -428,7 +428,16 @@ def _classify_channel(ch):
         return "task"
     if ch.startswith("#joint-"):
         return "joint"
-    if ch in ("#team", "#system", "#general"):
+    if ch.startswith("#team-"):
+        # Per-boss sibling fireplace (AD-3); rendered alongside other
+        # per-project channels.
+        return "team"
+    if ch in ("#system", "#general"):
+        return "shared"
+    # #team is retained here as a historical bucket only — the channel is
+    # frozen post-AD-4 (no new joins) but legacy history can surface in
+    # the dashboard's channel list.
+    if ch == "#team":
         return "shared"
     if ch.startswith("#boss"):
         return "boss"

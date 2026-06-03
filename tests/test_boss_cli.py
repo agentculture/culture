@@ -512,7 +512,9 @@ class TestRecordWorkerBossChannels:
         )
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert "#team" in data["channels"]
+        # #team is removed from defaults (AD-4) — workers default to
+        # their own #task-<suffix> only.
+        assert "#team" not in data["channels"]
         assert "#task-w1" in data["channels"]
         assert "#joint-fixes" in data["channels"]
         assert "#design" in data["channels"]
@@ -525,23 +527,25 @@ class TestRecordWorkerBossChannels:
         _record_worker_boss(cwd, "w2", "local-boss")
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert data["channels"] == ["#team", "#task-w2"]
+        # Default channel set is the worker's own #task-<suffix> only.
+        assert data["channels"] == ["#task-w2"]
 
     def test_extra_channels_no_duplicates(self, home):
         from culture.cli.boss import _record_worker_boss
 
         cwd = os.path.join(str(home), "helpers", "w3")
         os.makedirs(cwd, exist_ok=True)
-        # #team is already in the base list — should not be duplicated
+        # #task-bot is already in the base list as #task-w3 is the default;
+        # passing #task-w3 again must not duplicate the entry.
         _record_worker_boss(
             cwd,
             "w3",
             "local-boss",
-            extra_channels=["#team", "#joint-fixes"],
+            extra_channels=["#task-w3", "#joint-fixes"],
         )
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert data["channels"].count("#team") == 1
+        assert data["channels"].count("#task-w3") == 1
         assert "#joint-fixes" in data["channels"]
 
     def test_channels_flag_parsing(self):
@@ -584,5 +588,6 @@ class TestRecordWorkerBossChannels:
             data = yaml.safe_load(f)
         entry = data["agents"][0]
         assert "#joint-fixes" in entry["channels"]
-        assert "#team" in entry["channels"]
+        # #team is removed from defaults (AD-4).
+        assert "#team" not in entry["channels"]
         assert "#task-alpha" in entry["channels"]
