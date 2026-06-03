@@ -18,6 +18,7 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.clients import _mission as _mission_persistence
 from culture.clients._audit import AuditWriter
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink

@@ -144,30 +144,41 @@ async def test_perm_decisions_new_file_emits_perm_decision(culture_root) -> None
 
 @pytest.mark.asyncio
 async def test_demote_notice_emits_inbound_mention_with_tag(culture_root) -> None:
+    """Use the broker's ``_write_demote_notice`` directly so the test
+    exercises the REAL on-disk schema. The previous version fabricated a
+    notice using the observer's assumed schema (``id`` / ``tool_name`` /
+    ``reason``) — that masked Rev-C HIGH-1 where the broker actually
+    writes ``request_id`` / ``original_tool`` / ``demote_reason`` and
+    the observer's renderer fell back to ``'?'`` for every field.
+    """
+    from culture.clients import _perm_broker
+
+    request_id = "req-2026-06-03T00-00-02-000000-ghi789"
     events: list[tuple[str, dict]] = []
     obs = _start_observer(culture_root, events)
     try:
-        notice = {
-            "id": "req-2026-06-03T00-00-02-000000-ghi789",
-            "tool_name": "Bash",
-            "reason": "no input_regex for high-risk tool",
-            "boss": "testserv-boss",
-            "noticed_at": "2026-06-03T00:00:02.000Z",
-        }
-        path = os.path.join(
-            culture_root,
-            "perm-demote-notices",
-            f"{notice['id']}.json",
+        _perm_broker._write_demote_notice(
+            request_id,
+            "Bash",
+            "no input_regex for high-risk tool",
+            boss="testserv-boss",
+            helper_nick="testserv-worker",
         )
-        _atomic_write_json(path, notice)
         await _collect_events(events, 1)
         assert len(events) >= 1
         kind, payload = events[0]
         assert kind == KIND_INBOUND_MENTION
         assert payload["tag"] == TAG_DEMOTE_NOTICE
         assert payload["sender"] == "bridge"
+        assert payload["target"] == "testserv-boss"
+        # The rendered text must contain the original tool and the
+        # request id — both were silently dropped to ``'?'`` before
+        # the fix.
         assert "Bash" in payload["text"]
-        assert payload["id"] == notice["id"]
+        assert request_id in payload["text"]
+        assert "no input_regex" in payload["text"]
+        assert payload["request_id"] == request_id
+        assert payload["original_tool"] == "Bash"
     finally:
         obs.stop()
 

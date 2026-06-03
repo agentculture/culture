@@ -404,24 +404,33 @@ class BridgeFSObserver:
             return KIND_PERM_DECISION, payload
         if label == "perm-demote-notices":
             data = _read_json_best_effort(path)
+            # Key names mirror ``_perm_broker._write_demote_notice`` exactly —
+            # ``request_id`` / ``original_tool`` / ``demote_reason`` / ``boss``
+            # / ``helper_nick``. The previous schema (``id`` / ``tool_name`` /
+            # ``reason``) silently mismatched the broker's output and the
+            # rendered text fell back to ``'?'`` for every field.
+            #
             # Render as an ``inbound_mention`` so the existing CC plugin
             # path (Stop hook → drain queue → system reminder) carries
             # the notice without a new IPC kind.
+            request_id = data.get("request_id", "")
+            original_tool = data.get("original_tool", "")
+            demote_reason = data.get("demote_reason", "")
             text = (
                 f"Your `--always` approval for "
-                f"{data.get('tool_name', '?')!r} was demoted to one-time "
+                f"{original_tool or '?'!r} was demoted to one-time "
                 f"because no `input_regex` was supplied "
-                f"(request {data.get('id', '?')})."
+                f"(request {request_id or '?'})."
             )
-            if data.get("reason"):
-                text += f" Reason: {data['reason']}"
+            if demote_reason:
+                text += f" Reason: {demote_reason}"
             payload = {
                 "target": data.get("boss", ""),
                 "sender": "bridge",
                 "text": text,
                 "tag": TAG_DEMOTE_NOTICE,
-                "id": data.get("id", ""),
-                "tool_name": data.get("tool_name", ""),
+                "request_id": request_id,
+                "original_tool": original_tool,
                 "source": "fs_observer",
             }
             return KIND_INBOUND_MENTION, payload

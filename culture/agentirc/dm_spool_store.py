@@ -218,6 +218,28 @@ class DmSpoolStore:
         (n,) = cur.fetchone()
         return int(n)
 
+    def get_by_msg_id(self, nick: str, msg_id: str) -> bool:
+        """Return True iff a spool row exists whose ``msg_id`` matches AND
+        whose ``recipient`` equals *nick*.
+
+        Targeted O(1) lookup used by ``CHATHISTORY DELETE`` to gate the
+        mark-delivered ack without paging through the recipient's whole
+        spool. IDOR-safe by construction: the WHERE clause pins the
+        recipient to the requesting nick, so a peer cannot mark another
+        boss's row delivered nor probe for the existence of an unknown
+        msg_id outside its own spool.
+
+        The previous page-scan capped at CHATHISTORY_LIMIT_MAX (100)
+        meant valid msg_ids beyond position 100 (oldest-first ts_server
+        order) returned a spurious ERR_NOPRIVILEGES, leaking the spool
+        indefinitely once it grew past the cap.
+        """
+        cur = self._conn.execute(
+            "SELECT 1 FROM dm_spool WHERE msg_id = ? AND recipient = ? LIMIT 1",
+            (msg_id, nick),
+        )
+        return cur.fetchone() is not None
+
     # ------------------------------------------------------------------
     # Retention
     # ------------------------------------------------------------------

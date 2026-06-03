@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # upgrade / uninstall without touching unrelated entries.
 _MARKER_KEY = "_culture_bridge"
 
-# The four hooks the plugin owns.
-HOOK_EVENTS = ("SessionStart", "Stop", "UserPromptSubmit", "PreToolUse")
+# The five hooks the plugin owns.
+HOOK_EVENTS = ("SessionStart", "SessionEnd", "Stop", "UserPromptSubmit", "PreToolUse")
 
 
 def settings_path() -> str:
@@ -60,7 +60,7 @@ def plugin_dir() -> str:
 
 def hook_script_path(event: str) -> str:
     """Path to the hook script implementing ``event`` (case-sensitive
-    SessionStart / Stop / UserPromptSubmit / PreToolUse)."""
+    SessionStart / SessionEnd / Stop / UserPromptSubmit / PreToolUse)."""
     script_name = {
         "SessionStart": "session_start.py",
         "Stop": "stop.py",

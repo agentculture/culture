@@ -195,19 +195,20 @@ class ChatHistorySkill(Skill):
             await self._send_delete_ack(client, msg_id, ok=True)
             return
 
-        # Look up the entry first so we can enforce recipient-equals-caller
-        # without leaking msg_id existence. ``query_for_nick`` with
-        # include_delivered=True scans the requesting nick's own spool;
-        # the msg_id MUST be present there.
+        # Targeted O(1) lookup so we can enforce recipient-equals-caller
+        # without leaking msg_id existence. The previous page-scan was
+        # capped at CHATHISTORY_LIMIT_MAX (100); valid msg_ids beyond
+        # position 100 in ts_server order returned a spurious
+        # ERR_NOPRIVILEGES and the spool leaked indefinitely once it
+        # grew past the cap. ``get_by_msg_id`` is IDOR-safe by
+        # construction: the WHERE clause pins recipient to the
+        # requesting nick.
         try:
-            entries = spool.query_for_nick(
-                client.nick or "", limit=CHATHISTORY_LIMIT_MAX, include_delivered=True
-            )
+            owned = spool.get_by_msg_id(client.nick or "", msg_id)
         except Exception:  # noqa: BLE001
             await self._send_delete_ack(client, msg_id, ok=False)
             return
-        own_ids = {e["msg_id"] for e in entries}
-        if msg_id not in own_ids:
+        if not owned:
             # Either unknown msg_id OR the msg_id belongs to someone
             # else's spool. Same response in both cases (IDOR-safe).
             await client.send_numeric(

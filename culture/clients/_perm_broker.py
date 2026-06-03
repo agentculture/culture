@@ -505,13 +505,21 @@ def demote_notice_path_for(request_id: str) -> str:
     return os.path.join(_demote_notices_dir(), f"{request_id}.json")
 
 
-def _write_demote_notice(request_id: str, original_tool: str, demote_reason: str) -> None:
+def _write_demote_notice(
+    request_id: str,
+    original_tool: str,
+    demote_reason: str,
+    *,
+    boss: str = "",
+    helper_nick: str = "",
+) -> None:
     """Drop a demote-notice JSON marking a sticky-allow that was demoted to once.
 
     Best-effort: a write failure is logged but not raised — the demote itself
     already happened (the broker continues with scope=once). The notice is the
-    file-bus contract the watchdog observer reads to surface the demote to the
-    boss/dashboard.
+    file-bus contract the bridge's fs_observer reads to surface the demote to
+    the boss/dashboard. The observer mirrors these key names exactly — keep
+    them aligned (see ``culture/clients/bridge/_fs_observer.py::_build_payload``).
     """
     try:
         path = demote_notice_path_for(request_id)
@@ -527,6 +535,8 @@ def _write_demote_notice(request_id: str, original_tool: str, demote_reason: str
                 "original_tool": original_tool,
                 "demote_reason": demote_reason,
                 "noticed_at": _now_iso(),
+                "boss": boss,
+                "helper_nick": helper_nick,
             },
         )
     except OSError:
@@ -752,6 +762,8 @@ class PermissionBroker:
                     request_id,
                     tool_name,
                     "no input_regex for high-risk tool",
+                    boss=self._boss,
+                    helper_nick=self._nick,
                 )
 
         # Drop the policy cache so the freshly-appended rule is visible to

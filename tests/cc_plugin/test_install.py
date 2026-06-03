@@ -48,6 +48,24 @@ class TestInstall:
             if event == "PreToolUse":
                 assert entry["matcher"] == "*"
 
+    def test_session_end_hook_registered(self, home):
+        """Regression: SessionEnd was historically missing from
+        HOOK_EVENTS even though ``session_end.py`` exists. Without it
+        the spool-drain / cleanup on session-end never fires.
+
+        SessionEnd has no matcher (unlike PreToolUse) so the assertion
+        is simpler than the full loop above.
+        """
+        path = installer.install()
+        data = _read(path)
+        assert "SessionEnd" in data["hooks"]
+        entries = data["hooks"]["SessionEnd"]
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["_culture_bridge"] is True
+        assert "matcher" not in entry
+        assert "session_end.py" in entry["hooks"][0]["command"]
+
     def test_install_is_idempotent(self, home):
         first = installer.install()
         before = _read(first)
