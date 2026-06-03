@@ -21,6 +21,20 @@ from culture.clients.claude.cc_plugin import _nick_resolver
 from culture.clients.claude.cc_plugin._nick_resolver import resolve_project_nick
 
 
+@pytest.fixture(autouse=True)
+def _pin_server_name(monkeypatch):
+    """Pin ``_server_name`` to ``local`` so every test in this file
+    runs with a known prefix regardless of whether the developer's
+    ``~/.culture/server.yaml`` exists or what it contains.
+
+    Without this, ``test_long_bare_candidate_clipped_then_prefixed``
+    et al. would resolve the prefix from the real user-scope yaml on
+    a dev box and ``culture`` on a clean CI runner — failing
+    intermittently. (Qodo PR #54 #4 highlighted the underlying
+    inconsistency.)"""
+    monkeypatch.setattr(_nick_resolver, "_server_name", lambda: "local")
+
+
 @pytest.fixture
 def isolated_cwd(tmp_path, monkeypatch):
     """A cwd with no env override, no culture.yaml, and no git remote."""
@@ -114,12 +128,14 @@ class TestPriorityC:
         # ``test_git_unavailable_falls_through`` is hyphen-free after
         # sanitization (underscores survive but no hyphen) so the
         # prefix path applies.
-        agent_budget = _nick_resolver._MAX_LEN - len(_nick_resolver._DEFAULT_SERVER_NAME) - 1
+        # The autouse ``_pin_server_name`` fixture forces the prefix to
+        # ``local`` regardless of the dataclass default, so the
+        # observable output here uses ``local`` even after Qodo PR #54
+        # #4 swapped the constant to ``culture``.
+        pinned_server = "local"
+        agent_budget = _nick_resolver._MAX_LEN - len(pinned_server) - 1
         expected_agent = isolated_cwd.name.lower()[:agent_budget]
-        assert (
-            resolve_project_nick(str(isolated_cwd))
-            == f"{_nick_resolver._DEFAULT_SERVER_NAME}-{expected_agent}"
-        )
+        assert resolve_project_nick(str(isolated_cwd)) == f"{pinned_server}-{expected_agent}"
 
 
 class TestPriorityD:
@@ -200,6 +216,67 @@ class TestQualifyServerAgent:
         # Agent budget = 14 - len("local-") = 8.
         assert _nick_resolver._qualify("abcdefghijklmnop") == "local-abcdefgh"
         assert len(_nick_resolver._qualify("abcdefghijklmnop")) == 14
+
+    def test_default_server_name_matches_dataclass_default(self):
+        """Qodo PR #54 #4: ``_DEFAULT_SERVER_NAME`` must match
+        ``ServerConfig.name`` in ``culture/agentirc/config.py``
+        (``"culture"``). A previous draft used ``"local"`` — the value
+        that happens to be in the maintainer's dev yaml — which would
+        silently fork the resolver's identity from the dataclass
+        default on a fresh deployment."""
+        assert _nick_resolver._DEFAULT_SERVER_NAME == "culture"
+
+
+class TestServerNameReader:
+    """Qodo PR #54 #2: ``_server_name`` must strip inline YAML
+    comments. A line like ``name: spark  # human-friendly`` would
+    otherwise produce ``spark  # human-friendly`` as the prefix and
+    ``_qualify`` would build a nick containing ``#`` + spaces that the
+    bridge CLI rejects with ``invalid nick`` — reintroducing the very
+    silent-failure mode this whole PR is closing."""
+
+    @pytest.fixture(autouse=True)
+    def _unpin_server_name(self, monkeypatch):
+        """Defeat the autouse ``_pin_server_name`` fixture for this
+        class — we're exercising the real ``_server_name`` reader."""
+        import importlib
+
+        importlib.reload(_nick_resolver)
+
+    def test_strips_inline_comment(self, tmp_path, monkeypatch):
+        culture_home = tmp_path / ".culture"
+        culture_home.mkdir()
+        (culture_home / "server.yaml").write_text(
+            "server:\n  name: spark  # human-friendly tag for the irc daemon\n"
+        )
+        monkeypatch.setattr(
+            os.path,
+            "expanduser",
+            lambda p: p.replace("~", str(tmp_path), 1) if p.startswith("~") else p,
+        )
+        assert _nick_resolver._server_name() == "spark"
+
+    def test_handles_quoted_value_with_comment(self, tmp_path, monkeypatch):
+        culture_home = tmp_path / ".culture"
+        culture_home.mkdir()
+        (culture_home / "server.yaml").write_text(
+            'server:\n  name: "spark"  # also handles quoted forms\n'
+        )
+        monkeypatch.setattr(
+            os.path,
+            "expanduser",
+            lambda p: p.replace("~", str(tmp_path), 1) if p.startswith("~") else p,
+        )
+        assert _nick_resolver._server_name() == "spark"
+
+    def test_missing_yaml_uses_dataclass_default(self, tmp_path, monkeypatch):
+        # ~ resolves to a tmp dir with NO ~/.culture/server.yaml.
+        monkeypatch.setattr(
+            os.path,
+            "expanduser",
+            lambda p: p.replace("~", str(tmp_path), 1) if p.startswith("~") else p,
+        )
+        assert _nick_resolver._server_name() == "culture"
 
     def test_resolver_output_always_passes_bridge_validation(self, isolated_cwd, monkeypatch):
         """The output of every priority tier must be a valid

@@ -124,6 +124,18 @@ def _ensure_bridge_running(nick: str, repo_root: str) -> str | None:
             return None
         rc = proc.poll()
         if rc is not None and rc != 0:
+            # Qodo PR #54 #3: the CLI exits 1 in the "PID file exists,
+            # daemon still warming up" window. The daemon might have
+            # been spawned by a SIBLING process and be on its way up
+            # right now. Give the socket a couple more polls before
+            # surfacing as a failure — a real "won't come up" cause
+            # would still surface, just 200ms later. This race-aware
+            # recheck is the load-bearing assertion that prevents
+            # SessionStart from lying about a healthy mesh as broken.
+            for _ in range(2):
+                time.sleep(0.1)
+                if _bridge_client.bridge_running(nick):
+                    return None
             err_bytes = proc.stderr.read() if proc.stderr else b""
             err = err_bytes.decode(errors="replace").strip() or f"exit {rc}"
             return f"bridge spawn exited {rc}: {err}"

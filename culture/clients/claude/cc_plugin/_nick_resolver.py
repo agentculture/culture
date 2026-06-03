@@ -36,8 +36,11 @@ _MIN_LEN = 3
 _LEGACY_FALLBACK = "local-boss"
 
 # Default server name used when ``~/.culture/server.yaml`` cannot be
-# parsed. Matches the default in ``culture/agentirc/config.py``.
-_DEFAULT_SERVER_NAME = "local"
+# parsed. Matches ``ServerConfig.name = "culture"`` in
+# ``culture/agentirc/config.py`` (Qodo PR #54 #4 — a previous draft of
+# this module used ``local``, which is the value the user's local
+# deployment happens to have but is NOT the dataclass default).
+_DEFAULT_SERVER_NAME = "culture"
 
 
 def _server_name() -> str:
@@ -64,7 +67,16 @@ def _server_name() -> str:
                     in_server_block = stripped == "server:"
                     continue
                 if in_server_block and stripped.startswith("name:"):
-                    value = stripped.split(":", 1)[1].strip().strip("\"'")
+                    raw = stripped.split(":", 1)[1]
+                    # Qodo PR #54 #2: a trailing ``# comment`` would
+                    # otherwise survive into the prefix and produce
+                    # ``culture-<repo>#comment``, which the bridge CLI's
+                    # nick validator rejects. Strip the comment first,
+                    # THEN unwrap quotes.
+                    comment_at = raw.find("#")
+                    if comment_at >= 0:
+                        raw = raw[:comment_at]
+                    value = raw.strip().strip("\"'")
                     return value or _DEFAULT_SERVER_NAME
     except OSError:
         pass

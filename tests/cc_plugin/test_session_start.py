@@ -178,6 +178,38 @@ class TestBridgeSpawnHonesty:
         # to do next.
         assert "culture bridge start" in ctx
 
+    def test_warmup_race_socket_appears_after_rc_nonzero(self, monkeypatch):
+        """Qodo PR #54 #3: ``culture bridge start`` exits 1 with
+        ``already running`` when a stale PID file is present BUT the
+        daemon is still warming up. The hook MUST re-check the socket
+        once more after the non-zero exit before declaring failure —
+        otherwise a healthy mesh shows up as ``BRIDGE SPAWN FAILED``."""
+        import subprocess
+
+        # Bridge is not yet running on the first poll, the spawn exits
+        # 1, but the socket appears on the very next probe (the typical
+        # "already running but warming up" shape).
+        polls = {"n": 0}
+
+        def _bridge_running(_nick: str) -> bool:
+            polls["n"] += 1
+            return polls["n"] >= 3  # not running on probes 1+2, running by probe 3
+
+        class _Proc:
+            stderr = None
+
+            def poll(self):
+                return 1  # exited 1 immediately
+
+        monkeypatch.setattr(hook._bridge_client, "bridge_running", _bridge_running)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _Proc())
+        monkeypatch.setattr(hook.time, "sleep", lambda _: None)
+
+        err = hook._ensure_bridge_running("local-fork", "/tmp")
+        assert err is None, (
+            f"hook surfaced failure even though socket appeared during " f"warmup: {err!r}"
+        )
+
     def test_success_path_unchanged(self):
         """Sanity: when bridge_error is None, the original happy-path
         context is produced and contains the expected nick + roster."""
