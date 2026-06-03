@@ -8,24 +8,33 @@ import pytest_asyncio
 
 @pytest.mark.asyncio
 async def test_chanarchive_blocks_join(server, make_client):
-    """After CHANARCHIVE, new clients cannot JOIN the channel."""
+    """After CHANARCHIVE, new clients cannot JOIN the channel.
+
+    Uses ``#archive-target`` (not ``#task-*``) so the new per-class
+    JOIN ACL — which scopes ``#task-<suffix>`` to the worker named
+    -suffix and its boss — does not silently refuse the test's first
+    JOIN. The intent of this test is CHANARCHIVE semantics, not the
+    task-channel ACL (covered in test_channel_class_acl).
+    """
     client1 = await make_client("testserv-archiver", "archiver")
-    await client1.send("JOIN #task-done")
+    await client1.send("JOIN #archive-target")
     await client1.recv_all()  # drain join responses
 
     # Archive the channel
-    await client1.send("CHANARCHIVE #task-done")
+    await client1.send("CHANARCHIVE #archive-target")
     lines = await client1.recv_all()
     assert any("archived" in line.lower() for line in lines)
 
     # A second client should be refused
     client2 = await make_client("testserv-latecomer", "latecomer")
-    await client2.send("JOIN #task-done")
+    await client2.send("JOIN #archive-target")
     lines = await client2.recv_all()
     # Should get a NOTICE about archived, NOT a JOIN confirmation
     assert any("archived" in line.lower() for line in lines)
     assert not any(
-        "JOIN" in line and "task-done" in line for line in lines if not line.startswith(":testserv")
+        "JOIN" in line and "archive-target" in line
+        for line in lines
+        if not line.startswith(":testserv")
     )
 
 
@@ -55,16 +64,21 @@ async def test_chanarchive_hides_from_list(server, make_client):
 
 @pytest.mark.asyncio
 async def test_chanarchive_already_archived(server, make_client):
-    """Archiving an already-archived channel gives a notice."""
+    """Archiving an already-archived channel gives a notice.
+
+    Uses ``#archive-double`` (not ``#task-*``) so the per-class JOIN
+    ACL does not silently refuse the first JOIN — see the rationale on
+    test_chanarchive_blocks_join above.
+    """
     client = await make_client("testserv-double", "double")
-    await client.send("JOIN #task-x")
+    await client.send("JOIN #archive-double")
     await client.recv_all()
 
-    await client.send("CHANARCHIVE #task-x")
+    await client.send("CHANARCHIVE #archive-double")
     await client.recv_all()
 
     # Archive again
-    await client.send("CHANARCHIVE #task-x")
+    await client.send("CHANARCHIVE #archive-double")
     lines = await client.recv_all()
     assert any("already archived" in line.lower() for line in lines)
 

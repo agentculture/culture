@@ -38,7 +38,7 @@ from culture.clients._audit import AuditWriter
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.bridge._fs_observer import BridgeFSObserver
-from culture.clients.bridge._spool import inbox_path, spool_inbound
+from culture.clients.bridge._spool import drain_inbox, inbox_path, spool_inbound
 from culture.clients.bridge.ipc import make_response
 from culture.clients.bridge.irc_transport import IRCTransport
 from culture.clients.bridge.message_buffer import MessageBuffer
@@ -1229,34 +1229,12 @@ class AgentDaemon:
     def _ipc_inbox_drain(self, req_id: str, msg: dict) -> dict:
         """Drain the bridge spool of pending inbound events.
 
-        Reads the JSONL spool at ``inbox-<nick>.jsonl``, returns the
-        list of records, and truncates the file. Idempotent under
-        crash — partial reads leave the file untouched.
+        Delegates to :func:`drain_inbox`, which holds an exclusive
+        ``fcntl.flock`` for the entire read+truncate sequence so a
+        concurrent ``spool_inbound`` (Qodo PR #50 #1) cannot drop
+        late writes.
         """
-        import json as _json
-
-        path = inbox_path(self.agent.nick)
-        entries: list[dict] = []
-        try:
-            with open(path, encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entries.append(_json.loads(line))
-                    except _json.JSONDecodeError:
-                        continue
-        except FileNotFoundError:
-            return make_response(req_id, ok=True, data={"entries": []})
-        # Truncate on successful read so the next drain does not repeat
-        # entries already handed off to CC. We unlink rather than open
-        # in 'w' mode to avoid racing with a concurrent spool_inbound
-        # append: the next spool_inbound call recreates the file.
-        try:
-            os.unlink(path)
-        except OSError:
-            logger.debug("inbox_drain: unlink raced", exc_info=True)
+        entries = drain_inbox(self.agent.nick)
         return make_response(req_id, ok=True, data={"entries": entries})
 
     def _ipc_list_owned_agents(self, req_id: str, msg: dict) -> dict:

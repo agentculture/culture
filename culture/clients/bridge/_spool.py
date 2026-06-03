@@ -26,6 +26,7 @@ treats this as a write-only spool; reading back is the CC session's job.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -64,6 +65,13 @@ def spool_inbound(nick: str, kind: str, **payload: Any) -> None:
     ``inbound_roominvite``. ``payload`` carries event-specific fields
     (``target``, ``sender``, ``text``, ``meta`` — see module docstring).
 
+    Takes an exclusive POSIX advisory lock (``fcntl.flock``) for the
+    duration of the write so a concurrent ``_ipc_inbox_drain`` (which
+    runs on the IPC handler thread, while spool writes happen on the
+    asyncio loop thread) cannot interleave with the append. The drain
+    side takes the same lock around its read+truncate sequence — see
+    ``drain_inbox`` below.
+
     Best-effort: filesystem errors are logged and swallowed so a
     transient I/O failure doesn't tear down the IRC handler.
     """
@@ -71,7 +79,11 @@ def spool_inbound(nick: str, kind: str, **payload: Any) -> None:
     path = inbox_path(nick)
     try:
         with open(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         # Tighten permissions on first write (0o600 — same-user only).
         try:
             os.chmod(path, 0o600)
@@ -79,3 +91,46 @@ def spool_inbound(nick: str, kind: str, **payload: Any) -> None:
             pass
     except OSError:
         logger.warning("Failed to append to bridge inbox %s", path, exc_info=True)
+
+
+def drain_inbox(nick: str) -> list[dict]:
+    """Read every spooled entry for ``nick`` and atomically truncate.
+
+    Holds an exclusive ``fcntl.flock`` for the entire read+truncate
+    sequence — any concurrent :func:`spool_inbound` blocks at its own
+    ``LOCK_EX`` until the drain releases. This closes the read-then-
+    unlink window where an appended-during-read entry was lost (Qodo
+    PR #50 finding #1).
+
+    Returns the list of decoded records, oldest first. Records whose
+    JSON fails to decode are skipped silently — a partial append from
+    a crashed writer should not block draining the rest.
+
+    Returns ``[]`` (no error) when the spool file does not yet exist.
+    """
+    path = inbox_path(nick)
+    entries: list[dict] = []
+    try:
+        # ``r+`` so the same fd reads AND truncates under one lock.
+        # Opening for write would clobber the file before we read it.
+        with open(path, "r+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+                # Truncate-in-place under the lock so any writer
+                # blocked at LOCK_EX appends to an empty file (and its
+                # event becomes the next drain's first entry).
+                fh.seek(0)
+                fh.truncate()
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except FileNotFoundError:
+        return []
+    return entries

@@ -47,8 +47,13 @@ async def test_reserved_nick_rejected_after_registration(server, make_client):
 
 @pytest.mark.asyncio
 async def test_system_user_exists(server, make_client):
-    """A `system-<servername>` virtual user is registered on server start."""
-    c = await make_client("testserv-alice")
+    """A `system-<servername>` virtual user is registered on server start.
+
+    Registration (NICK + USER) must complete before WHOIS — the hardened
+    server replies ``ERR_NOTREGISTERED`` otherwise and ``318`` never
+    arrives, so the assertion would see an empty reply.
+    """
+    c = await make_client("testserv-alice", "alice")
     await c.send("WHOIS system-testserv")
     reply = await c.recv_until("318")  # RPL_ENDOFWHOIS
     assert "system-testserv" in reply
@@ -58,7 +63,7 @@ async def test_system_user_exists(server, make_client):
 @pytest.mark.asyncio
 async def test_system_channel_exists(server, make_client):
     """`#system` exists and system-<server> is a member."""
-    c = await make_client("testserv-alice")
+    c = await make_client("testserv-alice", "alice")
     await c.send("LIST #system")
     reply = await c.recv_until("323")
     assert "#system" in reply
