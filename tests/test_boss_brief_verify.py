@@ -16,12 +16,26 @@ import culture.cli.boss as boss  # noqa: E402
 
 
 @pytest.fixture
-def as_boss(monkeypatch):
+def as_boss(monkeypatch, tmp_path):
     monkeypatch.setenv("CULTURE_NICK", "local-boss")
+    # Hermetic CULTURE_HOME so seed/channel-brief writes don't leak to
+    # the real ~/.culture (and CI's fresh /home/runner doesn't trigger
+    # first-brief seed-and-topic behavior that fails locally).
+    monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
     # Ownership comes from the manifest now (workers can't forge boss in the
     # request payload). These tests are scoped to brief-delivery behavior,
     # not the ownership gate, so neutralize the gate here.
     monkeypatch.setattr(boss, "_foreign_worker", lambda *a, **k: False)
+    # The v8.19.18 seed-and-topic side effect + the v8.19.24 channel-brief
+    # append are independent of brief DELIVERY (which is what this file
+    # verifies). Stub them out so the assertion can be a tight "one
+    # irc_send" without coupling to seed/brief filesystem behavior.
+    monkeypatch.setattr("culture.clients._seed.load_seed", lambda channel: "already-seeded")
+    monkeypatch.setattr("culture.clients._seed.persist_seed", lambda channel, text: False)
+    monkeypatch.setattr(
+        "culture.clients._channel_brief.persist_section",
+        lambda channel, header, body: None,
+    )
     return monkeypatch
 
 

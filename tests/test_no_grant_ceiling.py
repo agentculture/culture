@@ -58,8 +58,13 @@ class TestNoCeilingReferencesInTree:
                 "-E",
                 "BOSS_CEILING|boss_policy|is_above_ceiling|"
                 "write_default_boss_ceiling|load_boss_ceiling",
+                "--",
                 "culture/",
                 "tests/",
+                # Exclude this file — it legitimately names the forbidden
+                # symbols in its docstring and regex pattern so it can
+                # assert their absence elsewhere.
+                f":(exclude){os.path.relpath(__file__, _REPO_ROOT)}",
             ],
             cwd=_REPO_ROOT,
             capture_output=True,
@@ -76,6 +81,6 @@ class TestLegacyTestFileRemoved:
 
     def test_test_boss_grant_ceiling_is_gone(self) -> None:
         legacy = _REPO_ROOT / "tests" / "test_boss_grant_ceiling.py"
-        assert not os.path.exists(legacy), (
-            f"{legacy} should have been deleted as part of the ceiling-stack removal"
-        )
+        assert not os.path.exists(
+            legacy
+        ), f"{legacy} should have been deleted as part of the ceiling-stack removal"

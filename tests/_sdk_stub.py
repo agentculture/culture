@@ -47,17 +47,35 @@ def install_claude_sdk_stub() -> None:
             self.content = content or []
 
     class ResultMessage(_Base):
+        # Signature mirrors claude_agent_sdk 0.2.x ResultMessage — defaults
+        # are stub-friendly so tests can construct via kwargs without
+        # caring about the dataclass field-order changes between SDK
+        # versions.
         def __init__(
             self,
-            session_id: str = "sid-1",
+            subtype: str = "success",
+            duration_ms: int = 0,
+            duration_api_ms: int = 0,
             is_error: bool = False,
-            result: str = "",
+            num_turns: int = 1,
+            session_id: str = "sid-1",
+            stop_reason: str | None = None,
+            total_cost_usd: float | None = None,
             usage: Any = None,
+            result: str | None = "",
+            structured_output: Any = None,
         ) -> None:
-            self.session_id = session_id
+            self.subtype = subtype
+            self.duration_ms = duration_ms
+            self.duration_api_ms = duration_api_ms
             self.is_error = is_error
-            self.result = result
+            self.num_turns = num_turns
+            self.session_id = session_id
+            self.stop_reason = stop_reason
+            self.total_cost_usd = total_cost_usd
             self.usage = usage
+            self.result = result
+            self.structured_output = structured_output
 
     class ClaudeAgentOptions(_Base):
         def __init__(self, **kwargs: Any) -> None:
