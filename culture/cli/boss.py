@@ -101,6 +101,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     spawn_p.add_argument("--cwd", default=None, help="Worker working directory")
     spawn_p.add_argument("--server", default=None)
     spawn_p.add_argument(
+        "--boss",
+        default="",
+        help=(
+            "Explicit boss nick this worker is owned by. When set to a "
+            "project-named bridge nick (e.g. 'fork-rearch'), the worker "
+            "name is auto-prefixed so it becomes '<boss>-<name>' (e.g. "
+            "'fork-rearch-qa'). When the name already carries the boss "
+            "prefix, the call is used as-is. Default: the current "
+            "CULTURE_NICK as the boss."
+        ),
+    )
+    spawn_p.add_argument(
         "--model", default="", help="Worker model (default: inherit the boss's model)"
     )
     spawn_p.add_argument(
@@ -617,12 +629,33 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 
 def _cmd_spawn(args: argparse.Namespace) -> None:
-    boss = _boss_nick()
+    # `--boss` lets a project-named CC session override CULTURE_NICK so the
+    # worker is named after the boss-project (AD-2). When `--boss` is set,
+    # the worker's full nick becomes ``<boss-nick>-<name>`` — we achieve
+    # this by passing the boss nick as the agent-create ``--server`` value,
+    # because ``culture agent create`` builds ``{server}-{suffix}``. When
+    # the operator already typed the prefix into ``name`` (e.g. ``mesh
+    # spawn fork-rearch-qa --boss fork-rearch``), we strip the redundant
+    # prefix so the final nick is single-prefixed.
+    explicit_boss = getattr(args, "boss", "") or ""
+    boss = _require_worker_suffix(explicit_boss) if explicit_boss else _boss_nick()
     # Validate BOTH the worker suffix and the server before they touch any path —
     # both flow into worker_nick = f"{server}-{name}" → seed_helper_policy →
     # policy_path_for, so an unsanitized "../x" in either escapes CULTURE_HOME.
-    server = _require_server(args.server) if args.server else _server_of(boss)
-    name = _require_worker_suffix(args.name)
+    raw_name = args.name
+    if explicit_boss:
+        boss_prefix = f"{boss}-"
+        # User passed a fully-qualified nick? Strip the prefix so the
+        # auto-prepend below produces the right shape.
+        suffix_only = raw_name[len(boss_prefix) :] if raw_name.startswith(boss_prefix) else raw_name
+        name = _require_worker_suffix(suffix_only)
+        # With --boss, the boss-nick acts as the ``server`` prefix so
+        # ``agent create`` builds ``<boss>-<name>`` and the worker
+        # registers in the manifest under the project-namespaced name.
+        server = boss
+    else:
+        server = _require_server(args.server) if args.server else _server_of(boss)
+        name = _require_worker_suffix(raw_name)
     worker_nick = f"{server}-{name}"
     if worker_nick == boss:
         print("Error: a boss cannot spawn a worker with its own nick", file=sys.stderr)
@@ -708,15 +741,25 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     # card without re-reading the entire HISTORY. Optional: omit to
     # have the dashboard fall back to the mission.md headline.
     topic = (getattr(args, "topic", "") or "").strip()
+    # AD-2 brief identity prefix (Phase 4.8): when --boss is explicit,
+    # auto-prepend "You are <full-nick>, working under <boss-nick> on …"
+    # to the seed so the worker's first read of the channel brief makes
+    # the identity binding explicit. Skip when --boss is not set (the
+    # legacy single-server flow doesn't need the cue — the boss's own
+    # nick is "local-boss" and worker is "local-<name>").
+    identity_prefix = ""
+    if explicit_boss:
+        identity_prefix = f"You are {worker_nick}, working under {boss} on "
     if topic:
         from culture.clients._seed import persist_seed
 
         # IRC TOPIC is single-line; collapse whitespace so a multi-line
         # --topic still fits the protocol. The seed file keeps the
         # original text including line breaks.
-        irc_topic = " ".join(topic.split())
+        seed_text = (identity_prefix + topic) if identity_prefix else topic
+        irc_topic = " ".join(seed_text.split())
         _boss_irc("irc_topic", channel=task_chan, topic=irc_topic)
-        persist_seed(task_chan, topic, overwrite=True)
+        persist_seed(task_chan, seed_text, overwrite=True)
     print(f"spawned {worker_nick} (boss={boss}, cwd={cwd}); channels {', '.join(joined)}")
 
 

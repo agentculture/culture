@@ -591,3 +591,101 @@ class TestRecordWorkerBossChannels:
         # #team is removed from defaults (AD-4).
         assert "#team" not in entry["channels"]
         assert "#task-alpha" in entry["channels"]
+
+
+class TestSpawnBossPrefix:
+    """Phase 4.8 — when ``--boss <project-name>`` is set, the resulting
+    worker nick is ``<project-name>-<worker-suffix>``. We test the
+    naming logic by mocking the subprocess.run + IRC calls and asserting
+    on the args passed to ``agent create``.
+    """
+
+    def _run_spawn(self, home, args, boss_env="local-boss", monkeypatch=None):
+        """Drive ``_cmd_spawn`` directly with mocked side effects."""
+        import argparse
+        from unittest.mock import patch
+
+        from culture.cli import boss as boss_mod
+
+        captured = {"create_args": None, "register_args": None, "start_args": None}
+
+        def fake_run(cmd, **kwargs):
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            if isinstance(cmd, list) and "create" in cmd:
+                captured["create_args"] = list(cmd)
+            elif isinstance(cmd, list) and "register" in cmd:
+                captured["register_args"] = list(cmd)
+            elif isinstance(cmd, list) and "start" in cmd:
+                captured["start_args"] = list(cmd)
+            return R()
+
+        ns = argparse.Namespace(
+            name=args["name"],
+            boss=args.get("boss", ""),
+            server=args.get("server"),
+            cwd=args.get("cwd"),
+            model=args.get("model", ""),
+            channels=args.get("channels", ""),
+            role=args.get("role", ""),
+            topic=args.get("topic", ""),
+            config="server.yaml",
+        )
+
+        env = {"CULTURE_HOME": str(home), "CULTURE_NICK": boss_env}
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(boss_mod, "subprocess") as sub_mock,
+            patch.object(boss_mod, "_boss_irc", lambda *a, **k: {"ok": True}),
+            patch.object(boss_mod, "seed_helper_policy", lambda nick: None),
+        ):
+            sub_mock.run.side_effect = fake_run
+            try:
+                boss_mod._cmd_spawn(ns)
+            except SystemExit as exc:
+                if exc.code:
+                    raise
+        return captured
+
+    def test_explicit_boss_auto_prefixes_worker_nick(self, home):
+        captured = self._run_spawn(home, {"name": "qa", "boss": "fork-rearch"})
+        # ``agent create --server fork-rearch --nick qa`` produces
+        # full_nick ``fork-rearch-qa``.
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        assert "--server" in cmd
+        assert "fork-rearch" in cmd
+        assert "--nick" in cmd
+        i = cmd.index("--nick")
+        assert cmd[i + 1] == "qa"
+        # ``agent start`` is called with the full nick.
+        assert "fork-rearch-qa" in captured["start_args"]
+
+    def test_explicit_boss_strips_redundant_prefix(self, home):
+        """``mesh spawn fork-rearch-qa --boss fork-rearch`` must not
+        double-prefix to ``fork-rearch-fork-rearch-qa``."""
+        captured = self._run_spawn(home, {"name": "fork-rearch-qa", "boss": "fork-rearch"})
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        i = cmd.index("--nick")
+        # Redundant prefix stripped → suffix should be plain ``qa``.
+        assert cmd[i + 1] == "qa"
+        assert "fork-rearch-qa" in captured["start_args"]
+        assert "fork-rearch-fork-rearch-qa" not in captured["start_args"]
+
+    def test_no_boss_flag_uses_culture_nick_legacy_server(self, home):
+        # No --boss → falls back to legacy single-server flow:
+        # server = first hyphen-split of CULTURE_NICK.
+        captured = self._run_spawn(home, {"name": "qa"}, boss_env="local-boss")
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        i = cmd.index("--server")
+        # local-boss → server "local"
+        assert cmd[i + 1] == "local"
+        i = cmd.index("--nick")
+        assert cmd[i + 1] == "qa"
+        # Final nick = local-qa
+        assert "local-qa" in captured["start_args"]
