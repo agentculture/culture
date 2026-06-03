@@ -27,20 +27,37 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+from culture.pidfile import is_culture_process, is_process_alive
 
 from .shared.constants import DEFAULT_CONFIG
 
 NAME = "bridge"
 
 
-# Same nick shape AgentIRC enforces server-side. Validated up front so
-# a typo doesn't end up as part of a file path in ~/.culture/run/.
-_NICK_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+def _valid_nick(nick: str) -> bool:
+    """Enforce the canonical Culture nick format: ``<server>-<agent>``.
+
+    Mirrors ``culture/cli/channel.py::_valid_nick`` and the
+    server-side AgentIRC enforcement (Rule 428343 / Qodo PR #51 #1).
+    Splits on the FIRST hyphen — the agent half may itself contain
+    hyphens (``local-st4ck-boss`` parses as
+    ``server=local``, ``agent=st4ck-boss``).
+    """
+    parts = nick.split("-", 1)
+    return len(parts) == 2 and all(parts)
+
+
+# How long ``stop`` waits for SIGTERM to take effect before either
+# escalating (POSIX) or giving up (Windows). 10 × 0.1s = 1s — matches
+# the cadence used by ``culture/cli/shared/process.py`` and is
+# generous enough for a normal asyncio loop teardown.
+_STOP_WAIT_ITERATIONS = 50  # × 0.1s = 5s, same as agent stop logic
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -97,9 +114,26 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _run_dir() -> str:
-    """``~/.culture/run/`` — created on demand at mode 0o700."""
+    """``~/.culture/run/`` — created on demand at mode 0o700.
+
+    ``os.makedirs(mode=...)`` only applies the mode to NEWLY-created
+    directories AND is further masked by the process umask. A
+    pre-existing dir created with a more permissive umask, or a
+    chmod-relaxed earlier deploy, would silently retain those broader
+    permissions. Qodo PR #51 #5: enforce 0o700 with an explicit
+    ``chmod`` after creation — same defense-in-depth pattern that
+    other runtime-dir helpers in the codebase use.
+    """
     p = os.path.expanduser("~/.culture/run")
     os.makedirs(p, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(p, 0o700)
+    except OSError:
+        # Non-fatal: the daemon will still work, but a multi-user
+        # host now has a wider PID-file exposure than we'd like. The
+        # PID file itself is still chmod 0o600 (see ``_cmd_start``)
+        # so the actual blast radius is small.
+        pass
     return p
 
 
@@ -117,13 +151,25 @@ def _read_pid(pid_path: str) -> int | None:
         return None
 
 
-def _is_alive(pid: int) -> bool:
-    """Cheap liveness check via signal 0 — POSIX-portable."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+# Backward-compat alias kept because the tests patch ``bridge._is_alive``.
+# Qodo PR #51 #3: every signalling path now ALSO verifies via
+# ``is_culture_process`` so a PID-reuse window cannot point us at
+# someone else's process.
+_is_alive = is_process_alive
+
+
+def _is_our_bridge(pid: int) -> bool:
+    """True iff *pid* is alive AND is a culture process.
+
+    The bridge's argv contains ``-m culture.clients.bridge`` so
+    ``is_culture_process`` returns True for any live bridge daemon.
+    On platforms without ``/proc`` (macOS, Windows), the helper
+    returns True by default (can't verify) — we accept that
+    operating-system limitation; PID reuse defense is best-effort
+    on those platforms and the PID file itself is the operator's
+    responsibility there. Linux gets the full check.
+    """
+    return is_process_alive(pid) and is_culture_process(pid)
 
 
 # ----------------------------------------------------------------------
@@ -146,9 +192,25 @@ def dispatch(args: argparse.Namespace) -> None:
 
 
 def _validate_nick(nick: str) -> None:
-    if not _NICK_RE.fullmatch(nick):
+    """Reject malformed nicks at the CLI boundary.
+
+    Two checks:
+
+    - **Length cap** (64 chars) — defensive against runaway PID-file
+      names and keeps the wire shape RFC-2812-friendly.
+    - **Canonical format** — ``<server>-<agent>`` per the project's
+      identifier rule (Rule 428343 / Qodo PR #51 #1). Bare strings
+      like ``ABC`` / ``x`` are rejected here even though the bridge
+      daemon would technically accept them — the consequence of
+      letting them through is identity-drift across the dashboard,
+      manifest, channel routing, and DM spool.
+    """
+    if not nick or len(nick) > 64 or any(c.isspace() or c in "/\\;" for c in nick):
+        print(f"Error: invalid nick {nick!r} — illegal characters or length", file=sys.stderr)
+        sys.exit(1)
+    if not _valid_nick(nick):
         print(
-            f"Error: invalid nick {nick!r} — " "must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            f"Error: invalid nick {nick!r} — " "must match <server>-<agent> format (Rule 428343)",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -159,18 +221,21 @@ def _cmd_start(args: argparse.Namespace) -> None:
     _validate_nick(nick)
     pid_path = _pid_path(nick)
 
-    # If a PID file exists, refuse to start a second bridge for the same
-    # nick. A stale PID (dead process) is cleaned up silently — same
-    # pattern culture/cli/agent.py uses.
+    # If a PID file exists, decide what to do with it. Qodo PR #51 #3:
+    # a bare liveness check (signal 0) is NOT enough — between the
+    # bridge's death and us reading the PID file the OS may have
+    # recycled that PID for an unrelated process. We refuse to refuse-
+    # the-start unless the live PID is actually a culture process.
     existing_pid = _read_pid(pid_path)
     if existing_pid is not None:
-        if _is_alive(existing_pid):
+        if _is_our_bridge(existing_pid):
             print(
                 f"bridge for {nick!r} is already running (pid {existing_pid})",
                 file=sys.stderr,
             )
             sys.exit(1)
-        # Stale — clean and proceed.
+        # Either dead OR alive-but-not-ours. Either way, the PID file
+        # is stale; clean it and proceed with the fresh launch.
         try:
             os.unlink(pid_path)
         except OSError:
@@ -224,23 +289,62 @@ def _cmd_stop(args: argparse.Namespace) -> None:
     if pid is None:
         print(f"no PID file for {nick!r} ({pid_path})")
         return
-    if not _is_alive(pid):
+    if not is_process_alive(pid):
         print(f"bridge for {nick!r} was already dead (stale pid {pid}) — cleaned up")
         try:
             os.unlink(pid_path)
         except OSError:
             pass
         return
+
+    # Qodo PR #51 #3: verify the PID still owns a culture process
+    # BEFORE signalling. The OS may have recycled the PID between
+    # the bridge's death and this stop call — sending SIGTERM blindly
+    # could kill an unrelated user process.
+    if not is_culture_process(pid):
+        print(
+            f"PID {pid} is not a culture process — refusing to signal "
+            "(probably PID reuse after the original bridge exited). "
+            "Cleaning up stale PID file."
+        )
+        try:
+            os.unlink(pid_path)
+        except OSError:
+            pass
+        return
+
     try:
         os.kill(pid, signal.SIGTERM)
     except OSError as exc:
         print(f"Error: could not signal pid {pid}: {exc}", file=sys.stderr)
         sys.exit(1)
-    try:
-        os.unlink(pid_path)
-    except OSError:
-        pass
-    print(f"bridge for {nick!r} stopped (pid {pid})")
+
+    # Qodo PR #51 #4: WAIT for the process to actually exit before
+    # removing the PID file. Otherwise a slow shutdown lets a second
+    # bridge start under the same nick (the PID file is gone, so the
+    # first-writer guard doesn't fire) and a follow-up stop has no
+    # PID to signal. Same pattern culture/cli/shared/process.py uses
+    # for the agent stop path.
+    for _ in range(_STOP_WAIT_ITERATIONS):
+        if not is_process_alive(pid):
+            try:
+                os.unlink(pid_path)
+            except OSError:
+                pass
+            print(f"bridge for {nick!r} stopped (pid {pid})")
+            return
+        time.sleep(0.1)
+
+    # Process did not exit within the wait window. Don't remove the PID
+    # file — leave it for the operator to investigate, and exit
+    # non-zero so a script wrapping `culture bridge stop` notices.
+    print(
+        f"bridge for {nick!r} did not exit within "
+        f"{_STOP_WAIT_ITERATIONS * 0.1:.1f}s after SIGTERM (pid {pid}); "
+        "PID file kept for investigation.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _cmd_status(_args: argparse.Namespace) -> None:
@@ -257,10 +361,14 @@ def _cmd_status(_args: argparse.Namespace) -> None:
         pid = _read_pid(str(entry))
         if pid is None:
             rows.append((nick, "broken", 0))
-        elif _is_alive(pid):
-            rows.append((nick, "running", pid))
-        else:
+        elif not is_process_alive(pid):
             rows.append((nick, "stale", pid))
+        elif not is_culture_process(pid):
+            # Alive but the PID has been recycled to something else;
+            # surface separately so the operator notices.
+            rows.append((nick, "reused", pid))
+        else:
+            rows.append((nick, "running", pid))
 
     if not rows:
         print("no bridges running")

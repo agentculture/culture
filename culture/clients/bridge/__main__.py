@@ -33,6 +33,16 @@ DEFAULT_CONFIG = os.path.expanduser("~/.culture/server.yaml")
 logger = logging.getLogger("culture.bridge")
 
 
+def _valid_nick(nick: str) -> bool:
+    """Same ``<server>-<agent>`` rule the CLI wrapper enforces (Qodo
+    PR #51 #2). Direct ``python -m culture.clients.bridge`` invocation
+    must apply the same check so a manually-launched daemon cannot
+    register an off-format nick that the dashboard / DM spool / channel
+    routing logic does not understand."""
+    parts = nick.split("-", 1)
+    return len(parts) == 2 and all(parts)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="culture-bridge",
@@ -69,6 +79,22 @@ def main() -> None:
     args = parser.parse_args()
     if args.command != "start":
         parser.print_help()
+        sys.exit(1)
+
+    # Qodo PR #51 #2: same nick validation as the CLI wrapper. A
+    # direct ``python -m culture.clients.bridge`` invocation must NOT
+    # be able to register an off-format nick.
+    if (
+        not args.nick
+        or len(args.nick) > 64
+        or any(c.isspace() or c in "/\\;" for c in args.nick)
+        or not _valid_nick(args.nick)
+    ):
+        print(
+            f"Error: invalid nick {args.nick!r} — "
+            "must match <server>-<agent> format (Rule 428343)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     logging.basicConfig(

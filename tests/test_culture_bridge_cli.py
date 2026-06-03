@@ -72,9 +72,19 @@ def fake_popen(monkeypatch):
 
 
 class TestNickValidation:
+    """Qodo PR #51 #1: nicks MUST be ``<server>-<agent>``."""
+
     @pytest.mark.parametrize(
         "nick",
-        ["local-boss", "fork-cc", "ABC", "x", "a-b_c-1"],
+        [
+            "local-boss",
+            "fork-cc",
+            "thor-claude",
+            "spark-st4ck-boss",  # agent half may contain hyphens
+            "local-plenty-staging-boss",
+            "a-b",  # minimal valid
+            "local-st4ck-boss",
+        ],
     )
     def test_valid_nicks_accepted(self, nick: str) -> None:
         # ``_validate_nick`` ``sys.exit``s on rejection; running cleanly
@@ -85,11 +95,14 @@ class TestNickValidation:
         "nick",
         [
             "",
-            "1-leading-digit",
-            "-leading-hyphen",
+            "ABC",  # no hyphen
+            "x",  # no hyphen
+            "single",  # no hyphen
+            "-leading-hyphen",  # empty server
+            "trailing-",  # empty agent (split would leave "" as agent)
             "has space",
             "has/slash",
-            "has..dotdot",
+            "has\\backslash",
             "x" * 65,  # too long
             "nick;rm -rf /",
         ],
@@ -155,17 +168,36 @@ class TestCmdStart:
     def test_start_refuses_when_live_pid_exists(self, fake_home, fake_popen, monkeypatch) -> None:
         # First start writes the PID file.
         bridge._cmd_start(_start_args("local-fork"))
-        # Pretend the recorded PID is still alive.
-        monkeypatch.setattr(bridge, "_is_alive", lambda _pid: True)
+        # Pretend the recorded PID is still a live bridge.
+        monkeypatch.setattr(bridge, "_is_our_bridge", lambda _pid: True)
         # Second start refuses with exit 1.
         with pytest.raises(SystemExit) as exc:
             bridge._cmd_start(_start_args("local-fork"))
         assert exc.value.code == 1
 
+    def test_start_proceeds_when_live_pid_is_not_a_culture_process(
+        self, fake_home, fake_popen, monkeypatch
+    ) -> None:
+        """Qodo PR #51 #3: a PID that's alive but NOT a culture process
+        means the OS recycled the original bridge's PID for someone
+        else. The PID file is stale; start should proceed."""
+        bridge._cmd_start(_start_args("local-fork"))
+
+        # PID is alive but not ours — simulate OS reusing the PID.
+        monkeypatch.setattr(bridge, "_is_our_bridge", lambda _pid: False)
+
+        class _NewProc:
+            pid = 9999
+
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _NewProc())
+        bridge._cmd_start(_start_args("local-fork"))
+        with open(bridge._pid_path("local-fork")) as fh:
+            assert fh.read().strip() == "9999"
+
     def test_start_cleans_stale_pid_and_proceeds(self, fake_home, fake_popen, monkeypatch) -> None:
         bridge._cmd_start(_start_args("local-fork"))
         # First Popen returned pid=4242; pretend that process died.
-        monkeypatch.setattr(bridge, "_is_alive", lambda _pid: False)
+        monkeypatch.setattr(bridge, "_is_our_bridge", lambda _pid: False)
         # Second start should succeed (stale cleanup), updating the PID file.
 
         class _NewProc:
@@ -239,8 +271,20 @@ class TestCmdStop:
             fh.write("7777")
 
         signalled: list[tuple[int, int]] = []
-        monkeypatch.setattr(bridge, "_is_alive", lambda _pid: True)
+        # First call (pre-signal liveness check): alive. After SIGTERM
+        # we want the wait loop to see it as dead on the very next
+        # probe so the test finishes quickly.
+        alive_state = {"alive": True}
+
+        def _alive(_pid):
+            v = alive_state["alive"]
+            alive_state["alive"] = False  # flip after first read
+            return v
+
+        monkeypatch.setattr(bridge, "is_process_alive", _alive)
+        monkeypatch.setattr(bridge, "is_culture_process", lambda _pid: True)
         monkeypatch.setattr(os, "kill", lambda pid, sig: signalled.append((pid, sig)))
+        monkeypatch.setattr(bridge.time, "sleep", lambda _: None)
 
         bridge._cmd_stop(argparse.Namespace(nick="local-fork"))
         assert signalled == [(7777, signal.SIGTERM)]
@@ -262,7 +306,7 @@ class TestCmdStop:
             fh.write("12345")
 
         signalled: list[tuple[int, int]] = []
-        monkeypatch.setattr(bridge, "_is_alive", lambda _pid: False)
+        monkeypatch.setattr(bridge, "is_process_alive", lambda _pid: False)
         monkeypatch.setattr(os, "kill", lambda pid, sig: signalled.append((pid, sig)))
 
         bridge._cmd_stop(argparse.Namespace(nick="local-fork"))
@@ -270,6 +314,104 @@ class TestCmdStop:
         assert not os.path.exists(pid_path)
         out = capsys.readouterr().out
         assert "stale" in out or "dead" in out
+
+    def test_stop_reused_pid_refuses_to_signal(self, fake_home, monkeypatch, capsys) -> None:
+        """Qodo PR #51 #3: PID is alive but NOT a culture process →
+        OS recycled the PID for someone else. NEVER SIGTERM."""
+        os.makedirs(bridge._run_dir(), exist_ok=True)
+        pid_path = bridge._pid_path("local-fork")
+        with open(pid_path, "w") as fh:
+            fh.write("12345")
+
+        signalled: list[tuple[int, int]] = []
+        monkeypatch.setattr(bridge, "is_process_alive", lambda _pid: True)
+        monkeypatch.setattr(bridge, "is_culture_process", lambda _pid: False)
+        monkeypatch.setattr(os, "kill", lambda pid, sig: signalled.append((pid, sig)))
+
+        bridge._cmd_stop(argparse.Namespace(nick="local-fork"))
+        assert signalled == []  # MUST NOT SIGTERM an unrelated process
+        assert not os.path.exists(pid_path)
+        out = capsys.readouterr().out
+        assert "not a culture process" in out
+
+    def test_stop_waits_for_process_exit_before_removing_pid_file(
+        self, fake_home, monkeypatch, capsys
+    ) -> None:
+        """Qodo PR #51 #4: the PID file must NOT be removed until the
+        bridge process actually exits."""
+        os.makedirs(bridge._run_dir(), exist_ok=True)
+        pid_path = bridge._pid_path("local-fork")
+        with open(pid_path, "w") as fh:
+            fh.write("12345")
+
+        # Alive for the first 3 wait-loop probes, dead from the 4th.
+        # Record whether the PID file is still on disk DURING the wait.
+        probe_count = {"n": 0}
+        pid_file_seen_after_signal: list[bool] = []
+
+        def _alive(_pid):
+            probe_count["n"] += 1
+            # Probe #1 is the pre-signal liveness gate.
+            if probe_count["n"] > 1:
+                pid_file_seen_after_signal.append(os.path.exists(pid_path))
+            return probe_count["n"] <= 3
+
+        monkeypatch.setattr(bridge, "is_process_alive", _alive)
+        monkeypatch.setattr(bridge, "is_culture_process", lambda _pid: True)
+        monkeypatch.setattr(os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(bridge.time, "sleep", lambda _: None)
+
+        bridge._cmd_stop(argparse.Namespace(nick="local-fork"))
+        assert any(
+            pid_file_seen_after_signal
+        ), "PID file should remain on disk while process is alive"
+        assert not os.path.exists(pid_path)
+        out = capsys.readouterr().out
+        assert "stopped" in out
+
+    def test_stop_keeps_pid_file_if_process_will_not_exit(
+        self, fake_home, monkeypatch, capsys
+    ) -> None:
+        """Qodo PR #51 #4: if the process is still alive after the
+        wait window, the PID file MUST be preserved and the command
+        MUST exit non-zero."""
+        os.makedirs(bridge._run_dir(), exist_ok=True)
+        pid_path = bridge._pid_path("local-fork")
+        with open(pid_path, "w") as fh:
+            fh.write("12345")
+
+        monkeypatch.setattr(bridge, "is_process_alive", lambda _pid: True)
+        monkeypatch.setattr(bridge, "is_culture_process", lambda _pid: True)
+        monkeypatch.setattr(os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(bridge.time, "sleep", lambda _: None)
+
+        with pytest.raises(SystemExit) as exc:
+            bridge._cmd_stop(argparse.Namespace(nick="local-fork"))
+        assert exc.value.code == 1
+        assert os.path.exists(pid_path)
+        err = capsys.readouterr().err
+        assert "did not exit" in err
+
+
+class TestRunDirPermissions:
+    """Qodo PR #51 #5: ``_run_dir`` must always end up at 0o700, even
+    when the directory pre-exists with broader permissions."""
+
+    def test_new_dir_is_0o700(self, fake_home) -> None:
+        path = bridge._run_dir()
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o700
+
+    def test_preexisting_lax_dir_is_chmodded_to_0o700(self, fake_home) -> None:
+        """A pre-existing dir at 0o755 (umask leak / earlier deploy)
+        is tightened on next ``_run_dir`` call."""
+        path = os.path.expanduser("~/.culture/run")
+        os.makedirs(path, mode=0o755, exist_ok=True)
+        os.chmod(path, 0o755)  # in case the makedirs mode was masked
+        assert os.stat(path).st_mode & 0o777 == 0o755
+
+        bridge._run_dir()
+        assert os.stat(path).st_mode & 0o777 == 0o700
 
 
 # ----------------------------------------------------------------------
@@ -287,7 +429,9 @@ class TestCmdStatus:
         bridge._cmd_status(argparse.Namespace())
         assert "no bridges running" in capsys.readouterr().out
 
-    def test_status_labels_live_and_stale(self, fake_home, monkeypatch, capsys) -> None:
+    def test_status_labels_live_stale_broken_reused(self, fake_home, monkeypatch, capsys) -> None:
+        """Status enumerates every PID file with one of four labels:
+        running / stale / broken / reused (Qodo PR #51 #3)."""
         os.makedirs(bridge._run_dir(), exist_ok=True)
         with open(bridge._pid_path("alpha"), "w") as fh:
             fh.write("100")
@@ -295,15 +439,26 @@ class TestCmdStatus:
             fh.write("200")
         with open(bridge._pid_path("gamma"), "w") as fh:
             fh.write("not-a-number")
+        with open(bridge._pid_path("delta"), "w") as fh:
+            fh.write("400")
 
-        # alpha=alive, beta=dead.
-        monkeypatch.setattr(bridge, "_is_alive", lambda pid: pid == 100)
+        # alpha=running (alive + culture), beta=stale (dead),
+        # gamma=broken (unparseable), delta=reused (alive + non-culture).
+        def _alive(pid):
+            return pid in (100, 400)
+
+        def _culture(pid):
+            return pid == 100  # only alpha is a real bridge
+
+        monkeypatch.setattr(bridge, "is_process_alive", _alive)
+        monkeypatch.setattr(bridge, "is_culture_process", _culture)
 
         bridge._cmd_status(argparse.Namespace())
         out = capsys.readouterr().out
         assert "alpha" in out and "running" in out and "100" in out
         assert "beta" in out and "stale" in out and "200" in out
         assert "gamma" in out and "broken" in out
+        assert "delta" in out and "reused" in out and "400" in out
 
 
 # ----------------------------------------------------------------------
