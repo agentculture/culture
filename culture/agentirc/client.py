@@ -229,6 +229,29 @@ def _invalidate_owner_map_cache() -> None:
     _role_map_key = None
 
 
+def _is_spool_eligible(nick: str) -> bool:
+    """Return True if *nick* may have offline DMs spooled to it.
+
+    A nick is spool-eligible when the manifest lists it as a boss-tagged
+    agent OR when at least one worker references it via its ``boss:``
+    field (the latter catches still-unmigrated manifests where the
+    boss entry lacks the ``boss`` tag but is clearly a boss in role).
+
+    Anything else — unregistered humans, typos, hostile peers
+    probing nick existence — falls through to ERR_NOSUCHNICK. The
+    spool MUST NOT silently retain DMs for arbitrary unknown nicks
+    (that would be unbounded storage + a leak surface).
+    """
+    role_map = _load_role_map()
+    record = role_map.get(nick)
+    if record is not None and record.get("role") == "boss":
+        return True
+    # Fallback: any nick that workers report to is acting as a boss
+    # even if the manifest forgot the ``boss`` tag.
+    owner_map = _load_owner_map()
+    return nick in set(owner_map.values()) and nick != ""
+
+
 def _classify_nick(nick: str, role_map: dict[str, dict]) -> dict:
     """Return ``{role, project}`` for *nick*.
 
@@ -594,11 +617,15 @@ class Client:
         sub = msg.params[0].upper() if msg.params else ""
         if sub == "LS":
             await self.send_raw(
-                f":{self.server.config.name} CAP {self.nick or '*'} LS :message-tags"
+                f":{self.server.config.name} CAP {self.nick or '*'}"
+                f" LS :message-tags draft/chathistory"
             )
         elif sub == "REQ":
             requested = msg.params[1].split() if len(msg.params) >= 2 else []
-            supported = {"message-tags"}
+            # ``draft/`` prefix retained until the IRCv3 chathistory spec
+            # ratifies (TV-3 of the rearch plan). Drop the prefix at that
+            # point.
+            supported = {"message-tags", "draft/chathistory"}
             if all(cap in supported for cap in requested):
                 self.caps.update(requested)
                 await self.send_raw(
@@ -700,6 +727,14 @@ class Client:
             "culture",
             "o",
             "ov",
+        )
+        # IRCv3 ISUPPORT — advertise the per-CHATHISTORY-request cap.
+        # ``CHATHISTORY_LIMIT`` mirrors the ``query_for_nick`` default in
+        # ``dm_spool_store``; keep them in sync.
+        await self.send_numeric(
+            replies.RPL_ISUPPORT,
+            "CHATHISTORY=100",
+            "are supported by this server",
         )
 
     async def _handle_join(self, msg: Message) -> None:
@@ -1208,6 +1243,14 @@ class Client:
         ):
             recipient = self.server.get_client(target)
             if not recipient:
+                # Phase 3: DM spool for offline spool-eligible nicks.
+                # Spool-eligible = nick is a "boss"-tagged manifest entry
+                # OR appears as a value in the worker→boss owner map (i.e.
+                # at least one worker reports to this nick). Non-manifest
+                # nicks remain ERR_NOSUCHNICK (caller surfaces the numeric).
+                if _is_spool_eligible(target):
+                    spooled = await self._spool_dm(target, text, is_notice)
+                    return spooled
                 return False
             if isinstance(recipient, RemoteClient):
                 s2s_cmd = "SNOTICE" if is_notice else "SMSG"
@@ -1229,6 +1272,56 @@ class Client:
                 )
             )
             return True
+
+    async def _spool_dm(self, target: str, text: str, is_notice: bool) -> bool:
+        """Persist a DM addressed to a currently-offline spool-eligible nick.
+
+        Returns True so the PRIVMSG handler does NOT send ERR_NOSUCHNICK
+        — from the sender's perspective the message was accepted; the
+        recipient will see it when its bridge reconnects and drains via
+        CHATHISTORY. Returns False on hard spool failure so the caller
+        falls back to the legacy ERR_NOSUCHNICK numeric.
+
+        Tags are persisted as a single space-separated string mirroring
+        IRCv3 wire-format tag concatenation (e.g.
+        ``msgid=abc123 @culture.dev/traceparent=00-...``) so trace
+        continuity survives the spool→replay round trip. The msg_id is
+        generated server-side (UUID4 hex) and is the primary key.
+        """
+        if self.server.dm_spool is None:
+            return False
+        import uuid as _uuid
+
+        msg_id = _uuid.uuid4().hex
+        # Build the persisted tag set: msg_id always, traceparent when a
+        # span is active and the originating client negotiated message-tags
+        # (so we don't generate fake context for plain peers).
+        tag_parts = [f"msgid={msg_id}"]
+        tp = current_traceparent()
+        if tp is not None:
+            tag_parts.append(f"@{_TP_TAG_NAME}={tp}")
+        if is_notice:
+            tag_parts.append("notice=1")
+        tags_str = " ".join(tag_parts)
+
+        try:
+            self.server.dm_spool.insert(
+                msg_id=msg_id,
+                sender=self.nick or "",
+                recipient=target,
+                ts=time.time(),
+                payload=text,
+                tags=tags_str,
+            )
+        except Exception:  # noqa: BLE001 — spool insert failure -> fallback to ERR
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "Failed to spool DM for offline nick %s", target, exc_info=True
+            )
+            return False
+        self.server.metrics.privmsg_delivered.add(1, {"kind": "dm_spooled"})
+        return True
 
     async def _handle_privmsg(self, msg: Message) -> None:
         # SECURITY (v8.18.2-B #2): without a registration gate, a TCP socket

@@ -51,6 +51,9 @@ class IRCTransport:
         tracer: Tracer | None = None,
         metrics: HarnessMetricsRegistry | None = None,
         backend: str = "bridge",
+        on_welcome: Callable[[], None] | None = None,
+        on_chathistory_entry: Callable[[dict], None] | None = None,
+        on_chathistory_end: Callable[[str], None] | None = None,
     ):
         self.host = host
         self.port = port
@@ -66,6 +69,12 @@ class IRCTransport:
         # accepted for future per-message metrics (e.g. byte counters); unused in v1
         self._metrics = metrics
         self._backend = backend
+        self._on_welcome_cb = on_welcome
+        self.on_chathistory_entry = on_chathistory_entry
+        self.on_chathistory_end = on_chathistory_end
+        # CHATHISTORY parser state — accumulate entries for the
+        # in-flight batch keyed by ``batch_id``.
+        self._current_batch_id: str | None = None
         self.connected = False
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -91,6 +100,9 @@ class IRCTransport:
             "404": self._on_cannotsendtochan,  # ERR_CANNOTSENDTOCHAN
             "474": self._on_bannedfromchan,  # ERR_BANNEDFROMCHAN
             "ERROR": self._on_server_error,
+            # Phase 3 — IRCv3 draft/chathistory DM-spool drain.
+            "BATCH": self._on_batch,
+            "CHATHISTORY": self._on_chathistory,
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -348,6 +360,25 @@ class IRCTransport:
         if self.icon:
             await self._send_raw(f"ICON {self.icon}")
         await self._send_raw(f"MODE {self.nick} +A")
+        # Phase 3 — drain the DM spool. Fires the daemon's
+        # on_welcome callback so it can issue CHATHISTORY against
+        # our own nick (the spooled DMs the server retained while
+        # we were offline). The callback may be sync or async; we
+        # invoke it via maybe_await downstream.
+        if self._on_welcome_cb is not None:
+            try:
+                await maybe_await(self._on_welcome_cb())
+            except Exception:  # noqa: BLE001
+                logger.warning("on_welcome callback failed", exc_info=True)
+
+    async def send_chathistory(self, target: str, limit: int = 100) -> None:
+        """Issue a per-nick CHATHISTORY drain request. Used by the
+        bridge to pull spooled DMs after a reconnect."""
+        await self._send_raw(f"CHATHISTORY {target} {limit}")
+
+    async def send_chathistory_delete(self, msg_id: str) -> None:
+        """Mark a spooled DM delivered (Phase 3.5 two-phase drain)."""
+        await self._send_raw(f"CHATHISTORY DELETE {msg_id}")
 
     def _on_topic(self, msg: Message) -> None:
         """Handle TOPIC broadcasts (someone changed the topic)."""
@@ -384,6 +415,27 @@ class IRCTransport:
         # agent.connect, server.link, etc.) — they are not conversation and
         # should not enter the agent's message buffer or trigger the poll loop.
         if sender.startswith(SYSTEM_USER_PREFIX):
+            return
+        # IRCv3 chathistory: a PRIVMSG carrying a ``batch=`` tag belongs
+        # to a CHATHISTORY drain. Route it via the chathistory callback
+        # (so the daemon can ack with msg_id) and skip the normal
+        # mention/buffer routing — these are replays of a prior live
+        # event, not a fresh inbound DM.
+        batch_id = msg.tags.get("batch")
+        msg_id = msg.tags.get("msgid")
+        if batch_id and msg_id and self.on_chathistory_entry is not None:
+            entry = {
+                "msg_id": msg_id,
+                "sender": sender,
+                "recipient": target,
+                "text": text,
+                "tags": dict(msg.tags),
+                "batch_id": batch_id,
+            }
+            try:
+                self.on_chathistory_entry(entry)
+            except Exception:  # noqa: BLE001
+                logger.warning("on_chathistory_entry callback failed", exc_info=True)
             return
         self._route_to_buffer(target, sender, text)
         self._detect_and_fire_mention(target, sender, text)
@@ -549,3 +601,41 @@ class IRCTransport:
         meta_text = msg.params[2]
         if self.on_roominvite:
             self.on_roominvite(channel, meta_text)
+
+    # ------------------------------------------------------------------
+    # IRCv3 draft/chathistory inbound handlers (Phase 3)
+    # ------------------------------------------------------------------
+
+    def _on_batch(self, msg: Message) -> None:
+        """Track open/close of CHATHISTORY batches. ``BATCH +id type ...``
+        opens, ``BATCH -id`` closes."""
+        if not msg.params:
+            return
+        head = msg.params[0]
+        if head.startswith("+"):
+            self._current_batch_id = head[1:]
+        elif head.startswith("-"):
+            self._current_batch_id = None
+
+    def _on_chathistory(self, msg: Message) -> None:
+        """Sentinel handler for ``CHATHISTORY END <target>`` and
+        ``CHATHISTORY DELETE <id> OK|FAIL``. PRIVMSG-shaped history
+        entries are routed via the normal ``_on_privmsg`` plus the
+        IRCv3 batch tag — but since this transport reuses ``_handle``
+        for tag extraction without a per-tag projection, the IRCd's
+        chathistory skill emits PRIVMSGs that look identical to live
+        DMs. The skill includes a ``msgid=`` IRCv3 tag we forward to
+        the daemon for the ack round trip.
+        """
+        if not msg.params:
+            return
+        head = msg.params[0].upper()
+        if head == "END":
+            target = msg.params[1] if len(msg.params) > 1 else ""
+            if self.on_chathistory_end is not None:
+                try:
+                    self.on_chathistory_end(target)
+                except Exception:  # noqa: BLE001
+                    logger.warning("on_chathistory_end callback failed", exc_info=True)
+        # DELETE replies are informational; ignore on the transport
+        # layer (the daemon doesn't await per-delete responses today).

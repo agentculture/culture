@@ -5,6 +5,7 @@ RPL_WELCOME = "001"
 RPL_YOURHOST = "002"
 RPL_CREATED = "003"
 RPL_MYINFO = "004"
+RPL_ISUPPORT = "005"
 
 # Channel
 RPL_LISTSTART = "321"
@@ -42,7 +43,11 @@ ERR_BANNEDFROMCHAN = "474"
 ERR_NEEDMOREPARAMS = "461"
 ERR_ALREADYREGISTRED = "462"
 ERR_CHANOPRIVSNEEDED = "482"
+ERR_NOPRIVILEGES = "481"
 ERR_USERSDONTMATCH = "502"
+
+# IRCv3 CHATHISTORY batch sentinels
+RPL_CHATHISTORYTARGETS = "766"  # not used in v1; reserved for future
 
 # Error/reply message texts
 MSG_NEEDMOREPARAMS = "Not enough parameters"
@@ -52,3 +57,4 @@ MSG_NOTONCHANNEL = "You're not on that channel"
 MSG_ENDOFWHO = "End of WHO list"
 MSG_BANNEDFROMCHAN = "Cannot join channel"
 MSG_NOSUCHTHREAD = "No such thread"
+MSG_NOPRIVILEGES = "Permission denied"

@@ -121,6 +121,11 @@ class AgentDaemon:
         # the bridge starts so ``stop()`` can re-save before exit.
         self._cursor_path: str | None = None
 
+        # Phase 3 — pending CHATHISTORY drain: msg_id → entry awaiting
+        # CC ack. On ack, the bridge issues CHATHISTORY DELETE <msg_id>
+        # to the server which marks the spool row delivered.
+        self._pending_chathistory: dict[str, dict] = {}
+
         # Background tasks (prevent GC of fire-and-forget tasks).
         self._background_tasks: set[asyncio.Task] = set()
         self._socket_link_path: str | None = None
@@ -265,6 +270,10 @@ class AgentDaemon:
             tracer=self._tracer,
             metrics=self._metrics,
             backend="bridge",
+            # Phase 3 — DM spool drain on connect.
+            on_welcome=self._on_irc_welcome,
+            on_chathistory_entry=self._on_chathistory_entry,
+            on_chathistory_end=self._on_chathistory_end,
         )
         await self._transport.connect()
 
@@ -534,6 +543,58 @@ class AgentDaemon:
         # Live push via the socket whisper queue. The CC plugin's IPC
         # client consumes whispers as push events.
         self._ipc_push(kind, payload)
+
+    async def _on_irc_welcome(self) -> None:
+        """Called after the bridge's IRC connection completes
+        registration. Phase 3: issue CHATHISTORY for our own nick to
+        drain any DMs the server spooled while we were offline.
+
+        Best-effort: failures log a warning so a transient socket
+        hiccup doesn't crash the welcome path."""
+        if self._transport is None:
+            return
+        try:
+            await self._transport.send_chathistory(self.agent.nick, limit=100)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to issue CHATHISTORY drain on welcome", exc_info=True)
+
+    def _on_chathistory_entry(self, entry: dict) -> None:
+        """Called by the transport for each PRIVMSG inside a CHATHISTORY
+        batch. The entry is the bridge-side mirror of the IRCd's spool
+        row: ``{msg_id, sender, recipient, text, tags, batch_id}``.
+
+        Push to CC as an ``inbound_dm`` so the existing whisper queue
+        delivers it the same way live DMs are delivered. CC acks via
+        ``inbound_dm_ack(msg_id)``; bridge then marks delivered via
+        ``CHATHISTORY DELETE`` (handled in ``_ipc_inbound_dm_ack``).
+
+        Also re-spool to the file inbox so the persistent placeholder
+        (Phase 2's interim spool) carries the same payload — CC's
+        cc_session_start drain reads from there if it hasn't yet
+        connected.
+        """
+        msg_id = entry.get("msg_id", "")
+        if not msg_id:
+            return
+        self._pending_chathistory[msg_id] = entry
+        payload = {
+            "target": entry.get("recipient", self.agent.nick),
+            "sender": entry.get("sender", ""),
+            "text": entry.get("text", ""),
+            "msg_id": msg_id,
+            "source": "chathistory",
+        }
+        try:
+            spool_inbound(self.agent.nick, "inbound_dm", **payload)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to spool chathistory entry", exc_info=True)
+        self._ipc_push("inbound_dm", payload)
+
+    def _on_chathistory_end(self, target: str) -> None:
+        """Sentinel: server has emitted the entire batch for *target*.
+        No further action; the pending acks finish out via
+        ``_ipc_inbound_dm_ack`` as CC processes each entry."""
+        logger.debug("CHATHISTORY drain complete for %s", target)
 
     def _on_roominvite(self, channel: str, meta_text: str) -> None:
         """Called by IRCTransport when a ROOMINVITE is received.
@@ -990,9 +1051,19 @@ class AgentDaemon:
         return make_response(req_id, ok=True)
 
     def _ipc_inbound_dm_ack(self, req_id: str, msg: dict) -> dict:
-        """CC acks an inbound DM (two-phase drain — Phase 3 lands the
-        real mark-delivered semantics; for now the ack is a no-op
-        beyond the response)."""
+        """CC acks an inbound DM. When the ack carries a ``msg_id`` for
+        a chathistory-drained entry, issue the server-side
+        ``CHATHISTORY DELETE`` to mark the spool row delivered
+        (two-phase drain — Phase 3.5). Idempotent under CC crash
+        mid-drain: an entry the server has already marked delivered
+        simply won't reappear on the next drain."""
+        msg_id = msg.get("msg_id", "")
+        if msg_id and msg_id in self._pending_chathistory:
+            self._pending_chathistory.pop(msg_id, None)
+            if self._transport is not None:
+                task = asyncio.create_task(self._transport.send_chathistory_delete(msg_id))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
         return make_response(req_id, ok=True)
 
     def _ipc_inbound_mention_ack(self, req_id: str, msg: dict) -> dict:

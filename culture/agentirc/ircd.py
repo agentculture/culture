@@ -66,8 +66,18 @@ class IRCd:
         # Bots
         self.bot_manager = None  # set in start() if webhook_port configured
         self.system_client: VirtualClient | None = None
+        # DM spool — per-nick offline-message store (Phase 3 of the
+        # 2026-06-03 mesh-rearch). Opened in start(); closed in stop().
+        # Wired into ``client.py:_send_to_client`` so DMs to absent
+        # spool-eligible nicks land in SQLite instead of bouncing as
+        # ERR_NOSUCHNICK. Drained by the bridge via IRCv3 CHATHISTORY.
+        self.dm_spool = None
+        self._dm_spool_gc_task: asyncio.Task | None = None
 
     async def start(self) -> None:
+        logger.info("Opening DM spool...")
+        self._open_dm_spool()
+
         logger.info("Registering default skills...")
         await self._register_default_skills()
 
@@ -129,7 +139,53 @@ class IRCd:
                 self.config.webhook_port,
             )
 
+        # Background DM-spool GC. The task self-cancels in stop() via
+        # the membership set ``_background_tasks``. The cadence (1 hour)
+        # is conservative; gc() is cheap on small spools.
+        if self.dm_spool is not None:
+            self._dm_spool_gc_task = asyncio.create_task(self._dm_spool_gc_loop())
+            self._background_tasks.add(self._dm_spool_gc_task)
+            self._dm_spool_gc_task.add_done_callback(self._background_tasks.discard)
+
         logger.info("Server ready")
+
+    def _open_dm_spool(self) -> None:
+        """Open the per-server DM spool. Failures are non-fatal — peers
+        DMing offline nicks would just see ``ERR_NOSUCHNICK`` (legacy
+        behavior) until the next start succeeds. The IRCd's other paths
+        keep working."""
+        from culture.agentirc.dm_spool_store import DmSpoolStore, default_spool_path
+
+        # ``CULTURE_HOME`` honored via default_spool_path -> culture_home().
+        try:
+            path = default_spool_path(self.config.name)
+            self.dm_spool = DmSpoolStore(path)
+            logger.info("DM spool opened at %s", path)
+        except Exception:  # noqa: BLE001 — spool failure must not block boot
+            logger.warning("Failed to open DM spool — peers see ERR_NOSUCHNICK", exc_info=True)
+            self.dm_spool = None
+
+    async def _dm_spool_gc_loop(self) -> None:
+        """Hourly garbage-collection loop for the DM spool. Cancelled
+        from stop(). Logs (does not propagate) any GC error so a
+        transient SQLite hiccup doesn't tear down the IRCd."""
+        try:
+            while not self._stopping:
+                # 1 hour cadence — well above the 7-day delivered TTL
+                # and the 30-day undelivered TTL, so a missed tick has
+                # no effective consequence.
+                try:
+                    await asyncio.sleep(3600)
+                except asyncio.CancelledError:
+                    raise
+                if self.dm_spool is None or self._stopping:
+                    return
+                try:
+                    self.dm_spool.gc()
+                except Exception:  # noqa: BLE001
+                    logger.warning("DM spool gc failed", exc_info=True)
+        except asyncio.CancelledError:
+            return
 
     def _bootstrap_system_identity(self) -> None:
         """Create the system pseudo-user and #system channel at server start.
@@ -163,6 +219,7 @@ class IRCd:
         logger.info("System identity %s joined %s", system_nick, SYSTEM_CHANNEL)
 
     async def _register_default_skills(self) -> None:
+        from culture.agentirc.skills.chathistory import ChatHistorySkill
         from culture.agentirc.skills.history import HistorySkill
         from culture.agentirc.skills.icon import IconSkill
         from culture.agentirc.skills.rooms import RoomsSkill
@@ -172,6 +229,7 @@ class IRCd:
         await self.register_skill(IconSkill())
         await self.register_skill(RoomsSkill())
         await self.register_skill(ThreadsSkill())
+        await self.register_skill(ChatHistorySkill())
 
     async def register_skill(self, skill: Skill) -> None:
         self.skills.append(skill)
@@ -427,6 +485,21 @@ class IRCd:
             if self._server:
                 self._server.close()
                 await self._server.wait_closed()
+            # Cancel DM-spool GC task BEFORE closing the spool — otherwise
+            # a tick could race the close and call gc() on a closed DB.
+            if self._dm_spool_gc_task is not None and not self._dm_spool_gc_task.done():
+                self._dm_spool_gc_task.cancel()
+                try:
+                    await self._dm_spool_gc_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+                self._dm_spool_gc_task = None
+            if self.dm_spool is not None:
+                try:
+                    self.dm_spool.close()
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to close DM spool")
+                self.dm_spool = None
             await self.audit.shutdown()
         finally:
             self._stopped.set()
