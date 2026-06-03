@@ -125,9 +125,12 @@ function switchView(view) {
   document.getElementById("view-agents").classList.toggle("hidden", view !== "agents");
   document.getElementById("view-channels").classList.toggle("hidden", view !== "channels");
   document.getElementById("view-archived").classList.toggle("hidden", view !== "archived");
+  const treeView = document.getElementById("view-tree");
+  if (treeView) treeView.classList.toggle("hidden", view !== "tree");
   if (view === "agents") refreshAgents();
   else if (view === "channels") refreshChannels();
   else if (view === "archived") refreshArchived();
+  else if (view === "tree") refreshTree();
 }
 
 document.querySelectorAll(".main-tab").forEach((tab) => {
@@ -263,6 +266,97 @@ function confirmArchive(nick) {
   post("/api/archive", { nick })
     .then((r) => { toast(r.ok ? `Archived ${nick}` : `Archive failed`, !r.ok); refreshAgents(); })
     .catch((e) => toast(e.message, true));
+}
+
+// ---- Tree view (Phase 7.5 / AD-5) -----------------------------------------
+// Collapsible project → boss → workers view backed by /api/agents/tree.
+// Collapsed-state is per project_nick, persisted in memory only (the user
+// expects collapse choices to reset across refreshes — the workflow is
+// "expand to see, collapse to focus", not a long-lived preference).
+state.collapsedProjects = new Set();
+
+async function refreshTree() {
+  let data;
+  try { data = await api("/api/agents/tree"); } catch (_) { return; }
+  withListSnapshot("tree-list", data, () => {
+    const list = document.getElementById("tree-list");
+    list.replaceChildren();
+    if ((!data.projects || !data.projects.length)
+        && (!data.peer_bosses || !data.peer_bosses.length)) {
+      list.appendChild(el("div", "empty", "No projects registered."));
+      return;
+    }
+    for (const p of (data.projects || [])) {
+      list.appendChild(renderProjectGroup(p, false));
+    }
+    if (data.peer_bosses && data.peer_bosses.length) {
+      list.appendChild(el("div", "tree-section-header", "Peer bosses (observed)"));
+      for (const peer of data.peer_bosses) {
+        list.appendChild(renderProjectGroup(peer, true));
+      }
+    }
+  });
+}
+
+function renderProjectGroup(p, isPeer) {
+  // For a local project: p = {project_nick, boss, workers, pending_perm_count}.
+  // For a peer boss: p = {nick, state, is_boss, workers, pending_perm_count}.
+  const group = el("div", "project-group" + (isPeer ? " peer-boss" : ""));
+  const key = isPeer ? `peer:${p.nick}` : `proj:${p.project_nick}`;
+  const collapsed = state.collapsedProjects.has(key);
+  const header = el("div", "project-header");
+  const caret = el("span", "project-caret", collapsed ? "▸" : "▾");
+  header.appendChild(caret);
+  const bossNick = isPeer ? p.nick : p.boss.nick;
+  const bossState = isPeer ? p.state : p.boss.state;
+  const dot = el("span", `dot ${bossState || "unknown"}`);
+  header.appendChild(dot);
+  const projLabel = el(
+    "span",
+    "project-nick",
+    isPeer ? p.nick : p.project_nick,
+  );
+  header.appendChild(projLabel);
+  // Boss nick under the project label so the operator can confirm
+  // which boss IS this project (AD-2 says they're the same identity).
+  if (!isPeer) {
+    header.appendChild(el("span", "project-boss", bossNick));
+  }
+  const workers = p.workers || [];
+  header.appendChild(el(
+    "span",
+    "project-workers",
+    `${workers.length} worker${workers.length === 1 ? "" : "s"}`,
+  ));
+  if (p.pending_perm_count && p.pending_perm_count > 0) {
+    const badge = el(
+      "span",
+      "project-pending-badge",
+      `${p.pending_perm_count} pending`,
+    );
+    badge.title = `${p.pending_perm_count} permission request(s) awaiting approval in this project`;
+    header.appendChild(badge);
+  }
+  header.style.cursor = "pointer";
+  header.onclick = () => {
+    if (state.collapsedProjects.has(key)) state.collapsedProjects.delete(key);
+    else state.collapsedProjects.add(key);
+    refreshTree();
+  };
+  group.appendChild(header);
+
+  if (collapsed) return group;
+
+  const body = el("div", "project-body");
+  if (!isPeer) {
+    // Render the boss agent itself first (it's a member of the project).
+    body.appendChild(renderAgentItem(p.boss, false));
+  }
+  for (const w of workers) {
+    body.appendChild(renderAgentItem(w, true));
+  }
+  group.appendChild(body);
+  return group;
 }
 
 // ---- Channels tab ----------------------------------------------------------
@@ -830,6 +924,155 @@ document.querySelectorAll(".tab").forEach((tab) => {
 $("#chat-send").onclick = sendChat;
 $("#chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
 
+// ---- Human chat panel (Phase 7.5) -----------------------------------------
+// DM any agent as the operator's human nick. Persist the human nick in
+// localStorage so the operator only types it once. Validates against the
+// same nick regex the backend enforces (^[A-Za-z0-9][A-Za-z0-9_-]*$).
+const HUMAN_NICK_KEY = "culture.dashboard.humanNick";
+const HUMAN_NICK_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+function loadHumanNick() {
+  try {
+    const v = localStorage.getItem(HUMAN_NICK_KEY);
+    if (v) $("#human-chat-nick").value = v;
+  } catch (_) { /* private-mode: no-op */ }
+}
+
+async function sendHumanDM() {
+  const human = $("#human-chat-nick").value.trim();
+  const target = $("#human-chat-target").value.trim();
+  const text = $("#human-chat-text").value.trim();
+  if (!human || !HUMAN_NICK_RE.test(human)) { toast("Enter a valid human nick", true); return; }
+  if (!target || !HUMAN_NICK_RE.test(target)) { toast("Enter a valid target nick", true); return; }
+  if (!text) { toast("Type a message", true); return; }
+  try {
+    await post("/api/mesh/dm", { human_nick: human, target_nick: target, text });
+    $("#human-chat-text").value = "";
+    try { localStorage.setItem(HUMAN_NICK_KEY, human); } catch (_) {}
+    toast(`Sent DM to ${target}`);
+  } catch (e) { toast(e.message, true); }
+}
+
+if ($("#human-chat-send")) {
+  loadHumanNick();
+  $("#human-chat-send").onclick = sendHumanDM;
+  $("#human-chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter") sendHumanDM(); });
+}
+
+// ---- State streams (Phase 7.5) --------------------------------------------
+// Push-everywhere (Rule 9): swap the three polling intervals for SSE
+// subscriptions. Each stream emits a JSON snapshot whenever the
+// underlying state changes; on each message we feed the snapshot
+// directly to the same render path the refresh-X functions used —
+// withListSnapshot still skips DOM work on identical payloads (so
+// the snapshot-diff de-duplication that keeps scroll position intact
+// is preserved across the polling → SSE switch).
+//
+// We keep the ORIGINAL refresh-X functions available so a tab switch
+// can synchronously paint the latest state (the EventSource just keeps
+// feeding diffs). A short fetch-based call is still used at boot so
+// the first paint doesn't have to wait on a stream connect.
+
+const _stateStreams = { agents: null, pending: null, channels: null };
+
+function subscribeStateStream(name, url, handler) {
+  // Close any prior subscription (e.g. on a hot-reload).
+  if (_stateStreams[name]) { try { _stateStreams[name].close(); } catch (_) {} }
+  const es = new EventSource(url);
+  _stateStreams[name] = es;
+  es.onmessage = (ev) => {
+    if (!ev.data) return;
+    let payload;
+    try { payload = JSON.parse(ev.data); } catch (_) { return; }
+    if (payload === null) return;
+    try { handler(payload); } catch (_) { /* render errors don't kill the stream */ }
+  };
+  // EventSource auto-reconnects on error; no onerror handler needed.
+}
+
+// Render hooks for each stream. Each must (a) reuse the existing
+// withListSnapshot path so scroll preservation + DOM-diff skipping
+// still apply, and (b) update the same top-bar badges the polling
+// versions did.
+
+function renderAgentsPayload(data) {
+  withListSnapshot("agent-list", data, () => {
+    const list = $("#agent-list");
+    list.replaceChildren();
+    if (!data.agents.length) {
+      list.appendChild(el("div", "empty", "No agents registered."));
+      return;
+    }
+    const { teams, unassigned } = groupTeams(data.agents);
+    for (const [bossNick, t] of teams) {
+      const label = t.boss ? `${bossNick} · team` : `${bossNick} · team (boss offline)`;
+      list.appendChild(teamHeader(label, t.workers.length, "worker"));
+      if (t.boss) list.appendChild(renderAgentItem(t.boss, false));
+      for (const w of t.workers) list.appendChild(renderAgentItem(w, true));
+    }
+    if (unassigned.length) {
+      list.appendChild(teamHeader("unassigned", unassigned.length, "agent"));
+      for (const a of unassigned) list.appendChild(renderAgentItem(a, false));
+    }
+  });
+  // Tree view derives its hierarchy from the same agent state; when the
+  // operator is on the Tree tab, fetch the tree shape so any change to
+  // boss/worker membership repaints the collapsible groups too.
+  if (state.view === "tree") refreshTree();
+}
+
+function renderPendingItem(p) {
+  // Extracted from refreshPending (Phase 7.5) so both the polling
+  // refresh and the SSE handler render identical DOM.
+  const item = el("li", "pending-item");
+  item.appendChild(el("div", "ptool", p.tool_name || "?"));
+  item.appendChild(el("div", "pworker", p.helper_nick || ""));
+  item.appendChild(el("div", "pinput", inputPreview(p)));
+  const actions = el("div", "pending-actions");
+  const ok = el("button", "btn btn-sm btn-ok", "Approve");
+  ok.onclick = () => decide("approve", p.id, { id: p.id });
+  const okAlways = el("button", "btn btn-sm btn-ok", "Always");
+  okAlways.onclick = () => decide("approve", p.id, { id: p.id, always: true });
+  const no = el("button", "btn btn-sm btn-danger", "Deny");
+  no.onclick = () => {
+    const reason = prompt("Deny reason (optional):") || "";
+    decide("deny", p.id, { id: p.id, reason });
+  };
+  actions.appendChild(ok);
+  actions.appendChild(okAlways);
+  actions.appendChild(no);
+  item.appendChild(actions);
+  return item;
+}
+
+function renderPendingPayload(data) {
+  withListSnapshot("pending-list", data, () => {
+    const list = $("#pending-list");
+    list.replaceChildren();
+    const badge = $("#pending-badge");
+    if (!data.pending.length) {
+      list.appendChild(el("div", "empty", "Nothing waiting."));
+      badge.classList.add("hidden");
+      return;
+    }
+    badge.textContent = `${data.pending.length} pending`;
+    badge.classList.remove("hidden");
+    for (const p of data.pending) {
+      list.appendChild(renderPendingItem(p));
+    }
+  });
+}
+
+function renderChannelsPayload(data) {
+  // The state stream returns {channels: [...]} (list_channels shape).
+  // The richer task-grouped view (/api/tasks) stays poll-driven for
+  // now — its shape is a heavier aggregation and the channel stream
+  // is enough to invalidate the cached snapshot when membership
+  // changes; the tab switch path still calls refreshChannels() to
+  // pull the up-to-date task aggregation.
+  refreshChannels();
+}
+
 // ---- Boot ------------------------------------------------------------------
 // Channels-first (v8.19.7): Channels is the default tab, so prime it.
 // Agents still refreshes in background so the tab switch is instant.
@@ -837,6 +1080,11 @@ $("#chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter") send
 refreshChannels();
 refreshAgents();
 refreshPending();
-setInterval(refreshChannels, 3000);
-setInterval(refreshAgents, 2500);
-setInterval(refreshPending, 2000);
+
+// Push-everywhere replacement for the three 2.0–3.0 s setInterval polls
+// (see RC-8 + Rule 9). EventSource auto-reconnects; if the stream isn't
+// available (e.g. an older server) the existing initial fetch still
+// painted the UI, just without live updates.
+subscribeStateStream("agents", "/api/agents/stream", renderAgentsPayload);
+subscribeStateStream("pending", "/api/pending/stream", renderPendingPayload);
+subscribeStateStream("channels", "/api/channels/stream", renderChannelsPayload);

@@ -55,6 +55,13 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 # land on a tab that's already open.
 _ASSET_BUSTER = f"?v={_CULTURE_VERSION}"
 _SSE_POLL_SECONDS = 0.25
+# Phase 7.5 — state-diff streams ( /api/agents/stream, /api/pending/stream,
+# /api/channels/stream ) use a tighter poll cadence so the dashboard
+# converges within the 200 ms acceptance bound. The JSONL tail stream
+# above is line-driven (cheap to skim) so the slower 0.25 s cadence is
+# fine; the state streams snapshot a full payload each tick, so cap
+# the upper bound at 100 ms.
+_SSE_STATE_POLL_SECONDS = 0.1
 _SSE_BACKLOG_LINES = 200
 _KEEPALIVE_SECONDS = 15
 _CHANNEL_READ_MAX = 200
@@ -346,6 +353,100 @@ def list_agents(config_path: str | None = None) -> list[dict]:
             }
         )
     return rows
+
+
+def list_agents_tree(config_path: str | None = None) -> dict:
+    """Hierarchical agent listing (Phase 7.5 / AD-5).
+
+    Returns:
+        ``{"projects": [...], "peer_bosses": [...]}``
+
+    Each project group keys off a boss agent in the local manifest — its
+    nick is the project's identity (AD-2: a boss IS the project). Workers
+    are matched by their ``boss`` field. ``peer_bosses`` collects boss
+    rows whose manifest entry exists locally but who are NOT marked as
+    locally owned (i.e. they were observed via the mesh / federation
+    without being launched here); in single-server-mode they're typically
+    empty. ``pending_perm_count`` aggregates the per-worker perm queue
+    counts for the project.
+
+    The flat ``/api/agents`` endpoint is preserved for backward-compat
+    (review iter-1 B-3 from agent 7) — this is an *additional* shape,
+    not a replacement.
+    """
+    flat = list_agents(config_path)
+    by_nick = {a["nick"]: a for a in flat}
+    pending = _pending_counts()
+
+    projects: list[dict] = []
+    seen_bosses: set[str] = set()
+    workers_by_boss: dict[str, list[dict]] = {}
+    for row in flat:
+        boss_nick = row.get("boss") or ""
+        if boss_nick and not row.get("is_boss"):
+            workers_by_boss.setdefault(boss_nick, []).append(row)
+
+    for row in flat:
+        if not row.get("is_boss"):
+            continue
+        boss_nick = row["nick"]
+        seen_bosses.add(boss_nick)
+        workers = workers_by_boss.get(boss_nick, [])
+        # Pending count = boss's own queue plus every worker under this boss.
+        perm_count = pending.get(boss_nick, 0)
+        for w in workers:
+            perm_count += pending.get(w["nick"], 0)
+        # Derive the project nick from the boss nick. In single-server mode
+        # the boss is the project (AD-2); for legacy ``<server>-<agent>``
+        # nicks we strip the ``<server>-`` prefix so the project label
+        # stays human-readable.
+        project_nick = boss_nick.split("-", 1)[1] if "-" in boss_nick else boss_nick
+        projects.append(
+            {
+                "project_nick": project_nick,
+                "boss": row,
+                "workers": workers,
+                "pending_perm_count": perm_count,
+            }
+        )
+
+    # Workers whose boss is NOT in the local manifest are "peer bosses" —
+    # rendered separately so the dashboard can show that another boss owns
+    # them, without claiming local control.
+    peer_boss_nicks: list[str] = []
+    for boss_nick in workers_by_boss:
+        if boss_nick not in seen_bosses and boss_nick not in peer_boss_nicks:
+            peer_boss_nicks.append(boss_nick)
+
+    peer_bosses: list[dict] = []
+    for boss_nick in peer_boss_nicks:
+        # Synthesize a minimal observation row — the boss isn't in the
+        # local manifest, so we don't have its state/idle/etc. The
+        # dashboard treats this entry as read-only.
+        peer_bosses.append(
+            {
+                "nick": boss_nick,
+                "state": "unknown",
+                "is_boss": True,
+                "boss": "",
+                "workers": workers_by_boss.get(boss_nick, []),
+                "pending_perm_count": sum(
+                    pending.get(w["nick"], 0) for w in workers_by_boss.get(boss_nick, [])
+                ),
+            }
+        )
+
+    # Sort projects: running bosses first, then by project nick.
+    projects.sort(key=lambda p: (p["boss"].get("state") != "running", p["project_nick"]))
+    # Keep peer-bosses alphabetical (no state info to sort by).
+    peer_bosses.sort(key=lambda b: b["nick"])
+
+    # by_nick is unused at the return site but reserved for future
+    # cross-project link-up (e.g. surfacing a worker whose boss is a peer
+    # boss). Discard explicitly so linters don't flag the variable.
+    del by_nick
+
+    return {"projects": projects, "peer_bosses": peer_bosses}
 
 
 def list_archived_agents(config_path=None):
@@ -736,6 +837,16 @@ async def _handle_agents(request: web.Request) -> web.Response:
     return web.json_response({"agents": list_agents(request.app.get(_CONFIG_PATH))})
 
 
+async def _handle_agents_tree(request: web.Request) -> web.Response:
+    """Hierarchical project → boss → workers view (Phase 7.5 / AD-5).
+
+    Flat ``/api/agents`` stays in place; this is the additive shape the
+    new tree-view dashboard renders.
+    """
+    tree = await asyncio.to_thread(list_agents_tree, request.app.get(_CONFIG_PATH))
+    return web.json_response(tree)
+
+
 async def _handle_pending(request: web.Request) -> web.Response:
     return web.json_response({"pending": list_pending()})
 
@@ -757,6 +868,146 @@ async def _handle_channel_read(request: web.Request) -> web.Response:
         logger.warning("channel read failed for %s (%s): %s", nick, channel, exc)
         messages = []
     return web.json_response({"nick": nick, "channel": channel, "messages": messages})
+
+
+async def _send_human_dm(
+    request: web.Request, human_nick: str, target_nick: str, text: str
+) -> None:
+    """Open a transient IRC connection that registers AS ``human_nick``
+    and PRIVMSG ``target_nick`` with ``text``. The recipient sees the
+    human's nick as the message source — which is the whole point of
+    the human-chat panel (AD-5 / Rule 3: humans are first-class on the
+    mesh).
+
+    This bypasses the dashboard's persistent observer (which registers
+    with a ``_peek`` nick and CANNOT impersonate other senders). The
+    connection is created, used, and torn down per DM — humans don't
+    type fast enough to justify a connection pool here.
+
+    Tests inject a fake by monkey-patching this function or by replacing
+    the observer factory via ``_human_dm_sender`` (see test fixtures).
+    """
+    config_path = _config_path_or_default(request.app.get(_CONFIG_PATH))
+    config = load_config_or_default(config_path)
+    sender = _human_dm_sender(request)
+    if sender is not None:
+        # Test seam: the fixture installed a stand-in that records sends.
+        await sender(human_nick, target_nick, text)
+        return
+    # Production path: open an ephemeral IRC connection registered as
+    # the human's nick and emit a PRIVMSG. We deliberately do NOT route
+    # through PersistentObserver / IRCObserver here — they hard-code a
+    # ``_peek`` prefix to suppress JOIN events server-side, and that
+    # would land the message with a peek nick rather than the human's
+    # name.
+    # Defense-in-depth (Qodo PR #30 #2 lesson — every IRC-line emission
+    # path validates before write): the route handler already rejected
+    # CR/LF/NUL in `text`, but a future test seam or refactor could
+    # bypass that. Re-validate here as the last line before the wire.
+    from culture.agentirc.irc_targets import InvalidIRCTarget, assert_safe_irc_line
+
+    try:
+        assert_safe_irc_line(human_nick)
+        assert_safe_irc_line(target_nick)
+        assert_safe_irc_line(text)
+    except InvalidIRCTarget as exc:
+        # Any caller that reaches here with a tainted value already
+        # bypassed the route handler — log loudly and refuse to write.
+        logger.error("CRLF-injection guard tripped in _send_human_dm: %s", exc)
+        raise ConnectionError(f"CRLF guard: {exc}") from exc
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(config.server.host, config.server.port),
+        timeout=10.0,
+    )
+    try:
+        writer.write(f"NICK {human_nick}\r\n".encode())
+        writer.write(b"USER human 0 * :culture dashboard human DM\r\n")
+        await writer.drain()
+        # Wait for RPL_WELCOME (001) before sending the DM, otherwise
+        # the server may discard the PRIVMSG as pre-registration noise.
+        # IRC numerics arrive as ``:<server> 001 <nick> :Welcome ...``.
+        buffer = ""
+        deadline = asyncio.get_running_loop().time() + 5.0
+        done = False
+        while not done:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise ConnectionError("registration timed out")
+            data = await asyncio.wait_for(reader.read(4096), timeout=remaining)
+            if not data:
+                raise ConnectionError("connection closed during registration")
+            buffer += data.decode("utf-8", "replace")
+            while "\r\n" in buffer:
+                line, buffer = buffer.split("\r\n", 1)
+                parts = line.split(" ", 2)
+                # An IRC numeric: <prefix> <numeric> <rest>. The 001 numeric
+                # is RPL_WELCOME — registration accepted.
+                if len(parts) >= 2 and parts[1] == "001":
+                    done = True
+                    break
+        writer.write(f"PRIVMSG {target_nick} :{text}\r\n".encode())
+        await writer.drain()
+        # Brief grace period so the server flushes the PRIVMSG before we QUIT.
+        await asyncio.sleep(0.05)
+    finally:
+        try:
+            writer.write(b"QUIT :dashboard human DM done\r\n")
+            await writer.drain()
+        except OSError:
+            pass
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except OSError:
+            pass
+
+
+# Test seam: a test can monkeypatch this to return an async callable
+# ``(human_nick, target_nick, text) -> None`` that captures the call
+# instead of opening a real IRC socket.
+def _human_dm_sender(request: web.Request):  # noqa: ARG001
+    return None
+
+
+async def _handle_mesh_dm(request: web.Request) -> web.Response:
+    """Send a DM from the dashboard as a HUMAN nick (Phase 7.5 / AD-5).
+
+    Body: ``{target_nick, text, human_nick}``. Both nicks must satisfy
+    the manifest nick regex (``^[A-Za-z0-9][A-Za-z0-9_-]*$``) — same
+    guard as every other path that touches a nick, so a path-traversal
+    or IRC command injection through the nick field is impossible.
+    """
+    body = await _json_body(request)
+    human_nick = body.get("human_nick", "")
+    target_nick = body.get("target_nick", "")
+    text = str(body.get("text", "")).strip()
+    if not isinstance(human_nick, str) or not _valid_nick(human_nick):
+        return web.json_response({"error": "invalid human_nick"}, status=400)
+    if not isinstance(target_nick, str) or not _valid_nick(target_nick):
+        return web.json_response({"error": "invalid target_nick"}, status=400)
+    if not text:
+        return web.json_response({"error": "missing text"}, status=400)
+    # CRLF-injection guard (RC-3: project has documented history of CRLF
+    # bugs — see commit 317a591). A raw \r or \n in `text` would let an
+    # attacker inject arbitrary IRC commands by closing the PRIVMSG and
+    # starting a new one (NICK, JOIN, KICK, etc.) on the ephemeral
+    # connection registered as `human_nick`. Reject hard.
+    if any(c in text for c in ("\r", "\n", "\x00")):
+        return web.json_response(
+            {"error": "text contains forbidden control characters (CR/LF/NUL)"},
+            status=400,
+        )
+    # RFC 2812: max IRC line is 512 bytes including CRLF. After
+    # ``PRIVMSG <nick> :`` overhead, ~400 chars of text is the safe cap.
+    # Truncate rather than reject — preserves UX for paste-heavy messages.
+    if len(text) > 400:
+        text = text[:400]
+    try:
+        await _send_human_dm(request, human_nick, target_nick, text)
+    except (OSError, ConnectionError, asyncio.TimeoutError) as exc:
+        logger.warning("human DM %s -> %s failed: %s", human_nick, target_nick, exc)
+        return web.json_response({"error": "could not reach the mesh"}, status=502)
+    return web.json_response({"ok": True, "from": human_nick, "to": target_nick})
 
 
 async def _handle_message(request: web.Request) -> web.Response:
@@ -859,6 +1110,92 @@ async def _handle_stream_jsonl(request: web.Request) -> web.StreamResponse:
     except (ConnectionResetError, asyncio.CancelledError):
         pass  # client disconnected — stop tailing, no leak
     return resp
+
+
+async def _sse_state_stream(
+    request: web.Request,
+    snapshot_fn,
+    label: str,
+) -> web.StreamResponse:
+    """Generic state-diff SSE stream (Phase 7.5).
+
+    Calls ``snapshot_fn()`` (sync, marshalled via ``asyncio.to_thread``)
+    every ``_SSE_STATE_POLL_SECONDS`` and emits a ``data: <json>\\n\\n``
+    frame whenever the JSON-serialized snapshot differs from the
+    previous one. The first frame is always emitted (the initial state)
+    so a fresh subscriber sees current state without waiting for a
+    change. The 100 ms cadence keeps end-to-end latency under the 200 ms
+    acceptance bound named in Phase 7.5.
+
+    The push-everywhere rule (Rule 9) says agent prompts should not
+    poll; this dashboard-side poll is internal to the dashboard process
+    and converts the file-watch problem into one push subscription per
+    browser tab. A future revision can swap this for inotify/watchdog
+    without changing the wire shape.
+    """
+    resp = await _sse_prologue(request)
+    last_payload: str | None = None
+    idle = 0.0
+    try:
+        while not _client_gone(request):
+            try:
+                snapshot = await asyncio.to_thread(snapshot_fn)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s stream snapshot failed: %s", label, exc)
+                snapshot = None
+            payload = json.dumps(snapshot) if snapshot is not None else "null"
+            if payload != last_payload:
+                last_payload = payload
+                await _sse_send(resp, payload)
+                idle = 0.0
+            await asyncio.sleep(_SSE_STATE_POLL_SECONDS)
+            idle += _SSE_STATE_POLL_SECONDS
+            if idle >= _KEEPALIVE_SECONDS:
+                await resp.write(b": keepalive\n\n")
+                idle = 0.0
+    except (ConnectionResetError, asyncio.CancelledError):
+        pass  # client disconnected
+    return resp
+
+
+async def _handle_agents_stream(request: web.Request) -> web.StreamResponse:
+    """Push agent-state changes as JSON snapshots (Phase 7.5).
+
+    Frame shape mirrors ``GET /api/agents``: ``{"agents": [...]}``. The
+    frontend replaces its ``setInterval(refreshAgents, 2500)`` poll with
+    a subscription to this stream.
+    """
+    config_path = request.app.get(_CONFIG_PATH)
+
+    def _snapshot():
+        return {"agents": list_agents(config_path)}
+
+    return await _sse_state_stream(request, _snapshot, "agents")
+
+
+async def _handle_pending_stream(request: web.Request) -> web.StreamResponse:
+    """Push perm-queue changes as JSON snapshots (Phase 7.5).
+
+    Frame shape mirrors ``GET /api/pending``.
+    """
+
+    def _snapshot():
+        return {"pending": list_pending()}
+
+    return await _sse_state_stream(request, _snapshot, "pending")
+
+
+async def _handle_channels_stream(request: web.Request) -> web.StreamResponse:
+    """Push channel-list changes as JSON snapshots (Phase 7.5).
+
+    Frame shape mirrors ``GET /api/channels``.
+    """
+    config_path = request.app.get(_CONFIG_PATH)
+
+    def _snapshot():
+        return {"channels": list_channels(config_path)}
+
+    return await _sse_state_stream(request, _snapshot, "channels")
 
 
 def _read_appended(path: str, offset: int) -> tuple[int, str]:
@@ -1362,9 +1699,14 @@ def build_app(
     app.router.add_get("/auth", _handle_auth_get)
     app.router.add_post("/auth", _handle_auth_post)
     app.router.add_get("/api/agents", _handle_agents)
+    app.router.add_get("/api/agents/tree", _handle_agents_tree)
+    app.router.add_get("/api/agents/stream", _handle_agents_stream)
     app.router.add_get("/api/pending", _handle_pending)
+    app.router.add_get("/api/pending/stream", _handle_pending_stream)
+    app.router.add_get("/api/channels/stream", _handle_channels_stream)
     app.router.add_get("/api/channel/{nick}", _handle_channel_read)
     app.router.add_post("/api/message", _handle_message)
+    app.router.add_post("/api/mesh/dm", _handle_mesh_dm)
     app.router.add_get("/api/stream/{kind}/{nick}", _handle_stream_jsonl)
     app.router.add_post("/api/approve", _handle_approve)
     app.router.add_post("/api/deny", _handle_deny)

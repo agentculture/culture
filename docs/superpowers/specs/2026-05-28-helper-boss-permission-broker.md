@@ -4,6 +4,20 @@ parent: "Design"
 nav_order: 24
 ---
 
+> **OBSOLETE NOTE (2026-06-03):** The **grant-ceiling** sections of
+> this spec (any reference to `DEFAULT_BOSS_CEILING`,
+> `boss-policy/<nick>.yaml`, `write_default_boss_ceiling`,
+> `load_boss_ceiling`, `is_above_ceiling`, or the ceiling re-check
+> inside `gate()`) are **obsolete as of Phase 5.2** of the
+> [Mesh Rearchitecture plan](2026-06-03-mesh-rearchitecture-plan.md).
+> A boss can grant a worker any tool the boss itself has; runtime tool
+> authority is governed entirely by the worker's policy file. The new
+> bypass-prevention surface is `BareStickyApproveRefusedError` raised
+> by `_append_sticky_rule` when an `--always allow` rule for
+> `Bash`/`Edit`/`Write`/`mcp__*` lacks an `input_regex` — see Phase 5
+> of the rearch plan. The rest of this spec (broker file conventions,
+> context-watermark handoff, daemon action log) remains current.
+
 # Helper Boss Permission Broker
 
 **Status:** Draft

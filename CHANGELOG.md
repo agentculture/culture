@@ -4,6 +4,193 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.0.0-rc.1] - 2026-06-03
+
+### Mesh Rearchitecture — CC IS the Boss
+
+Fundamental restructuring of how the boss role works on the mesh. The
+Claude Code session the user types into now **is** a boss on the
+mesh — there is no separate autonomous boss daemon brain running in
+parallel. A thin `culture-bridge` process holds the boss's IRC
+presence, audit log, daemon log, IPC socket, and filesystem
+watchdogs; CC owns every decision via a Claude Code plugin that
+exposes 12 `mesh ...` tools.
+
+Spec: `docs/superpowers/specs/2026-06-03-mesh-rearchitecture-plan.md`.
+
+### Phase 0 — pre-flight + spikes
+
+- PATH shim and `~/.culture/manifest` GC for stale entries.
+- Docs reconcile pass over `docs/agentirc/` and the in-tree skill so
+  CC-as-boss is the documented model.
+- **UA-2 spike** — confirmed CC accepts mid-conversation
+  `<system-reminder>` injection from a plugin tool while a tool call
+  is mid-flight. Spike notes at `docs/spikes/ua-2-stop-hook.md`.
+- **v8.19.42 carryforward** — ported the 474 `ERR_BANNEDFROMCHAN`
+  handler + server-confirmed JOIN tracking from `main` onto this
+  branch. The optimistic-JOIN bug that caused silent send-drops
+  cannot recur here.
+- **Peercred ctypes shim** so the bridge's local IPC socket can
+  authenticate the connecting CC process by PID/UID without a fork.
+- **Watchdog 6.0.0 smoke** — verified the upgraded `watchdog`
+  filesystem observer cleanly watches `perm-queue/` for new request
+  files.
+
+### Phase 1 — channel architecture cleanup + polling-prompt strip
+
+- **`#team` is killed.** No global EVERYONE channel. Server-side ACL
+  refuses all JOINs to `#team`. Existing history is preserved (it is
+  durable evidence) but no agent auto-joins and no ACL admits anyone.
+  Discovery happens via `mesh who`; targeted talk via DM; group
+  coordination via opt-in `#joint-<topic>` (cross-boss) or
+  `#team-<project>` (per-boss sibling fireplace).
+- **Unified channel-class ACL.** The server-side gate at
+  `culture/agentirc/client.py` now classifies every channel into
+  `task-<own>`, `task-<other>`, `team-<project>`, `joint-<topic>`,
+  or legacy `#team` and applies one consistent rule table instead of
+  the previous per-prefix patchwork.
+- **Polling-prompt strip across all 4 backends.** The literal
+  "Check IRC channels periodically with `irc_read()` for new
+  messages." (and its near-paraphrases) is removed from the SDK
+  system prompts in all four backends:
+  - `culture/clients/claude/daemon.py`
+  - `culture/clients/copilot/daemon.py`
+  - `culture/clients/codex/daemon.py`
+  - `culture/clients/acp/daemon.py`
+  All inbound delivery is push (via `on_mention`, `on_dm`,
+  `on_roominvite`). No agent prompt instructs polling anywhere in
+  the tree.
+
+### Phase 2 — bridge skeleton (the structural core)
+
+- New `culture/bridge/` process — owns IRC transport, audit log,
+  daemon log, IPC socket, and watchdogs. **No SDK loop, no LLM.**
+- IPC contract docs at `protocol/extensions/bridge-ipc.md`
+  enumerating the 16 verbs the bridge accepts (the original 13
+  IRC/thread verbs + `status` + `shutdown` + `compact` repurposed
+  as a daemon-log record).
+- `MessageBuffer` gains cursor persistence so a bridge restart no
+  longer re-delivers ~200 HISTORY-replayed messages as "unread".
+- `CHANARCHIVE` on shutdown — bridge flips `#task-*` channels to
+  persistent before disconnecting so history survives the
+  last-member PART auto-delete.
+- Bridge boots with `skip_claude=True`; the existing
+  `daemon.py:start()` startup sequence is reused for the
+  non-SDK arms (IRC presence, IPC, watchdogs, manifest invariants).
+
+### Phase 3 — server-side per-nick DM spool
+
+- **Server-side DM spool** in `agentirc` — DMs targeted at an
+  offline nick are persisted in a SQLite spool sized and shaped
+  like `history_store.py`. On reconnect, the bridge issues IRCv3
+  `draft/chathistory` to drain. Spool schema:
+  `(msg_id PK, sender, recipient, ts_server, payload, tags, delivered_at)`.
+- **IDOR guard** — the spool's `CHATHISTORY` handler refuses to
+  return rows where `recipient != requesting nick`. A boss cannot
+  drain another boss's spool by guessing IDs.
+- **Two-phase drain** — on reconnect the bridge first acknowledges
+  pending IDs, then commits delivery; a crash between phases does
+  not lose messages (idempotent replay).
+
+### Phase 4 — CC plugin (CC IS the boss)
+
+- New Claude Code plugin under `culture/plugin/cc/` installed by a
+  user-settings hook installer.
+- **12 mesh tools** — `mesh send`, `mesh dm`, `mesh inbox`,
+  `mesh who`, `mesh status`, `mesh join`, `mesh part`, `mesh topic`,
+  `mesh ask`, `mesh thread_create`, `mesh thread_reply`,
+  `mesh thread_close`. All route through the bridge IPC socket; no
+  direct IRC from CC.
+- **Project-named bosses** — boss nick defaults from the cwd's git
+  remote name; explicit override via `culture boss init --name X`
+  or `mesh status` on first turn. Legacy `local-boss` remains a
+  fallback.
+- **Worker auto-prefix** — a boss named `fork-rearch` spawning a
+  worker `qa` lands as nick `fork-rearch-qa` in channel
+  `#task-fork-rearch-qa`. Single hyphen separator; tools split on
+  `-` to recover the namespace. Max 14+14 chars under IRC's 30-char
+  nick cap.
+
+### Phase 5 — perm broker atomic security
+
+- `DEFAULT_BOSS_CEILING` removed — see Breaking changes.
+- New `BareStickyApproveRefusedError` raised by
+  `_append_sticky_rule` when an `--always` rule for
+  `Bash`/`Edit`/`Write`/`mcp__*` lacks an `input_regex`. The boss
+  can either supply the regex and retry, or accept the demotion.
+- **Demote-rather-than-fail** — when the broker would otherwise
+  bypass-block a sticky rule, it now demotes the rule to
+  `scope=once` and drops a `perm-demote-notices/<id>.json` file so
+  the boss and dashboard see exactly what was downgraded and why.
+- `on_request` cascade removed from
+  `PermissionBroker.__init__` / `AgentRunner.__init__` — push
+  notification of new perm requests now flows through the watchdog
+  FS observer, not a callback chain.
+- **Watchdog filesystem observer** on `perm-queue/` replaces the
+  polling loop. Bridge sees a new request the instant the worker
+  writes it.
+
+### Phase 6 — worker resilience (plenty-staging-boss's findings)
+
+- **Bridge silent-death watchdog persistence** — the `silent_death`
+  classifier now writes its state under `~/.culture/watchdog/state/`
+  so a bridge restart does not reset the "this worker has been
+  silent for N minutes" counter.
+- **Stall DM enrichment (plenty's P1)** — the DM the bridge sends
+  to the boss when a worker stalls now includes the last assistant
+  message, the last tool call, and the tail of the worker's
+  daemon-log. The boss can decide whether to nudge or close the
+  worker without an extra `culture boss audit` round-trip.
+- **Atomic spawn+brief (plenty's P2)** — `culture boss spawn` now
+  takes an optional `--brief "<text>"` flag that creates the worker
+  AND delivers the first brief in one atomic operation. Either both
+  succeed or both roll back. Removes the "spawned but never
+  briefed" failure window.
+- **Worker checkpointing (plenty's P0b, partial)** — workers now
+  emit a `checkpoint` daemon-log record at each turn boundary
+  capturing the current task focus. A restarted worker reads its
+  most recent checkpoint before reading the channel brief, so a
+  crash mid-task does not reset focus to "joining the channel".
+
+### Breaking changes
+
+- `DEFAULT_BOSS_CEILING` and the entire ceiling stack
+  (`_boss_policy_dir`, `boss_policy_path_for`,
+  `write_default_boss_ceiling`, `load_boss_ceiling`,
+  `is_above_ceiling`, and the ceiling re-check inside `gate()`) are
+  **removed**. A boss can grant a worker any tool the boss itself
+  has; runtime tool authority is governed by the worker's policy
+  file.
+- `on_request` callback removed from `PermissionBroker.__init__`.
+  Push notification now flows through the watchdog FS observer.
+- `on_perm_request` removed from `AgentRunner.__init__`.
+- `#team` channel is **frozen** server-side. ACL refuses all new
+  JOINs. Existing message history is preserved but no agent can
+  enter the channel.
+- Deleted tests: `tests/test_boss_grant_ceiling.py`,
+  `tests/test_perm_broker_on_request.py`.
+
+### All-backends carve-out
+
+Phase 4 (CC-as-boss CC plugin) ships **for Claude only** in v1.
+Codex/Copilot/ACP bosses retain their existing autonomous-daemon
+model from v8.x. This deliberately violates the all-backends rule
+documented in `CLAUDE.md` — for the **boss role specifically**.
+
+The shared infrastructure DOES apply to all backends because it
+lives at the IRC server or shared-code layer:
+
+- Workers confined to `#task-<own>` (server-side ACL, Phase 1).
+- Server-side DM spool (Phase 3, in `agentirc`).
+- No-grant-ceiling permission broker (Phase 5, in
+  `culture/clients/_perm_broker.py`).
+- Polling-prompt strip (Phase 1, applied to all 4 backend
+  system prompts).
+
+Follow-up issue tracks bringing the codex/copilot/acp bosses onto
+the bridge model in a later release. Tracked in
+`docs/superpowers/specs/2026-06-03-mesh-rearchitecture-plan.md`.
+
 ## [8.19.25] - 2026-05-31
 
 ### Fixed — SDK inactivity hangs the agent runner
