@@ -95,7 +95,6 @@ class AgentRunner:
         on_exit: Callable[[int], Awaitable[None]] | None = None,
         on_message: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_usage: Callable[[int | None], Awaitable[None]] | None = None,
-        on_perm_request: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         on_turn_complete: Callable[[], Awaitable[None]] | None = None,
         on_turn_failed: Callable[[], Awaitable[None]] | None = None,
         metrics: HarnessMetricsRegistry | None = None,
@@ -108,7 +107,6 @@ class AgentRunner:
         self.on_exit = on_exit
         self.on_message = on_message
         self.on_usage = on_usage
-        self.on_perm_request = on_perm_request
         # Fires AFTER a turn's `async for query()` loop ends cleanly — i.e.
         # the SDK yielded a final ResultMessage and the session is back in
         # the queue-wait state. Used by the daemon's stall watchdog to
@@ -142,9 +140,7 @@ class AgentRunner:
         # Standalone mesh agents (no policy file) keep today's bypassPermissions
         # semantics: can_use_tool=None and string-prompt path preserved.
         if nick and has_policy_file(nick):
-            self._broker: PermissionBroker | None = PermissionBroker(
-                nick=nick, on_request=on_perm_request, boss=boss
-            )
+            self._broker: PermissionBroker | None = PermissionBroker(nick=nick, boss=boss)
             self._can_use_tool = self._broker.gate
         else:
             self._broker = None

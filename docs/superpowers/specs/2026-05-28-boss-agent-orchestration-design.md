@@ -6,10 +6,12 @@ nav_order: 25
 
 # Boss Agent Orchestration
 
-**Status:** Draft
+**Status:** Draft — **partially superseded by [Mesh Rearchitecture — CC IS the Boss](2026-06-03-mesh-rearchitecture-plan.md) (2026-06-03)**.
 **Date:** 2026-05-28
 **Depends on:** [Helper Boss Permission Broker](2026-05-28-helper-boss-permission-broker.md) (PR #411, v8.7.0)
 **Branch:** `feat/boss-agent-orchestration`
+
+> **OBSOLETE NOTE (2026-06-03):** The "grant ceiling" concept (`DEFAULT_BOSS_CEILING`, `is_above_ceiling`, `boss-policy/<nick>.yaml`, `write_default_boss_ceiling`, `load_boss_ceiling`) described in §"Boss grant ceiling" and the `boss approve` ceiling-refusal flow are **REMOVED** as of the mesh rearchitecture (Phase 5.2). A boss can grant a worker any tool the boss itself has; runtime is governed by the worker's policy file. The high-risk sticky-allow narrowing gate (`BareStickyApproveRefusedError` — Phase 5.1) replaces the ceiling as the bypass-prevention surface: a sticky `--always allow` for `Bash`/`Edit`/`Write`/`mcp__*` requires an `input_regex` and is otherwise demoted to `scope=once` with a `perm-demote-notices/<id>.json` file dropped for the boss/dashboard. See [the mesh rearchitecture plan](2026-06-03-mesh-rearchitecture-plan.md) (EL-8, Phase 5).
 
 ## Problem
 

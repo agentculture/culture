@@ -31,6 +31,7 @@ from culture.cli.shared.process import is_process_alive
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
+    BareStickyApproveRefusedError,
     DecisionExistsError,
     InvalidRequestIdError,
     culture_home,
@@ -890,7 +891,7 @@ def _client_gone(request: web.Request) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Control handlers (the human operator is the top authority — no grant ceiling)
+# Control handlers (the human operator is the top authority)
 # ---------------------------------------------------------------------------
 
 
@@ -908,6 +909,12 @@ async def _handle_approve(request: web.Request) -> web.Response:
     if not req_id:
         return web.json_response({"error": "missing id"}, status=400)
     scope = "always" if body.get("always") else "once"
+    # Pull narrowing kwargs from the body (Task 5.1d). The broker enforces the
+    # high-risk sticky-allow gate using tool_name + input_regex; the dashboard
+    # passes them through so a click-to-approve UI can offer the same narrowing
+    # surface as the CLI.
+    tool_name = body.get("tool") or None
+    input_regex = body.get("input_regex") or None
     try:
         write_decision(
             req_id,
@@ -915,7 +922,11 @@ async def _handle_approve(request: web.Request) -> web.Response:
             scope=scope,
             pattern=body.get("pattern", ""),
             decided_by="dashboard",
+            tool_name=tool_name,
+            input_regex=input_regex,
         )
+    except BareStickyApproveRefusedError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
     except InvalidRequestIdError:
         return web.json_response({"error": "invalid id"}, status=400)
     except DecisionExistsError:

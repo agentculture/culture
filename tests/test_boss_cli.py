@@ -1,8 +1,8 @@
 """Tests for the `culture boss` CLI (orchestration surface).
 
 Drives the CLI via subprocess against an isolated CULTURE_HOME so the
-queue/decision/ceiling/identity behavior is exercised end-to-end. Commands that
-need a running daemon (brief/read/spawn/status/close) are not covered here — they
+queue/decision/identity behavior is exercised end-to-end. Commands that need
+a running daemon (brief/read/spawn/status/close) are not covered here — they
 require a live mesh and are covered by manual smoke per the spec.
 """
 
@@ -82,15 +82,6 @@ def _decision(culture_home, rid):
         return json.load(f)
 
 
-def _seed_ceiling(culture_home, nick="local-boss"):
-    from culture.clients._perm_broker import DEFAULT_BOSS_CEILING
-
-    d = os.path.join(str(culture_home), "boss-policy")
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, f"{nick}.yaml"), "w", encoding="utf-8") as f:
-        yaml.safe_dump({"grant_ceiling": DEFAULT_BOSS_CEILING}, f)
-
-
 def _register_worker(culture_home, suffix, boss, server="local"):
     """Register a worker in the manifest owned by `boss` (its culture.yaml boss field).
 
@@ -117,28 +108,35 @@ def _register_worker(culture_home, suffix, boss, server="local"):
 
 
 class TestApproveDeny:
-    def test_approve_in_ceiling_writes_decision(self, home):
-        _seed_ceiling(home)
+    def test_approve_writes_decision(self, home):
         _write_request(home, "req-ok", "Edit", {"file_path": "/a.py"})
         res = _run(["approve", "req-ok"], home)
         assert res.returncode == 0, res.stderr
         d = _decision(home, "req-ok")
         assert d is not None and d["verdict"] == "allow" and d["scope"] == "once"
 
-    def test_approve_always_sets_scope(self, home):
+    def test_approve_always_with_input_regex_sets_scope(self, home):
+        # Write is high-risk — a sticky --always allow MUST carry an
+        # --input-regex (T3 / NT-12). With it, the decision lands.
         _write_request(home, "req-always", "Write", {"file_path": "/a.py"})
-        res = _run(["approve", "req-always", "--always"], home)
+        res = _run(
+            ["approve", "req-always", "--always", "--input-regex", r"^/a\.py$"],
+            home,
+        )
         assert res.returncode == 0, res.stderr
-        assert _decision(home, "req-always")["scope"] == "always"
+        d = _decision(home, "req-always")
+        assert d["scope"] == "always"
+        assert d.get("input_regex") == r"^/a\.py$"
 
-    def test_approve_above_ceiling_refused(self, home):
-        _seed_ceiling(home)
-        _write_request(home, "req-mcp", "mcp__gmail__send", {"to": "x@y.z"})
-        res = _run(["approve", "req-mcp"], home)
+    def test_approve_always_bare_high_risk_refused(self, home):
+        # Bare --always allow for a high-risk tool (no --input-regex) must be
+        # refused by the CLI: it would whitelist every invocation of the tool.
+        _write_request(home, "req-bare", "Bash", {"command": "ls /tmp"})
+        res = _run(["approve", "req-bare", "--always"], home)
         assert res.returncode == 2, (res.returncode, res.stderr)
-        assert "above your grant ceiling" in res.stderr
-        # No decision written — escalation, not grant.
-        assert _decision(home, "req-mcp") is None
+        assert "REFUSED" in res.stderr
+        # No decision written — bare sticky is rejected at the gate.
+        assert _decision(home, "req-bare") is None
 
     def test_deny_writes_decision_with_reason(self, home):
         _write_request(home, "req-deny", "Bash", {"command": "rm -rf /"})
@@ -470,9 +468,6 @@ class TestInit:
     def test_init_creates_boss_identity(self, home):
         res = _run(["init", "--nick", "boss", "--server", "local", "--channel", "#boss"], home)
         assert res.returncode == 0, res.stderr
-        # Ceiling seeded.
-        ceiling = os.path.join(str(home), "boss-policy", "local-boss.yaml")
-        assert os.path.exists(ceiling)
         # Boss cwd culture.yaml has a manager system_prompt + boss tag, no perm-policy.
         boss_cwd = os.path.join(str(home), "boss")
         with open(os.path.join(boss_cwd, "culture.yaml"), encoding="utf-8") as f:

@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from culture.aio import maybe_await
+from culture.clients import _mission as _mission_persistence
 from culture.clients._audit import AuditWriter
 from culture.clients._context_watch import (
     ContextWatchState,
@@ -21,7 +22,6 @@ from culture.clients._context_watch import (
     take_reminder,
 )
 from culture.clients._daemon_log import DaemonLog
-from culture.clients import _mission as _mission_persistence
 from culture.clients._perm_broker import handoff_path_for
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.claude.agent_runner import AgentRunner
@@ -522,7 +522,6 @@ class AgentDaemon:
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
             on_usage=self._on_agent_usage,
-            on_perm_request=self._on_perm_request,
             on_turn_complete=self._on_turn_complete,
             on_turn_failed=self._on_turn_failed,
             metrics=self._metrics,
@@ -1089,46 +1088,6 @@ class AgentDaemon:
         except Exception:  # noqa: BLE001 — DM is advisory; daemon-log already landed
             logger.warning("Failed to DM boss %s with %s", boss, action, exc_info=True)
             return False
-
-    async def _on_perm_request(self, payload: dict) -> None:
-        """Surface a worker permission request to its boss.
-
-        Fired by this worker's PermissionBroker when a tool call routes to the
-        boss. DMs the owning boss (``self.agent.boss``) AND records to
-        daemon-log so the dashboard sees the request even if the DM fails.
-        """
-        boss = _boss_nick(self.agent)
-        if not boss:
-            return
-        tool = payload.get("tool_name", "?")
-        req_id = payload.get("id", "?")
-        preview = self._perm_input_preview(tool, payload.get("input", {}))
-        notice = (
-            f"[perm] worker {self.agent.nick} wants {tool}: {preview} "
-            f"— id {req_id} (approve/deny)"
-        )
-        await self._notify_boss(
-            "perm_request_notified",
-            notice,
-            tool=tool,
-            request_id=req_id,
-        )
-
-    @staticmethod
-    def _perm_input_preview(tool: str, input_dict: dict) -> str:
-        """Short one-line preview of a tool's input for the perm notice."""
-        if tool == "Bash":
-            value = input_dict.get("command", "")
-        elif tool in ("Edit", "Write"):
-            value = input_dict.get("file_path", "")
-        else:
-            try:
-                import json as _json
-
-                value = _json.dumps(input_dict)
-            except (TypeError, ValueError):
-                value = repr(input_dict)
-        return str(value)[:80]
 
     def _maybe_prepend_reminder(self, prompt: str) -> str:
         """Prepend a post-compact handoff reminder when one is owed."""

@@ -31,11 +31,14 @@ import logging
 import os
 from typing import Any  # noqa: F401 — used in IPC verb signatures
 
+import yaml
+
 from culture.aio import maybe_await
 from culture.clients._audit import AuditWriter
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
-from culture.clients.bridge._spool import spool_inbound
+from culture.clients.bridge._fs_observer import BridgeFSObserver
+from culture.clients.bridge._spool import inbox_path, spool_inbound
 from culture.clients.bridge.ipc import make_response
 from culture.clients.bridge.irc_transport import IRCTransport
 from culture.clients.bridge.message_buffer import MessageBuffer
@@ -126,6 +129,12 @@ class AgentDaemon:
         # to the server which marks the spool row delivered.
         self._pending_chathistory: dict[str, dict] = {}
 
+        # Phase 5.4 — FS observer that watches perm-queue,
+        # perm-decisions, and perm-demote-notices. Push channel for
+        # broker activity that previously required workers to DM the
+        # boss. Started by ``start()``, stopped by ``stop()``.
+        self._fs_observer: BridgeFSObserver | None = None
+
         # Background tasks (prevent GC of fire-and-forget tasks).
         self._background_tasks: set[asyncio.Task] = set()
         self._socket_link_path: str | None = None
@@ -170,6 +179,15 @@ class AgentDaemon:
             "inbound_mention_ack": self._ipc_inbound_mention_ack,
             "inbound_roominvite_ack": self._ipc_inbound_roominvite_ack,
             "perm_decision_ack": self._ipc_perm_decision_ack,
+            # Phase 5 — verbs the CC plugin's ``mesh ...`` tools call.
+            "inbox_drain": self._ipc_inbox_drain,
+            "list_owned_agents": self._ipc_list_owned_agents,
+            "list_perm_queue": self._ipc_list_perm_queue,
+            "perm_approve": self._ipc_perm_approve,
+            "perm_deny": self._ipc_perm_deny,
+            "invite_worker": self._ipc_invite_worker,
+            "team_channel_create": self._ipc_team_channel_create,
+            "grant_worker_tool": self._ipc_grant_worker_tool,
         }
 
     # ------------------------------------------------------------------
@@ -298,10 +316,36 @@ class AgentDaemon:
         if "boss" in (getattr(self.agent, "tags", []) or []):
             self._silent_death_task = asyncio.create_task(self._silent_death_watchdog())
 
+        # 6. FS observer (Phase 5.4) — push channel for broker files.
+        self._fs_observer = self._make_fs_observer()
+        self._fs_observer.start()
+
         logger.info(
             "Bridge AgentDaemon started for %s (socket=%s)",
             self.agent.nick,
             self._socket_path,
+        )
+
+    def _make_fs_observer(self) -> BridgeFSObserver:
+        """Construct the FS observer bound to this bridge's asyncio loop.
+
+        Kept as a small helper so tests can override the loop/dirs
+        without copying the start() logic. Reads the broker's standard
+        directory paths from ``_perm_broker`` so a ``CULTURE_HOME``
+        override flows through.
+        """
+        from culture.clients._perm_broker import (
+            _decisions_dir,
+            _demote_notices_dir,
+            _queue_dir,
+        )
+
+        return BridgeFSObserver(
+            loop=asyncio.get_running_loop(),
+            ipc_push=self._ipc_push,
+            queue_dir=_queue_dir(),
+            decisions_dir=_decisions_dir(),
+            demote_dir=_demote_notices_dir(),
         )
 
     async def stop(self) -> None:
@@ -363,6 +407,11 @@ class AgentDaemon:
             self._silent_death_task.cancel()
             await asyncio.gather(self._silent_death_task, return_exceptions=True)
             self._silent_death_task = None
+
+        # 5.5. Stop FS observer (Phase 5.4).
+        if self._fs_observer is not None:
+            self._fs_observer.stop()
+            self._fs_observer = None
 
         if self._background_tasks:
             for t in list(self._background_tasks):
@@ -1078,3 +1127,350 @@ class AgentDaemon:
         """CC acks a perm decision push (Phase 5 will wire the actual
         decision-file write)."""
         return make_response(req_id, ok=True)
+
+    # ------------------------------------------------------------------
+    # IPC handlers — Phase 5 mesh-tool verbs
+    # ------------------------------------------------------------------
+
+    def _ipc_inbox_drain(self, req_id: str, msg: dict) -> dict:
+        """Drain the bridge spool of pending inbound events.
+
+        Reads the JSONL spool at ``inbox-<nick>.jsonl``, returns the
+        list of records, and truncates the file. Idempotent under
+        crash — partial reads leave the file untouched.
+        """
+        import json as _json
+
+        path = inbox_path(self.agent.nick)
+        entries: list[dict] = []
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(_json.loads(line))
+                    except _json.JSONDecodeError:
+                        continue
+        except FileNotFoundError:
+            return make_response(req_id, ok=True, data={"entries": []})
+        # Truncate on successful read so the next drain does not repeat
+        # entries already handed off to CC. We unlink rather than open
+        # in 'w' mode to avoid racing with a concurrent spool_inbound
+        # append: the next spool_inbound call recreates the file.
+        try:
+            os.unlink(path)
+        except OSError:
+            logger.debug("inbox_drain: unlink raced", exc_info=True)
+        return make_response(req_id, ok=True, data={"entries": entries})
+
+    def _ipc_list_owned_agents(self, req_id: str, msg: dict) -> dict:
+        """Return manifest entries owned by this bridge (``boss==self.nick``)."""
+        agents = self._load_owned_agents()
+        return make_response(req_id, ok=True, data={"agents": agents})
+
+    def _load_owned_agents(self) -> list[dict]:
+        """Read server.yaml, return workers whose ``boss`` field is this nick."""
+        try:
+            from culture.clients._perm_broker import culture_home
+            from culture.config import load_config_or_default
+
+            server_yaml = os.path.join(culture_home(), "server.yaml")
+            cfg = load_config_or_default(server_yaml, fallback=server_yaml)
+        except Exception:  # noqa: BLE001 — corrupt manifest must not crash IPC
+            logger.warning("Failed to load manifest for list_owned_agents", exc_info=True)
+            return []
+        me = self.agent.nick
+        out: list[dict] = []
+        for ag in cfg.agents:
+            if getattr(ag, "boss", "") != me:
+                continue
+            out.append(
+                {
+                    "nick": getattr(ag, "nick", ""),
+                    "suffix": getattr(ag, "suffix", ""),
+                    "boss": me,
+                    "tags": list(getattr(ag, "tags", []) or []),
+                    "archived": bool(getattr(ag, "archived", False)),
+                }
+            )
+        return out
+
+    def _ipc_list_perm_queue(self, req_id: str, msg: dict) -> dict:
+        """Return pending perm-queue entries (delegated to ``list_pending``)."""
+        from culture.clients._perm_broker import list_pending
+
+        try:
+            entries = list_pending()
+        except Exception:  # noqa: BLE001
+            logger.warning("list_pending raised", exc_info=True)
+            entries = []
+        # Filter to entries this bridge owns. A request's ``boss`` field
+        # is the authoritative attribution (recorded at request-write
+        # time by ``_request_from_boss``); fall back to all entries
+        # when ``boss`` is missing (legacy queue items).
+        me = self.agent.nick
+        owned = [e for e in entries if not e.get("boss") or e.get("boss") == me]
+        return make_response(req_id, ok=True, data={"entries": owned})
+
+    async def _ipc_perm_approve(self, req_id: str, msg: dict) -> dict:
+        """Shell out to ``culture boss approve`` to write a decision.
+
+        Preserves the O_EXCL race-free pattern (``write_decision``) and
+        the boss-CLI's ownership/refusal logic. The bridge's FS observer
+        then sees the resulting decision file and forwards
+        ``perm_decision`` IPC to CC.
+        """
+        request_id = msg.get("id", "")
+        if not request_id:
+            return make_response(req_id, ok=False, error="Missing 'id'")
+        scope = msg.get("scope", "once")
+        input_regex = msg.get("input_regex", "")
+        pattern = msg.get("pattern", "")
+        argv = ["culture", "boss", "approve", request_id]
+        if scope == "always":
+            argv.append("--always")
+        if pattern:
+            argv.extend(["--pattern", pattern])
+        # ``--input-regex`` is the new Task 5.1d CLI flag. We forward it
+        # whenever present; the boss CLI's argparse rejects it on older
+        # builds, so a missing flag is fine (Phase 5.1d is the path
+        # where it becomes required for sticky high-risk approves).
+        if input_regex:
+            argv.extend(["--input-regex", input_regex])
+        return await self._run_boss_cli(req_id, argv, request_id, verb="approve")
+
+    async def _ipc_perm_deny(self, req_id: str, msg: dict) -> dict:
+        """Shell out to ``culture boss deny`` to write a deny decision."""
+        request_id = msg.get("id", "")
+        if not request_id:
+            return make_response(req_id, ok=False, error="Missing 'id'")
+        reason = (msg.get("reason") or "").strip()
+        argv = ["culture", "boss", "deny", request_id]
+        if reason:
+            argv.append(reason)
+        return await self._run_boss_cli(req_id, argv, request_id, verb="deny")
+
+    async def _run_boss_cli(
+        self,
+        req_id: str,
+        argv: list[str],
+        request_id: str,
+        verb: str,
+    ) -> dict:
+        """Run a ``culture boss <verb>`` subprocess with our nick env.
+
+        The boss CLI reads ``CULTURE_NICK`` (or the legacy fallback) to
+        attribute the decision back to this bridge. We inject the env
+        explicitly so the subprocess can't accidentally pick up a
+        different boss identity from the parent shell.
+        """
+        env = dict(os.environ)
+        env["CULTURE_NICK"] = self.agent.nick
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+            stdout_b, stderr_b = await proc.communicate()
+            stdout = stdout_b.decode("utf-8", "replace").strip()
+            stderr = stderr_b.decode("utf-8", "replace").strip()
+        except FileNotFoundError:
+            return make_response(
+                req_id,
+                ok=False,
+                error="culture CLI not found on PATH; cannot route perm decision",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("culture boss %s subprocess raised", verb, exc_info=True)
+            return make_response(req_id, ok=False, error=str(exc))
+        if proc.returncode != 0:
+            return make_response(
+                req_id,
+                ok=False,
+                error=(stderr or stdout or f"culture boss {verb} exited {proc.returncode}"),
+                data={"request_id": request_id, "returncode": proc.returncode},
+            )
+        return make_response(
+            req_id,
+            ok=True,
+            data={"request_id": request_id, "stdout": stdout, "verb": verb},
+        )
+
+    async def _ipc_invite_worker(self, req_id: str, msg: dict) -> dict:
+        """Issue an IRC INVITE for ``worker`` to ``channel``.
+
+        AD-3 widens a worker's channel set via explicit invite; the
+        bridge tracks the invite_set in memory for the dashboard's
+        per-worker channel view.
+        """
+        worker = msg.get("worker", "")
+        channel = msg.get("channel", "")
+        if not worker:
+            return make_response(req_id, ok=False, error="Missing 'worker'")
+        if not channel:
+            return make_response(req_id, ok=False, error=_ERR_MISSING_CHANNEL)
+        if not channel.startswith("#"):
+            return make_response(req_id, ok=False, error=_ERR_CHANNEL_PREFIX)
+        from culture.agentirc.irc_targets import (
+            InvalidIRCTarget,
+            validate_channel_name,
+            validate_nick,
+        )
+
+        try:
+            validate_channel_name(channel)
+            validate_nick(worker)
+        except InvalidIRCTarget as exc:
+            return make_response(req_id, ok=False, error=str(exc))
+        assert self._transport is not None
+        # ``INVITE <nick> <channel>`` per RFC 2812.
+        await self._transport.send_raw(f"INVITE {worker} {channel}")
+        # Track on the bridge's in-memory invite set so the dashboard's
+        # per-worker channel view can list opt-in invites without
+        # round-tripping the IRCd.
+        self._record_invite(worker, channel)
+        return make_response(req_id, ok=True, data={"worker": worker, "channel": channel})
+
+    def _record_invite(self, worker: str, channel: str) -> None:
+        """Track an invited (worker, channel) pair in memory."""
+        if not hasattr(self, "_invite_set"):
+            self._invite_set: set[tuple[str, str]] = set()
+        self._invite_set.add((worker, channel))
+
+    async def _ipc_team_channel_create(self, req_id: str, msg: dict) -> dict:
+        """JOIN ``#team-<own-project>`` for sibling-worker awareness (AD-3).
+
+        The project name is derived from this bridge's nick (the boss
+        nick equals the project in single-server mode per AD-2). When
+        the bridge nick carries a server prefix (``<server>-<project>``
+        in federated mode), the project is the suffix.
+        """
+        project = self._project_name()
+        if not project:
+            return make_response(req_id, ok=False, error="Cannot derive project name from nick")
+        channel = f"#team-{project}"
+        from culture.agentirc.irc_targets import InvalidIRCTarget, validate_channel_name
+
+        try:
+            validate_channel_name(channel)
+        except InvalidIRCTarget as exc:
+            return make_response(req_id, ok=False, error=str(exc))
+        assert self._transport is not None
+        await self._transport.join_channel(channel)
+        topic = (msg.get("topic") or "").strip()
+        if topic:
+            try:
+                await self._transport.send_topic(channel, topic)
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to set topic on %s", channel, exc_info=True)
+        return make_response(req_id, ok=True, data={"channel": channel})
+
+    def _project_name(self) -> str:
+        """Derive the project suffix from this bridge's nick (AD-2)."""
+        nick = self.agent.nick
+        if "-" in nick:
+            return nick.split("-", 1)[1]
+        return nick
+
+    def _ipc_grant_worker_tool(self, req_id: str, msg: dict) -> dict:
+        """Append a sticky ``auto_allow`` rule to a worker's policy file.
+
+        Task 5.1d's defense-in-depth: bare high-risk grants (Bash /
+        Edit / Write / ``mcp__.*``) without an ``input_regex`` are
+        refused at the bridge boundary too — same guard as
+        ``_append_sticky_rule`` and ``write_decision``. Forwards the
+        actual append to ``_append_sticky_rule_for_worker`` so the
+        broker's existing validation runs.
+        """
+        worker = (msg.get("worker") or "").strip()
+        tool = (msg.get("tool") or "").strip()
+        scope = (msg.get("scope") or "once").strip()
+        input_regex = (msg.get("input_regex") or "").strip()
+        if not worker or not tool:
+            return make_response(req_id, ok=False, error="Missing 'worker' or 'tool'")
+        # Worker must be one of this bridge's owned agents — refuse
+        # cross-team grants (mirrors the boss CLI's ``_foreign_worker``
+        # check at the file-decision boundary).
+        if not self._owns_worker(worker):
+            return make_response(
+                req_id,
+                ok=False,
+                error=(
+                    f"REFUSED: {worker!r} is not owned by this boss; "
+                    "cannot grant tools across teams"
+                ),
+            )
+        try:
+            self._append_sticky_rule_for_worker(
+                worker=worker,
+                tool=tool,
+                scope=scope,
+                input_regex=input_regex,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return make_response(req_id, ok=False, error=str(exc))
+        return make_response(
+            req_id,
+            ok=True,
+            data={"worker": worker, "tool": tool, "scope": scope},
+        )
+
+    def _owns_worker(self, worker: str) -> bool:
+        """Return True iff ``worker`` is in this bridge's owned set."""
+        owned = self._load_owned_agents()
+        return any(a.get("nick") == worker for a in owned)
+
+    @staticmethod
+    def _append_sticky_rule_for_worker(
+        worker: str,
+        tool: str,
+        scope: str,
+        input_regex: str,
+    ) -> None:
+        """Append (or no-op) an ``auto_allow`` rule to ``worker``'s policy.
+
+        Validates the same high-risk constraint as
+        ``_append_sticky_rule`` / ``write_decision``: a sticky grant
+        for Bash / Edit / Write / ``mcp__.*`` without ``input_regex``
+        is refused. ``scope=once`` is a no-op (the in-flight tool call
+        is the only legitimate consumer of a one-shot grant, and the
+        broker's existing perm-queue flow handles that path).
+        """
+        from culture.clients._perm_broker import (
+            BareStickyApproveRefusedError,
+            _atomic_write_yaml,
+            _is_high_risk_tool,
+            policy_path_for,
+        )
+
+        if scope != "always":
+            # One-shot grants are routed via ``write_decision`` in the
+            # normal perm flow; bridge-side ``grant_worker_tool`` is
+            # only meaningful for the sticky case.
+            return
+        if _is_high_risk_tool(tool) and not input_regex:
+            raise BareStickyApproveRefusedError(
+                f"sticky grant for high-risk tool {tool!r} requires input_regex"
+            )
+        policy_path = policy_path_for(worker)
+        try:
+            with open(policy_path, encoding="utf-8") as fh:
+                policy = yaml.safe_load(fh) or {}
+        except OSError:
+            policy = {}
+        if not isinstance(policy, dict):
+            policy = {}
+        auto_allow = policy.setdefault("auto_allow", []) or []
+        if not isinstance(auto_allow, list):
+            auto_allow = []
+        rule: dict = {"tool": tool}
+        if input_regex:
+            rule["input_regex"] = input_regex
+        if rule not in auto_allow:
+            auto_allow.append(rule)
+            policy["auto_allow"] = auto_allow
+            _atomic_write_yaml(policy_path, policy)

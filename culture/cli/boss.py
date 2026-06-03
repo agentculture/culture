@@ -28,17 +28,16 @@ import sys
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
+    BareStickyApproveRefusedError,
     DecisionExistsError,
     InvalidRequestIdError,
     cleanup_stale,
     culture_home,
     has_policy_file,
-    is_above_ceiling,
     list_pending,
     read_request,
     seed_helper_policy,
     write_decision,
-    write_default_boss_ceiling,
 )
 from culture.config import load_config_or_default
 
@@ -67,11 +66,13 @@ On a mission:
    their claims — verify against `culture boss audit <name>`; never take "done"
    on faith.
 3. Approve worker tool requests as they arrive (`culture boss approve|deny`).
-   Grant `--always` for tools you trust a worker with. Some high-risk tools are
-   above your grant ceiling — when `culture boss approve` refuses, do NOT retry;
-   post the request to your human in {channel} and let them grant it.
+   You can grant a worker any tool you yourself have. For persistent grants
+   (`--always`) on high-risk tools (`Bash`, `Edit`, `Write`, `mcp__*`) you
+   MUST pass `--input-regex` to narrow the rule — a bare sticky allow would
+   whitelist every invocation of the tool. The CLI refuses bare sticky allows
+   for those tools; drop the `--always` and use `--input-regex` instead.
 4. Report progress and blockers to your human in {channel}. Escalate genuine
-   judgment calls and above-ceiling requests; handle the rest yourself.
+   judgment calls; handle the rest yourself.
 
 When you approach your context limit you'll be asked to write a handoff and
 reminded to re-read it — re-ground on the mission, CLAUDE.md, and the plan, not
@@ -162,6 +163,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     approve_p.add_argument("id", help="Request id")
     approve_p.add_argument("--always", action="store_true", help="Save a sticky allow rule")
     approve_p.add_argument("--pattern", default="", help="Tool pattern for the sticky rule")
+    approve_p.add_argument(
+        "--tool",
+        default="",
+        help="Tool name for high-risk classification (Bash/Edit/Write/mcp__*). "
+        "Defaults to the request's tool. A sticky --always allow for a high-risk "
+        "tool MUST be accompanied by --input-regex.",
+    )
+    approve_p.add_argument(
+        "--input-regex",
+        dest="input_regex",
+        default="",
+        help="Input-narrowing regex for a sticky --always allow. Required for "
+        "high-risk tools (Bash/Edit/Write/mcp__*); the rule will only match "
+        "inputs that satisfy this regex.",
+    )
 
     deny_p = sub.add_parser("deny", help="Deny a worker permission request")
     deny_p.add_argument("id", help="Request id")
@@ -386,19 +402,28 @@ def _cmd_approve(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
-    tool = req.get("tool_name", "")
-    if is_above_ceiling(tool, req.get("input", {}), boss):
+    # Default --tool to the request's tool so the high-risk gate sees the right
+    # name without the operator having to retype it.
+    tool_name = args.tool or req.get("tool_name", "")
+    scope = "always" if args.always else "once"
+    try:
+        write_decision(
+            args.id,
+            verdict="allow",
+            scope=scope,
+            pattern=args.pattern,
+            decided_by=boss,
+            tool_name=tool_name,
+            input_regex=args.input_regex or None,
+        )
+    except BareStickyApproveRefusedError as exc:
         print(
-            f"REFUSED: {tool} is above your grant ceiling. Do not retry — escalate "
-            f"to your human in your boss channel and let them approve request "
-            f"{args.id} from the Mission Control dashboard (the human is the top "
-            f"authority and can grant above-ceiling tools).",
+            f"REFUSED: {exc}. A bare --always allow for a high-risk tool would "
+            "whitelist every invocation. Re-run with --input-regex '<pattern>' "
+            "to narrow the rule, or drop --always for a one-shot allow.",
             file=sys.stderr,
         )
         sys.exit(2)
-    scope = "always" if args.always else "once"
-    try:
-        write_decision(args.id, verdict="allow", scope=scope, pattern=args.pattern, decided_by=boss)
     except InvalidRequestIdError:
         print(f"Error: invalid request id {args.id!r}", file=sys.stderr)
         sys.exit(1)
@@ -960,9 +985,9 @@ def _cmd_cleanup(args: argparse.Namespace) -> None:
 
 
 def _cmd_init(args: argparse.Namespace) -> None:
-    # Validate nick + server before they flow into file paths (boss_policy_path_for,
-    # the boss cwd). Worker suffixes are already validated; the boss's own --nick/
-    # --server must be too, or `--nick ../../x` becomes an arbitrary-file-write.
+    # Validate nick + server before they flow into file paths (the boss cwd).
+    # Worker suffixes are already validated; the boss's own --nick/--server must
+    # be too, or `--nick ../../x` becomes an arbitrary-file-write.
     suffix = _require_worker_suffix(args.nick)
     server = _require_server(args.server) if args.server else "local"
     nick = f"{server}-{suffix}"
@@ -975,7 +1000,6 @@ def _cmd_init(args: argparse.Namespace) -> None:
         os.remove(_perm_policy_path(nick))
         print(f"warning: removed stray perm-policy for boss {nick}", file=sys.stderr)
 
-    write_default_boss_ceiling(nick)
     _write_boss_yaml(cwd, suffix, nick, args.channel, model=args.model)
     _copy_boss_skill(cwd)
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
