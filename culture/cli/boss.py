@@ -1,14 +1,18 @@
 """Boss subcommands: ``culture boss {init,spawn,brief,read,pending,approve,deny,audit,log,status,close}``.
 
-The orchestration surface for a *boss agent* — an autonomous culture daemon that
-manages worker agents (spawns them, drives them over IRC, and approves/denies
-their tool requests bounded by a grant ceiling). Mirrors the IRC skill's
-``culture channel`` shape; reuses ``culture.clients._perm_broker`` for all
-queue/decision/ceiling operations so there is one implementation.
+The orchestration surface for a *boss* — the Claude Code session itself is the
+boss; this CLI is how it drives worker agents (spawns them, briefs them over
+IRC, and approves/denies their tool requests bounded by a grant ceiling). The
+boss's IRC presence is held by a culture-managed bridge process so the boss can
+send and receive on the mesh; the bridge does not think for the boss. Mirrors
+the IRC skill's ``culture channel`` shape; reuses ``culture.clients._perm_broker``
+for all queue/decision/ceiling operations so there is one implementation.
 
 The boss's own nick comes from ``CULTURE_NICK`` (set by the agent runner).
 
 Design spec: docs/superpowers/specs/2026-05-28-boss-agent-orchestration-design.md
+(superseded in part by docs/superpowers/specs/2026-06-03-mesh-rearchitecture-plan.md
+— "CC IS the boss", with the bridge process providing IRC connectivity).
 """
 
 from __future__ import annotations
@@ -46,9 +50,12 @@ NAME = "boss"
 _ALL_CMDS = "init|spawn|brief|read|pending|approve|deny|audit|log|status|close|cleanup"
 
 _MANAGER_PROMPT = """\
-You are {nick}, a manager agent on the culture mesh. A human briefs you in your
-IRC channel ({channel}); that brief is your mission. You do NOT do the
-implementation work yourself — you drive worker agents that do.
+You are {nick}, a boss on the culture mesh. You ARE the operator driving this
+session — there is no separate "boss brain" behind you. The IRC connection to
+the mesh is just the bridge that carries your messages to workers and humans.
+A human briefs you in {channel}; that brief is your mission. You do NOT do the
+implementation work yourself — you spawn worker agents and drive them via the
+`culture boss` CLI.
 
 On a mission:
 1. Read CLAUDE.md and any referenced plan/spec to ground yourself in the
@@ -926,8 +933,12 @@ def _cmd_init(args: argparse.Namespace) -> None:
     _copy_boss_skill(cwd)
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
     print(
-        f"boss {nick} initialized (cwd={cwd}, channel={args.channel}). "
-        f"Start it: culture agent start {nick}, then brief it in {args.channel}."
+        f"boss {nick} initialized (cwd={cwd}, channel={args.channel}).\n"
+        f"You ARE this boss — the IRC presence is held by a culture-managed bridge "
+        f"so {nick} can send and receive on the mesh.\n"
+        f"Start the bridge: culture agent start {nick}\n"
+        f"Then drive your team with `culture boss spawn|brief|approve|deny|...`, "
+        f"watching {args.channel} for your human's instructions."
     )
 
 

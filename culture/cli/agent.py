@@ -224,7 +224,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     # -- unregister -----------------------------------------------------------
     unregister_parser = agent_sub.add_parser("unregister", help="Unregister agent")
-    unregister_parser.add_argument("target", help="Agent suffix or full nick")
+    unregister_parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Agent suffix or full nick (omit when using --all-missing)",
+    )
+    unregister_parser.add_argument(
+        "--all-missing",
+        action="store_true",
+        help="GC every manifest entry whose 'directory' field points at a non-existent path",
+    )
     unregister_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
 
     # -- migrate --------------------------------------------------------------
@@ -1173,7 +1183,17 @@ def _cmd_register(args: argparse.Namespace) -> None:
 
 def _cmd_unregister(args: argparse.Namespace) -> None:
     """Remove an agent from the manifest."""
+    if getattr(args, "all_missing", False):
+        _unregister_all_missing(args)
+        return
+
     target = args.target
+    if not target:
+        print(
+            "Usage: culture agent unregister <target> | --all-missing",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     config = load_config_or_default(args.config)
 
     prefix = f"{config.server.name}-"
@@ -1185,6 +1205,37 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     print(f"Unregistered: {prefix}{suffix}")
+
+
+def _unregister_all_missing(args: argparse.Namespace) -> None:
+    """GC every manifest entry whose directory no longer exists on disk.
+
+    Iterates the manifest, removes entries whose ``directory`` field does not
+    resolve to an existing directory, and prints a summary. Idempotent: when
+    every entry's directory exists, prints ``Unregistered 0 stale entries``.
+    """
+    config = load_config_or_default(args.config)
+    prefix = f"{config.server.name}-"
+
+    stale_suffixes = [
+        suffix
+        for suffix, directory in config.manifest.items()
+        if not directory or not os.path.isdir(directory)
+    ]
+
+    for suffix in stale_suffixes:
+        try:
+            remove_from_manifest(args.config, suffix)
+        except ValueError as e:
+            print(f"Error removing {prefix}{suffix}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if not stale_suffixes:
+        print("Unregistered 0 stale entries")
+        return
+
+    nicks = ", ".join(f"{prefix}{s}" for s in stale_suffixes)
+    print(f"Unregistered {len(stale_suffixes)} stale entries: {nicks}")
 
 
 # -----------------------------------------------------------------------

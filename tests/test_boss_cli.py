@@ -478,7 +478,9 @@ class TestInit:
         with open(os.path.join(boss_cwd, "culture.yaml"), encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         assert "boss" in cfg.get("tags", [])
-        assert "manager agent" in cfg.get("system_prompt", "")
+        # The system_prompt grounds the CC session as the boss itself —
+        # not a separate "manager agent" behind it.
+        assert "a boss on the culture mesh" in cfg.get("system_prompt", "")
         assert not os.path.exists(os.path.join(str(home), "perm-policy", "local-boss.yaml"))
         # Skill copied into the boss cwd.
         assert os.path.exists(os.path.join(boss_cwd, ".claude", "skills", "boss", "SKILL.md"))
