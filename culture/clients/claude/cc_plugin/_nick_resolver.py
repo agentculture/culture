@@ -35,6 +35,69 @@ _MAX_LEN = 14
 _MIN_LEN = 3
 _LEGACY_FALLBACK = "local-boss"
 
+# Default server name used when ``~/.culture/server.yaml`` cannot be
+# parsed. Matches ``ServerConfig.name = "culture"`` in
+# ``culture/agentirc/config.py`` (Qodo PR #54 #4 — a previous draft of
+# this module used ``local``, which is the value the user's local
+# deployment happens to have but is NOT the dataclass default).
+_DEFAULT_SERVER_NAME = "culture"
+
+
+def _server_name() -> str:
+    """Read the IRC server name from ``~/.culture/server.yaml`` so the
+    resolved nick can be prefixed correctly (Rule 428343 —
+    ``<server>-<agent>``). Avoids importing PyYAML: the file shape we
+    care about starts with ``server:`` then ``  name: <value>`` on the
+    next non-empty/non-comment line. Falls back to ``local`` when the
+    file is missing or unparseable — this matches the default in
+    ``culture/agentirc/config.py``.
+    """
+    path = os.path.expanduser("~/.culture/server.yaml")
+    if not os.path.exists(path):
+        return _DEFAULT_SERVER_NAME
+    try:
+        with open(path, encoding="utf-8") as fh:
+            in_server_block = False
+            for raw_line in fh:
+                line = raw_line.rstrip("\n")
+                stripped = line.strip()
+                if stripped.startswith("#") or not stripped:
+                    continue
+                if not line.startswith(" ") and stripped.endswith(":"):
+                    in_server_block = stripped == "server:"
+                    continue
+                if in_server_block and stripped.startswith("name:"):
+                    raw = stripped.split(":", 1)[1]
+                    # Qodo PR #54 #2: a trailing ``# comment`` would
+                    # otherwise survive into the prefix and produce
+                    # ``culture-<repo>#comment``, which the bridge CLI's
+                    # nick validator rejects. Strip the comment first,
+                    # THEN unwrap quotes.
+                    comment_at = raw.find("#")
+                    if comment_at >= 0:
+                        raw = raw[:comment_at]
+                    value = raw.strip().strip("\"'")
+                    return value or _DEFAULT_SERVER_NAME
+    except OSError:
+        pass
+    return _DEFAULT_SERVER_NAME
+
+
+def _qualify(candidate: str) -> str:
+    """Return *candidate* in canonical ``<server>-<agent>`` form
+    (Rule 428343 / Qodo PR #51 #1).
+
+    If *candidate* already contains a hyphen we keep it as-is (it's
+    treated as already-qualified). Otherwise we prefix
+    ``<server_name>-`` and re-clip the total to ``_MAX_LEN`` so the
+    canonical worker-suffix budget is preserved.
+    """
+    if "-" in candidate:
+        return candidate
+    server = _server_name()
+    agent_budget = max(_MIN_LEN, _MAX_LEN - len(server) - 1)  # 1 for hyphen
+    return f"{server}-{candidate[:agent_budget]}"
+
 
 def _sanitize(candidate: str) -> str:
     """Return ``candidate`` lowercased, stripped of non-[A-Za-z0-9_-]
@@ -117,35 +180,43 @@ def resolve_project_nick(cwd: str) -> str:
     ``local-boss`` if every higher-priority option fails to produce
     an acceptable value (and logs a WARNING in that case).
     """
+    # Every return passes through ``_qualify`` so the resolved value
+    # ends up in canonical ``<server>-<agent>`` shape — without this
+    # qualification ``culture bridge start`` rejects the spawn with
+    # ``invalid nick — must match <server>-<agent> format`` and
+    # SessionStart silently falls into "fake mesh presence". The legacy
+    # fallback already includes the prefix, so ``_qualify`` is a no-op
+    # on that path. (Qodo PR #51 #1 collision with this resolver.)
+
     # (a) explicit env override
     env_value = os.environ.get("CULTURE_BOSS_NICK", "").strip()
     if env_value:
         sanitized = _sanitize(env_value)
         if _is_acceptable(sanitized):
-            return sanitized
+            return _qualify(sanitized)
 
     # (b) culture.yaml nick: field
     yaml_value = _read_yaml_nick(cwd)
     if yaml_value:
         sanitized = _sanitize(yaml_value)
         if _is_acceptable(sanitized):
-            return sanitized
+            return _qualify(sanitized)
 
     # (c) git remote-origin basename
     git_basename = _git_remote_basename(cwd)
     if git_basename:
         sanitized = _sanitize(git_basename)
         if _is_acceptable(sanitized):
-            return sanitized
+            return _qualify(sanitized)
 
     # (d) cwd basename
     cwd_basename = os.path.basename(cwd.rstrip("/")) if cwd else ""
     if cwd_basename:
         sanitized = _sanitize(cwd_basename)
         if _is_acceptable(sanitized):
-            return sanitized
+            return _qualify(sanitized)
 
-    # (e) legacy fallback
+    # (e) legacy fallback — already qualified, ``_qualify`` is a no-op.
     logger.warning(
         "resolve_project_nick(%r): no env/yaml/git/basename resolved a "
         "valid nick — falling back to legacy %s",

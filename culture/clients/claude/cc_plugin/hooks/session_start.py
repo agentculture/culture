@@ -68,34 +68,83 @@ def _read_stdin_json() -> dict[str, Any]:
         return {}
 
 
-def _ensure_bridge_running(nick: str, repo_root: str) -> None:
-    """Best-effort: launch ``culture bridge start <nick>`` if no bridge
-    socket exists. We do NOT wait for the daemon — Claude Code starts
-    the assistant immediately and the daemon comes up in parallel.
-    Subsequent IPC verbs will retry once the socket appears.
+def _nick_well_formed(nick: str) -> bool:
+    """Mirror the ``<server>-<agent>`` validation ``culture bridge``
+    applies at its CLI boundary (Rule 428343 / Qodo PR #51 #1). Done
+    here as defense-in-depth so the hook does not Popen a child that
+    will exit 1 in the dark — see ``_ensure_bridge_running`` for the
+    failure-surfacing flow."""
+    parts = nick.split("-", 1)
+    return len(parts) == 2 and all(parts)
 
-    v9.1.0: routes through the new ``culture bridge start`` CLI verb
-    (PR #51) instead of ``culture agent start``. The latter expects
-    the nick to be a manifest entry with a configured backend; the
-    former is exactly what's wanted here — a transport-only bridge
-    that's ad-hoc per CC session.
+
+def _ensure_bridge_running(nick: str, repo_root: str) -> str | None:
+    """Best-effort: launch ``culture bridge start <nick>`` if no bridge
+    socket exists. Returns an error string when the spawn was definitely
+    rejected (so additionalContext can surface it honestly); returns
+    ``None`` on success or "spawning, will retry asynchronously".
+
+    v9.1.0: routes through ``culture bridge start`` (PR #51) instead of
+    ``culture agent start``. v9.1.2: validates the nick up front AND
+    waits briefly for the IPC socket to appear, so a fire-and-forget
+    Popen no longer hides bridge-spawn failures behind a system-reminder
+    that lies about the session being on the mesh.
     """
     if _bridge_client is None:
-        return
+        return "bridge client module unavailable (PYTHONPATH miss)"
     if _bridge_client.bridge_running(nick):
-        return
+        return None
+    if not _nick_well_formed(nick):
+        return (
+            f"refusing to spawn bridge: nick {nick!r} does not match "
+            "<server>-<agent> format (Rule 428343). The plugin's "
+            "_nick_resolver returned a bare project name; either set "
+            "CULTURE_BOSS_NICK explicitly or ensure ~/.culture/server.yaml "
+            "is readable."
+        )
     cmd = [sys.executable, "-m", "culture", "bridge", "start", nick]
     try:
-        subprocess.Popen(  # noqa: S603 — fixed command shape
+        proc = subprocess.Popen(  # noqa: S603 — fixed command shape
             cmd,
             cwd=repo_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"bridge spawn failed: {exc}"
+
+    # Poll for the IPC socket to appear OR the child to exit
+    # non-zero. 30 × 100ms = 3s — comfortably more than the daemon's
+    # connect time on a healthy host. We do NOT wait for full IRC
+    # registration; subsequent IPC verbs retry once the socket exists.
+    for _ in range(30):
+        if _bridge_client.bridge_running(nick):
+            return None
+        rc = proc.poll()
+        if rc is not None and rc != 0:
+            # Qodo PR #54 #3: the CLI exits 1 in the "PID file exists,
+            # daemon still warming up" window. The daemon might have
+            # been spawned by a SIBLING process and be on its way up
+            # right now. Give the socket a couple more polls before
+            # surfacing as a failure — a real "won't come up" cause
+            # would still surface, just 200ms later. This race-aware
+            # recheck is the load-bearing assertion that prevents
+            # SessionStart from lying about a healthy mesh as broken.
+            for _ in range(2):
+                time.sleep(0.1)
+                if _bridge_client.bridge_running(nick):
+                    return None
+            err_bytes = proc.stderr.read() if proc.stderr else b""
+            err = err_bytes.decode(errors="replace").strip() or f"exit {rc}"
+            return f"bridge spawn exited {rc}: {err}"
+        time.sleep(0.1)
+
+    # 3s elapsed and the socket still isn't up but the child is alive —
+    # treat as "still warming up", do not surface as a failure. The
+    # bridge_client retry will succeed once registration completes.
+    return None
 
 
 def _spawn_owned_workers(nick: str) -> None:
@@ -204,9 +253,30 @@ def _fetch_roster(nick: str) -> str:
 
 
 def _format_additional_context(
-    nick: str, mission: str, roster: str, spool: list[dict[str, Any]]
+    nick: str,
+    mission: str,
+    roster: str,
+    spool: list[dict[str, Any]],
+    bridge_error: str | None = None,
 ) -> str:
     """Compose the additionalContext system-reminder block."""
+    if bridge_error:
+        # Be honest: if the bridge did not come up, do NOT pretend the
+        # session is "on the mesh" — that lie cost an entire iteration
+        # of debugging when the v9.1.2 nick collision shipped.
+        lines = [
+            "<system-reminder>",
+            f"culture-bridge: BRIDGE SPAWN FAILED for nick `{nick}`.",
+            f"Reason: {bridge_error}",
+            (
+                "This session is NOT on the mesh. Mesh tools (`mesh_*`) "
+                "will fail until the bridge is up. Fix the cause above, "
+                "then `culture bridge start <valid-nick>` manually and "
+                "restart this Claude Code session."
+            ),
+            "</system-reminder>",
+        ]
+        return "\n".join(lines)
     lines = [
         "<system-reminder>",
         f"culture-bridge: this CC session is `{nick}` on the mesh.",
@@ -243,15 +313,26 @@ def main() -> int:
     # Hand the resolved nick down to child tools (mesh ...) via env.
     os.environ["CULTURE_NICK"] = nick
 
-    _ensure_bridge_running(nick, _REPO_ROOT)
-    runtime_model = os.environ.get("CLAUDE_MODEL", "").strip()
-    _emit_session_start(nick, runtime_model)
-    _spawn_owned_workers(nick)
-    spool = _drain_spool(nick)
-    mission = _read_mission(nick)
-    roster = _fetch_roster(nick)
+    bridge_error = _ensure_bridge_running(nick, _REPO_ROOT)
+    if bridge_error:
+        # Skip every downstream step that depends on the bridge being
+        # alive — those would just stack more failures on top of the
+        # first one. The additionalContext block tells the user what
+        # to fix.
+        spool: list[dict[str, Any]] = []
+        mission = ""
+        roster = ""
+    else:
+        runtime_model = os.environ.get("CLAUDE_MODEL", "").strip()
+        _emit_session_start(nick, runtime_model)
+        _spawn_owned_workers(nick)
+        spool = _drain_spool(nick)
+        mission = _read_mission(nick)
+        roster = _fetch_roster(nick)
 
-    additional_context = _format_additional_context(nick, mission, roster, spool)
+    additional_context = _format_additional_context(
+        nick, mission, roster, spool, bridge_error=bridge_error
+    )
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

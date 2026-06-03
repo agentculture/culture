@@ -145,20 +145,53 @@ class DaemonConfig:
         return None
 
 
+def _filtered(cls, raw: dict | None) -> dict:
+    """Strip raw-yaml keys that the dataclass *cls* does not declare.
+
+    The user's ``~/.culture/server.yaml`` is shared by the IRC server,
+    the agent backends, and the bridge — and each component exposes a
+    slightly different set of keys under sections like ``telemetry``
+    (the IRCd's TelemetryConfig has ``audit_*`` fields the backend
+    TelemetryConfig does not know about). Without this filter, every
+    bridge / backend boot would crash on a strictly-typed dataclass
+    constructor that's never going to use those extras.
+
+    Bridge-specific shim (cite-don't-import copy of the same pattern
+    the AgentConfig loader uses below — promoted here so every nested
+    dataclass benefits, not just AgentConfig).
+    """
+    if not raw:
+        return {}
+    known = {f.name for f in fields(cls)}
+    return {k: v for k, v in raw.items() if k in known}
+
+
 def load_config(path: str | Path) -> DaemonConfig:
     """Load daemon config from a YAML file."""
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
 
-    server = ServerConnConfig(**raw.get("server", {}))
-    supervisor = SupervisorConfig(**raw.get("supervisor", {}))
+    server = ServerConnConfig(**_filtered(ServerConnConfig, raw.get("server", {})))
+    supervisor = SupervisorConfig(**_filtered(SupervisorConfig, raw.get("supervisor", {})))
 
-    webhooks = WebhookConfig(**raw.get("webhooks", {}))
-    telemetry = TelemetryConfig(**raw.get("telemetry", {}))
+    webhooks = WebhookConfig(**_filtered(WebhookConfig, raw.get("webhooks", {})))
+    telemetry = TelemetryConfig(**_filtered(TelemetryConfig, raw.get("telemetry", {})))
 
     agents = []
     known_agent_fields = {f.name for f in fields(AgentConfig)}
-    for agent_raw in raw.get("agents", []):
+    raw_agents = raw.get("agents", []) or []
+    if isinstance(raw_agents, dict):
+        # NEW per-directory manifest format
+        # (``agents: {suffix: /path/to/agent/dir}``). The bridge does
+        # not host an SDK loop and only spawns for ONE nick passed on
+        # the CLI — the synthesized AgentConfig in ``__main__`` covers
+        # that case. Loading the per-directory ``culture.yaml`` files
+        # is the agent CLI's job, not ours.
+        raw_agents = []
+    for agent_raw in raw_agents:
+        if not isinstance(agent_raw, dict):
+            # Defensive: skip any non-dict entries instead of crashing.
+            continue
         # Strip unknown fields (e.g. acp_command from ACP backend configs)
         # so multi-backend configs don't crash on load.
         filtered = {k: v for k, v in agent_raw.items() if k in known_agent_fields}

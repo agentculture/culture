@@ -4,6 +4,68 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.2] - 2026-06-04
+
+### Fixed — mesh-onboarding collisions
+
+End-to-end debugging of the v9.1.1 plugin path surfaced four
+collisions where freshly-shipped pieces of v9.1.x silently
+disagreed with each other or with the user's existing
+`~/.culture/server.yaml`. All four addressed so the SessionStart
+hook can actually put a CC session on the mesh on first try.
+
+1. **Nick resolver collision with bridge validator.** The
+   `cc_plugin/_nick_resolver` produced bare project names (e.g.
+   `culture`), but PR #51's tightened `culture bridge` validator
+   requires `<server>-<agent>` shape (Rule 428343). The hook would
+   Popen + the bridge would exit 1 immediately + the hook would
+   still claim the session was on the mesh. Resolver now
+   ALWAYS qualifies with the IRC server's name (`local-culture`,
+   `local-payments-api`, …); reads the server name from
+   `~/.culture/server.yaml` with a `local` fallback.
+
+2. **Hook lied about bridge spawn success.** `_ensure_bridge_running`
+   was fire-and-forget Popen with stderr discarded, and the
+   additionalContext composer unconditionally said "you're on the
+   mesh." Now: validate the nick before Popen, capture stderr,
+   poll the IPC socket for up to 3s, and surface any failure (bad
+   nick, child exited non-zero, transport gone) honestly via a
+   distinct system-reminder block that says "BRIDGE SPAWN FAILED"
+   instead of pretending success.
+
+3. **Bridge `TelemetryConfig` rejected `audit_*` fields.** The
+   bridge's cite-don't-import copy of `config.py` did not include
+   the agentirc-server `audit_*` telemetry fields, but those are
+   present in any real `~/.culture/server.yaml`. Promoted the
+   strip-unknown-fields pattern (already in place for AgentConfig)
+   to every nested dataclass at load time.
+
+4. **Bridge config loader crashed on the new manifest shape.** The
+   bridge's loader assumed `agents:` was a list-of-dicts (old
+   inline format). Real manifests use the dict shape
+   `{suffix: /path/to/agent/dir}`. The bridge does not need the
+   agents list (it spawns for the single nick on the CLI, with a
+   synthesized AgentConfig), so the loader now handles either
+   shape and silently skips the dict format.
+
+End-to-end verification: `python -m culture.clients.bridge start
+local-culture` now reaches the IRC server cleanly; `WHOIS
+local-culture` from a probe returns the expected `:local 311
+local-probe local-culture local-culture 127.0.0.1 * local-culture`.
+The plugin's SessionStart hook, on the next session restart, will
+auto-spawn the bridge, and the additionalContext block will only
+say "you're on the mesh" when that's actually true.
+
+13 new tests in `tests/cc_plugin/`:
+- `TestQualifyServerAgent` (4) — covers `_qualify` + a load-bearing
+  assertion that every resolver priority tier emits a `<server>-
+  <agent>`-valid nick the bridge CLI will accept.
+- `TestBridgeSpawnHonesty` (3) — covers the invalid-nick refusal,
+  the failure-surfacing additionalContext shape, and the happy
+  path's unchanged shape.
+- Updated existing resolver tests to reflect the
+  always-qualified output contract.
+
 ## [9.1.1] - 2026-06-03
 
 ### Fixed
