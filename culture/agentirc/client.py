@@ -1305,7 +1305,10 @@ class Client:
         tags_str = " ".join(tag_parts)
 
         try:
-            self.server.dm_spool.insert(
+            # Qodo PR #50 #6: offload to thread so a slow disk / WAL
+            # checkpoint cannot stall the event loop and every other
+            # connected IRC client with it.
+            await self.server.dm_spool.ainsert(
                 msg_id=msg_id,
                 sender=self.nick or "",
                 recipient=target,

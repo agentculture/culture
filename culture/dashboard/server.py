@@ -1250,14 +1250,35 @@ async def _handle_approve(request: web.Request) -> web.Response:
     # high-risk sticky-allow gate using tool_name + input_regex; the dashboard
     # passes them through so a click-to-approve UI can offer the same narrowing
     # surface as the CLI.
-    tool_name = body.get("tool") or None
-    input_regex = body.get("input_regex") or None
+    #
+    # Qodo PR #50 #5: ``tool``, ``input_regex``, and ``pattern`` come from
+    # untrusted JSON; reject non-string shapes at the boundary with HTTP 400
+    # so the broker's strict-string gate never sees a list/dict that could
+    # produce a 500 — and so an attacker cannot probe for type confusion via
+    # error fingerprinting. Absent / null is fine (handled below).
+    tool_name = body.get("tool")
+    input_regex = body.get("input_regex")
+    raw_pattern = body.get("pattern", "")
+    for field_name, value in (
+        ("tool", tool_name),
+        ("input_regex", input_regex),
+        ("pattern", raw_pattern),
+    ):
+        if value is not None and not isinstance(value, str):
+            return web.json_response(
+                {"error": f"invalid '{field_name}' type — must be string"},
+                status=400,
+            )
+    # Empty strings → None at the broker boundary (the broker treats both
+    # empty and missing the same way; ``or None`` preserves prior behavior).
+    tool_name = tool_name or None
+    input_regex = input_regex or None
     try:
         write_decision(
             req_id,
             verdict="allow",
             scope=scope,
-            pattern=body.get("pattern", ""),
+            pattern=raw_pattern,
             decided_by="dashboard",
             tool_name=tool_name,
             input_regex=input_regex,

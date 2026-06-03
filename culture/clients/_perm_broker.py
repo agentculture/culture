@@ -362,6 +362,23 @@ def _is_high_risk_tool(tool_name: str) -> bool:
     return _HIGH_RISK_TOOL_REGEX.fullmatch(tool_name) is not None
 
 
+def _is_valid_input_regex(value: Any) -> bool:
+    """True iff *value* is a usable narrowing regex.
+
+    Qodo PR #50 #5: the prior gate used ``bool(input_regex)`` (truthy
+    check), but the persistence path stored ``input_regex`` only when
+    it was a non-empty string. A non-string truthy value
+    (``[1, 2, 3]``, ``{"k": "v"}``, a custom object) would bypass the
+    gate AND be silently dropped from the persisted rule — producing a
+    bare ``Bash`` sticky-allow that matches every invocation.
+
+    The fix: accept ONLY a non-empty, non-whitespace string at the
+    gate boundary. Everything else is treated as absent (the gate
+    rejects it; the caller demotes to ``scope=once``).
+    """
+    return isinstance(value, str) and bool(value.strip())
+
+
 # ---------------------------------------------------------------------------
 # Broker
 # ---------------------------------------------------------------------------
@@ -576,7 +593,12 @@ def write_decision(
     # the approver explicitly opts into a persistent grant — scope=once is
     # always permitted because the rule lives only for one tool call.
     if scope == "always" and verdict == "allow":
-        regex_present = bool(input_regex)
+        # Qodo PR #50 #5: ``regex_present`` MUST be a strict type check, not
+        # a truthy check — otherwise a non-string truthy value (``[1, 2]``,
+        # an aiohttp dict, etc.) sneaks past here and is then silently
+        # dropped by ``_append_sticky_rule``'s ``isinstance(... , str)``
+        # persistence guard, producing a bare sticky-allow.
+        regex_present = _is_valid_input_regex(input_regex)
         if tool_name and _is_high_risk_tool(tool_name) and not regex_present:
             raise BareStickyApproveRefusedError(
                 f"sticky --always allow for high-risk tool {tool_name!r} " "requires an input_regex"
@@ -584,7 +606,12 @@ def write_decision(
         # An override ``pattern`` becomes the rule's ``tool`` field, so the
         # same narrowing rule must apply to it — otherwise an approver could
         # smuggle a bare Bash allow via ``--pattern Bash --tool Foo``.
-        if pattern and _is_high_risk_tool(pattern) and not regex_present:
+        if (
+            isinstance(pattern, str)
+            and pattern
+            and _is_high_risk_tool(pattern)
+            and not regex_present
+        ):
             raise BareStickyApproveRefusedError(
                 f"sticky --always allow with high-risk pattern {pattern!r} "
                 "requires an input_regex"
@@ -997,13 +1024,22 @@ class PermissionBroker:
         demotes the approval to ``scope=once`` (writing a demote notice).
         """
         input_regex = decision.get("input_regex")
-        pattern_override = decision.get("pattern") or ""
+        raw_pattern = decision.get("pattern")
+        # Defensive: the persisted decision is JSON-deserialised, so a
+        # malformed approver could set ``pattern`` to a non-string. Treat
+        # non-strings as absent so the high-risk classifier never sees one.
+        pattern_override = raw_pattern if isinstance(raw_pattern, str) else ""
         if verdict == "allow":
             # Tool itself OR the override pattern: either being high-risk
-            # without an input_regex is a bypass surface.
+            # without an input_regex is a bypass surface. Qodo PR #50 #5:
+            # input_regex MUST be a non-empty string here — the same
+            # strict gate the writer applies — otherwise the persisted
+            # rule below silently drops it and the sticky allow becomes
+            # a bare match-everything rule.
             high_risk_tool = _is_high_risk_tool(tool_name)
             high_risk_pattern = bool(pattern_override) and _is_high_risk_tool(pattern_override)
-            if (high_risk_tool or high_risk_pattern) and not input_regex:
+            regex_present = _is_valid_input_regex(input_regex)
+            if (high_risk_tool or high_risk_pattern) and not regex_present:
                 raise BareStickyApproveRefusedError(
                     f"sticky --always allow for high-risk tool "
                     f"{pattern_override or tool_name!r} requires an input_regex"

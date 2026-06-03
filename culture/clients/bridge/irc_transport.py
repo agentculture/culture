@@ -21,7 +21,8 @@ from culture.telemetry.context import (
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
-    from culture.clients.claude.telemetry import (  # noqa: F401 — telemetry stays in claude
+    # Qodo PR #50 #1: cite-don't-import; bridge owns its telemetry copy.
+    from culture.clients.bridge.telemetry import (  # noqa: F401
         HarnessMetricsRegistry,
     )
 
@@ -270,6 +271,18 @@ class IRCTransport:
         """Internal send helper; delegates to send_raw (injection lives there)."""
         await self.send_raw(line)
 
+    # RFC 2812 caps IRC lines at 512 bytes including CR LF. We hold a
+    # multi-line read buffer between dispatches, so the cap below is
+    # large enough to span several full lines (16x the per-line max) yet
+    # tight enough that a hostile or malformed peer streaming bytes
+    # without a newline cannot exhaust memory.
+    #
+    # Qodo PR #50 #2: the prior read loop appended to ``buf`` with no
+    # ceiling — a peer that sent 4096-byte non-newline chunks forever
+    # would grow ``buf`` unbounded. AgentIRC's serverside client.py
+    # uses the same 8192 cap with oldest-data discard; this matches.
+    _READ_BUF_CAP: int = 8192
+
     async def _read_loop(self) -> None:
         buf = ""
         try:
@@ -279,6 +292,19 @@ class IRCTransport:
                     break
                 buf += data.decode("utf-8", errors="replace")
                 buf = buf.replace("\r\n", "\n").replace("\r", "\n")
+                # Discard-oldest cap on the read buffer (Qodo #50 #2).
+                # If a malformed peer streams data without ``\n``, drop
+                # the oldest bytes so the buffer cannot grow without
+                # bound. We log once per overflow event so the operator
+                # has a breadcrumb if a real peer keeps tripping it.
+                if len(buf) > self._READ_BUF_CAP:
+                    overflow = len(buf) - self._READ_BUF_CAP
+                    logger.warning(
+                        "IRC read buffer overflowed cap; " "discarding %d oldest byte(s) (cap=%d)",
+                        overflow,
+                        self._READ_BUF_CAP,
+                    )
+                    buf = buf[-self._READ_BUF_CAP :]
                 while "\n" in buf:
                     line, buf = buf.split("\n", 1)
                     if line.strip():

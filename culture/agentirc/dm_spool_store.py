@@ -290,6 +290,73 @@ class DmSpoolStore:
         return {"delivered": delivered_purged, "undelivered": undelivered_purged}
 
     # ------------------------------------------------------------------
+    # Async wrappers — Qodo PR #50 #6.
+    # ------------------------------------------------------------------
+    #
+    # Every method above runs synchronous ``sqlite3`` I/O (open file,
+    # execute, fsync on commit). Calling them directly from an
+    # ``async`` handler stalls the asyncio event loop while the SQLite
+    # call returns — and on a slow disk, a WAL checkpoint, or a
+    # ``database is locked`` retry that can be 10s of ms per call. With
+    # many connected clients that blocks every IRC connection.
+    #
+    # The wrappers below dispatch each DB call to the default thread
+    # pool via ``asyncio.to_thread``. The sync methods remain for
+    # tests, scripts, and the few callers that genuinely run on a
+    # dedicated thread already.
+    #
+    # The connection itself was opened with
+    # ``check_same_thread=False`` (see ``__init__``) so cross-thread
+    # use is sanctioned by sqlite3. SQLite's own thread-safety mode
+    # serialises statements per connection, which is sufficient
+    # protection — ``to_thread`` does not run two of these
+    # concurrently from the IRCd's event-loop perspective, and a long
+    # GC sweep cannot block a short insert (both run on the executor).
+
+    async def ainsert(
+        self,
+        msg_id: str,
+        sender: str,
+        recipient: str,
+        ts: float,
+        payload: str,
+        tags: str,
+    ) -> None:
+        """Async wrapper around :meth:`insert`. See class-level note."""
+        import asyncio as _asyncio
+
+        await _asyncio.to_thread(self.insert, msg_id, sender, recipient, ts, payload, tags)
+
+    async def amark_delivered(self, msg_id: str, now: float | None = None) -> bool:
+        """Async wrapper around :meth:`mark_delivered`."""
+        import asyncio as _asyncio
+
+        return await _asyncio.to_thread(self.mark_delivered, msg_id, now)
+
+    async def aquery_for_nick(
+        self,
+        nick: str,
+        limit: int = 100,
+        include_delivered: bool = False,
+    ) -> list[dict]:
+        """Async wrapper around :meth:`query_for_nick`."""
+        import asyncio as _asyncio
+
+        return await _asyncio.to_thread(self.query_for_nick, nick, limit, include_delivered)
+
+    async def aget_by_msg_id(self, nick: str, msg_id: str) -> bool:
+        """Async wrapper around :meth:`get_by_msg_id`."""
+        import asyncio as _asyncio
+
+        return await _asyncio.to_thread(self.get_by_msg_id, nick, msg_id)
+
+    async def agc(self, now: float | None = None) -> dict[str, int]:
+        """Async wrapper around :meth:`gc`."""
+        import asyncio as _asyncio
+
+        return await _asyncio.to_thread(self.gc, now)
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 

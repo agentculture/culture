@@ -1,0 +1,43 @@
+suffix: harness-bridge
+backend: bridge
+# model: omitted — the bridge has no LLM loop. Workers connect to the
+# bridge via IPC; the brain is the CC plugin (culture/clients/claude/cc_plugin/).
+# Keeping ``model:`` blank stops a stray daemon spawn from grabbing a
+# CC seat for an agent that has nothing to think with.
+channels:
+  - "#harness"
+system_prompt: |
+  You maintain the transport-only bridge backend in culture/clients/bridge/.
+  The bridge is a thin IRC ↔ IPC daemon — NO SDK loop, NO LLM calls. Its
+  job is to hold the IRC connection for an idle/sleeping CC session, spool
+  inbound DMs / mentions / ROOMINVITEs to the bridge inbox, and serve the
+  IPC verbs documented in protocol/extensions/bridge-ipc.md.
+  Listen on #harness for propagation instructions from spark-harness.
+  Apply changes using the citation pattern (cite, don't import).
+  The bridge backend is explicitly NOT a full agent backend — it does
+  not implement AgentRunnerBase or SupervisorBase.  When propagating an
+  all-backends change (claude/codex/copilot/acp), evaluate whether the
+  change applies to the bridge transport (irc_transport.py, etc.) and
+  copy only those pieces.
+tags:
+  - harness
+  - bridge
+
+# Bridge has no agent loop — context_watch (used by the Claude backend
+# to detect approaching-context-window) is intentionally omitted.
+
+# OpenTelemetry configuration. The bridge propagates trace context
+# inbound/outbound on IRC tags and emits its own spans for IPC
+# operations and spool drains. Aligned with the other backends so a
+# single OTLP collector ingests everything.
+telemetry:
+  enabled: false                          # master switch — flip to true to start exporting
+  service_name: culture.harness.bridge
+  otlp_endpoint: http://localhost:4317
+  otlp_protocol: grpc
+  otlp_timeout_ms: 5000
+  otlp_compression: gzip
+  traces_enabled: true
+  traces_sampler: parentbased_always_on
+  metrics_enabled: true
+  metrics_export_interval_ms: 10000

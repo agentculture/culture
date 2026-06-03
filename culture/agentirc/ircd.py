@@ -181,7 +181,10 @@ class IRCd:
                 if self.dm_spool is None or self._stopping:
                     return
                 try:
-                    self.dm_spool.gc()
+                    # Qodo PR #50 #6: gc is the slowest spool operation
+                    # (full table scan); offload so the hourly tick
+                    # doesn't freeze every connected client.
+                    await self.dm_spool.agc()
                 except Exception:  # noqa: BLE001
                     logger.warning("DM spool gc failed", exc_info=True)
         except asyncio.CancelledError:

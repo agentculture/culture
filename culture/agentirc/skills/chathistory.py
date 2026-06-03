@@ -111,7 +111,10 @@ class ChatHistorySkill(Skill):
             return
 
         try:
-            entries = spool.query_for_nick(target, limit=limit)
+            # Qodo PR #50 #6: drain off the event loop. A large spool
+            # against a slow disk would otherwise stall every connected
+            # client for the duration of the SELECT.
+            entries = await spool.aquery_for_nick(target, limit=limit)
         except Exception:  # noqa: BLE001
             logger.warning("CHATHISTORY drain failed for %s", target, exc_info=True)
             await self._send_end_of_batch(client, target)
@@ -204,7 +207,8 @@ class ChatHistorySkill(Skill):
         # construction: the WHERE clause pins recipient to the
         # requesting nick.
         try:
-            owned = spool.get_by_msg_id(client.nick or "", msg_id)
+            # Qodo PR #50 #6: same off-loop policy as the drain path.
+            owned = await spool.aget_by_msg_id(client.nick or "", msg_id)
         except Exception:  # noqa: BLE001
             await self._send_delete_ack(client, msg_id, ok=False)
             return
@@ -219,7 +223,7 @@ class ChatHistorySkill(Skill):
             return
 
         try:
-            spool.mark_delivered(msg_id)
+            await spool.amark_delivered(msg_id)
         except Exception:  # noqa: BLE001
             await self._send_delete_ack(client, msg_id, ok=False)
             return

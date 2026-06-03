@@ -39,13 +39,15 @@ from culture.clients._daemon_log import DaemonLog
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.bridge._fs_observer import BridgeFSObserver
 from culture.clients.bridge._spool import drain_inbox, inbox_path, spool_inbound
+
+# Qodo PR #50 #1: bridge owns its own copies (cite-don't-import).
+from culture.clients.bridge.config import AgentConfig, DaemonConfig
 from culture.clients.bridge.ipc import make_response
 from culture.clients.bridge.irc_transport import IRCTransport
 from culture.clients.bridge.message_buffer import MessageBuffer
 from culture.clients.bridge.socket_server import SocketServer
-from culture.clients.claude.config import AgentConfig, DaemonConfig
-from culture.clients.claude.telemetry import init_harness_telemetry
-from culture.clients.claude.webhook import AlertEvent, WebhookClient
+from culture.clients.bridge.telemetry import init_harness_telemetry
+from culture.clients.bridge.webhook import AlertEvent, WebhookClient
 from culture.pidfile import is_process_alive, read_pid, remove_pid, write_pid
 
 logger = logging.getLogger(__name__)

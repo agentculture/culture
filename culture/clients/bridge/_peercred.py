@@ -21,8 +21,19 @@ import sys
 __all__ = ["peercred"]
 
 
-# struct ucred { pid_t pid; uid_t uid; gid_t gid; } — three 32-bit ints on Linux.
-_LINUX_UCRED_FMT = "3i"
+# struct ucred { pid_t pid; uid_t uid; gid_t gid; } on Linux.
+# Linux/glibc declare pid_t as ``int`` (signed 32-bit) and uid_t/gid_t as
+# ``unsigned int`` (32-bit). Qodo PR #50 #7: the previous ``"3i"`` format
+# unpacked all three as SIGNED 32-bit integers, so a UID or GID with the
+# high bit set (>= 2_147_483_648 — possible with explicit setuid or with
+# user-namespace mappings) was mis-parsed as negative, producing a false
+# ``uid != os.getuid()`` mismatch and refusing IPC from the legitimate
+# peer.
+#
+# Layout below: "i" for pid (signed), "II" for uid/gid (unsigned). Native
+# alignment matches glibc — pid is 4 bytes, no trailing padding because
+# all members are 32-bit aligned.
+_LINUX_UCRED_FMT = "iII"
 _LINUX_UCRED_SIZE = struct.calcsize(_LINUX_UCRED_FMT)
 
 

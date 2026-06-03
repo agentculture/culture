@@ -67,11 +67,54 @@ def _run_git(args: list[str]) -> str:
 
 
 def _resolve_base() -> str:
-    """Return the merge-base SHA for the PR's target branch.
+    """Return a ref-spec that resolves to the PR's merge base.
 
-    On a PR the GitHub-checkout fetches refs/remotes/origin/main; falls
-    back to ``HEAD~1`` for local invocation.
+    Resolution order:
+
+    1. ``GITHUB_BASE_REF`` env var (set by GitHub Actions on
+       ``pull_request`` events to the target branch name). We fetch it
+       on demand because ``actions/checkout@v4`` does a shallow clone
+       by default and the base ref is NOT present in the working tree.
+    2. ``origin/main`` (already-fetched remote — common in dev).
+    3. ``main`` (local main branch — common in dev).
+    4. ``HEAD~1`` (last-resort one-commit-back probe for local runs).
+
+    The previous implementation skipped step 1, so on a GitHub Actions
+    fork PR the script would print ``could not resolve a base ref``
+    and exit 2 — false-failing the docs-coverage gate on every PR
+    until the operator hand-fetched the base.
     """
+    import os as _os
+
+    github_base = _os.environ.get("GITHUB_BASE_REF")
+    if github_base:
+        # Try the already-fetched remote tracking ref first (no network call).
+        remote_ref = f"origin/{github_base}"
+        try:
+            subprocess.run(  # noqa: S603
+                ["git", "rev-parse", "--verify", remote_ref],
+                check=True,
+                capture_output=True,
+            )
+            return remote_ref
+        except subprocess.CalledProcessError:
+            pass
+        # Shallow clone — fetch the base branch with a single network call.
+        try:
+            subprocess.run(  # noqa: S603
+                ["git", "fetch", "--no-tags", "--depth=1", "origin", github_base],
+                check=True,
+                capture_output=True,
+            )
+            return f"origin/{github_base}"
+        except subprocess.CalledProcessError as exc:
+            print(
+                f"warn: could not fetch GITHUB_BASE_REF={github_base!r}: "
+                f"{exc.stderr.decode(errors='replace').strip()}",
+                file=sys.stderr,
+            )
+            # Fall through to dev-fallback candidates.
+
     candidates = ["origin/main", "main", "HEAD~1"]
     for ref in candidates:
         try:
@@ -115,9 +158,9 @@ def _find_new_surface(diff: str) -> list[tuple[str, str, str]]:
         if not line.startswith("+") or line.startswith("+++"):
             continue
         # Heuristic: only flag surface added in production code, not tests.
-        if current_file.startswith(("tests/", "packages/", "docs/", ".")) or not current_file.endswith(
-            ".py"
-        ):
+        if current_file.startswith(
+            ("tests/", "packages/", "docs/", ".")
+        ) or not current_file.endswith(".py"):
             continue
         for pattern, label in _PUBLIC_SURFACE_PATTERNS:
             m = pattern.search(line)
