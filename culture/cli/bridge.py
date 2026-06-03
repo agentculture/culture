@@ -53,10 +53,10 @@ def _valid_nick(nick: str) -> bool:
     return len(parts) == 2 and all(parts)
 
 
-# How long ``stop`` waits for SIGTERM to take effect before either
-# escalating (POSIX) or giving up (Windows). 10 × 0.1s = 1s — matches
-# the cadence used by ``culture/cli/shared/process.py`` and is
-# generous enough for a normal asyncio loop teardown.
+# How long ``stop`` waits for SIGTERM to take effect before giving up
+# and exiting non-zero. 50 × 0.1s = 5s — matches the cadence in
+# ``culture/cli/shared/process.py`` and is generous enough for a
+# normal asyncio loop teardown to flush + close sockets cleanly.
 _STOP_WAIT_ITERATIONS = 50  # × 0.1s = 5s, same as agent stop logic
 
 
