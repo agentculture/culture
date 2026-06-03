@@ -85,6 +85,13 @@ class IRCTransport:
             "332": self._on_numeric_topic,
             "HISTORY": self._on_history,
             "HISTORYEND": self._on_historyend,
+            # v8.19.42 — confirmation-based channel tracking.
+            "JOIN": self._on_join,
+            "PART": self._on_part,
+            "KICK": self._on_kick,
+            "404": self._on_cannotsendtochan,  # ERR_CANNOTSENDTOCHAN
+            "474": self._on_bannedfromchan,  # ERR_BANNEDFROMCHAN
+            "ERROR": self._on_server_error,
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -175,22 +182,41 @@ class IRCTransport:
         await self._send_raw(f"THREADS {channel}")
 
     async def join_channel(self, channel: str) -> None:
+        """Send a JOIN. v8.19.42: tracking is updated by the server's
+        confirmation echo in ``_on_join``, NOT optimistically here.
+
+        Why: prior to v8.19.42, ``self.channels`` was appended BEFORE the
+        server confirmed the JOIN. When the server rejected the JOIN (e.g.
+        the task-channel ACL refused a boss whose owner_map cache was
+        stale), the transport still thought it had joined. Subsequent
+        ``send_privmsg`` calls fired PRIVMSG into a channel the IRC server
+        thought the client wasn't in, and the server returned
+        ``ERR_CANNOTSENDTOCHAN`` (404) which the transport silently
+        ignored — the brief was silently dropped from the worker's POV.
+
+        Now: send JOIN, request HISTORY backfill, and let ``_on_join``
+        populate ``self.channels`` when (and only when) the server echoes
+        our own JOIN back to us. If the JOIN is rejected,
+        ``_on_bannedfromchan`` logs a warning and tracking stays empty so
+        the next ``join_channel`` call retries cleanly.
+        """
         if not channel.startswith("#"):
             return
         if channel in self.channels:
-            return  # already joined — skip duplicate JOIN + HISTORY
+            return  # already confirmed-joined — skip duplicate JOIN + HISTORY
         await self._send_raw(f"JOIN {channel}")
-        self.channels.append(channel)
         # Backfill: request recent history so the buffer has pre-existing
         # messages.  The HISTORY responses flow through _on_history().
         await self._send_raw(f"HISTORY RECENT {channel} 200")
 
     async def part_channel(self, channel: str) -> None:
+        """Send a PART. ``self.channels`` is updated by ``_on_part`` when
+        the server echoes our own PART back to us — symmetric to the
+        confirmation-based JOIN tracking in ``join_channel`` (v8.19.42).
+        """
         if not channel.startswith("#"):
             return
         await self._send_raw(f"PART {channel}")
-        if channel in self.channels:
-            self.channels.remove(channel)
 
     async def send_who(self, target: str) -> None:
         await self._send_raw(f"WHO {target}")
@@ -416,6 +442,101 @@ class IRCTransport:
     def _on_historyend(self, msg: Message) -> None:
         """HISTORYEND is a sentinel — no action needed."""
         pass
+
+    # ------------------------------------------------------------------
+    # v8.19.42 — confirmation-based channel membership tracking
+    # ------------------------------------------------------------------
+
+    def _own_nick_from_prefix(self, msg: Message) -> bool:
+        """True iff the message's prefix is THIS client's own nick."""
+        if not msg.prefix:
+            return False
+        nick = msg.prefix.split("!", 1)[0]
+        return nick == self.nick
+
+    def _on_join(self, msg: Message) -> None:
+        """Server echoes a JOIN — record our own confirmed memberships.
+
+        The IRC server forwards JOINs to every channel member after it
+        has admitted the joiner. When the echo's prefix is OUR nick, the
+        join was accepted; only then do we mark the channel as joined.
+        Joins by other nicks are ignored here (they're tracked elsewhere
+        when needed).
+        """
+        if not self._own_nick_from_prefix(msg):
+            return
+        if not msg.params:
+            return
+        channel = msg.params[0]
+        if not channel.startswith("#"):
+            return
+        if channel not in self.channels:
+            self.channels.append(channel)
+            logger.debug("%s confirmed JOIN to %s", self.nick, channel)
+
+    def _on_part(self, msg: Message) -> None:
+        """Server echoes a PART — remove our own confirmed membership."""
+        if not self._own_nick_from_prefix(msg):
+            return
+        if not msg.params:
+            return
+        channel = msg.params[0]
+        if channel in self.channels:
+            self.channels.remove(channel)
+            logger.debug("%s confirmed PART from %s", self.nick, channel)
+
+    def _on_kick(self, msg: Message) -> None:
+        """Server kick — if the kicked nick is us, drop the channel."""
+        if len(msg.params) < 2:
+            return
+        channel, kicked_nick = msg.params[0], msg.params[1]
+        if kicked_nick != self.nick:
+            return
+        if channel in self.channels:
+            self.channels.remove(channel)
+            logger.warning("%s was KICKed from %s", self.nick, channel)
+
+    def _on_cannotsendtochan(self, msg: Message) -> None:
+        """404 ERR_CANNOTSENDTOCHAN — we tried to PRIVMSG a channel we
+        aren't actually in. Pre-v8.19.42 this was silently ignored; now
+        we drop the (likely-stale) optimistic membership and log loudly
+        so the operator sees the silent-drop class of bug.
+        """
+        if len(msg.params) < 2:
+            return
+        # params: [our_nick, channel, "Cannot send to channel"]
+        channel = msg.params[1]
+        if channel in self.channels:
+            self.channels.remove(channel)
+        logger.warning(
+            "%s sent PRIVMSG to %s but server returned ERR_CANNOTSENDTOCHAN — "
+            "the message was DROPPED. The client was not a confirmed member. "
+            "Re-JOIN the channel and retry.",
+            self.nick,
+            channel,
+        )
+
+    def _on_bannedfromchan(self, msg: Message) -> None:
+        """474 ERR_BANNEDFROMCHAN — JOIN refused (e.g. task-channel ACL).
+        Make sure the channel is NOT in our optimistic membership."""
+        if len(msg.params) < 2:
+            return
+        channel = msg.params[1]
+        if channel in self.channels:
+            self.channels.remove(channel)
+        logger.warning(
+            "%s JOIN to %s refused by server (ERR_BANNEDFROMCHAN). "
+            "Verify the task-channel ACL recognizes this nick as the "
+            "channel's worker or its supervising boss.",
+            self.nick,
+            channel,
+        )
+
+    def _on_server_error(self, msg: Message) -> None:
+        """Server-initiated ERROR (typically disconnect-impending).
+        Log loudly so a silent drop isn't lost in the noise."""
+        body = msg.params[0] if msg.params else "<no body>"
+        logger.warning("%s received server ERROR: %s", self.nick, body)
 
     def _on_roominvite(self, msg: Message) -> None:
         if len(msg.params) < 3:

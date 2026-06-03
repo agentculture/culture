@@ -4,9 +4,23 @@ parent: "Design"
 nav_order: 26
 ---
 
+> **PARTIALLY SUPERSEDED (2026-06-03):** The
+> **tree-view-by-boss layout**, the **human chat panel** (DM any
+> agent on the mesh from the dashboard), and the **SSE-based push
+> refresh** (replacing the 3 polling intervals) are introduced in
+> Phase 7.5 of the
+> [Mesh Rearchitecture plan](2026-06-03-mesh-rearchitecture-plan.md)
+> and **supersede the polling-based design** in this document. The
+> remaining surface (agent grid, permission queue UI, channel cards,
+> seed/brief panels, role badges, token counters, watcher integration)
+> is current and continues to apply. Also note: the
+> "grant ceiling" wiring this spec references (via dependency on #412)
+> is removed per Phase 5.2; the dashboard's permission UI no longer
+> shows ceiling-refusal states.
+
 # Mission Control Dashboard
 
-**Status:** Draft (partially superseded — see v8.19.x update below)
+**Status:** Draft (partially superseded — see v8.19.x update and 2026-06-03 note above)
 **Date:** 2026-05-29
 **Depends on:** #411 (permission broker, audit + daemon logs) and #412 (boss agent, `culture boss`, grant ceiling)
 **Branch:** `feat/mission-control-dashboard`

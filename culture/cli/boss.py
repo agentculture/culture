@@ -1,14 +1,18 @@
 """Boss subcommands: ``culture boss {init,spawn,brief,read,pending,approve,deny,audit,log,status,close}``.
 
-The orchestration surface for a *boss agent* — an autonomous culture daemon that
-manages worker agents (spawns them, drives them over IRC, and approves/denies
-their tool requests bounded by a grant ceiling). Mirrors the IRC skill's
-``culture channel`` shape; reuses ``culture.clients._perm_broker`` for all
-queue/decision/ceiling operations so there is one implementation.
+The orchestration surface for a *boss* — the Claude Code session itself is the
+boss; this CLI is how it drives worker agents (spawns them, briefs them over
+IRC, and approves/denies their tool requests bounded by a grant ceiling). The
+boss's IRC presence is held by a culture-managed bridge process so the boss can
+send and receive on the mesh; the bridge does not think for the boss. Mirrors
+the IRC skill's ``culture channel`` shape; reuses ``culture.clients._perm_broker``
+for all queue/decision/ceiling operations so there is one implementation.
 
 The boss's own nick comes from ``CULTURE_NICK`` (set by the agent runner).
 
 Design spec: docs/superpowers/specs/2026-05-28-boss-agent-orchestration-design.md
+(superseded in part by docs/superpowers/specs/2026-06-03-mesh-rearchitecture-plan.md
+— "CC IS the boss", with the bridge process providing IRC connectivity).
 """
 
 from __future__ import annotations
@@ -16,39 +20,45 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
+import time
 
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
 from culture.clients._perm_broker import (
+    BareStickyApproveRefusedError,
     DecisionExistsError,
     InvalidRequestIdError,
     cleanup_stale,
     culture_home,
     has_policy_file,
-    is_above_ceiling,
     list_pending,
     read_request,
     seed_helper_policy,
     write_decision,
-    write_default_boss_ceiling,
 )
 from culture.config import load_config_or_default
 
 from .shared.constants import DEFAULT_CONFIG
 from .shared.ipc import agent_socket_path, get_observer, ipc_request
 
+logger = logging.getLogger(__name__)
+
 NAME = "boss"
 
 _ALL_CMDS = "init|spawn|brief|read|pending|approve|deny|audit|log|status|close|cleanup"
 
 _MANAGER_PROMPT = """\
-You are {nick}, a manager agent on the culture mesh. A human briefs you in your
-IRC channel ({channel}); that brief is your mission. You do NOT do the
-implementation work yourself — you drive worker agents that do.
+You are {nick}, a boss on the culture mesh. You ARE the operator driving this
+session — there is no separate "boss brain" behind you. The IRC connection to
+the mesh is just the bridge that carries your messages to workers and humans.
+A human briefs you in {channel}; that brief is your mission. You do NOT do the
+implementation work yourself — you spawn worker agents and drive them via the
+`culture boss` CLI.
 
 On a mission:
 1. Read CLAUDE.md and any referenced plan/spec to ground yourself in the
@@ -60,11 +70,13 @@ On a mission:
    their claims — verify against `culture boss audit <name>`; never take "done"
    on faith.
 3. Approve worker tool requests as they arrive (`culture boss approve|deny`).
-   Grant `--always` for tools you trust a worker with. Some high-risk tools are
-   above your grant ceiling — when `culture boss approve` refuses, do NOT retry;
-   post the request to your human in {channel} and let them grant it.
+   You can grant a worker any tool you yourself have. For persistent grants
+   (`--always`) on high-risk tools (`Bash`, `Edit`, `Write`, `mcp__*`) you
+   MUST pass `--input-regex` to narrow the rule — a bare sticky allow would
+   whitelist every invocation of the tool. The CLI refuses bare sticky allows
+   for those tools; drop the `--always` and use `--input-regex` instead.
 4. Report progress and blockers to your human in {channel}. Escalate genuine
-   judgment calls and above-ceiling requests; handle the rest yourself.
+   judgment calls; handle the rest yourself.
 
 When you approach your context limit you'll be asked to write a handoff and
 reminded to re-read it — re-ground on the mission, CLAUDE.md, and the plan, not
@@ -94,6 +106,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     spawn_p.add_argument("--cwd", default=None, help="Worker working directory")
     spawn_p.add_argument("--server", default=None)
     spawn_p.add_argument(
+        "--boss",
+        default="",
+        help=(
+            "Explicit boss nick this worker is owned by. When set to a "
+            "project-named bridge nick (e.g. 'fork-rearch'), the worker "
+            "name is auto-prefixed so it becomes '<boss>-<name>' (e.g. "
+            "'fork-rearch-qa'). When the name already carries the boss "
+            "prefix, the call is used as-is. Default: the current "
+            "CULTURE_NICK as the boss."
+        ),
+    )
+    spawn_p.add_argument(
         "--model", default="", help="Worker model (default: inherit the boss's model)"
     )
     spawn_p.add_argument(
@@ -116,6 +140,24 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "view. Optional — when omitted the title falls back to mission.md "
         "headline or `<nick>'s work`.",
     )
+    spawn_p.add_argument(
+        "--brief",
+        default="",
+        help="Brief text to deliver atomically with spawn (Phase 6.3, "
+        "plenty's P2 fix). When set, the spawn helper waits for the worker "
+        "to JOIN its #task channel (up to --brief-timeout seconds) and then "
+        "sends the brief in one go — no race window where the worker engages "
+        "then idles before the operator manages a separate `culture boss brief` "
+        "call. Omit to keep the legacy spawn-without-brief flow.",
+    )
+    spawn_p.add_argument(
+        "--brief-timeout",
+        dest="brief_timeout",
+        type=int,
+        default=30,
+        help="Seconds to wait for the worker to JOIN its #task channel before "
+        "the spawn helper gives up on delivering --brief. Default: 30s.",
+    )
     spawn_p.add_argument("--config", default=DEFAULT_CONFIG)
 
     brief_p = sub.add_parser("brief", help="Send a task to a worker's channel")
@@ -128,7 +170,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     note_p.add_argument(
         "channel_or_name",
-        help="Channel name (e.g. '#team') OR a worker suffix (note lands in #task-<name>)",
+        help="Channel name (e.g. '#general' or '#task-foo') OR a worker suffix (note lands in #task-<name>)",
     )
     note_p.add_argument("text", help="Note text — appended as a dated section to the channel brief")
     note_p.add_argument("--title", default="note", help="Section title; defaults to 'note'")
@@ -143,6 +185,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     approve_p.add_argument("id", help="Request id")
     approve_p.add_argument("--always", action="store_true", help="Save a sticky allow rule")
     approve_p.add_argument("--pattern", default="", help="Tool pattern for the sticky rule")
+    approve_p.add_argument(
+        "--tool",
+        default="",
+        help="Tool name for high-risk classification (Bash/Edit/Write/mcp__*). "
+        "Defaults to the request's tool. A sticky --always allow for a high-risk "
+        "tool MUST be accompanied by --input-regex.",
+    )
+    approve_p.add_argument(
+        "--input-regex",
+        dest="input_regex",
+        default="",
+        help="Input-narrowing regex for a sticky --always allow. Required for "
+        "high-risk tools (Bash/Edit/Write/mcp__*); the rule will only match "
+        "inputs that satisfy this regex.",
+    )
 
     deny_p = sub.add_parser("deny", help="Deny a worker permission request")
     deny_p.add_argument("id", help="Request id")
@@ -367,19 +424,28 @@ def _cmd_approve(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
-    tool = req.get("tool_name", "")
-    if is_above_ceiling(tool, req.get("input", {}), boss):
+    # Default --tool to the request's tool so the high-risk gate sees the right
+    # name without the operator having to retype it.
+    tool_name = args.tool or req.get("tool_name", "")
+    scope = "always" if args.always else "once"
+    try:
+        write_decision(
+            args.id,
+            verdict="allow",
+            scope=scope,
+            pattern=args.pattern,
+            decided_by=boss,
+            tool_name=tool_name,
+            input_regex=args.input_regex or None,
+        )
+    except BareStickyApproveRefusedError as exc:
         print(
-            f"REFUSED: {tool} is above your grant ceiling. Do not retry — escalate "
-            f"to your human in your boss channel and let them approve request "
-            f"{args.id} from the Mission Control dashboard (the human is the top "
-            f"authority and can grant above-ceiling tools).",
+            f"REFUSED: {exc}. A bare --always allow for a high-risk tool would "
+            "whitelist every invocation. Re-run with --input-regex '<pattern>' "
+            "to narrow the rule, or drop --always for a one-shot allow.",
             file=sys.stderr,
         )
         sys.exit(2)
-    scope = "always" if args.always else "once"
-    try:
-        write_decision(args.id, verdict="allow", scope=scope, pattern=args.pattern, decided_by=boss)
     except InvalidRequestIdError:
         print(f"Error: invalid request id {args.id!r}", file=sys.stderr)
         sys.exit(1)
@@ -610,12 +676,33 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 
 def _cmd_spawn(args: argparse.Namespace) -> None:
-    boss = _boss_nick()
+    # `--boss` lets a project-named CC session override CULTURE_NICK so the
+    # worker is named after the boss-project (AD-2). When `--boss` is set,
+    # the worker's full nick becomes ``<boss-nick>-<name>`` — we achieve
+    # this by passing the boss nick as the agent-create ``--server`` value,
+    # because ``culture agent create`` builds ``{server}-{suffix}``. When
+    # the operator already typed the prefix into ``name`` (e.g. ``mesh
+    # spawn fork-rearch-qa --boss fork-rearch``), we strip the redundant
+    # prefix so the final nick is single-prefixed.
+    explicit_boss = getattr(args, "boss", "") or ""
+    boss = _require_worker_suffix(explicit_boss) if explicit_boss else _boss_nick()
     # Validate BOTH the worker suffix and the server before they touch any path —
     # both flow into worker_nick = f"{server}-{name}" → seed_helper_policy →
     # policy_path_for, so an unsanitized "../x" in either escapes CULTURE_HOME.
-    server = _require_server(args.server) if args.server else _server_of(boss)
-    name = _require_worker_suffix(args.name)
+    raw_name = args.name
+    if explicit_boss:
+        boss_prefix = f"{boss}-"
+        # User passed a fully-qualified nick? Strip the prefix so the
+        # auto-prepend below produces the right shape.
+        suffix_only = raw_name[len(boss_prefix) :] if raw_name.startswith(boss_prefix) else raw_name
+        name = _require_worker_suffix(suffix_only)
+        # With --boss, the boss-nick acts as the ``server`` prefix so
+        # ``agent create`` builds ``<boss>-<name>`` and the worker
+        # registers in the manifest under the project-namespaced name.
+        server = boss
+    else:
+        server = _require_server(args.server) if args.server else _server_of(boss)
+        name = _require_worker_suffix(raw_name)
     worker_nick = f"{server}-{name}"
     if worker_nick == boss:
         print("Error: a boss cannot spawn a worker with its own nick", file=sys.stderr)
@@ -701,16 +788,114 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     # card without re-reading the entire HISTORY. Optional: omit to
     # have the dashboard fall back to the mission.md headline.
     topic = (getattr(args, "topic", "") or "").strip()
+    # AD-2 brief identity prefix (Phase 4.8): when --boss is explicit,
+    # auto-prepend "You are <full-nick>, working under <boss-nick> on …"
+    # to the seed so the worker's first read of the channel brief makes
+    # the identity binding explicit. Skip when --boss is not set (the
+    # legacy single-server flow doesn't need the cue — the boss's own
+    # nick is "local-boss" and worker is "local-<name>").
+    identity_prefix = ""
+    if explicit_boss:
+        identity_prefix = f"You are {worker_nick}, working under {boss} on "
     if topic:
         from culture.clients._seed import persist_seed
 
         # IRC TOPIC is single-line; collapse whitespace so a multi-line
         # --topic still fits the protocol. The seed file keeps the
         # original text including line breaks.
-        irc_topic = " ".join(topic.split())
+        seed_text = (identity_prefix + topic) if identity_prefix else topic
+        irc_topic = " ".join(seed_text.split())
         _boss_irc("irc_topic", channel=task_chan, topic=irc_topic)
-        persist_seed(task_chan, topic, overwrite=True)
+        persist_seed(task_chan, seed_text, overwrite=True)
     print(f"spawned {worker_nick} (boss={boss}, cwd={cwd}); channels {', '.join(joined)}")
+
+    # Phase 6.3 — atomic spawn+brief. Plenty's P2: the operator typically
+    # follows `culture boss spawn X` immediately with `culture boss brief
+    # X "…"`. Between those two calls the worker engages (audit/log lands)
+    # and the idle watchdog may fire ``never_briefed`` before the brief
+    # arrives. With ``--brief``, we wait for the worker to JOIN its #task
+    # channel and deliver the brief in-spawn so the two calls become one.
+    brief_text = (getattr(args, "brief", "") or "").strip()
+    if brief_text:
+        timeout = max(1, int(getattr(args, "brief_timeout", 30) or 30))
+        ok = _await_worker_join_and_brief(
+            worker_nick=worker_nick,
+            channel=task_chan,
+            brief_text=brief_text,
+            timeout_seconds=timeout,
+        )
+        if not ok:
+            sys.exit(1)
+
+
+def _await_worker_join_and_brief(
+    worker_nick: str,
+    channel: str,
+    brief_text: str,
+    timeout_seconds: int,
+    poll_seconds: float = 0.5,
+) -> bool:
+    """Poll the IRC server WHO list until *worker_nick* is in *channel*,
+    then PRIVMSG ``@<nick> <brief_text>`` and persist the seed/section
+    so the spawn+brief flow ends atomically.
+
+    Plenty's P2 (Phase 6.3): callers used to spawn, then immediately
+    brief in a second CLI call. The race window between spawn-start
+    and brief-arrival let the idle watchdog warn ``never_briefed``.
+    Folding the brief into spawn closes the window.
+
+    Returns True on successful delivery; False on timeout or send error
+    (the caller exits non-zero so the operator notices).
+    """
+    deadline = time.monotonic() + timeout_seconds
+    seen = False
+    while time.monotonic() < deadline:
+        try:
+            members = _channel_members(channel)
+        except Exception:  # noqa: BLE001 — transient IPC error → retry
+            time.sleep(poll_seconds)
+            continue
+        if worker_nick in members:
+            seen = True
+            break
+        time.sleep(poll_seconds)
+    if not seen:
+        print(
+            f"Error: worker {worker_nick} did not JOIN {channel} within "
+            f"{timeout_seconds}s — --brief NOT delivered. The worker may "
+            f"have failed to start; check `culture agent status` and "
+            f"`culture boss log {worker_nick.split('-', 1)[-1]}`.",
+            file=sys.stderr,
+        )
+        return False
+    text = f"@{worker_nick} {brief_text}"
+    resp = _boss_irc("irc_send", channel=channel, message=text)
+    if not (resp and resp.get("ok")):
+        print(
+            f"Error: worker {worker_nick} joined {channel} but the brief "
+            f"PRIVMSG could not be sent (boss daemon unreachable over IPC).",
+            file=sys.stderr,
+        )
+        return False
+    print(f"briefed {worker_nick} in {channel}")
+    # Persist the brief as the channel seed + living-brief section,
+    # mirroring _cmd_brief so the dashboard / channel view sees this
+    # the same way as a separate ``culture boss brief`` would have
+    # produced. Idempotent — persist_seed is write-once.
+    try:
+        from culture.clients._channel_brief import persist_section
+        from culture.clients._seed import load_seed, persist_seed
+
+        if load_seed(channel) is None:
+            if persist_seed(channel, brief_text):
+                irc_topic = " ".join(brief_text.split())
+                if len(irc_topic) > 200:
+                    irc_topic = irc_topic[:197] + "..."
+                _boss_irc("irc_topic", channel=channel, topic=irc_topic)
+        persist_section(channel, f"brief → {worker_nick}", brief_text)
+    except Exception:  # noqa: BLE001 — seed/section best-effort
+        logger.debug("Failed to persist seed/section for %s", channel, exc_info=True)
+    return True
 
 
 def _boss_inherits() -> tuple[str, str]:
@@ -843,7 +1028,11 @@ def _record_worker_boss(
         target = data
 
     target["boss"] = boss
-    base_channels = ["#team", _task_channel(suffix)]
+    # #team is removed entirely in the mesh rearchitecture (AD-4):
+    # workers default to #task-<own> only. Sibling fireplaces
+    # (#team-<project>) and cross-boss coordination (#joint-*) are
+    # explicit opt-ins via --channels / mesh invite.
+    base_channels = [_task_channel(suffix)]
     if extra_channels:
         for ch in extra_channels:
             if ch not in base_channels:
@@ -906,9 +1095,9 @@ def _cmd_cleanup(args: argparse.Namespace) -> None:
 
 
 def _cmd_init(args: argparse.Namespace) -> None:
-    # Validate nick + server before they flow into file paths (boss_policy_path_for,
-    # the boss cwd). Worker suffixes are already validated; the boss's own --nick/
-    # --server must be too, or `--nick ../../x` becomes an arbitrary-file-write.
+    # Validate nick + server before they flow into file paths (the boss cwd).
+    # Worker suffixes are already validated; the boss's own --nick/--server must
+    # be too, or `--nick ../../x` becomes an arbitrary-file-write.
     suffix = _require_worker_suffix(args.nick)
     server = _require_server(args.server) if args.server else "local"
     nick = f"{server}-{suffix}"
@@ -921,13 +1110,16 @@ def _cmd_init(args: argparse.Namespace) -> None:
         os.remove(_perm_policy_path(nick))
         print(f"warning: removed stray perm-policy for boss {nick}", file=sys.stderr)
 
-    write_default_boss_ceiling(nick)
     _write_boss_yaml(cwd, suffix, nick, args.channel, model=args.model)
     _copy_boss_skill(cwd)
     subprocess.run([sys.executable, "-m", "culture", "agent", "register", cwd], check=False)
     print(
-        f"boss {nick} initialized (cwd={cwd}, channel={args.channel}). "
-        f"Start it: culture agent start {nick}, then brief it in {args.channel}."
+        f"boss {nick} initialized (cwd={cwd}, channel={args.channel}).\n"
+        f"You ARE this boss — the IRC presence is held by a culture-managed bridge "
+        f"so {nick} can send and receive on the mesh.\n"
+        f"Start the bridge: culture agent start {nick}\n"
+        f"Then drive your team with `culture boss spawn|brief|approve|deny|...`, "
+        f"watching {args.channel} for your human's instructions."
     )
 
 
@@ -944,7 +1136,10 @@ def _write_boss_yaml(cwd: str, suffix: str, nick: str, channel: str, model: str 
     data = {
         "suffix": suffix,
         "backend": "claude",
-        "channels": ["#team", channel],
+        # #team is removed entirely (AD-4 of the mesh rearchitecture).
+        # The boss joins ONLY its own management channel by default;
+        # cross-boss coordination happens via #joint-* (opt-in).
+        "channels": [channel],
         "system_prompt": _MANAGER_PROMPT.format(nick=nick, channel=channel),
         "tags": ["boss"],
     }

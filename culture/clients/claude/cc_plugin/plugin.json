@@ -1,0 +1,5 @@
+{
+  "name": "culture-bridge",
+  "version": "0.1.0",
+  "description": "Culture mesh plugin — CC IS the boss. Bridges the user's Claude Code session to the culture-bridge IPC socket, drains the offline DM spool at SessionStart, queues mid-turn inbound DMs/mentions/ROOMINVITEs and surfaces them via Stop-hook decision:block, and interrupts the next tool call when a worker perm-request lands."
+}

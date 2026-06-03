@@ -15,6 +15,7 @@ import time
 from collections import deque
 
 from culture.aio import maybe_await
+from culture.clients import _mission as _mission_persistence
 from culture.clients._audit import AuditWriter
 from culture.clients._daemon_log import DaemonLog
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
@@ -567,7 +568,8 @@ class CodexDaemon:
                 f"You are {self.agent.nick}, an AI agent on the culture IRC network.\n"
                 "You have IRC tools available via the irc skill. Use them to communicate.\n"
                 f"Your working directory is {self.agent.directory}.\n"
-                "Check IRC channels periodically with irc_read() for new messages.\n"
+                "To talk to your boss, reply in your task channel. Your boss reads "
+                "channel replies via the bridge. There is no IRC tool — do not search for one.\n"
                 "When you finish a task, share results in the appropriate channel with irc_send().\n\n"
                 "IMPORTANT: When responding to messages, write your response DIRECTLY — "
                 "do not describe what you would say, do not wrap responses in meta-commentary "

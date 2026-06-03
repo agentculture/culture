@@ -1,8 +1,8 @@
 """Tests for the `culture boss` CLI (orchestration surface).
 
 Drives the CLI via subprocess against an isolated CULTURE_HOME so the
-queue/decision/ceiling/identity behavior is exercised end-to-end. Commands that
-need a running daemon (brief/read/spawn/status/close) are not covered here — they
+queue/decision/identity behavior is exercised end-to-end. Commands that need
+a running daemon (brief/read/spawn/status/close) are not covered here — they
 require a live mesh and are covered by manual smoke per the spec.
 """
 
@@ -82,15 +82,6 @@ def _decision(culture_home, rid):
         return json.load(f)
 
 
-def _seed_ceiling(culture_home, nick="local-boss"):
-    from culture.clients._perm_broker import DEFAULT_BOSS_CEILING
-
-    d = os.path.join(str(culture_home), "boss-policy")
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, f"{nick}.yaml"), "w", encoding="utf-8") as f:
-        yaml.safe_dump({"grant_ceiling": DEFAULT_BOSS_CEILING}, f)
-
-
 def _register_worker(culture_home, suffix, boss, server="local"):
     """Register a worker in the manifest owned by `boss` (its culture.yaml boss field).
 
@@ -117,28 +108,35 @@ def _register_worker(culture_home, suffix, boss, server="local"):
 
 
 class TestApproveDeny:
-    def test_approve_in_ceiling_writes_decision(self, home):
-        _seed_ceiling(home)
+    def test_approve_writes_decision(self, home):
         _write_request(home, "req-ok", "Edit", {"file_path": "/a.py"})
         res = _run(["approve", "req-ok"], home)
         assert res.returncode == 0, res.stderr
         d = _decision(home, "req-ok")
         assert d is not None and d["verdict"] == "allow" and d["scope"] == "once"
 
-    def test_approve_always_sets_scope(self, home):
+    def test_approve_always_with_input_regex_sets_scope(self, home):
+        # Write is high-risk — a sticky --always allow MUST carry an
+        # --input-regex (T3 / NT-12). With it, the decision lands.
         _write_request(home, "req-always", "Write", {"file_path": "/a.py"})
-        res = _run(["approve", "req-always", "--always"], home)
+        res = _run(
+            ["approve", "req-always", "--always", "--input-regex", r"^/a\.py$"],
+            home,
+        )
         assert res.returncode == 0, res.stderr
-        assert _decision(home, "req-always")["scope"] == "always"
+        d = _decision(home, "req-always")
+        assert d["scope"] == "always"
+        assert d.get("input_regex") == r"^/a\.py$"
 
-    def test_approve_above_ceiling_refused(self, home):
-        _seed_ceiling(home)
-        _write_request(home, "req-mcp", "mcp__gmail__send", {"to": "x@y.z"})
-        res = _run(["approve", "req-mcp"], home)
+    def test_approve_always_bare_high_risk_refused(self, home):
+        # Bare --always allow for a high-risk tool (no --input-regex) must be
+        # refused by the CLI: it would whitelist every invocation of the tool.
+        _write_request(home, "req-bare", "Bash", {"command": "ls /tmp"})
+        res = _run(["approve", "req-bare", "--always"], home)
         assert res.returncode == 2, (res.returncode, res.stderr)
-        assert "above your grant ceiling" in res.stderr
-        # No decision written — escalation, not grant.
-        assert _decision(home, "req-mcp") is None
+        assert "REFUSED" in res.stderr
+        # No decision written — bare sticky is rejected at the gate.
+        assert _decision(home, "req-bare") is None
 
     def test_deny_writes_decision_with_reason(self, home):
         _write_request(home, "req-deny", "Bash", {"command": "rm -rf /"})
@@ -470,15 +468,14 @@ class TestInit:
     def test_init_creates_boss_identity(self, home):
         res = _run(["init", "--nick", "boss", "--server", "local", "--channel", "#boss"], home)
         assert res.returncode == 0, res.stderr
-        # Ceiling seeded.
-        ceiling = os.path.join(str(home), "boss-policy", "local-boss.yaml")
-        assert os.path.exists(ceiling)
         # Boss cwd culture.yaml has a manager system_prompt + boss tag, no perm-policy.
         boss_cwd = os.path.join(str(home), "boss")
         with open(os.path.join(boss_cwd, "culture.yaml"), encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         assert "boss" in cfg.get("tags", [])
-        assert "manager agent" in cfg.get("system_prompt", "")
+        # The system_prompt grounds the CC session as the boss itself —
+        # not a separate "manager agent" behind it.
+        assert "a boss on the culture mesh" in cfg.get("system_prompt", "")
         assert not os.path.exists(os.path.join(str(home), "perm-policy", "local-boss.yaml"))
         # Skill copied into the boss cwd.
         assert os.path.exists(os.path.join(boss_cwd, ".claude", "skills", "boss", "SKILL.md"))
@@ -510,7 +507,9 @@ class TestRecordWorkerBossChannels:
         )
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert "#team" in data["channels"]
+        # #team is removed from defaults (AD-4) — workers default to
+        # their own #task-<suffix> only.
+        assert "#team" not in data["channels"]
         assert "#task-w1" in data["channels"]
         assert "#joint-fixes" in data["channels"]
         assert "#design" in data["channels"]
@@ -523,23 +522,25 @@ class TestRecordWorkerBossChannels:
         _record_worker_boss(cwd, "w2", "local-boss")
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert data["channels"] == ["#team", "#task-w2"]
+        # Default channel set is the worker's own #task-<suffix> only.
+        assert data["channels"] == ["#task-w2"]
 
     def test_extra_channels_no_duplicates(self, home):
         from culture.cli.boss import _record_worker_boss
 
         cwd = os.path.join(str(home), "helpers", "w3")
         os.makedirs(cwd, exist_ok=True)
-        # #team is already in the base list — should not be duplicated
+        # #task-bot is already in the base list as #task-w3 is the default;
+        # passing #task-w3 again must not duplicate the entry.
         _record_worker_boss(
             cwd,
             "w3",
             "local-boss",
-            extra_channels=["#team", "#joint-fixes"],
+            extra_channels=["#task-w3", "#joint-fixes"],
         )
         with open(os.path.join(cwd, "culture.yaml")) as f:
             data = yaml.safe_load(f)
-        assert data["channels"].count("#team") == 1
+        assert data["channels"].count("#task-w3") == 1
         assert "#joint-fixes" in data["channels"]
 
     def test_channels_flag_parsing(self):
@@ -582,5 +583,253 @@ class TestRecordWorkerBossChannels:
             data = yaml.safe_load(f)
         entry = data["agents"][0]
         assert "#joint-fixes" in entry["channels"]
-        assert "#team" in entry["channels"]
+        # #team is removed from defaults (AD-4).
+        assert "#team" not in entry["channels"]
         assert "#task-alpha" in entry["channels"]
+
+
+class TestSpawnBossPrefix:
+    """Phase 4.8 — when ``--boss <project-name>`` is set, the resulting
+    worker nick is ``<project-name>-<worker-suffix>``. We test the
+    naming logic by mocking the subprocess.run + IRC calls and asserting
+    on the args passed to ``agent create``.
+    """
+
+    def _run_spawn(self, home, args, boss_env="local-boss", monkeypatch=None):
+        """Drive ``_cmd_spawn`` directly with mocked side effects."""
+        import argparse
+        from unittest.mock import patch
+
+        from culture.cli import boss as boss_mod
+
+        captured = {"create_args": None, "register_args": None, "start_args": None}
+
+        def fake_run(cmd, **kwargs):
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            if isinstance(cmd, list) and "create" in cmd:
+                captured["create_args"] = list(cmd)
+            elif isinstance(cmd, list) and "register" in cmd:
+                captured["register_args"] = list(cmd)
+            elif isinstance(cmd, list) and "start" in cmd:
+                captured["start_args"] = list(cmd)
+            return R()
+
+        ns = argparse.Namespace(
+            name=args["name"],
+            boss=args.get("boss", ""),
+            server=args.get("server"),
+            cwd=args.get("cwd"),
+            model=args.get("model", ""),
+            channels=args.get("channels", ""),
+            role=args.get("role", ""),
+            topic=args.get("topic", ""),
+            config="server.yaml",
+        )
+
+        env = {"CULTURE_HOME": str(home), "CULTURE_NICK": boss_env}
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(boss_mod, "subprocess") as sub_mock,
+            patch.object(boss_mod, "_boss_irc", lambda *a, **k: {"ok": True}),
+            patch.object(boss_mod, "seed_helper_policy", lambda nick: None),
+        ):
+            sub_mock.run.side_effect = fake_run
+            try:
+                boss_mod._cmd_spawn(ns)
+            except SystemExit as exc:
+                if exc.code:
+                    raise
+        return captured
+
+    def test_explicit_boss_auto_prefixes_worker_nick(self, home):
+        captured = self._run_spawn(home, {"name": "qa", "boss": "fork-rearch"})
+        # ``agent create --server fork-rearch --nick qa`` produces
+        # full_nick ``fork-rearch-qa``.
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        assert "--server" in cmd
+        assert "fork-rearch" in cmd
+        assert "--nick" in cmd
+        i = cmd.index("--nick")
+        assert cmd[i + 1] == "qa"
+        # ``agent start`` is called with the full nick.
+        assert "fork-rearch-qa" in captured["start_args"]
+
+    def test_explicit_boss_strips_redundant_prefix(self, home):
+        """``mesh spawn fork-rearch-qa --boss fork-rearch`` must not
+        double-prefix to ``fork-rearch-fork-rearch-qa``."""
+        captured = self._run_spawn(home, {"name": "fork-rearch-qa", "boss": "fork-rearch"})
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        i = cmd.index("--nick")
+        # Redundant prefix stripped → suffix should be plain ``qa``.
+        assert cmd[i + 1] == "qa"
+        assert "fork-rearch-qa" in captured["start_args"]
+        assert "fork-rearch-fork-rearch-qa" not in captured["start_args"]
+
+    def test_no_boss_flag_uses_culture_nick_legacy_server(self, home):
+        # No --boss → falls back to legacy single-server flow:
+        # server = first hyphen-split of CULTURE_NICK.
+        captured = self._run_spawn(home, {"name": "qa"}, boss_env="local-boss")
+        assert captured["create_args"] is not None
+        cmd = captured["create_args"]
+        i = cmd.index("--server")
+        # local-boss → server "local"
+        assert cmd[i + 1] == "local"
+        i = cmd.index("--nick")
+        assert cmd[i + 1] == "qa"
+        # Final nick = local-qa
+        assert "local-qa" in captured["start_args"]
+
+
+class TestSpawnAtomicBrief:
+    """Phase 6.3 — ``culture boss spawn <name> --brief "<text>"`` waits for
+    the worker to JOIN its #task channel, then delivers the brief in one
+    atomic flow. Closes plenty's P2 race window between spawn and a
+    follow-up ``culture boss brief`` call.
+    """
+
+    def _run_spawn_with_brief(
+        self,
+        home,
+        args,
+        members_responses,
+        irc_send_ok=True,
+        boss_env="local-boss",
+    ):
+        """Drive ``_cmd_spawn`` with mocked subprocess + IRC + WHO.
+
+        ``members_responses`` is a list of WHO answers — each call to
+        ``_channel_members`` returns the next one (poll loop).
+        """
+        import argparse
+        from unittest.mock import patch
+
+        from culture.cli import boss as boss_mod
+
+        captured = {
+            "send_calls": [],
+            "create_args": None,
+            "register_args": None,
+            "start_args": None,
+        }
+
+        def fake_run(cmd, **_kwargs):
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            if isinstance(cmd, list):
+                if "create" in cmd:
+                    captured["create_args"] = list(cmd)
+                elif "register" in cmd:
+                    captured["register_args"] = list(cmd)
+                elif "start" in cmd:
+                    captured["start_args"] = list(cmd)
+            return R()
+
+        def fake_boss_irc(msg_type, **kwargs):
+            captured["send_calls"].append((msg_type, kwargs))
+            if msg_type == "irc_send":
+                return {"ok": bool(irc_send_ok)}
+            return {"ok": True}
+
+        members_iter = iter(members_responses)
+
+        def fake_channel_members(_channel):
+            try:
+                return next(members_iter)
+            except StopIteration:
+                return members_responses[-1] if members_responses else []
+
+        ns = argparse.Namespace(
+            name=args["name"],
+            boss=args.get("boss", ""),
+            server=args.get("server"),
+            cwd=args.get("cwd"),
+            model=args.get("model", ""),
+            channels=args.get("channels", ""),
+            role=args.get("role", ""),
+            topic=args.get("topic", ""),
+            brief=args.get("brief", ""),
+            brief_timeout=args.get("brief_timeout", 5),
+            config="server.yaml",
+        )
+
+        env = {"CULTURE_HOME": str(home), "CULTURE_NICK": boss_env}
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(boss_mod, "subprocess") as sub_mock,
+            patch.object(boss_mod, "_boss_irc", fake_boss_irc),
+            patch.object(boss_mod, "_channel_members", fake_channel_members),
+            patch.object(boss_mod, "seed_helper_policy", lambda nick: None),
+            # Skip the slow poll between WHO attempts — the test drives a
+            # deterministic sequence of member responses.
+            patch.object(boss_mod.time, "sleep", lambda _s: None),
+        ):
+            sub_mock.run.side_effect = fake_run
+            exit_code = 0
+            try:
+                boss_mod._cmd_spawn(ns)
+            except SystemExit as exc:
+                exit_code = exc.code or 0
+        return captured, exit_code
+
+    def test_brief_delivered_after_worker_joins(self, home):
+        """Worker joins on the second WHO poll; brief lands as a
+        single PRIVMSG."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "ship the pr", "brief_timeout": 5},
+            members_responses=[[], ["local-qa"]],
+        )
+        assert exit_code == 0
+        # The brief should have been sent.
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert len(send_calls) == 1
+        kwargs = send_calls[0][1]
+        assert kwargs["channel"] == "#task-qa"
+        assert kwargs["message"] == "@local-qa ship the pr"
+
+    def test_no_brief_flag_skips_atomic_delivery(self, home):
+        """Legacy spawn-without-brief has no WHO polling / PRIVMSG sent."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "", "brief_timeout": 5},
+            members_responses=[["local-qa"]],
+        )
+        assert exit_code == 0
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert send_calls == []
+
+    def test_join_timeout_fails_non_zero(self, home):
+        """If the worker never joins within --brief-timeout, the spawn
+        exits non-zero so the operator notices instead of believing the
+        brief landed."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "go", "brief_timeout": 1},
+            members_responses=[[], [], []],
+        )
+        assert exit_code == 1
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert send_calls == []
+
+    def test_irc_send_failure_fails_non_zero(self, home):
+        """If the brief PRIVMSG fails after worker joined, spawn exits
+        non-zero (closes the silent-failure path)."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "go", "brief_timeout": 2},
+            members_responses=[["local-qa"]],
+            irc_send_ok=False,
+        )
+        assert exit_code == 1
+        # The send was attempted (visibility into the failure path).
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert len(send_calls) == 1

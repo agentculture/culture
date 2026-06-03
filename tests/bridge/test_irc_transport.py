@@ -480,3 +480,89 @@ async def test_duplicate_join_does_not_duplicate_history(server, make_client):
     assert count_second == count_first  # no duplicates
 
     await transport.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# v8.19.42 — confirmation-based channel tracking
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_join_channel_waits_for_server_confirmation(server):
+    """v8.19.42: ``self.channels`` is populated by the server's JOIN echo,
+    not optimistically appended by ``join_channel``. Without this, a
+    JOIN refused by the server (e.g. task-channel ACL) would leave the
+    transport believing it had joined — subsequent PRIVMSGs would be
+    silently dropped by the server."""
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-confirmer",
+        user="confirmer",
+        channels=[],
+        buffer=buf,
+    )
+    await transport.connect()
+    try:
+        # Join a regular channel — the server WILL accept and echo back.
+        await transport.join_channel("#confirm")
+        await asyncio.sleep(0.3)
+        # Echo received → tracking flipped to "joined".
+        assert "#confirm" in transport.channels
+    finally:
+        await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_part_channel_waits_for_server_confirmation(server):
+    """Symmetric to JOIN — PART tracking happens on the server echo."""
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-parter",
+        user="parter",
+        channels=[],
+        buffer=buf,
+    )
+    await transport.connect()
+    try:
+        await transport.join_channel("#topart")
+        await asyncio.sleep(0.3)
+        assert "#topart" in transport.channels
+        await transport.part_channel("#topart")
+        await asyncio.sleep(0.3)
+        assert "#topart" not in transport.channels
+    finally:
+        await transport.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_on_kick_drops_channel_when_we_are_kicked(server):
+    buf = MessageBuffer()
+    transport = IRCTransport(
+        host="127.0.0.1",
+        port=server.config.port,
+        nick="testserv-victim",
+        user="victim",
+        channels=[],
+        buffer=buf,
+    )
+    await transport.connect()
+    try:
+        await transport.join_channel("#kickme")
+        await asyncio.sleep(0.3)
+        assert "#kickme" in transport.channels
+        # Simulate a KICK targeting us by feeding the handler directly.
+        from culture.protocol.message import Message
+
+        kick_msg = Message(
+            prefix="op!op@host",
+            command="KICK",
+            params=["#kickme", "testserv-victim", "byebye"],
+        )
+        transport._on_kick(kick_msg)
+        assert "#kickme" not in transport.channels
+    finally:
+        await transport.disconnect()

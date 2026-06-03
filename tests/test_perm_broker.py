@@ -228,6 +228,9 @@ class TestBrokerEndToEnd:
 
     @pytest.mark.asyncio
     async def test_scope_always_appends_to_policy(self, culture_root):
+        # Edit is a high-risk tool — a sticky --always allow now REQUIRES an
+        # input_regex (T3 / NT-12). Pass one so the rule lands instead of
+        # being demoted to scope=once.
         write_default_policy("local-helper")
         broker = PermissionBroker(nick="local-helper")
 
@@ -242,17 +245,63 @@ class TestBrokerEndToEnd:
                 "id": request_id,
                 "verdict": "allow",
                 "scope": "always",
+                "input_regex": r"^/x$",
             },
         )
         await asyncio.wait_for(gate_task, timeout=2.0)
 
         with open(policy_path_for("local-helper")) as f:
             policy = yaml.safe_load(f)
-        tools_allowed = [rule.get("tool") for rule in policy.get("auto_allow", [])]
-        assert "Edit" in tools_allowed
+        rules = policy.get("auto_allow", [])
+        edit_rules = [r for r in rules if r.get("tool") == "Edit"]
+        assert edit_rules, f"Expected Edit auto_allow rule, got {rules!r}"
+        assert edit_rules[0].get("input_regex") == r"^/x$"
+
+    @pytest.mark.asyncio
+    async def test_scope_always_with_bare_high_risk_raises(self, culture_root):
+        # T3 / NT-12: a sticky --always allow for a high-risk tool without
+        # input_regex must NOT land as a bare auto_allow. The broker demotes
+        # the approval to scope=once (the in-flight call is honored) and
+        # records a demote notice so the boss/dashboard can surface the demote.
+        from culture.clients._perm_broker import demote_notice_path_for
+
+        write_default_policy("local-helper")
+        broker = PermissionBroker(nick="local-helper")
+
+        gate_task = asyncio.create_task(broker.gate("Edit", {"file_path": "/x"}, _empty_context()))
+
+        queue_dir = os.path.join(str(culture_root), "perm-queue")
+        decisions_dir = os.path.join(str(culture_root), "perm-decisions")
+        request_id = await _wait_for_request(queue_dir)
+        _write_decision_atomic(
+            os.path.join(decisions_dir, f"{request_id}.json"),
+            {
+                "id": request_id,
+                "verdict": "allow",
+                "scope": "always",
+                # NO input_regex — the bare-sticky case the guard refuses.
+            },
+        )
+        result = await asyncio.wait_for(gate_task, timeout=2.0)
+        # The in-flight call is honored (allow), but no bare sticky rule lands.
+        assert isinstance(result, PermissionResultAllow)
+        with open(policy_path_for("local-helper")) as f:
+            policy = yaml.safe_load(f) or {}
+        bare_edit = [
+            r
+            for r in policy.get("auto_allow", [])
+            if r.get("tool") == "Edit" and not r.get("input_regex")
+        ]
+        assert not bare_edit, f"Bare sticky Edit rule must not be written: {bare_edit!r}"
+        # Demote-notice was written so the watchdog observer can surface it.
+        assert os.path.exists(demote_notice_path_for(request_id))
 
     @pytest.mark.asyncio
     async def test_scope_always_with_pattern_uses_pattern(self, culture_root):
+        # Edit is high-risk — a sticky --always allow now REQUIRES an
+        # input_regex (T3 / NT-12). Pass one so the rule lands; the test's
+        # point is that the ``pattern`` field overrides the ``tool`` key in
+        # the resulting policy entry.
         write_default_policy("local-helper")
         broker = PermissionBroker(nick="local-helper")
 
@@ -269,6 +318,7 @@ class TestBrokerEndToEnd:
                 "verdict": "allow",
                 "scope": "always",
                 "pattern": "Custom.*",  # pattern field overrides tool match
+                "input_regex": r".*",  # narrowing required for high-risk Edit
             },
         )
         await asyncio.wait_for(gate_task, timeout=2.0)
@@ -349,57 +399,6 @@ class TestBrokerEndToEnd:
             await gate_task
 
     @pytest.mark.asyncio
-    async def test_sticky_allow_does_not_bypass_ceiling(self, culture_root, monkeypatch):
-        # SECURITY: a sticky `--always allow` rule for a benign tool (Bash ls)
-        # must NOT whitelist dangerous invocations (Bash rm -rf) just because
-        # the sticky rule matches by tool name. The gate re-checks the boss
-        # ceiling on every policy-allow.
-        import contextlib
-
-        # Write a policy that allows Bash unconditionally (the broken sticky shape).
-        path = policy_path_for("local-helper")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            yaml.safe_dump({"auto_allow": [{"tool": "Bash"}], "auto_deny": []}, f)
-        # Seed the boss ceiling so is_above_ceiling has rules to match against.
-        from culture.clients._perm_broker import write_default_boss_ceiling
-
-        write_default_boss_ceiling("local-boss")
-        broker = PermissionBroker(nick="local-helper", boss="local-boss")
-        # An above-ceiling Bash invocation must NOT be auto-allowed — instead,
-        # the gate routes it through the perm queue so the boss decides.
-        gate_task = asyncio.create_task(
-            broker.gate("Bash", {"command": "rm -rf /etc"}, _empty_context())
-        )
-        queue_dir = os.path.join(str(culture_root), "perm-queue")
-        # If the bypass were still open, gate would return immediately with
-        # an allow and we'd never see a request file. The presence of a
-        # request file proves the ceiling re-check forced the slow path.
-        request_id = await _wait_for_request(queue_dir, timeout=1.0)
-        assert request_id  # request was queued
-        gate_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await gate_task
-
-    @pytest.mark.asyncio
-    async def test_sticky_allow_below_ceiling_still_fast_path(self, culture_root):
-        # The benign case still gets the fast path: ceiling doesn't fire, so
-        # an `ls`-style Bash command returns allow immediately.
-        path = policy_path_for("local-helper")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            yaml.safe_dump({"auto_allow": [{"tool": "Bash"}], "auto_deny": []}, f)
-        from culture.clients._perm_broker import write_default_boss_ceiling
-
-        write_default_boss_ceiling("local-boss")
-        broker = PermissionBroker(nick="local-helper", boss="local-boss")
-        result = await asyncio.wait_for(
-            broker.gate("Bash", {"command": "ls /tmp"}, _empty_context()),
-            timeout=1.0,
-        )
-        assert isinstance(result, PermissionResultAllow)
-
-    @pytest.mark.asyncio
     async def test_perm_gate_times_out_with_auto_deny(self, culture_root, monkeypatch):
         # A dead or unresponsive boss must NOT hang the worker forever. The
         # broker times out and returns a synthetic deny so the SDK can proceed.
@@ -422,6 +421,112 @@ class TestBrokerEndToEnd:
             else []
         )
         assert entries == []
+
+
+# ---------------------------------------------------------------------------
+# Request-id validation + request payload owner attribution + queue GC
+# Moved here from a deleted neighboring test file in Phase 5.7 — these tests
+# exercise broker invariants that remain in force after the boss-notify
+# cascade was removed.
+# ---------------------------------------------------------------------------
+
+
+class TestRequestIdValidation:
+    def test_valid_and_invalid_ids(self, culture_root):
+        from culture.clients._perm_broker import valid_request_id
+
+        assert valid_request_id("req-2026-05-29T10-00-00-000000-abc123")
+        assert not valid_request_id("../../etc/passwd")
+        assert not valid_request_id("req-a/b")
+        assert not valid_request_id("notareq")
+        assert not valid_request_id("")
+
+    def test_non_string_ids_rejected_not_crash(self, culture_root):
+        # Untrusted JSON bodies can send {"id": 123} / true / [...] / {} — these
+        # must be rejected, not raise TypeError (which became a dashboard 500).
+        from culture.clients._perm_broker import valid_request_id
+
+        for bad in (123, True, None, ["x"], {"a": 1}, 1.5):
+            assert valid_request_id(bad) is False
+
+    @pytest.mark.asyncio
+    async def test_write_decision_rejects_traversal_id(self, culture_root):
+        from culture.clients._perm_broker import InvalidRequestIdError, write_decision
+
+        with pytest.raises(InvalidRequestIdError):
+            write_decision("../../evil", verdict="allow")
+
+    def test_read_request_rejects_traversal_id(self, culture_root):
+        from culture.clients._perm_broker import read_request
+
+        assert read_request("../../etc/passwd") is None
+
+
+class TestRequestRecordsOwner:
+    @pytest.mark.asyncio
+    async def test_request_payload_records_boss(self, culture_root):
+        # The broker records the owning boss IN the request so approvers can
+        # attribute ownership without re-reading the worker's culture.yaml.
+        from culture.clients._perm_broker import write_default_policy as _seed_policy
+
+        _seed_policy("local-w")
+        broker = PermissionBroker(nick="local-w", boss="local-boss2")
+        gate = asyncio.create_task(broker.gate("Edit", {"file_path": "/x"}, _empty_context()))
+        queue_dir = os.path.join(str(culture_root), "perm-queue")
+        decisions_dir = os.path.join(str(culture_root), "perm-decisions")
+        rid = await _wait_for_request(queue_dir)
+        with open(os.path.join(queue_dir, f"{rid}.json"), encoding="utf-8") as f:
+            assert json.load(f)["boss"] == "local-boss2"
+        _write_decision_atomic(
+            os.path.join(decisions_dir, f"{rid}.json"),
+            {"id": rid, "verdict": "allow", "scope": "once"},
+        )
+        await asyncio.wait_for(gate, timeout=2.0)
+
+
+class TestCleanupStale:
+    def test_removes_dead_helper_requests_and_orphan_decisions(self, culture_root):
+        from culture.clients._perm_broker import cleanup_stale
+
+        qdir = os.path.join(str(culture_root), "perm-queue")
+        ddir = os.path.join(str(culture_root), "perm-decisions")
+        os.makedirs(qdir, exist_ok=True)
+        os.makedirs(ddir, exist_ok=True)
+        # alive helper request (keep), dead helper request (stale), orphan decision.
+        for rid, nick in (("req-alive", "local-alive"), ("req-dead", "local-dead")):
+            with open(os.path.join(qdir, f"{rid}.json"), "w", encoding="utf-8") as f:
+                json.dump({"id": rid, "helper_nick": nick, "tool_name": "Edit"}, f)
+        with open(os.path.join(ddir, "req-orphan.json"), "w", encoding="utf-8") as f:
+            json.dump({"id": "req-orphan", "verdict": "allow"}, f)
+
+        result = cleanup_stale(running_nicks={"local-alive"})
+        assert result == {"stale_requests": 1, "orphan_decisions": 1}
+        assert os.path.exists(os.path.join(qdir, "req-alive.json"))
+        assert not os.path.exists(os.path.join(qdir, "req-dead.json"))
+        assert not os.path.exists(os.path.join(ddir, "req-orphan.json"))
+
+    def test_empty_dirs_no_error(self, culture_root):
+        from culture.clients._perm_broker import cleanup_stale
+
+        assert cleanup_stale(running_nicks=set()) == {"stale_requests": 0, "orphan_decisions": 0}
+
+
+class TestListPendingExcludesDecided:
+    def test_decided_request_excluded_from_pending(self, culture_root):
+        from culture.clients._perm_broker import list_pending
+
+        qdir = os.path.join(str(culture_root), "perm-queue")
+        ddir = os.path.join(str(culture_root), "perm-decisions")
+        os.makedirs(qdir, exist_ok=True)
+        os.makedirs(ddir, exist_ok=True)
+        for rid in ("req-a", "req-b"):
+            with open(os.path.join(qdir, f"{rid}.json"), "w", encoding="utf-8") as f:
+                json.dump({"id": rid, "helper_nick": "local-w", "tool_name": "Edit"}, f)
+        # Decide req-a only.
+        with open(os.path.join(ddir, "req-a.json"), "w", encoding="utf-8") as f:
+            json.dump({"id": "req-a", "verdict": "allow"}, f)
+        ids = [r["id"] for r in list_pending()]
+        assert ids == ["req-b"]  # req-a is decided, awaiting worker consumption
 
 
 # ---------------------------------------------------------------------------

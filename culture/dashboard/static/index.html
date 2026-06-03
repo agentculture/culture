@@ -17,6 +17,7 @@
   </header>
   <nav class="main-tabs">
     <button class="main-tab active" data-view="channels">Channels</button>
+    <button class="main-tab" data-view="tree">Tree</button>
     <button class="main-tab" data-view="agents">Agents</button>
     <button class="main-tab" data-view="archived">Archived</button>
   </nav>
@@ -25,6 +26,10 @@
       <div id="view-channels">
         <h2>Channels &mdash; live tasks</h2>
         <div id="channel-list" class="channel-list"></div>
+      </div>
+      <div id="view-tree" class="hidden">
+        <h2>Projects &mdash; tree view</h2>
+        <div id="tree-list" class="tree-list"></div>
       </div>
       <div id="view-agents" class="hidden">
         <h2>Agents</h2>
@@ -52,6 +57,22 @@
     <section class="col col-perms">
       <h2>Pending approvals</h2>
       <ul id="pending-list" class="pending-list"></ul>
+      <!-- Phase 7.5: human chat panel. DM any agent on the mesh AS the
+           human nick — humans are first-class participants (AD-5 / Rule 3). -->
+      <div id="human-chat" class="human-chat">
+        <h3>Human DM</h3>
+        <div class="human-chat-row">
+          <input id="human-chat-nick" type="text" autocomplete="off"
+                 placeholder="your nick (e.g. edo)" />
+          <input id="human-chat-target" type="text" autocomplete="off"
+                 placeholder="agent nick (e.g. local-w)" />
+        </div>
+        <div class="human-chat-row">
+          <input id="human-chat-text" type="text" autocomplete="off"
+                 placeholder="message…" />
+          <button id="human-chat-send" class="btn btn-ok">Send</button>
+        </div>
+      </div>
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>

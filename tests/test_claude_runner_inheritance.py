@@ -18,6 +18,15 @@ from culture.clients.claude.agent_runner import AgentRunner  # noqa: E402
 @pytest.fixture
 def culture_root(tmp_path, monkeypatch):
     monkeypatch.setenv("CULTURE_HOME", str(tmp_path))
+    # ``test_empty_nick_no_culture_nick_env`` asserts ``CULTURE_NICK``
+    # is absent from the subprocess env when the runner has no nick.
+    # ``_subprocess_env`` returns ``dict(os.environ)``, so the assertion
+    # depends on ``CULTURE_NICK`` not leaking in from outside — a real
+    # operator's shell, a CI runner that happens to set it, or a
+    # neighbouring test whose monkeypatch teardown raced with this
+    # fixture's setup. Defensively clear it here so this file is
+    # hermetic regardless of the surrounding environment.
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
     return tmp_path
 
 

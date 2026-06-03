@@ -18,7 +18,6 @@ import re
 import secrets
 import tempfile
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -40,6 +39,20 @@ _POLL_INTERVAL_SECONDS = 0.25
 # read the request, ask the human if needed, and decide; bounded so a dead
 # or unresponsive boss does not hang the worker's SDK call forever.
 _PERM_DECISION_TIMEOUT_SECONDS = 600
+
+
+# Phase 5.6: probe whether ``watchdog`` is importable so ``_await_decision``
+# can branch between the push (Event-driven Future) and pull (250ms poll)
+# paths. Tests may override this via monkeypatch to exercise the fallback.
+_HAS_WATCHDOG: bool
+try:
+    if os.environ.get("CULTURE_DISABLE_WATCHDOG", "") == "1":
+        raise ImportError("CULTURE_DISABLE_WATCHDOG=1 — disabled by env")
+    import watchdog.observers  # noqa: F401 — probe-only
+
+    _HAS_WATCHDOG = True
+except ImportError:
+    _HAS_WATCHDOG = False
 
 # Default permission policy seeded by ``culture boss spawn`` (seed_helper_policy)
 # when a helper has no existing perm-policy/<nick>.yaml.  Mirrors the spec's
@@ -81,6 +94,12 @@ def _queue_dir() -> str:
 
 def _decisions_dir() -> str:
     return os.path.join(culture_home(), "perm-decisions")
+
+
+def _demote_notices_dir() -> str:
+    """Where the broker drops a notice when a sticky --always allow for
+    a high-risk tool is demoted to scope=once (Task 5.1c)."""
+    return os.path.join(culture_home(), "perm-demote-notices")
 
 
 def _policy_dir() -> str:
@@ -319,80 +338,45 @@ def match_policy(
 
 
 # ---------------------------------------------------------------------------
-# Boss grant ceiling (human-over-boss gate)
+# High-risk tool gate (sticky-approval narrowing)
 # ---------------------------------------------------------------------------
 
-# Tools a boss agent MAY NOT auto-grant to a worker; these escalate to the human.
-# Structurally a denylist, matched by reusing ``match_policy`` (as auto_deny).
-#
-# This is a COOPERATIVE best-effort guard, NOT an exhaustive sandbox: a regex
-# denylist cannot catch every destructive command (obfuscation, novel tools,
-# env-dependent aliases). It catches the common dangerous forms; the human at the
-# dashboard is the real backstop. ``(?i)`` makes it case-insensitive (so DROP
-# TABLE / GIT PUSH are caught); the boundary class includes quotes so quoted SQL
-# (``psql -c 'drop table'``) is caught; ``rm`` matches combined or split r+f flags.
-DEFAULT_BOSS_CEILING: list[dict[str, Any]] = [
-    {"tool": "mcp__.*"},  # any MCP server — external side effects
-    {
-        "tool": "Bash",
-        "input_regex": (
-            # Leading boundary: start, whitespace, shell separators, quotes, or a
-            # command-substitution opener ( or backtick so $(rm -rf) / `rm -rf`
-            # are caught. Trailing (?![\w-]) on bare command names avoids matching
-            # them as a substring of a longer token (git pushup, kubectl-helper).
-            r"(?i)(^|\s|;|&&|\|\||[\"'(]|\x60)("
-            r"rm\s+-\w*[rf]\w*[rf]|rm\s+-[rf]\s+-[rf]|rm\s+[^;&|]*--recursive|"
-            r"git\s+push(?![\w-])|gh\s+(pr|release)\s+(create|merge)|"
-            r"kubectl(?![\w-])|terraform(?![\w-])|drop\s+table(?![\w-])|truncate(?![\w-])|"
-            r"dd\s+if=|mkfs(?![\w-])|chmod\s+[^;&|]*777|"
-            r"curl[^|]*\|\s*(ba)?sh|wget[^|]*\|\s*(ba)?sh"
-            r")"
-        ),
-    },
-]
+# Tools that MUST carry an ``input_regex`` to be sticky-approved (``scope=always``).
+# A bare ``--always allow`` for any of these would whitelist every invocation of
+# the tool (e.g. one approved ``Bash ls`` would auto-allow ``rm -rf /``). The
+# broker refuses such approvals at write time and the boss CLI/dashboard demote
+# them to ``scope=once`` instead — see ``BareStickyApproveRefusedError``.
+_HIGH_RISK_TOOLS: tuple[str, ...] = ("Bash", "Edit", "Write")
+_HIGH_RISK_TOOL_REGEX = re.compile(r"^mcp__.*")
 
 
-def _boss_policy_dir() -> str:
-    return os.path.join(culture_home(), "boss-policy")
+def _is_high_risk_tool(tool_name: str) -> bool:
+    """True iff a tool requires ``input_regex`` for sticky approvals.
 
-
-def boss_policy_path_for(nick: str) -> str:
-    """Path to a boss agent's grant-ceiling file."""
-    return os.path.join(_boss_policy_dir(), f"{nick}.yaml")
-
-
-def write_default_boss_ceiling(nick: str) -> str:
-    """Seed a boss agent's grant-ceiling file if missing. Idempotent."""
-    dest = boss_policy_path_for(nick)
-    if os.path.exists(dest):
-        return dest
-    _atomic_write_yaml(dest, {"grant_ceiling": DEFAULT_BOSS_CEILING})
-    return dest
-
-
-def load_boss_ceiling(nick: str) -> list[dict[str, Any]]:
-    """Load a boss agent's ceiling rules (empty list if no file)."""
-    path = boss_policy_path_for(nick)
-    try:
-        with open(path, encoding="utf-8") as handle:
-            data = yaml.safe_load(handle) or {}
-    except (OSError, yaml.YAMLError):
-        return []
-    if not isinstance(data, dict):
-        return []
-    rules = data.get("grant_ceiling", []) or []
-    return [r for r in rules if isinstance(r, dict)]
-
-
-def is_above_ceiling(tool_name: str, input_dict: dict[str, Any], boss_nick: str) -> bool:
-    """True iff a tool call is above the boss's grant ceiling (→ escalate to human).
-
-    Reuses ``match_policy`` by treating the ceiling as an ``auto_deny`` denylist.
+    Matches the literal names in ``_HIGH_RISK_TOOLS`` plus any ``mcp__*`` tool.
+    Pattern strings on the approver side (e.g. ``decision.get("pattern")``) are
+    classified the same way — see ``_append_sticky_rule``.
     """
-    ceiling = load_boss_ceiling(boss_nick)
-    if not ceiling:
-        return False
-    return match_policy(tool_name, input_dict, {"auto_deny": ceiling}) == "deny"
+    if tool_name in _HIGH_RISK_TOOLS:
+        return True
+    return _HIGH_RISK_TOOL_REGEX.fullmatch(tool_name) is not None
+
+
+def _is_valid_input_regex(value: Any) -> bool:
+    """True iff *value* is a usable narrowing regex.
+
+    Qodo PR #50 #5: the prior gate used ``bool(input_regex)`` (truthy
+    check), but the persistence path stored ``input_regex`` only when
+    it was a non-empty string. A non-string truthy value
+    (``[1, 2, 3]``, ``{"k": "v"}``, a custom object) would bypass the
+    gate AND be silently dropped from the persisted rule — producing a
+    bare ``Bash`` sticky-allow that matches every invocation.
+
+    The fix: accept ONLY a non-empty, non-whitespace string at the
+    gate boundary. Everything else is treated as absent (the gate
+    rejects it; the caller demotes to ``scope=once``).
+    """
+    return isinstance(value, str) and bool(value.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +494,8 @@ def read_request(request_id: str) -> dict[str, Any] | None:
     path = os.path.join(_queue_dir(), f"{request_id}.json")
     try:
         with open(path, encoding="utf-8") as handle:
-            return json.load(handle)
+            data: dict[str, Any] = json.load(handle)
+            return data
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -523,6 +508,59 @@ class InvalidRequestIdError(ValueError):
     """Raised when a request id is not a valid, path-safe broker id."""
 
 
+class BareStickyApproveRefusedError(ValueError):
+    """Raised when a sticky --always approval for a high-risk tool lacks input_regex."""
+
+
+def demote_notice_path_for(request_id: str) -> str:
+    """Path to a demote-notice file for a given request id.
+
+    The path is rejected if ``request_id`` is not a valid broker id so an
+    attacker-supplied id can never escape ``~/.culture/perm-demote-notices/``.
+    """
+    if not valid_request_id(request_id):
+        raise InvalidRequestIdError(request_id)
+    return os.path.join(_demote_notices_dir(), f"{request_id}.json")
+
+
+def _write_demote_notice(
+    request_id: str,
+    original_tool: str,
+    demote_reason: str,
+    *,
+    boss: str = "",
+    helper_nick: str = "",
+) -> None:
+    """Drop a demote-notice JSON marking a sticky-allow that was demoted to once.
+
+    Best-effort: a write failure is logged but not raised — the demote itself
+    already happened (the broker continues with scope=once). The notice is the
+    file-bus contract the bridge's fs_observer reads to surface the demote to
+    the boss/dashboard. The observer mirrors these key names exactly — keep
+    them aligned (see ``culture/clients/bridge/_fs_observer.py::_build_payload``).
+    """
+    try:
+        path = demote_notice_path_for(request_id)
+    except InvalidRequestIdError:
+        # Should never happen — request_id is broker-minted — but log and skip.
+        logger.warning("Cannot write demote-notice for invalid id %r", request_id)
+        return
+    try:
+        _atomic_write_json(
+            path,
+            {
+                "request_id": request_id,
+                "original_tool": original_tool,
+                "demote_reason": demote_reason,
+                "noticed_at": _now_iso(),
+                "boss": boss,
+                "helper_nick": helper_nick,
+            },
+        )
+    except OSError:
+        logger.warning("Failed to write demote-notice %s", path, exc_info=True)
+
+
 def write_decision(
     request_id: str,
     *,
@@ -531,13 +569,54 @@ def write_decision(
     reason: str = "",
     pattern: str = "",
     decided_by: str = "boss",
+    tool_name: str | None = None,
+    input_regex: str | None = None,
 ) -> str:
     """Write a decision file (first-writer-wins via O_CREAT|O_EXCL + atomic rename).
 
     Raises :class:`InvalidRequestIdError` if ``request_id`` is not path-safe
     (approvers pass it from untrusted input), :class:`DecisionExistsError` if a
-    decision already exists. Returns the decision path.
+    decision already exists.
+
+    Raises :class:`BareStickyApproveRefusedError` when ``scope='always'`` and
+    ``verdict='allow'`` is requested for a high-risk tool (``Bash``/``Edit``/
+    ``Write``/``mcp__*``) without a narrowing ``input_regex``. A bare sticky
+    allow for any of these would whitelist every invocation of the tool — the
+    caller must demote to ``scope='once'`` or supply ``input_regex``. The
+    ``tool_name`` kwarg drives the classification; ``pattern`` is also checked
+    (a ``--pattern Bash`` approval for an arbitrary tool would otherwise
+    smuggle a bare Bash allow past the gate).
+
+    Returns the decision path.
     """
+    # High-risk sticky-allow narrowing gate (T3 / NT-12). The check fires when
+    # the approver explicitly opts into a persistent grant — scope=once is
+    # always permitted because the rule lives only for one tool call.
+    if scope == "always" and verdict == "allow":
+        # Qodo PR #50 #5: ``regex_present`` MUST be a strict type check, not
+        # a truthy check — otherwise a non-string truthy value (``[1, 2]``,
+        # an aiohttp dict, etc.) sneaks past here and is then silently
+        # dropped by ``_append_sticky_rule``'s ``isinstance(... , str)``
+        # persistence guard, producing a bare sticky-allow.
+        regex_present = _is_valid_input_regex(input_regex)
+        if tool_name and _is_high_risk_tool(tool_name) and not regex_present:
+            raise BareStickyApproveRefusedError(
+                f"sticky --always allow for high-risk tool {tool_name!r} " "requires an input_regex"
+            )
+        # An override ``pattern`` becomes the rule's ``tool`` field, so the
+        # same narrowing rule must apply to it — otherwise an approver could
+        # smuggle a bare Bash allow via ``--pattern Bash --tool Foo``.
+        if (
+            isinstance(pattern, str)
+            and pattern
+            and _is_high_risk_tool(pattern)
+            and not regex_present
+        ):
+            raise BareStickyApproveRefusedError(
+                f"sticky --always allow with high-risk pattern {pattern!r} "
+                "requires an input_regex"
+            )
+
     if not valid_request_id(request_id):
         raise InvalidRequestIdError(request_id)
     dest = os.path.join(_decisions_dir(), f"{request_id}.json")
@@ -559,6 +638,8 @@ def write_decision(
         payload["reason"] = reason
     if pattern:
         payload["pattern"] = pattern
+    if input_regex:
+        payload["input_regex"] = input_regex
     try:
         _atomic_write_json(dest, payload)
     except BaseException:
@@ -591,7 +672,6 @@ class PermissionBroker:
     def __init__(
         self,
         nick: str,
-        on_request: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         boss: str = "",
     ) -> None:
         if not nick:
@@ -602,9 +682,6 @@ class PermissionBroker:
         # missing/corrupt) — keeps team isolation from failing open.
         self._boss = boss or ""
         self._cache: _PolicyCache | None = None
-        # Optional best-effort notification fired when a request is routed to the
-        # boss (e.g. the worker daemon posts an IRC notice). Never blocks gating.
-        self._on_request = on_request
 
     @property
     def nick(self) -> str:
@@ -647,14 +724,6 @@ class PermissionBroker:
         policy = self._load_policy()
         verdict = match_policy(tool_name, input_dict, policy)
         if verdict == "allow":
-            # Ceiling re-check on every policy-allow: a sticky `--always allow`
-            # rule for a benign tool (e.g. `Bash ls`) must NOT bypass the
-            # boss's grant ceiling when the worker comes around with a
-            # high-risk Bash invocation (`rm -rf`, `git push`, etc). Without
-            # this re-check, one approved `Bash ls --always` whitelists every
-            # Bash because the sticky rule matches by tool name only.
-            if self._boss and is_above_ceiling(tool_name, input_dict, self._boss):
-                return await self._request_from_boss(tool_name, input_dict)
             return PermissionResultAllow(updated_input=None)
         if verdict == "deny":
             return PermissionResultDeny(
@@ -684,22 +753,6 @@ class PermissionBroker:
         }
         _atomic_write_json(queue_path, payload)
 
-        # Best-effort notify the boss (e.g. an IRC post). A failure here must
-        # never block or fail the gate — the file queue is the source of truth
-        # and the boss can still find the request by polling.
-        if self._on_request is not None:
-            try:
-                await self._on_request(dict(payload))
-            except asyncio.CancelledError:
-                self._best_effort_unlink(queue_path)
-                raise
-            except Exception:  # noqa: BLE001 — notification is advisory
-                logger.warning(
-                    "on_request notification failed for %s; boss must poll",
-                    request_id,
-                    exc_info=True,
-                )
-
         try:
             decision = await self._await_decision(decision_path, request_id=request_id)
         except asyncio.CancelledError:
@@ -719,7 +772,27 @@ class PermissionBroker:
         reason = decision.get("reason", "")
 
         if scope == "always" and verdict in ("allow", "deny"):
-            self._append_sticky_rule(verdict, tool_name, decision)
+            try:
+                self._append_sticky_rule(verdict, tool_name, decision)
+            except BareStickyApproveRefusedError:
+                # Demote-rather-than-fail (Task 5.1c). A sticky --always allow
+                # for a high-risk tool without input_regex would whitelist every
+                # invocation of the tool; the broker treats this approval as
+                # scope=once instead (the in-flight call is still honored) and
+                # drops a notice so the boss/dashboard can surface the demote.
+                logger.warning(
+                    "Demoting sticky allow to scope=once for %s on %s: "
+                    "no input_regex for high-risk tool",
+                    request_id,
+                    tool_name,
+                )
+                _write_demote_notice(
+                    request_id,
+                    tool_name,
+                    "no input_regex for high-risk tool",
+                    boss=self._boss,
+                    helper_nick=self._nick,
+                )
 
         # Drop the policy cache so the freshly-appended rule is visible to
         # the next call.
@@ -739,21 +812,167 @@ class PermissionBroker:
         )
 
     async def _await_decision(self, decision_path: str, request_id: str = "") -> dict[str, Any]:
-        """Poll until the decision file exists and parses, then return it. On
-        timeout, return a synthetic deny — never block forever.
+        """Wait for the decision file to appear, then return its parsed content.
 
-        Reads are best-effort each tick: a transient ``OSError`` (the file was
-        removed between the existence check and the open) or ``JSONDecodeError``
-        (a non-atomic writer mid-write) is swallowed and the loop retries on the
-        next tick. The boss scripts write atomically via ``os.replace`` so a
-        complete, valid file is the steady state.
+        Two implementations, chosen at runtime:
 
-        Timeout behaviour: after ``_PERM_DECISION_TIMEOUT_SECONDS`` of no
-        decision, the broker returns a deny with ``auto=True`` and a timeout
-        ``reason``. This prevents a dead/unresponsive boss from hanging the
-        worker's SDK call forever — the SDK sees an honest deny and the agent
-        can proceed (try a different tool, ask the human, or exit cleanly).
+        - **watchdog path (Phase 5.6, ``_HAS_WATCHDOG=True``).** Schedule
+          a ``watchdog.observers.Observer`` on the decisions directory
+          filtered for ``<request_id>.json``. On file creation the
+          observer thread schedules ``future.set_result(decision)`` via
+          ``loop.call_soon_threadsafe``; the broker awaits the future.
+          Wall-clock latency drops from ~125 ms median (half the 250 ms
+          poll) to single-digit milliseconds on Linux/macOS.
+
+        - **polling fallback.** When ``watchdog`` is unavailable (or the
+          ``CULTURE_DISABLE_WATCHDOG=1`` env override is set), the
+          legacy 250 ms poll loop is used. Identical behaviour to the
+          pre-Phase-5.6 broker so a minimal-deps deploy still works.
+
+        Timeout behaviour is the same in both paths: after
+        ``_PERM_DECISION_TIMEOUT_SECONDS`` of no decision, the broker
+        returns a deny with ``auto=True`` and a timeout ``reason``.
+        This prevents a dead/unresponsive boss from hanging the
+        worker's SDK call forever — the SDK sees an honest deny and the
+        agent can proceed (try a different tool, ask the human, or
+        exit cleanly).
+
+        Reads are best-effort: a transient ``OSError`` (the file was
+        removed between the existence check and the open) or
+        ``JSONDecodeError`` (a non-atomic writer mid-write) is
+        swallowed and the wait continues. The boss scripts write
+        atomically via ``os.replace`` so a complete, valid file is the
+        steady state.
         """
+        # Fast path: decision already exists. Avoids the cost of
+        # spinning up an observer for the (common) case where the
+        # boss decided before the worker entered this method.
+        decision = self._try_read_decision(decision_path)
+        if decision is not None:
+            return decision
+
+        if _HAS_WATCHDOG:
+            try:
+                return await self._await_decision_watchdog(
+                    decision_path=decision_path,
+                    request_id=request_id,
+                )
+            except Exception:  # noqa: BLE001 — fall back to polling
+                logger.warning(
+                    "watchdog path failed for %s; falling back to polling",
+                    request_id or decision_path,
+                    exc_info=True,
+                )
+        return await self._await_decision_polling(
+            decision_path=decision_path,
+            request_id=request_id,
+        )
+
+    async def _await_decision_watchdog(
+        self,
+        decision_path: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """Watchdog-backed wait: Observer fires a Future on file create."""
+        # Local imports so a watchdog ImportError at runtime falls back
+        # cleanly via the outer try/except even when ``_HAS_WATCHDOG``
+        # was True at module load time.
+        from watchdog.events import PatternMatchingEventHandler
+        from watchdog.observers import Observer
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        target_basename = os.path.basename(decision_path)
+        target_dir = os.path.dirname(decision_path)
+
+        # Make sure the directory exists so Observer.schedule does not
+        # raise. The boss's write_decision creates the directory too,
+        # but the broker can be called before any boss decision has
+        # been written for the first time.
+        _mkdir_secure(target_dir)
+
+        def _try_resolve_from(path: str) -> bool:
+            """Read+parse path; resolve the future if successful."""
+            decision = self._try_read_decision(path)
+            if decision is None:
+                return False
+            if not future.done():
+                future.set_result(decision)
+            return True
+
+        class _DecisionHandler(PatternMatchingEventHandler):
+            def __init__(self, parent_target: str) -> None:
+                super().__init__(
+                    patterns=[parent_target, "*.json"],
+                    ignore_patterns=[".tmp-*", "*.tmp"],
+                    ignore_directories=True,
+                    case_sensitive=True,
+                )
+                self._target = parent_target
+
+            def _maybe(self, path: str) -> None:
+                if os.path.basename(path) != self._target:
+                    return
+                # Schedule the read on the asyncio loop thread so
+                # ``future.set_result`` happens on the right thread.
+                loop.call_soon_threadsafe(_try_resolve_from, path)
+
+            def on_created(self, event: Any) -> None:
+                if not event.is_directory:
+                    self._maybe(event.src_path)
+
+            def on_moved(self, event: Any) -> None:
+                if event.is_directory:
+                    return
+                dest = getattr(event, "dest_path", "") or ""
+                if dest:
+                    self._maybe(dest)
+
+        observer = Observer()
+        handler = _DecisionHandler(target_basename)
+        observer.schedule(handler, path=target_dir, recursive=False)
+        observer.daemon = True
+        observer.start()
+
+        try:
+            # Re-check: the file could have appeared between the fast
+            # path above and the observer starting. Drop the result
+            # straight into the future; the observer (if it also fires)
+            # will be a no-op via the ``future.done()`` guard.
+            if _try_resolve_from(decision_path):
+                return future.result()
+            try:
+                return await asyncio.wait_for(
+                    future,
+                    timeout=_PERM_DECISION_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Perm-broker timeout on %s: boss did not decide in %ds; auto-deny.",
+                    request_id or decision_path,
+                    _PERM_DECISION_TIMEOUT_SECONDS,
+                )
+                return {
+                    "verdict": "deny",
+                    "reason": (
+                        f"timeout: boss did not respond in {_PERM_DECISION_TIMEOUT_SECONDS}s"
+                    ),
+                    "scope": "once",
+                    "auto": True,
+                }
+        finally:
+            try:
+                observer.stop()
+                observer.join(timeout=2.0)
+            except Exception:  # noqa: BLE001
+                logger.debug("watchdog Observer teardown raised", exc_info=True)
+
+    async def _await_decision_polling(
+        self,
+        decision_path: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """Legacy 250 ms polling path. Used when watchdog is unavailable."""
         deadline = time.monotonic() + _PERM_DECISION_TIMEOUT_SECONDS
         while True:
             decision = self._try_read_decision(decision_path)
@@ -780,7 +999,8 @@ class PermissionBroker:
         """Read+parse a decision file, or None if not yet readable/valid."""
         try:
             with open(decision_path, encoding="utf-8") as handle:
-                return json.load(handle)
+                data: dict[str, Any] = json.load(handle)
+                return data
         except (OSError, json.JSONDecodeError):
             return None
 
@@ -790,7 +1010,41 @@ class PermissionBroker:
         tool_name: str,
         decision: dict[str, Any],
     ) -> None:
-        """Append a sticky rule to this helper's policy file."""
+        """Append a sticky rule to this helper's policy file.
+
+        For ``verdict='allow'`` on a high-risk tool (``Bash``/``Edit``/
+        ``Write``/``mcp__*``) the decision MUST carry a non-empty
+        ``input_regex`` — a bare sticky allow would whitelist every invocation
+        of the tool. The check inspects BOTH ``tool_name`` AND the resolved
+        ``decision['pattern']`` so a ``--pattern Bash --tool Foo`` approval
+        cannot smuggle a bare Bash allow past the gate.
+
+        Raises :class:`BareStickyApproveRefusedError` on a bare high-risk
+        sticky allow. The caller (``_request_from_boss``) catches this and
+        demotes the approval to ``scope=once`` (writing a demote notice).
+        """
+        input_regex = decision.get("input_regex")
+        raw_pattern = decision.get("pattern")
+        # Defensive: the persisted decision is JSON-deserialised, so a
+        # malformed approver could set ``pattern`` to a non-string. Treat
+        # non-strings as absent so the high-risk classifier never sees one.
+        pattern_override = raw_pattern if isinstance(raw_pattern, str) else ""
+        if verdict == "allow":
+            # Tool itself OR the override pattern: either being high-risk
+            # without an input_regex is a bypass surface. Qodo PR #50 #5:
+            # input_regex MUST be a non-empty string here — the same
+            # strict gate the writer applies — otherwise the persisted
+            # rule below silently drops it and the sticky allow becomes
+            # a bare match-everything rule.
+            high_risk_tool = _is_high_risk_tool(tool_name)
+            high_risk_pattern = bool(pattern_override) and _is_high_risk_tool(pattern_override)
+            regex_present = _is_valid_input_regex(input_regex)
+            if (high_risk_tool or high_risk_pattern) and not regex_present:
+                raise BareStickyApproveRefusedError(
+                    f"sticky --always allow for high-risk tool "
+                    f"{pattern_override or tool_name!r} requires an input_regex"
+                )
+
         policy_path = policy_path_for(self._nick)
         try:
             with open(policy_path, encoding="utf-8") as handle:
@@ -805,8 +1059,11 @@ class PermissionBroker:
         if not isinstance(rules, list):
             rules = []
         # Decision may carry an override pattern in ``decision["pattern"]``;
-        # otherwise the rule is an exact-tool-name match.
-        rule: dict[str, Any] = {"tool": decision.get("pattern") or tool_name}
+        # otherwise the rule is an exact-tool-name match. A narrowing
+        # ``input_regex`` (when present) is copied verbatim.
+        rule: dict[str, Any] = {"tool": pattern_override or tool_name}
+        if isinstance(input_regex, str) and input_regex:
+            rule["input_regex"] = input_regex
         # Avoid duplicating an identical rule.
         if rule not in rules:
             rules.append(rule)

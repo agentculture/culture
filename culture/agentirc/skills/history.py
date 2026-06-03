@@ -123,16 +123,60 @@ class HistorySkill(Skill):
         entries = list(buf)
         return entries[-count:]
 
+    # Observer nicks are minted by ``culture.overview.collector._temp_nick``
+    # as ``<servername>-_overview<hex>``. They are short-lived ephemeral
+    # readers used by the Mission Control dashboard (and the test harness)
+    # to scrape mesh state — they must read every channel's HISTORY
+    # without joining (which would pollute channels with JOIN/PART noise
+    # AND is refused for ``#task-*`` channels by the per-class ACL).
+    _OBSERVER_NICK_INFIX = "-_overview"
+
+    def _is_loopback_observer(self, client: Client) -> bool:
+        """True iff *client* is an ephemeral overview observer connected
+        from this host.
+
+        Two conjoined conditions — both must hold:
+
+        1. **Nick shape**: ``<server>-_overview<hex>``. Matches the
+           ``_temp_nick`` minter in ``culture/overview/collector.py`` —
+           any nick that does not start with this server's name + the
+           ``-_overview`` infix fails the check.
+        2. **Loopback origin**: the connection's remote address is
+           ``127.0.0.1`` / ``::1`` / ``localhost``. Off-host clients
+           cannot spoof the observer prefix even if they pick a
+           matching nick.
+
+        Both conditions are required so the observer exemption cannot
+        be abused as an authentication bypass over the network.
+        """
+        nick = getattr(client, "nick", "") or ""
+        expected_prefix = f"{self.server.config.name}{self._OBSERVER_NICK_INFIX}"
+        if not nick.startswith(expected_prefix):
+            return False
+        host = getattr(client, "host", "") or ""
+        return host in ("127.0.0.1", "::1", "localhost")
+
     def _client_may_read_history(self, client: Client, channel_name: str) -> bool:
         """A client may read a channel's history only if it is a current
         member of the channel. Mirrors the gate used by PART / TOPIC /
         PRIVMSG-to-channel paths in client.py. An unknown channel is
         treated as forbidden — a client that joins it implicitly creates
         it, but until then the history is not theirs to see.
+
+        Exception: a loopback overview observer (see
+        :meth:`_is_loopback_observer`) bypasses the membership check.
+        These are server-side scrape clients used by the dashboard /
+        mesh-state collector; they must not join channels (would
+        pollute history + is refused by the per-class ACL on
+        ``#task-*``) yet must surface every channel's recent activity.
+        The conjoined ``nick-prefix + loopback-origin`` gate prevents
+        the exemption from becoming a network-reachable bypass.
         """
         channel_obj = self.server.channels.get(channel_name)
         if channel_obj is None:
             return False
+        if self._is_loopback_observer(client):
+            return True
         return client in channel_obj.members
 
     def search(self, channel: str, term: str) -> list[HistoryEntry]:

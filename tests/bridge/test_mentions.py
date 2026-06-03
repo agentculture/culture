@@ -107,7 +107,12 @@ async def test_trailing_punctuation_stripped(server, make_client):
 
 @pytest.mark.asyncio
 async def test_mention_in_dm(server, make_client):
-    """Mention in a DM sends NOTICE to mentioned user."""
+    """Mention in a DM sends NOTICE to mentioned user.
+
+    TODO(Phase 3): rewrite against bridge spool-delivery semantics once the
+    real spool exists (per 2026-06-03 mesh-rearchitecture plan, Task 2.10).
+    Currently retains pass-through NOTICE assertions.
+    """
     client1 = await make_client(nick="testserv-ori", user="ori")
     await make_client(nick="testserv-claude", user="claude")
     client3 = await make_client(nick="testserv-bob", user="bob")

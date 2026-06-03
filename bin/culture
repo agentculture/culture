@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec /Users/test/.local/bin/uv --project /Users/test/Documents/GitHub/culture run culture "$@"

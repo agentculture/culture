@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ import time
 from typing import Any
 
 from culture.aio import maybe_await
+from culture.clients import _mission as _mission_persistence
 from culture.clients._audit import AuditWriter
 from culture.clients._context_watch import (
     ContextWatchState,
@@ -21,7 +23,6 @@ from culture.clients._context_watch import (
     take_reminder,
 )
 from culture.clients._daemon_log import DaemonLog
-from culture.clients import _mission as _mission_persistence
 from culture.clients._perm_broker import handoff_path_for
 from culture.clients._socket_link import ensure_socket_symlink, remove_socket_symlink
 from culture.clients.claude.agent_runner import AgentRunner
@@ -522,7 +523,6 @@ class AgentDaemon:
             on_exit=self._on_agent_exit,
             on_message=self._on_agent_message,
             on_usage=self._on_agent_usage,
-            on_perm_request=self._on_perm_request,
             on_turn_complete=self._on_turn_complete,
             on_turn_failed=self._on_turn_failed,
             metrics=self._metrics,
@@ -848,13 +848,22 @@ class AgentDaemon:
                 f"Check its audit, consider re-driving or restarting."
             )
         if reason == "stalled_in_retry_loop":
-            return (
+            base = (
                 f"[stall] worker {nick} has been issuing AssistantMessages "
                 f"(tool calls) but has not COMPLETED a turn in {since}s — "
                 f"likely a tool-retry loop (e.g. SDK CLI 'Stream closed' on "
                 f"every Write). Check its audit for the repeating tool_use, "
                 f"consider re-driving with a different approach."
             )
+            # Auto-escalation enrichment (plenty's P1 — Phase 6.2): pull the
+            # failing tool name + input + last exception text from the
+            # worker's own recent audit-log entries so the boss DM names
+            # the failing tool directly instead of forcing a follow-up
+            # audit read.
+            context = self._recent_tool_failure_context()
+            if context:
+                base = base + "\n" + context
+            return base
         if reason == "stalled_in_failed_retry":
             return (
                 f"[stall] worker {nick} has accumulated "
@@ -867,6 +876,92 @@ class AgentDaemon:
             f"[stall] worker {nick} engaged but has been silent for {since}s "
             f"(no new turns). Check its audit, consider re-driving."
         )
+
+    def _recent_tool_failure_context(self, max_chars: int = 500) -> str:
+        """Pull the failing tool name + input + last exception text from
+        this worker's most recent audit entries.
+
+        Plenty's P1 fix (Phase 6.2): when a ``stalled_in_retry_loop`` DM
+        fires, the boss should see WHICH tool is wedged and with WHAT
+        input, plus the most recent exception/error text from the tool
+        result — without having to round-trip an audit read. The audit
+        JSONL (``audit_path_for(<nick>)``) is the worker's own write log;
+        we read its tail, walk backwards through assistant messages, and
+        extract the most recent ``tool_uses`` entry alongside the most
+        recent ``tool_results`` entry. Each field is truncated at
+        ``max_chars`` to keep the DM under typical IRC line budgets.
+
+        Returns the empty string when no useful context is available
+        (no audit file, no tool calls, unreadable JSONL) — the caller
+        skips the appended block in that case.
+        """
+        from culture.clients._audit import audit_path_for
+
+        path = audit_path_for(self.agent.nick)
+        try:
+            with open(path, "rb") as fh:
+                # Read the last ~64 KiB — enough to cover several recent
+                # assistant turns even with full tool-call/result blocks.
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                fh.seek(max(0, size - 65536))
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            return ""
+        tool_name = ""
+        tool_input = ""
+        error_text = ""
+        for line in reversed(tail.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if rec.get("type") != "assistant":
+                continue
+            tool_uses = rec.get("tool_uses") or []
+            tool_results = rec.get("tool_results") or []
+            # Most recent tool_use carries name + input. The audit's
+            # ``input`` field is already a stringified+capped value
+            # (see _audit.py:_summarise_assistant_message), so we can
+            # surface it directly.
+            if not tool_name and tool_uses:
+                last_use = tool_uses[-1]
+                if isinstance(last_use, dict):
+                    tool_name = str(last_use.get("name", "") or "")
+                    tool_input = str(last_use.get("input", "") or "")
+            # Tool results carry the error/result text. We treat ANY
+            # tool_result content as potential error text (the SDK CLI's
+            # 'Stream closed' bug surfaces here verbatim); the boss can
+            # eyeball the content to decide.
+            if not error_text and tool_results:
+                last_result = tool_results[-1]
+                if isinstance(last_result, dict):
+                    content = last_result.get("content")
+                    if content is None:
+                        content = last_result.get("preview", "")
+                    error_text = str(content or "")
+            if tool_name and (error_text or not tool_results):
+                break
+        if not tool_name and not error_text:
+            return ""
+
+        def _truncate(value: str) -> str:
+            value = value.strip()
+            if len(value) <= max_chars:
+                return value
+            return value[:max_chars] + f"…[truncated, {len(value)} chars total]"
+
+        lines = ["[failing tool context]"]
+        if tool_name:
+            lines.append(f"tool: {_truncate(tool_name)}")
+        if tool_input:
+            lines.append(f"input: {_truncate(tool_input)}")
+        if error_text:
+            lines.append(f"last_result: {_truncate(error_text)}")
+        return "\n".join(lines)
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
@@ -1090,46 +1185,6 @@ class AgentDaemon:
             logger.warning("Failed to DM boss %s with %s", boss, action, exc_info=True)
             return False
 
-    async def _on_perm_request(self, payload: dict) -> None:
-        """Surface a worker permission request to its boss.
-
-        Fired by this worker's PermissionBroker when a tool call routes to the
-        boss. DMs the owning boss (``self.agent.boss``) AND records to
-        daemon-log so the dashboard sees the request even if the DM fails.
-        """
-        boss = _boss_nick(self.agent)
-        if not boss:
-            return
-        tool = payload.get("tool_name", "?")
-        req_id = payload.get("id", "?")
-        preview = self._perm_input_preview(tool, payload.get("input", {}))
-        notice = (
-            f"[perm] worker {self.agent.nick} wants {tool}: {preview} "
-            f"— id {req_id} (approve/deny)"
-        )
-        await self._notify_boss(
-            "perm_request_notified",
-            notice,
-            tool=tool,
-            request_id=req_id,
-        )
-
-    @staticmethod
-    def _perm_input_preview(tool: str, input_dict: dict) -> str:
-        """Short one-line preview of a tool's input for the perm notice."""
-        if tool == "Bash":
-            value = input_dict.get("command", "")
-        elif tool in ("Edit", "Write"):
-            value = input_dict.get("file_path", "")
-        else:
-            try:
-                import json as _json
-
-                value = _json.dumps(input_dict)
-            except (TypeError, ValueError):
-                value = repr(input_dict)
-        return str(value)[:80]
-
     def _maybe_prepend_reminder(self, prompt: str) -> str:
         """Prepend a post-compact handoff reminder when one is owed."""
         if take_reminder(self._context_watch):
@@ -1150,7 +1205,8 @@ class AgentDaemon:
                 f"You are {self.agent.nick}, an AI agent on the culture IRC network.\n"
                 "You have IRC tools available via the irc skill. Use them to communicate.\n"
                 f"Your working directory is {self.agent.directory}.\n"
-                "Check IRC channels periodically with irc_read() for new messages.\n"
+                "To talk to your boss, reply in your task channel. Your boss reads "
+                "channel replies via the bridge. There is no IRC tool — do not search for one.\n"
                 "When you finish a task, share results in the appropriate channel with irc_send()."
             )
         # Boss agents: append persisted mission so a restart re-loads
