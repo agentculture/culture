@@ -63,10 +63,16 @@ class _RaisingAsyncIter:
 
 
 def _stub_claude_sdk():
-    """Insert minimal stubs for claude_agent_sdk into sys.modules."""
-    if "claude_agent_sdk" in sys.modules:
-        return
+    """Insert minimal stubs for claude_agent_sdk into sys.modules.
 
+    Force-replaces the entry even if the real SDK is already imported —
+    in CI the real package IS installed and conftest / other tests can
+    import it before this file's collection runs. Without the force,
+    the tests below construct ``sdk.ResultMessage(session_id=..., ...)``
+    against the real 0.2.x dataclass and TypeError on its newer
+    positional fields (subtype / duration_ms / duration_api_ms /
+    num_turns). The stub is the contract this file was written against.
+    """
     mod = types.ModuleType("claude_agent_sdk")
 
     class _Base:
@@ -78,11 +84,34 @@ def _stub_claude_sdk():
             self.content = content or []
 
     class ResultMessage(_Base):
-        def __init__(self, session_id="sid-1", is_error=False, result="", usage=None):
-            self.session_id = session_id
+        # Mirrors claude_agent_sdk 0.2.x ResultMessage signature with
+        # stub-friendly defaults so kwargs-only callsites in this file
+        # work across SDK versions.
+        def __init__(
+            self,
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="sid-1",
+            stop_reason=None,
+            total_cost_usd=None,
+            usage=None,
+            result="",
+            structured_output=None,
+        ):
+            self.subtype = subtype
+            self.duration_ms = duration_ms
+            self.duration_api_ms = duration_api_ms
             self.is_error = is_error
-            self.result = result
+            self.num_turns = num_turns
+            self.session_id = session_id
+            self.stop_reason = stop_reason
+            self.total_cost_usd = total_cost_usd
             self.usage = usage
+            self.result = result
+            self.structured_output = structured_output
 
     class ClaudeAgentOptions(_Base):
         def __init__(self, **kwargs):
