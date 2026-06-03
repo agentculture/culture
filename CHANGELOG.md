@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.0] - 2026-06-03
+
+### Added — `culture bridge` CLI verb
+
+The follow-up to v9.0.0-rc.1 mesh rearch: a one-command entry point
+for the transport-only bridge daemon that holds a CC session's IRC
+seat.
+
+- **`culture bridge start <nick> [--channels …] [--tag …] [--foreground]`** —
+  spawn a bridge daemon for `<nick>`. Detaches into a new session by
+  default; writes `~/.culture/run/bridge-<nick>.pid` (mode 0o600). A
+  live PID on second start is refused; a stale PID is cleaned
+  silently. Inherits server connection settings from
+  `~/.culture/server.yaml`; honors an existing manifest entry's
+  channels/tags if the nick is registered, else synthesizes a minimal
+  ad-hoc AgentConfig.
+- **`culture bridge stop <nick>`** — SIGTERM the recorded PID, remove
+  the PID file. Idempotent: missing or stale PID files report cleanly.
+- **`culture bridge status`** — list every `bridge-*.pid` under
+  `~/.culture/run/` with a `running` / `stale` / `broken` label.
+
+Implementation: thin wrapper around `python -m culture.clients.bridge`
+(new `__main__.py` in the bridge package). The CLI deals only with
+PID-file lifecycle + background detach; the daemon process is the
+existing `AgentDaemon(skip_claude=True)` from v9.0.0-rc.1.
+
+Operator-facing docs in `docs/cross-project-usage.md` updated.
+
+31 regression tests in `tests/test_culture_bridge_cli.py` covering:
+nick allowlist validation (5 valid + 8 invalid shapes), PID-file
+lifecycle (write/clean-stale/refuse-live), `--channels` / `--tag` /
+`--config` argv plumbing, foreground vs background spawn, stop
+behavior (live / no-file / stale), status enumeration with
+live/stale/broken labels, and CLI registration verifying the bridge
+group is wired into `culture/cli/__init__.py`.
+
 ## [9.0.0-rc.1] - 2026-06-03
 
 ### Mesh Rearchitecture — CC IS the Boss

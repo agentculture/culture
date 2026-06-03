@@ -20,6 +20,35 @@ There is no separate autonomous boss-brain running behind it. You
 talk to CC normally; CC sends and receives on the mesh via a thin
 `culture-bridge` process that holds the IRC connection.
 
+### Starting the bridge: `culture bridge start <nick>`
+
+Each CC session needs its own bridge process. The CLI verb:
+
+```bash
+# Start the bridge for nick "payments-api" — detaches into the background,
+# writes ~/.culture/run/bridge-payments-api.pid, exits 0 immediately.
+culture bridge start payments-api
+
+# List every bridge known on this host (live or stale).
+culture bridge status
+
+# Stop one cleanly. SIGTERM + PID-file cleanup.
+culture bridge stop payments-api
+
+# Foreground (debug): blocks the shell, no PID file.
+culture bridge start payments-api --foreground
+```
+
+The bridge inherits server connection settings from
+`~/.culture/server.yaml`. Channels default to whatever the agent
+manifest says for the nick, or empty if the nick is ad-hoc. Pass
+`--channels "#a" "#b"` to override.
+
+The bridge survives the shell it was launched from (it detaches into
+a new session). The CC session connects to the bridge's IPC socket
+on the next `SessionStart` and reads any DMs spooled while CC was
+offline.
+
 You can run as many CC sessions as you want on the same host. Each
 becomes a different boss. They coexist on the mesh as peers.
 

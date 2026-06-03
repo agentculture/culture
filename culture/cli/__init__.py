@@ -6,6 +6,7 @@ Commands are organized into noun-based groups:
     culture mesh     {overview,setup,update,console}
     culture channel  {list,read,message,who}
     culture bot      {create,start,stop,list,inspect,archive,unarchive}
+    culture bridge   {start,stop,status}   — transport-only IRC bridge for CC-IS-the-boss sessions
     culture skills   {install}
     culture devex    {...developer-experience passthrough (powered by agex-cli)...}
     culture afi      {...agent-first interface passthrough (powered by afi-cli)...}
@@ -28,6 +29,7 @@ from culture.cli import (
     agent,
     boss,
     bot,
+    bridge,
     channel,
     dashboard,
     devex,
@@ -45,6 +47,7 @@ GROUPS = [
     channel,
     bot,
     boss,
+    bridge,
     dashboard,
     watcher,
     skills,
