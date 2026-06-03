@@ -353,15 +353,19 @@ class IRCObserver:
             writer.write(f"CHANARCHIVE {channel}\r\n".encode())
             await writer.drain()
 
-            lines = await self._recv_lines(reader, timeout=2.0)
-            for line in lines:
-                low = line.lower()
-                if "has been archived" in low:
+            # ``_recv_lines`` returns parsed ``Message`` objects, not raw
+            # strings. The acknowledgement text lives in the trailing
+            # NOTICE param; join all params with spaces so we can search
+            # the textual body case-insensitively.
+            messages = await self._recv_lines(reader, timeout=2.0)
+            for msg in messages:
+                body = " ".join(str(p) for p in msg.params).lower()
+                if "has been archived" in body:
                     return True
                 # Server-side refusal patterns surface as NOTICE: missing
                 # channel, lacking operator, malformed args. None of these
                 # should be reported as success.
-                if "no such channel" in low or "do not have permission" in low:
+                if "no such channel" in body or "do not have permission" in body:
                     return False
             # No explicit ack within the timeout window → treat as failure.
             # We'd rather a CLI say "unknown" than falsely claim success.
