@@ -142,6 +142,58 @@ class TestEndToEnd:
         assert os.environ["CULTURE_NICK"] == "fork-rearch"
 
 
+class TestBridgeSpawnHonesty:
+    """v9.1.2: when the bridge spawn cannot succeed, the
+    additionalContext block MUST say so explicitly — it must NOT
+    claim the session is on the mesh. (The original bug shipped a
+    fire-and-forget Popen + an optimistic system-reminder; the lie
+    cost a debugging round when nick-resolver and bridge-validator
+    collided.)"""
+
+    def test_invalid_nick_returns_error_string(self, monkeypatch):
+        # bridge_client is present + bridge not running, but nick is
+        # missing a hyphen → refuse to spawn.
+        monkeypatch.setattr(hook._bridge_client, "bridge_running", lambda nick: False)
+        err = hook._ensure_bridge_running("bareNick", "/tmp")
+        assert err is not None
+        assert "<server>-<agent>" in err
+        assert "bareNick" in err
+
+    def test_error_surfaces_in_additional_context(self):
+        ctx = hook._format_additional_context(
+            nick="bareNick",
+            mission="",
+            roster="",
+            spool=[],
+            bridge_error="refusing to spawn bridge: bad nick",
+        )
+        assert "BRIDGE SPAWN FAILED" in ctx
+        # The optimistic "this CC session is X on the mesh" claim MUST
+        # NOT appear when the spawn failed. (The negation phrase "is
+        # NOT on the mesh" is allowed and intentional.)
+        assert "this CC session is" not in ctx
+        # The reason is surfaced.
+        assert "refusing to spawn bridge: bad nick" in ctx
+        # The fix instructions are present so the operator knows what
+        # to do next.
+        assert "culture bridge start" in ctx
+
+    def test_success_path_unchanged(self):
+        """Sanity: when bridge_error is None, the original happy-path
+        context is produced and contains the expected nick + roster."""
+        ctx = hook._format_additional_context(
+            nick="local-fork",
+            mission="",
+            roster="peer1, peer2",
+            spool=[],
+            bridge_error=None,
+        )
+        assert "on the mesh" in ctx
+        assert "local-fork" in ctx
+        assert "peer1, peer2" in ctx
+        assert "BRIDGE SPAWN FAILED" not in ctx
+
+
 class _StringIO:
     """Lightweight stdin replacement — only needs ``.read()``."""
 
