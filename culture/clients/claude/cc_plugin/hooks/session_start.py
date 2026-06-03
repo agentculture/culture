@@ -69,16 +69,22 @@ def _read_stdin_json() -> dict[str, Any]:
 
 
 def _ensure_bridge_running(nick: str, repo_root: str) -> None:
-    """Best-effort: launch ``culture agent start <nick>`` if no bridge
+    """Best-effort: launch ``culture bridge start <nick>`` if no bridge
     socket exists. We do NOT wait for the daemon — Claude Code starts
     the assistant immediately and the daemon comes up in parallel.
     Subsequent IPC verbs will retry once the socket appears.
+
+    v9.1.0: routes through the new ``culture bridge start`` CLI verb
+    (PR #51) instead of ``culture agent start``. The latter expects
+    the nick to be a manifest entry with a configured backend; the
+    former is exactly what's wanted here — a transport-only bridge
+    that's ad-hoc per CC session.
     """
     if _bridge_client is None:
         return
     if _bridge_client.bridge_running(nick):
         return
-    cmd = [sys.executable, "-m", "culture", "agent", "start", nick]
+    cmd = [sys.executable, "-m", "culture", "bridge", "start", nick]
     try:
         subprocess.Popen(  # noqa: S603 — fixed command shape
             cmd,

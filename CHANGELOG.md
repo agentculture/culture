@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.1] - 2026-06-03
+
+### Fixed
+
+- `cc_plugin/hooks/session_start.py` now auto-launches the bridge via
+  `culture bridge start <nick>` (the new CLI verb from v9.1.0) instead
+  of the legacy `culture agent start <nick>` path. The agent-CLI route
+  expects the nick to be a manifest entry with a configured backend;
+  the bridge-CLI route is exactly what's wanted here — a
+  transport-only daemon that's ad-hoc per CC session.
+
 ## [9.1.0] - 2026-06-03
 
 ### Added — `culture bridge` CLI verb
