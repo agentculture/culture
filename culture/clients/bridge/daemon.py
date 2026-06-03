@@ -117,9 +117,13 @@ class AgentDaemon:
 
         # Cross-process watchdog for owned worker daemons that died
         # without writing ``agent_exit`` (v8.19.8 — silent-death after
-        # DONE-FINAL pattern).
+        # DONE-FINAL pattern). The warned-set is persisted at
+        # ``~/.culture/bridge/silent-death-warned-<bridge-nick>.json``
+        # so bridge restarts don't re-DM CC about already-known dead
+        # workers (Phase 6.1 of the rearchitecture plan).
         self._silent_death_task: asyncio.Task | None = None
         self._silent_death_warned: set[str] = set()
+        self._silent_death_warned_path: str | None = None
         # MessageBuffer cursor persistence path (Phase 2.7); set when
         # the bridge starts so ``stop()`` can re-save before exit.
         self._cursor_path: str | None = None
@@ -314,6 +318,8 @@ class AgentDaemon:
 
         # 5. Silent-death watchdog (only for boss-tagged bridges).
         if "boss" in (getattr(self.agent, "tags", []) or []):
+            self._silent_death_warned_path = self._resolve_silent_death_warned_path(self.agent.nick)
+            self._load_silent_death_warned()
             self._silent_death_task = asyncio.create_task(self._silent_death_watchdog())
 
         # 6. FS observer (Phase 5.4) — push channel for broker files.
@@ -722,6 +728,7 @@ class AgentDaemon:
                     if self._daemon_log_indicates_clean_exit(nick):
                         continue
                     self._silent_death_warned.add(nick)
+                    self._save_silent_death_warned()
                     await self._daemon_log.record(
                         "idle_warning",
                         reason="silent_death_after_done",
@@ -773,6 +780,93 @@ class AgentDaemon:
                 return True
             return False
         return False
+
+    # ------------------------------------------------------------------
+    # Silent-death warned-set persistence (Phase 6.1)
+    # ------------------------------------------------------------------
+    #
+    # The watchdog warns about a worker exactly once per "death event"
+    # so the boss isn't pinged repeatedly about the same corpse. The
+    # warned-set used to live only in process memory, so a bridge
+    # restart would re-warn about workers that were already known dead
+    # (e.g. archived stalled workers that the operator already
+    # investigated and shelved). Persisting the set under
+    # ``~/.culture/bridge/silent-death-warned-<nick>.json`` makes the
+    # one-shot guarantee survive bridge restarts.
+    #
+    # Atomic-write pattern matches ``MessageBuffer.save`` (Phase 2.7):
+    # tempfile in the same directory + ``os.replace`` (POSIX atomic).
+
+    @staticmethod
+    def _resolve_silent_death_warned_path(nick: str) -> str:
+        """Return the persistence path for this bridge's warned-set."""
+        from culture.clients._perm_broker import culture_home
+
+        path = os.path.join(culture_home(), "bridge")
+        try:
+            os.makedirs(path, mode=0o700, exist_ok=True)
+        except OSError:
+            pass
+        safe = nick.replace("/", "_").replace("..", "_")
+        return os.path.join(path, f"silent-death-warned-{safe}.json")
+
+    def _load_silent_death_warned(self) -> None:
+        """Restore the warned-set from disk on bridge start.
+
+        Missing file is silent (first-run case). Malformed JSON logs a
+        warning and starts with an empty set — better to re-warn once
+        than to crash on a corrupt persistence file.
+        """
+        import json as _json
+
+        path = self._silent_death_warned_path
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                payload = _json.load(fh)
+        except (OSError, _json.JSONDecodeError) as exc:
+            logger.warning("Failed to load silent-death warned set from %s: %s", path, exc)
+            return
+        warned = payload.get("warned", []) if isinstance(payload, dict) else []
+        if not isinstance(warned, list):
+            logger.warning("silent-death warned-set file %s has unexpected shape; ignoring", path)
+            return
+        for nick in warned:
+            if isinstance(nick, str) and nick:
+                self._silent_death_warned.add(nick)
+
+    def _save_silent_death_warned(self) -> None:
+        """Atomically serialize the warned-set to disk."""
+        import json as _json
+        import tempfile
+
+        path = self._silent_death_warned_path
+        if not path:
+            return
+        try:
+            dirname = os.path.dirname(path)
+            os.makedirs(dirname, mode=0o700, exist_ok=True)
+            payload = {"schema": 1, "warned": sorted(self._silent_death_warned)}
+            fd, tmp_path = tempfile.mkstemp(
+                dir=dirname, prefix=".silent-death-warned-", suffix=".json.tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    _json.dump(payload, fh, ensure_ascii=False)
+                os.replace(tmp_path, path)
+                try:
+                    os.chmod(path, 0o600)
+                except OSError:
+                    pass
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError as exc:
+            logger.warning("Failed to save silent-death warned set to %s: %s", path, exc)
 
     async def _rejoin_owned_task_channels(self) -> None:
         """Rejoin ``#task-<suffix>`` channels for workers whose manifest-

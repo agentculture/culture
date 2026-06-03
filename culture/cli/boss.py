@@ -20,10 +20,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
+import time
 
 from culture.clients._audit import audit_path_for
 from culture.clients._daemon_log import daemon_log_path_for
@@ -43,6 +45,8 @@ from culture.config import load_config_or_default
 
 from .shared.constants import DEFAULT_CONFIG
 from .shared.ipc import agent_socket_path, get_observer, ipc_request
+
+logger = logging.getLogger(__name__)
 
 NAME = "boss"
 
@@ -135,6 +139,24 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "spawn time and is shown as the task title in the dashboard's channels "
         "view. Optional — when omitted the title falls back to mission.md "
         "headline or `<nick>'s work`.",
+    )
+    spawn_p.add_argument(
+        "--brief",
+        default="",
+        help="Brief text to deliver atomically with spawn (Phase 6.3, "
+        "plenty's P2 fix). When set, the spawn helper waits for the worker "
+        "to JOIN its #task channel (up to --brief-timeout seconds) and then "
+        "sends the brief in one go — no race window where the worker engages "
+        "then idles before the operator manages a separate `culture boss brief` "
+        "call. Omit to keep the legacy spawn-without-brief flow.",
+    )
+    spawn_p.add_argument(
+        "--brief-timeout",
+        dest="brief_timeout",
+        type=int,
+        default=30,
+        help="Seconds to wait for the worker to JOIN its #task channel before "
+        "the spawn helper gives up on delivering --brief. Default: 30s.",
     )
     spawn_p.add_argument("--config", default=DEFAULT_CONFIG)
 
@@ -786,6 +808,94 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
         _boss_irc("irc_topic", channel=task_chan, topic=irc_topic)
         persist_seed(task_chan, seed_text, overwrite=True)
     print(f"spawned {worker_nick} (boss={boss}, cwd={cwd}); channels {', '.join(joined)}")
+
+    # Phase 6.3 — atomic spawn+brief. Plenty's P2: the operator typically
+    # follows `culture boss spawn X` immediately with `culture boss brief
+    # X "…"`. Between those two calls the worker engages (audit/log lands)
+    # and the idle watchdog may fire ``never_briefed`` before the brief
+    # arrives. With ``--brief``, we wait for the worker to JOIN its #task
+    # channel and deliver the brief in-spawn so the two calls become one.
+    brief_text = (getattr(args, "brief", "") or "").strip()
+    if brief_text:
+        timeout = max(1, int(getattr(args, "brief_timeout", 30) or 30))
+        ok = _await_worker_join_and_brief(
+            worker_nick=worker_nick,
+            channel=task_chan,
+            brief_text=brief_text,
+            timeout_seconds=timeout,
+        )
+        if not ok:
+            sys.exit(1)
+
+
+def _await_worker_join_and_brief(
+    worker_nick: str,
+    channel: str,
+    brief_text: str,
+    timeout_seconds: int,
+    poll_seconds: float = 0.5,
+) -> bool:
+    """Poll the IRC server WHO list until *worker_nick* is in *channel*,
+    then PRIVMSG ``@<nick> <brief_text>`` and persist the seed/section
+    so the spawn+brief flow ends atomically.
+
+    Plenty's P2 (Phase 6.3): callers used to spawn, then immediately
+    brief in a second CLI call. The race window between spawn-start
+    and brief-arrival let the idle watchdog warn ``never_briefed``.
+    Folding the brief into spawn closes the window.
+
+    Returns True on successful delivery; False on timeout or send error
+    (the caller exits non-zero so the operator notices).
+    """
+    deadline = time.monotonic() + timeout_seconds
+    seen = False
+    while time.monotonic() < deadline:
+        try:
+            members = _channel_members(channel)
+        except Exception:  # noqa: BLE001 — transient IPC error → retry
+            time.sleep(poll_seconds)
+            continue
+        if worker_nick in members:
+            seen = True
+            break
+        time.sleep(poll_seconds)
+    if not seen:
+        print(
+            f"Error: worker {worker_nick} did not JOIN {channel} within "
+            f"{timeout_seconds}s — --brief NOT delivered. The worker may "
+            f"have failed to start; check `culture agent status` and "
+            f"`culture boss log {worker_nick.split('-', 1)[-1]}`.",
+            file=sys.stderr,
+        )
+        return False
+    text = f"@{worker_nick} {brief_text}"
+    resp = _boss_irc("irc_send", channel=channel, message=text)
+    if not (resp and resp.get("ok")):
+        print(
+            f"Error: worker {worker_nick} joined {channel} but the brief "
+            f"PRIVMSG could not be sent (boss daemon unreachable over IPC).",
+            file=sys.stderr,
+        )
+        return False
+    print(f"briefed {worker_nick} in {channel}")
+    # Persist the brief as the channel seed + living-brief section,
+    # mirroring _cmd_brief so the dashboard / channel view sees this
+    # the same way as a separate ``culture boss brief`` would have
+    # produced. Idempotent — persist_seed is write-once.
+    try:
+        from culture.clients._channel_brief import persist_section
+        from culture.clients._seed import load_seed, persist_seed
+
+        if load_seed(channel) is None:
+            if persist_seed(channel, brief_text):
+                irc_topic = " ".join(brief_text.split())
+                if len(irc_topic) > 200:
+                    irc_topic = irc_topic[:197] + "..."
+                _boss_irc("irc_topic", channel=channel, topic=irc_topic)
+        persist_section(channel, f"brief → {worker_nick}", brief_text)
+    except Exception:  # noqa: BLE001 — seed/section best-effort
+        logger.debug("Failed to persist seed/section for %s", channel, exc_info=True)
+    return True
 
 
 def _boss_inherits() -> tuple[str, str]:

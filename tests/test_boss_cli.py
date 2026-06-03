@@ -684,3 +684,152 @@ class TestSpawnBossPrefix:
         assert cmd[i + 1] == "qa"
         # Final nick = local-qa
         assert "local-qa" in captured["start_args"]
+
+
+class TestSpawnAtomicBrief:
+    """Phase 6.3 — ``culture boss spawn <name> --brief "<text>"`` waits for
+    the worker to JOIN its #task channel, then delivers the brief in one
+    atomic flow. Closes plenty's P2 race window between spawn and a
+    follow-up ``culture boss brief`` call.
+    """
+
+    def _run_spawn_with_brief(
+        self,
+        home,
+        args,
+        members_responses,
+        irc_send_ok=True,
+        boss_env="local-boss",
+    ):
+        """Drive ``_cmd_spawn`` with mocked subprocess + IRC + WHO.
+
+        ``members_responses`` is a list of WHO answers — each call to
+        ``_channel_members`` returns the next one (poll loop).
+        """
+        import argparse
+        from unittest.mock import patch
+
+        from culture.cli import boss as boss_mod
+
+        captured = {
+            "send_calls": [],
+            "create_args": None,
+            "register_args": None,
+            "start_args": None,
+        }
+
+        def fake_run(cmd, **_kwargs):
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            if isinstance(cmd, list):
+                if "create" in cmd:
+                    captured["create_args"] = list(cmd)
+                elif "register" in cmd:
+                    captured["register_args"] = list(cmd)
+                elif "start" in cmd:
+                    captured["start_args"] = list(cmd)
+            return R()
+
+        def fake_boss_irc(msg_type, **kwargs):
+            captured["send_calls"].append((msg_type, kwargs))
+            if msg_type == "irc_send":
+                return {"ok": bool(irc_send_ok)}
+            return {"ok": True}
+
+        members_iter = iter(members_responses)
+
+        def fake_channel_members(_channel):
+            try:
+                return next(members_iter)
+            except StopIteration:
+                return members_responses[-1] if members_responses else []
+
+        ns = argparse.Namespace(
+            name=args["name"],
+            boss=args.get("boss", ""),
+            server=args.get("server"),
+            cwd=args.get("cwd"),
+            model=args.get("model", ""),
+            channels=args.get("channels", ""),
+            role=args.get("role", ""),
+            topic=args.get("topic", ""),
+            brief=args.get("brief", ""),
+            brief_timeout=args.get("brief_timeout", 5),
+            config="server.yaml",
+        )
+
+        env = {"CULTURE_HOME": str(home), "CULTURE_NICK": boss_env}
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(boss_mod, "subprocess") as sub_mock,
+            patch.object(boss_mod, "_boss_irc", fake_boss_irc),
+            patch.object(boss_mod, "_channel_members", fake_channel_members),
+            patch.object(boss_mod, "seed_helper_policy", lambda nick: None),
+            # Skip the slow poll between WHO attempts — the test drives a
+            # deterministic sequence of member responses.
+            patch.object(boss_mod.time, "sleep", lambda _s: None),
+        ):
+            sub_mock.run.side_effect = fake_run
+            exit_code = 0
+            try:
+                boss_mod._cmd_spawn(ns)
+            except SystemExit as exc:
+                exit_code = exc.code or 0
+        return captured, exit_code
+
+    def test_brief_delivered_after_worker_joins(self, home):
+        """Worker joins on the second WHO poll; brief lands as a
+        single PRIVMSG."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "ship the pr", "brief_timeout": 5},
+            members_responses=[[], ["local-qa"]],
+        )
+        assert exit_code == 0
+        # The brief should have been sent.
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert len(send_calls) == 1
+        kwargs = send_calls[0][1]
+        assert kwargs["channel"] == "#task-qa"
+        assert kwargs["message"] == "@local-qa ship the pr"
+
+    def test_no_brief_flag_skips_atomic_delivery(self, home):
+        """Legacy spawn-without-brief has no WHO polling / PRIVMSG sent."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "", "brief_timeout": 5},
+            members_responses=[["local-qa"]],
+        )
+        assert exit_code == 0
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert send_calls == []
+
+    def test_join_timeout_fails_non_zero(self, home):
+        """If the worker never joins within --brief-timeout, the spawn
+        exits non-zero so the operator notices instead of believing the
+        brief landed."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "go", "brief_timeout": 1},
+            members_responses=[[], [], []],
+        )
+        assert exit_code == 1
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert send_calls == []
+
+    def test_irc_send_failure_fails_non_zero(self, home):
+        """If the brief PRIVMSG fails after worker joined, spawn exits
+        non-zero (closes the silent-failure path)."""
+        captured, exit_code = self._run_spawn_with_brief(
+            home,
+            {"name": "qa", "brief": "go", "brief_timeout": 2},
+            members_responses=[["local-qa"]],
+            irc_send_ok=False,
+        )
+        assert exit_code == 1
+        # The send was attempted (visibility into the failure path).
+        send_calls = [c for c in captured["send_calls"] if c[0] == "irc_send"]
+        assert len(send_calls) == 1

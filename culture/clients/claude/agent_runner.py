@@ -127,6 +127,16 @@ class AgentRunner:
         self._boss = boss
 
         self._session_id: str | None = None
+        # Phase 6.4 — crash-resilient worker checkpoint. Every turn
+        # completion writes ``~/.culture/sessions/<nick>.json`` with the
+        # most-recent ``last_session_id`` so a worker daemon restart
+        # (after the SDK CLI ``Stream closed`` bug or an OOM) resumes
+        # from the last clean turn instead of starting fresh. Partial
+        # fix: the upstream Stream-closed bug remains, but we no longer
+        # lose minutes of work per crash.
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+        self._last_turn_completed_at: float | None = None
         self._task: asyncio.Task | None = None
         self._stopping = False
         self._prompt_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -165,8 +175,16 @@ class AgentRunner:
             self._unpaused.set()
 
     async def start(self, initial_prompt: str = "") -> None:
-        """Start the SDK session loop as a background task."""
+        """Start the SDK session loop as a background task.
+
+        Phase 6.4: if a checkpoint at ``~/.culture/sessions/<nick>.json``
+        exists, restore ``_session_id`` BEFORE the first turn so
+        ``_make_options`` sets ``opts.resume = session_id`` and the SDK
+        continues the prior conversation. Without the checkpoint a
+        worker crash mid-task restarts the entire session.
+        """
         self._stopping = False
+        self._load_checkpoint()
         if initial_prompt:
             self._prompt_queue.put_nowait(initial_prompt)
         self._task = asyncio.create_task(self._run_loop())
@@ -405,6 +423,20 @@ class AgentRunner:
                 # cleanly. Signal the daemon so the stall watchdog can
                 # distinguish "engaged + completing turns" from "engaged
                 # but stuck in a retry loop".
+                self._last_turn_completed_at = time.time()
+                if usage_dict is not None:
+                    tin = usage_dict.get("tokens_input")
+                    tout = usage_dict.get("tokens_output")
+                    if isinstance(tin, int):
+                        self._total_input_tokens += tin
+                    if isinstance(tout, int):
+                        self._total_output_tokens += tout
+                # Phase 6.4 — write checkpoint AFTER the turn
+                # completes cleanly. We write before firing
+                # on_turn_complete so a callback exception cannot lose
+                # the checkpoint for this turn. Best-effort: a checkpoint
+                # write failure is logged but never breaks the turn loop.
+                self._save_checkpoint()
                 if self.on_turn_complete is not None:
                     try:
                         await self.on_turn_complete()
@@ -529,3 +561,121 @@ class AgentRunner:
             "model": message.model,
             "content": [_content_block_to_dict(b) for b in message.content],
         }
+
+    # ------------------------------------------------------------------
+    # Crash-resilient checkpoint (Phase 6.4 — plenty's P0b partial fix)
+    # ------------------------------------------------------------------
+    #
+    # The SDK CLI ``Stream closed`` bug crashes workers mid-task; without
+    # session resume, the worker restarts from scratch and the operator
+    # loses minutes of work (plenty's report: "32 min lost twice"). The
+    # checkpoint at ``~/.culture/sessions/<nick>.json`` records the
+    # last clean turn's ``session_id`` + completion time + cumulative
+    # tokens. On restart, ``start()`` calls ``_load_checkpoint`` BEFORE
+    # the first turn so ``_make_options`` sets ``opts.resume = sid`` and
+    # the SDK continues the prior conversation.
+    #
+    # Atomic write via tempfile + ``os.replace`` (POSIX atomic), matching
+    # the MessageBuffer cursors pattern.
+
+    def _checkpoint_path(self) -> str | None:
+        """Return ``~/.culture/sessions/<nick>.json`` or None when nick is unset.
+
+        Workers without a nick (test fixtures, unit-mocked sessions) get
+        no checkpoint — there's no stable identity to key on.
+        """
+        if not self._nick:
+            return None
+        # Import lazily — avoids pulling perm-broker into tests that mock
+        # only the SDK and not the broker.
+        from culture.clients._perm_broker import culture_home
+
+        sessions_dir = os.path.join(culture_home(), "sessions")
+        try:
+            os.makedirs(sessions_dir, mode=0o700, exist_ok=True)
+        except OSError:
+            pass
+        safe = self._nick.replace("/", "_").replace("..", "_")
+        return os.path.join(sessions_dir, f"{safe}.json")
+
+    def _save_checkpoint(self) -> None:
+        """Atomically serialize the current checkpoint to disk.
+
+        Best-effort: a write failure is logged but never raised — the
+        caller is in the post-turn hot path and we don't break the turn
+        loop on a disk hiccup.
+        """
+        import json
+        import tempfile
+
+        path = self._checkpoint_path()
+        if not path or not self._session_id:
+            return
+        payload = {
+            "schema": 1,
+            "nick": self._nick,
+            "last_session_id": self._session_id,
+            "last_turn_completed_at": self._last_turn_completed_at,
+            "cursor": 0,
+            "total_tokens": {
+                "input": self._total_input_tokens,
+                "output": self._total_output_tokens,
+            },
+        }
+        try:
+            dirname = os.path.dirname(path)
+            fd, tmp_path = tempfile.mkstemp(dir=dirname, prefix=".session-", suffix=".json.tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, ensure_ascii=False)
+                os.replace(tmp_path, path)
+                try:
+                    os.chmod(path, 0o600)
+                except OSError:
+                    pass
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError as exc:
+            logger.warning("Failed to save session checkpoint to %s: %s", path, exc)
+
+    def _load_checkpoint(self) -> None:
+        """Restore ``_session_id`` (and bookkeeping fields) from disk.
+
+        Missing file is silent (first-run case). Malformed JSON logs a
+        warning and starts fresh — better to lose one resume than to
+        crash on a corrupt checkpoint. Existing in-memory ``_session_id``
+        is preserved when present (a programmatic ``resume=…`` call
+        beats the on-disk value).
+        """
+        import json
+
+        path = self._checkpoint_path()
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to load session checkpoint from %s: %s", path, exc)
+            return
+        if not isinstance(payload, dict):
+            logger.warning("Session checkpoint %s has unexpected shape; ignoring", path)
+            return
+        sid = payload.get("last_session_id")
+        if isinstance(sid, str) and sid and not self._session_id:
+            self._session_id = sid
+        last_completed = payload.get("last_turn_completed_at")
+        if isinstance(last_completed, (int, float)):
+            self._last_turn_completed_at = float(last_completed)
+        totals = payload.get("total_tokens") or {}
+        if isinstance(totals, dict):
+            tin = totals.get("input")
+            tout = totals.get("output")
+            if isinstance(tin, int):
+                self._total_input_tokens = tin
+            if isinstance(tout, int):
+                self._total_output_tokens = tout

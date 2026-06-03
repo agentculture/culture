@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import os
 import re
@@ -847,13 +848,22 @@ class AgentDaemon:
                 f"Check its audit, consider re-driving or restarting."
             )
         if reason == "stalled_in_retry_loop":
-            return (
+            base = (
                 f"[stall] worker {nick} has been issuing AssistantMessages "
                 f"(tool calls) but has not COMPLETED a turn in {since}s — "
                 f"likely a tool-retry loop (e.g. SDK CLI 'Stream closed' on "
                 f"every Write). Check its audit for the repeating tool_use, "
                 f"consider re-driving with a different approach."
             )
+            # Auto-escalation enrichment (plenty's P1 — Phase 6.2): pull the
+            # failing tool name + input + last exception text from the
+            # worker's own recent audit-log entries so the boss DM names
+            # the failing tool directly instead of forcing a follow-up
+            # audit read.
+            context = self._recent_tool_failure_context()
+            if context:
+                base = base + "\n" + context
+            return base
         if reason == "stalled_in_failed_retry":
             return (
                 f"[stall] worker {nick} has accumulated "
@@ -866,6 +876,92 @@ class AgentDaemon:
             f"[stall] worker {nick} engaged but has been silent for {since}s "
             f"(no new turns). Check its audit, consider re-driving."
         )
+
+    def _recent_tool_failure_context(self, max_chars: int = 500) -> str:
+        """Pull the failing tool name + input + last exception text from
+        this worker's most recent audit entries.
+
+        Plenty's P1 fix (Phase 6.2): when a ``stalled_in_retry_loop`` DM
+        fires, the boss should see WHICH tool is wedged and with WHAT
+        input, plus the most recent exception/error text from the tool
+        result — without having to round-trip an audit read. The audit
+        JSONL (``audit_path_for(<nick>)``) is the worker's own write log;
+        we read its tail, walk backwards through assistant messages, and
+        extract the most recent ``tool_uses`` entry alongside the most
+        recent ``tool_results`` entry. Each field is truncated at
+        ``max_chars`` to keep the DM under typical IRC line budgets.
+
+        Returns the empty string when no useful context is available
+        (no audit file, no tool calls, unreadable JSONL) — the caller
+        skips the appended block in that case.
+        """
+        from culture.clients._audit import audit_path_for
+
+        path = audit_path_for(self.agent.nick)
+        try:
+            with open(path, "rb") as fh:
+                # Read the last ~64 KiB — enough to cover several recent
+                # assistant turns even with full tool-call/result blocks.
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                fh.seek(max(0, size - 65536))
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            return ""
+        tool_name = ""
+        tool_input = ""
+        error_text = ""
+        for line in reversed(tail.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if rec.get("type") != "assistant":
+                continue
+            tool_uses = rec.get("tool_uses") or []
+            tool_results = rec.get("tool_results") or []
+            # Most recent tool_use carries name + input. The audit's
+            # ``input`` field is already a stringified+capped value
+            # (see _audit.py:_summarise_assistant_message), so we can
+            # surface it directly.
+            if not tool_name and tool_uses:
+                last_use = tool_uses[-1]
+                if isinstance(last_use, dict):
+                    tool_name = str(last_use.get("name", "") or "")
+                    tool_input = str(last_use.get("input", "") or "")
+            # Tool results carry the error/result text. We treat ANY
+            # tool_result content as potential error text (the SDK CLI's
+            # 'Stream closed' bug surfaces here verbatim); the boss can
+            # eyeball the content to decide.
+            if not error_text and tool_results:
+                last_result = tool_results[-1]
+                if isinstance(last_result, dict):
+                    content = last_result.get("content")
+                    if content is None:
+                        content = last_result.get("preview", "")
+                    error_text = str(content or "")
+            if tool_name and (error_text or not tool_results):
+                break
+        if not tool_name and not error_text:
+            return ""
+
+        def _truncate(value: str) -> str:
+            value = value.strip()
+            if len(value) <= max_chars:
+                return value
+            return value[:max_chars] + f"…[truncated, {len(value)} chars total]"
+
+        lines = ["[failing tool context]"]
+        if tool_name:
+            lines.append(f"tool: {_truncate(tool_name)}")
+        if tool_input:
+            lines.append(f"input: {_truncate(tool_input)}")
+        if error_text:
+            lines.append(f"last_result: {_truncate(error_text)}")
+        return "\n".join(lines)
 
     def _on_mention(self, target: str, sender: str, text: str) -> None:
         """Called by IRCTransport when the agent is @mentioned or DM'd.
