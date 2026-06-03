@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -72,6 +73,19 @@ class DmSpoolStore:
     ``HistoryStore`` — the IRCd's asyncio executor only calls into this
     from the loop thread, but the flag keeps test fixtures (which may
     open + interrogate from a sync helper) honest.
+
+    Concurrency (Qodo PR #50 round-3 #1): the async wrappers below
+    dispatch DB statements via ``asyncio.to_thread``. Multiple awaits
+    can run in parallel (an insert from a DM spool path + a drain from
+    a CHATHISTORY handler + the hourly GC tick), each on a different
+    worker thread that touches the SAME ``sqlite3.Connection``. SQLite
+    itself is serialised internally, but Python's ``sqlite3`` does
+    NOT guarantee a single ``Connection`` is safe across simultaneous
+    cross-thread ``execute()`` calls — corruption / cursor-mix
+    behaviour is documented. ``_lock`` is a re-entrant lock that
+    every read/write method takes BEFORE touching ``_conn``. RLock
+    (not plain Lock) because some methods compose other methods (none
+    do today, but the RLock is a cheap forward-compatibility hedge).
     """
 
     def __init__(self, db_path: str | os.PathLike[str]):
@@ -85,6 +99,11 @@ class DmSpoolStore:
             os.chmod(db_dir, 0o700)
         except OSError:
             logger.warning("Failed to chmod 0o700 on %s", db_dir, exc_info=True)
+
+        # See class docstring on concurrency. Initialised BEFORE the
+        # connection so a failure to open does not leave the lock
+        # attribute missing on a partially-constructed instance.
+        self._lock = threading.RLock()
 
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -135,18 +154,19 @@ class DmSpoolStore:
         replay of the same message, which is exactly the case we want
         to be a no-op.
         """
-        try:
-            self._conn.execute(
-                "INSERT INTO dm_spool "
-                "(msg_id, sender, recipient, ts_server, payload, tags, delivered_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, NULL)",
-                (msg_id, sender, recipient, ts, payload, tags),
-            )
-            self._conn.commit()
-        except sqlite3.IntegrityError:
-            # Duplicate msg_id — original entry stands. No log: this is
-            # an expected idempotency case.
-            pass
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO dm_spool "
+                    "(msg_id, sender, recipient, ts_server, payload, tags, delivered_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                    (msg_id, sender, recipient, ts, payload, tags),
+                )
+                self._conn.commit()
+            except sqlite3.IntegrityError:
+                # Duplicate msg_id — original entry stands. No log: this is
+                # an expected idempotency case.
+                pass
 
     def mark_delivered(self, msg_id: str, now: float | None = None) -> bool:
         """Mark *msg_id* as delivered (CC acked the inbound_dm push).
@@ -156,12 +176,13 @@ class DmSpoolStore:
         previously-acked message see False, not an error.
         """
         ts = now if now is not None else time.time()
-        cur = self._conn.execute(
-            "UPDATE dm_spool SET delivered_at = ? " "WHERE msg_id = ? AND delivered_at IS NULL",
-            (ts, msg_id),
-        )
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE dm_spool SET delivered_at = ? " "WHERE msg_id = ? AND delivered_at IS NULL",
+                (ts, msg_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # ------------------------------------------------------------------
     # Reads
@@ -185,20 +206,22 @@ class DmSpoolStore:
         """
         if limit <= 0:
             return []
-        if include_delivered:
-            cur = self._conn.execute(
-                "SELECT msg_id, sender, recipient, ts_server, payload, tags, delivered_at "
-                "FROM dm_spool WHERE recipient = ? "
-                "ORDER BY ts_server ASC, msg_id ASC LIMIT ?",
-                (nick, limit),
-            )
-        else:
-            cur = self._conn.execute(
-                "SELECT msg_id, sender, recipient, ts_server, payload, tags, delivered_at "
-                "FROM dm_spool WHERE recipient = ? AND delivered_at IS NULL "
-                "ORDER BY ts_server ASC, msg_id ASC LIMIT ?",
-                (nick, limit),
-            )
+        with self._lock:
+            if include_delivered:
+                cur = self._conn.execute(
+                    "SELECT msg_id, sender, recipient, ts_server, payload, tags, delivered_at "
+                    "FROM dm_spool WHERE recipient = ? "
+                    "ORDER BY ts_server ASC, msg_id ASC LIMIT ?",
+                    (nick, limit),
+                )
+            else:
+                cur = self._conn.execute(
+                    "SELECT msg_id, sender, recipient, ts_server, payload, tags, delivered_at "
+                    "FROM dm_spool WHERE recipient = ? AND delivered_at IS NULL "
+                    "ORDER BY ts_server ASC, msg_id ASC LIMIT ?",
+                    (nick, limit),
+                )
+            rows = cur.fetchall()
         return [
             {
                 "msg_id": row["msg_id"],
@@ -209,13 +232,14 @@ class DmSpoolStore:
                 "tags": row["tags"],
                 "delivered_at": row["delivered_at"],
             }
-            for row in cur.fetchall()
+            for row in rows
         ]
 
     def count(self) -> int:
         """Return the total number of rows in the spool. Mostly for tests."""
-        cur = self._conn.execute("SELECT COUNT(*) FROM dm_spool")
-        (n,) = cur.fetchone()
+        with self._lock:
+            cur = self._conn.execute("SELECT COUNT(*) FROM dm_spool")
+            (n,) = cur.fetchone()
         return int(n)
 
     def get_by_msg_id(self, nick: str, msg_id: str) -> bool:
@@ -234,11 +258,12 @@ class DmSpoolStore:
         order) returned a spurious ERR_NOPRIVILEGES, leaking the spool
         indefinitely once it grew past the cap.
         """
-        cur = self._conn.execute(
-            "SELECT 1 FROM dm_spool WHERE msg_id = ? AND recipient = ? LIMIT 1",
-            (msg_id, nick),
-        )
-        return cur.fetchone() is not None
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT 1 FROM dm_spool WHERE msg_id = ? AND recipient = ? LIMIT 1",
+                (msg_id, nick),
+            )
+            return cur.fetchone() is not None
 
     # ------------------------------------------------------------------
     # Retention
@@ -259,18 +284,19 @@ class DmSpoolStore:
         delivered_cutoff = ts_now - _DELIVERED_TTL_SECONDS
         undelivered_cutoff = ts_now - _UNDELIVERED_TTL_SECONDS
 
-        cur_d = self._conn.execute(
-            "DELETE FROM dm_spool " "WHERE delivered_at IS NOT NULL AND delivered_at < ?",
-            (delivered_cutoff,),
-        )
-        delivered_purged = cur_d.rowcount or 0
+        with self._lock:
+            cur_d = self._conn.execute(
+                "DELETE FROM dm_spool " "WHERE delivered_at IS NOT NULL AND delivered_at < ?",
+                (delivered_cutoff,),
+            )
+            delivered_purged = cur_d.rowcount or 0
 
-        cur_u = self._conn.execute(
-            "DELETE FROM dm_spool " "WHERE delivered_at IS NULL AND ts_server < ?",
-            (undelivered_cutoff,),
-        )
-        undelivered_purged = cur_u.rowcount or 0
-        self._conn.commit()
+            cur_u = self._conn.execute(
+                "DELETE FROM dm_spool " "WHERE delivered_at IS NULL AND ts_server < ?",
+                (undelivered_cutoff,),
+            )
+            undelivered_purged = cur_u.rowcount or 0
+            self._conn.commit()
 
         if undelivered_purged:
             # Audit-log the purge of undelivered entries. The IRCd's
@@ -307,11 +333,17 @@ class DmSpoolStore:
     #
     # The connection itself was opened with
     # ``check_same_thread=False`` (see ``__init__``) so cross-thread
-    # use is sanctioned by sqlite3. SQLite's own thread-safety mode
-    # serialises statements per connection, which is sufficient
-    # protection — ``to_thread`` does not run two of these
-    # concurrently from the IRCd's event-loop perspective, and a long
-    # GC sweep cannot block a short insert (both run on the executor).
+    # use is sanctioned by sqlite3 — but the prior comment that claimed
+    # ``to_thread`` does not run multiple of these concurrently was
+    # WRONG (Qodo PR #50 round-3 #1). Two awaits hitting the executor
+    # simultaneously will run statements on the same connection from
+    # two threads, which Python's sqlite3 does not guarantee is safe.
+    # The remediation is ``self._lock`` (a ``threading.RLock``) held
+    # by every sync method — including ``insert`` / ``query_for_nick``
+    # / ``mark_delivered`` / ``get_by_msg_id`` / ``gc`` / ``close`` /
+    # ``count``. The async wrappers inherit that protection for free
+    # because they simply ``to_thread(sync_method)``. RLock (re-entrant)
+    # is the cheap forward-compat hedge for any future composite method.
 
     async def ainsert(
         self,
@@ -361,8 +393,9 @@ class DmSpoolStore:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        try:
-            self._conn.commit()
-        except sqlite3.Error:
-            pass
-        self._conn.close()
+        with self._lock:
+            try:
+                self._conn.commit()
+            except sqlite3.Error:
+                pass
+            self._conn.close()

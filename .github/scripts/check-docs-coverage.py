@@ -66,6 +66,39 @@ def _run_git(args: list[str]) -> str:
     return result.stdout
 
 
+# Refs we accept: alphanumerics, dot, underscore, slash, hyphen — but
+# NOT a leading hyphen, which git would parse as an option flag.
+# Matches the bulk of valid git branch / tag names without trying to
+# reimplement ``git check-ref-format`` in regex. Qodo PR #50 round-3
+# #2: ``GITHUB_BASE_REF`` comes from the GH Actions env (set by GitHub
+# from the PR target branch). It's untrusted from the script's
+# perspective and must NOT be allowed to start with ``-``.
+_REF_NAME_RE = re.compile(r"^[A-Za-z0-9_./][A-Za-z0-9_./-]*$")
+
+
+def _is_safe_ref(value: str | None) -> bool:
+    """True iff *value* is a non-empty git-ref-shaped string that
+    cannot be parsed as a CLI option flag by git.
+
+    Rejects: ``None`` / empty / leading-``-`` / chars outside the
+    conservative allowlist. The allowlist is narrower than
+    ``git check-ref-format`` to avoid having to think about edge
+    cases — anything that fails this check falls through to the
+    dev-fallback candidates.
+
+    Extra explicit rejections beyond the regex shape:
+    - ``..`` anywhere — git's parent-revision shorthand. A ref like
+      ``..main`` resolves to "the commits in main not in HEAD",
+      which is NOT the merge base.
+    - ``@{`` — git's reflog-index shorthand.
+    """
+    if not value:
+        return False
+    if ".." in value or "@{" in value:
+        return False
+    return _REF_NAME_RE.fullmatch(value) is not None
+
+
 def _resolve_base() -> str:
     """Return a ref-spec that resolves to the PR's merge base.
 
@@ -75,6 +108,9 @@ def _resolve_base() -> str:
        ``pull_request`` events to the target branch name). We fetch it
        on demand because ``actions/checkout@v4`` does a shallow clone
        by default and the base ref is NOT present in the working tree.
+       The ref must pass :func:`_is_safe_ref` so a hostile value like
+       ``--upload-pack=...`` (Qodo PR #50 round-3 #2) cannot be
+       interpreted by git as an option flag.
     2. ``origin/main`` (already-fetched remote — common in dev).
     3. ``main`` (local main branch — common in dev).
     4. ``HEAD~1`` (last-resort one-commit-back probe for local runs).
@@ -83,16 +119,28 @@ def _resolve_base() -> str:
     fork PR the script would print ``could not resolve a base ref``
     and exit 2 — false-failing the docs-coverage gate on every PR
     until the operator hand-fetched the base.
+
+    Every git invocation below uses an explicit ``--`` end-of-options
+    separator AS WELL as the allowlist validation, as defense-in-
+    depth — even if the allowlist were ever relaxed, git would still
+    refuse to interpret the value as an option.
     """
     import os as _os
 
     github_base = _os.environ.get("GITHUB_BASE_REF")
+    if github_base and not _is_safe_ref(github_base):
+        print(
+            f"warn: rejecting GITHUB_BASE_REF={github_base!r} — "
+            "fails ref-format allowlist; falling back",
+            file=sys.stderr,
+        )
+        github_base = None
     if github_base:
         # Try the already-fetched remote tracking ref first (no network call).
         remote_ref = f"origin/{github_base}"
         try:
             subprocess.run(  # noqa: S603
-                ["git", "rev-parse", "--verify", remote_ref],
+                ["git", "rev-parse", "--verify", "--", remote_ref],
                 check=True,
                 capture_output=True,
             )
@@ -100,9 +148,23 @@ def _resolve_base() -> str:
         except subprocess.CalledProcessError:
             pass
         # Shallow clone — fetch the base branch with a single network call.
+        # ``git fetch`` accepts the ref as a refspec (no ``--`` needed for
+        # the positional refspec slot — fetch's syntax differs from
+        # rev-parse), but we have ALREADY validated the ref above. As an
+        # extra defense, pin the option boundary with ``--`` before the
+        # remote name: any future modifications can't accidentally turn
+        # an option into a refspec.
         try:
             subprocess.run(  # noqa: S603
-                ["git", "fetch", "--no-tags", "--depth=1", "origin", github_base],
+                [
+                    "git",
+                    "fetch",
+                    "--no-tags",
+                    "--depth=1",
+                    "--",
+                    "origin",
+                    github_base,
+                ],
                 check=True,
                 capture_output=True,
             )
@@ -119,7 +181,7 @@ def _resolve_base() -> str:
     for ref in candidates:
         try:
             subprocess.run(  # noqa: S603
-                ["git", "rev-parse", "--verify", ref],
+                ["git", "rev-parse", "--verify", "--", ref],
                 check=True,
                 capture_output=True,
             )
