@@ -65,14 +65,17 @@ class _RaisingAsyncIter:
 def _stub_claude_sdk():
     """Insert minimal stubs for claude_agent_sdk into sys.modules.
 
-    Force-replaces the entry even if the real SDK is already imported —
-    in CI the real package IS installed and conftest / other tests can
-    import it before this file's collection runs. Without the force,
-    the tests below construct ``sdk.ResultMessage(session_id=..., ...)``
-    against the real 0.2.x dataclass and TypeError on its newer
-    positional fields (subtype / duration_ms / duration_api_ms /
-    num_turns). The stub is the contract this file was written against.
+    MUST NOT force-replace: other test files (e.g. test_perm_broker.py)
+    do ``from claude_agent_sdk import PermissionResultAllow`` and bind
+    the REAL class object; if we replace the module here, the broker
+    under test sees the stub class and every isinstance() check in
+    those tests fails. Keep the early-return; the ResultMessage call
+    sites below pass ALL fields the 0.2.x dataclass requires, so they
+    work against either the real SDK or this stub.
     """
+    if "claude_agent_sdk" in sys.modules:
+        return
+
     mod = types.ModuleType("claude_agent_sdk")
 
     class _Base:
@@ -176,6 +179,32 @@ _stub_claude_sdk()
 
 # Now safe to import
 from culture.clients.claude.agent_runner import AgentRunner  # noqa: E402
+
+
+def _make_result_message(session_id="sid-1", is_error=False, usage=None):
+    """Build a sdk.ResultMessage that works against real 0.2.x OR the stub.
+
+    The real claude_agent_sdk 0.2.x dataclass has required positional
+    fields (subtype, duration_ms, duration_api_ms, num_turns) that the
+    tests don't actually exercise — they only care about session_id,
+    is_error, and usage. Centralizing the harmless defaults here keeps
+    every call site tight and version-tolerant.
+    """
+    sdk = sys.modules["claude_agent_sdk"]
+    return sdk.ResultMessage(
+        subtype="success",
+        duration_ms=0,
+        duration_api_ms=0,
+        is_error=is_error,
+        num_turns=1,
+        session_id=session_id,
+        stop_reason=None,
+        total_cost_usd=None,
+        usage=usage,
+        result="",
+    )
+
+
 from culture.clients.claude.config import DaemonConfig, TelemetryConfig  # noqa: E402
 from culture.clients.claude.telemetry import (  # noqa: E402
     HarnessMetricsRegistry,
@@ -275,8 +304,7 @@ async def test_process_turn_records_llm_call_success(metrics_reader, tracing_exp
     runner = _make_runner(registry=registry, nick="spark-claude", model="claude-opus-4-6")
 
     # Fake ResultMessage with usage dict
-    sdk = sys.modules["claude_agent_sdk"]
-    fake_result = sdk.ResultMessage(
+    fake_result = _make_result_message(
         session_id="sid-1",
         is_error=False,
         usage={"input_tokens": 100, "output_tokens": 200},
@@ -349,8 +377,7 @@ async def test_process_turn_no_metrics_no_recording(metrics_reader):
     """When metrics=None, no metric data is recorded."""
     runner = _make_runner(registry=None, nick="spark-claude")
 
-    sdk = sys.modules["claude_agent_sdk"]
-    fake_result = sdk.ResultMessage(
+    fake_result = _make_result_message(
         session_id="sid-1",
         is_error=False,
         usage={"input_tokens": 50, "output_tokens": 75},
@@ -374,8 +401,7 @@ async def test_process_turn_no_usage_skips_token_counters(metrics_reader, regist
     """When ResultMessage has no usage, llm_calls increments but token counters do not."""
     runner = _make_runner(registry=registry, nick="spark-claude", model="claude-opus-4-6")
 
-    sdk = sys.modules["claude_agent_sdk"]
-    fake_result = sdk.ResultMessage(
+    fake_result = _make_result_message(
         session_id="sid-1",
         is_error=False,
         usage=None,  # No usage
@@ -415,10 +441,9 @@ async def test_process_turn_records_attr_form_usage(metrics_reader, registry):
     """
     runner = _make_runner(registry=registry, nick="spark-claude", model="claude-opus-4-6")
 
-    sdk = sys.modules["claude_agent_sdk"]
     # usage is an attribute-style object (not a dict)
     attr_usage = SimpleNamespace(input_tokens=300, output_tokens=150)
-    fake_result = sdk.ResultMessage(
+    fake_result = _make_result_message(
         session_id="sid-attr",
         is_error=False,
         usage=attr_usage,
@@ -459,8 +484,7 @@ async def test_process_turn_records_zero_token_usage(metrics_reader, registry):
     """
     runner = _make_runner(registry=registry, nick="spark-claude", model="claude-opus-4-6")
 
-    sdk = sys.modules["claude_agent_sdk"]
-    fake_result = sdk.ResultMessage(
+    fake_result = _make_result_message(
         session_id="sid-zero",
         is_error=False,
         usage={"input_tokens": 0, "output_tokens": 0},
