@@ -129,7 +129,12 @@ async def test_mention_substring_no_false_positive(server, make_client):
 
 @pytest.mark.asyncio
 async def test_dm_activates_agent(server, make_client):
-    """A direct message (PRIVMSG to agent nick) should trigger mention callback (#153)."""
+    """A direct message (PRIVMSG to agent nick) should trigger mention callback (#153).
+
+    TODO(Phase 3): rewrite against bridge spool-delivery semantics once the
+    real spool exists (per 2026-06-03 mesh-rearchitecture plan, Task 2.10).
+    Currently retains pass-through mention-callback assertions.
+    """
     config = DaemonConfig(
         server=ServerConnConfig(host="127.0.0.1", port=server.config.port),
     )
