@@ -477,7 +477,8 @@ def read_request(request_id: str) -> dict[str, Any] | None:
     path = os.path.join(_queue_dir(), f"{request_id}.json")
     try:
         with open(path, encoding="utf-8") as handle:
-            return json.load(handle)
+            data: dict[str, Any] = json.load(handle)
+            return data
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -889,11 +890,11 @@ class PermissionBroker:
                 # ``future.set_result`` happens on the right thread.
                 loop.call_soon_threadsafe(_try_resolve_from, path)
 
-            def on_created(self, event):  # type: ignore[no-untyped-def]
+            def on_created(self, event: Any) -> None:
                 if not event.is_directory:
                     self._maybe(event.src_path)
 
-            def on_moved(self, event):  # type: ignore[no-untyped-def]
+            def on_moved(self, event: Any) -> None:
                 if event.is_directory:
                     return
                 dest = getattr(event, "dest_path", "") or ""
@@ -971,7 +972,8 @@ class PermissionBroker:
         """Read+parse a decision file, or None if not yet readable/valid."""
         try:
             with open(decision_path, encoding="utf-8") as handle:
-                return json.load(handle)
+                data: dict[str, Any] = json.load(handle)
+                return data
         except (OSError, json.JSONDecodeError):
             return None
 

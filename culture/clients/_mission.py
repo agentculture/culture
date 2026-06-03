@@ -28,6 +28,7 @@ from __future__ import annotations
 import datetime as _dt
 import logging
 import os
+from typing import Any
 
 from culture.clients._perm_broker import mission_path_for
 
@@ -44,7 +45,7 @@ MISSION_MAX_BYTES = 32 * 1024  # 32 KiB — fits in a normal SDK prompt budget
 MISSION_ROTATE_FLOOR_BYTES = 24 * 1024  # 24 KiB after rotation
 
 
-def is_boss_agent(agent_config) -> bool:
+def is_boss_agent(agent_config: Any) -> bool:
     """True if *agent_config* carries the ``boss`` tag.
 
     Accepts any object with a ``tags`` attribute (list[str]). A non-list
