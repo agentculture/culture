@@ -99,6 +99,39 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help=_CONFIG_HELP,
     )
 
+    srv_migrate_prefix = server_sub.add_parser(
+        "migrate-prefix",
+        help=(
+            "Rewrite the boss: prefix on every worker's culture.yaml. "
+            "Use when server.yaml's server.name was changed in place "
+            "(bypassing `culture server rename`), leaving workers with "
+            "a stale boss: prefix that breaks ownership checks."
+        ),
+    )
+    srv_migrate_prefix.add_argument(
+        "from_prefix",
+        help="The OLD server prefix currently stored in worker boss: fields (e.g. 'local')",
+    )
+    srv_migrate_prefix.add_argument(
+        "to_prefix",
+        nargs="?",
+        default=None,
+        help=(
+            "The NEW server prefix to rewrite boss: fields to. "
+            "Defaults to the current server.yaml::server.name."
+        ),
+    )
+    srv_migrate_prefix.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help=_CONFIG_HELP,
+    )
+    srv_migrate_prefix.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be rewritten without modifying any file.",
+    )
+
     srv_archive = server_sub.add_parser(
         "archive", help="Archive the server and all its agents/bots"
     )
@@ -160,16 +193,90 @@ def _cmd_default(args: argparse.Namespace) -> None:
     print(f"Default server set to '{args.name}'")
 
 
+def _cmd_migrate_prefix(args: argparse.Namespace) -> None:
+    """Rewrite worker culture.yaml ``boss:`` fields from one server
+    prefix to another (v9.1.6).
+
+    Use when ``server.yaml::server.name`` was changed in place — e.g.
+    the operator manually edited the file, or recovered from the v9.1.5
+    test-fixture leak. ``culture server rename`` (the proper path)
+    runs this migration automatically; this command is the explicit
+    one-shot for the recovery case.
+    """
+    from culture.config import (
+        load_config_or_default,
+        rename_worker_boss_prefix,
+    )
+
+    from .shared.constants import DEFAULT_CONFIG
+
+    from_prefix = args.from_prefix
+    to_prefix = args.to_prefix
+    if to_prefix is None:
+        try:
+            cfg = load_config_or_default(args.config or DEFAULT_CONFIG)
+            to_prefix = cfg.server.name
+        except Exception as exc:
+            print(
+                f"Could not read current server.name from {args.config}: {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    if from_prefix == to_prefix:
+        print(f"No-op: from_prefix == to_prefix == {from_prefix!r}")
+        return
+
+    if args.dry_run:
+        # Replicate the matching logic without writing — load each
+        # culture.yaml + count rewrites that WOULD happen.
+        from culture.config import load_culture_yaml, load_server_config
+
+        cfg = load_server_config(args.config or DEFAULT_CONFIG)
+        old_match = f"{from_prefix}-"
+        seen_dirs: set[str] = set()
+        would_rewrite: list[tuple[str, str, str]] = []
+        for _suffix, directory in cfg.manifest.items():
+            if directory in seen_dirs:
+                continue
+            seen_dirs.add(directory)
+            try:
+                agents = load_culture_yaml(directory)
+            except (FileNotFoundError, ValueError):
+                continue
+            for agent in agents:
+                boss = agent.extras.get("boss", "") or ""
+                if boss.startswith(old_match):
+                    new_boss = f"{to_prefix}-{boss[len(old_match) :]}"
+                    would_rewrite.append((directory, boss, new_boss))
+        print(f"DRY-RUN — would rewrite {len(would_rewrite)} boss: field(s):")
+        for d, ob, nb in would_rewrite:
+            print(f"  {d}: {ob} → {nb}")
+        return
+
+    rewrites = rename_worker_boss_prefix(args.config or DEFAULT_CONFIG, from_prefix, to_prefix)
+    if not rewrites:
+        print(
+            f"No worker culture.yaml had a boss: field starting with "
+            f"{from_prefix + '-'!r}. Nothing to migrate."
+        )
+        return
+    print(f"Rewrote {len(rewrites)} boss: field(s):")
+    for d, ob, nb in rewrites:
+        print(f"  {d}: {ob} → {nb}")
+
+
 def dispatch(args: argparse.Namespace) -> None:
     if not args.server_command:
         print(
-            "Usage: culture server {start|stop|status|default|rename|archive|unarchive}",
+            "Usage: culture server "
+            "{start|stop|status|default|rename|migrate-prefix|archive|unarchive}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    # Resolve --name for commands that use it (all except default/rename)
-    if args.server_command not in ("default", "rename") and hasattr(args, "name"):
+    # Resolve --name for commands that use it (all except default/rename/migrate-prefix)
+    if args.server_command not in ("default", "rename", "migrate-prefix") and hasattr(args, "name"):
         args.name = _resolve_server_name(args)
 
     handlers = {
@@ -178,6 +285,7 @@ def dispatch(args: argparse.Namespace) -> None:
         "status": _server_status,
         "default": _cmd_default,
         "rename": _server_rename,
+        "migrate-prefix": _cmd_migrate_prefix,
         "archive": _server_archive,
         "unarchive": _server_unarchive,
     }
