@@ -80,6 +80,9 @@ class IRCTransport:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._read_task: asyncio.Task | None = None
+        # v9.1.7 — set by 432/433 handlers; signals the daemon's
+        # outer main loop to exit. See _on_erroneous_nick.
+        self.fatal_exit = asyncio.Event()
         self._reconnecting = False
         self._should_run = False
         self._background_tasks: set[asyncio.Task] = set()
@@ -104,6 +107,19 @@ class IRCTransport:
             # Phase 3 — IRCv3 draft/chathistory DM-spool drain.
             "BATCH": self._on_batch,
             "CHATHISTORY": self._on_chathistory,
+            # v9.1.7 — fail-loud on registration rejection. Pre-9.1.7
+            # the bridge had NO 432 handler: if the IRCd rejected the
+            # bridge's nick, the read loop kept spinning, the bridge
+            # never reached _on_welcome, and the daemon log showed
+            # nothing actionable. The 432 handler now surfaces the
+            # error (operator sees what to fix) and triggers exit;
+            # the bridge does NOT auto-recover because the daemon
+            # holds session-level state (audit log, IPC socket,
+            # owner_map keyed on nick) that would corrupt under nick
+            # mutation. The observer auto-recovers per v9.1.7 because
+            # it is ephemeral and holds no such state.
+            "432": self._on_erroneous_nick,  # ERR_ERRONEUSNICKNAME
+            "433": self._on_nick_in_use,  # ERR_NICKNAMEINUSE
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -375,6 +391,91 @@ class IRCTransport:
     async def _on_ping(self, msg: Message) -> None:
         token = msg.params[0] if msg.params else ""
         await self._send_raw(f"PONG :{token}")
+
+    async def _on_erroneous_nick(self, msg: Message) -> None:
+        """v9.1.7 — IRCd rejected the bridge's nick with 432.
+
+        Pre-9.1.7 the bridge had NO 432 handler: the read loop
+        continued, ``self.connected`` stayed False, the bridge wedged
+        silently. Now we log the IRCd's reason text verbatim, set a
+        clear failure state, and CLOSE the writer so the read loop
+        exits with a connection-closed condition the daemon's outer
+        retry/backoff can observe.
+
+        We do NOT auto-recover the nick (unlike the observer at
+        ``culture/observer.py``). The bridge daemon holds session-
+        level state — AuditWriter keyed on ``self.nick``, IPC socket
+        symlink under ``culture-<nick>.sock``, owner_map / role_map
+        lookups, DM routing — all of which would corrupt under nick
+        mutation. The right move is to surface the error, exit, and
+        let the operator restart with the correct nick after running
+        ``culture server migrate-prefix``.
+
+        Adversarial-critique-panel blockers from the design phase
+        ruled out auto-recovery here for exactly these reasons
+        (split-brain identity, AuditWriter / IPC desync, hostile
+        IRCd attack surface, log-spam loops under flapping IRCd).
+        """
+        server_text = msg.params[-1] if msg.params else ""
+        logger.error(
+            "Bridge nick %r rejected by IRCd at %s:%s (432): %s. "
+            "This is server.name drift — the IRCd was started with a "
+            "different --name than the bridge expected. Fix: run "
+            "`culture server migrate-prefix <old> <new>` AND restart "
+            "the IRCd with the right --name, then `culture bridge start "
+            "%s` again.",
+            self.nick,
+            self.host,
+            self.port,
+            server_text,
+            self.nick,
+        )
+        # Close the writer so the read loop exits and the daemon can
+        # observe failure rather than spin waiting for 001 that will
+        # never arrive. ``self.connected`` was already False; the
+        # daemon's reconnect logic will see the closed writer and
+        # back off / exit per its policy.
+        self.fatal_exit.set()
+        self._should_run = False
+        try:
+            if self._writer is not None:
+                self._writer.close()
+        except OSError:
+            pass
+
+    async def _on_nick_in_use(self, msg: Message) -> None:
+        """v9.1.7 — IRCd rejected the bridge's nick with 433 (nick
+        in use). For the bridge this almost always means a SECOND
+        bridge process is already holding the same nick — racing
+        spawns, stale process the operator didn't kill, or a
+        leftover from a crashed-bridge reconnect. Auto-retrying
+        with a random suffix would mint a fresh identity behind
+        the operator's back, breaking every consumer of the bridge's
+        IPC socket and audit log.
+
+        Fail-loud: log the conflict + the actionable command,
+        close the writer, let the daemon exit.
+        """
+        server_text = msg.params[-1] if msg.params else ""
+        logger.error(
+            "Bridge nick %r already in use on IRCd at %s:%s (433): %s. "
+            "Another bridge or process is holding this nick. Fix: "
+            "`culture bridge status` to find the rival, then "
+            "`culture bridge stop %s` on the host that owns it before "
+            "starting a new one.",
+            self.nick,
+            self.host,
+            self.port,
+            server_text,
+            self.nick,
+        )
+        self.fatal_exit.set()
+        self._should_run = False
+        try:
+            if self._writer is not None:
+                self._writer.close()
+        except OSError:
+            pass
 
     async def _on_welcome(self, msg: Message) -> None:
         self.connected = True

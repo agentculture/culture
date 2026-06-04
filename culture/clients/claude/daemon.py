@@ -246,6 +246,16 @@ class AgentDaemon:
             "shutdown": self._ipc_shutdown,
         }
 
+    @property
+    def transport(self) -> IRCTransport:
+        """v9.1.7 r2 — public accessor for ``__main__._run_single`` to
+        await ``transport.fatal_exit`` and exit cleanly on IRCd
+        registration rejection (Qodo PR #59 #3).
+        """
+        if self._transport is None:
+            raise RuntimeError("Claude daemon transport not started yet")
+        return self._transport
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

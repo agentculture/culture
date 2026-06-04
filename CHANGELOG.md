@@ -4,6 +4,89 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.7] - 2026-06-04
+
+### Fixed — server.name drift root cause: observer auto-recovers, bridges fail loud
+
+v9.1.6 surfaced server.name drift honestly to operators but didn't
+auto-recover. The other agent reproduced the bug in their plenty-
+ai-guide-mobile project and asked for the root fix. This release
+splits the recovery story by transport lifecycle:
+
+**Observer (ephemeral, CLI-shaped)** — auto-recovers. When the IRCd
+rejects the first attempt with canonical `432 Nickname must start
+with <expected>-`, the observer parses `<expected>` from the reply,
+mints a corrected temp nick under that prefix, opens a FRESH TCP
+connection, retries once, logs ONE warning naming the actionable
+migration command. Connection-local effective prefix —
+`self.server_name` is NOT mutated, stays congruent with what's on
+disk so operators don't get gaslit. Hard cap at 1 retry per
+connect; a second 432 surfaces the original `RegistrationRejected`.
+
+Parser is regex-bound to the IRCd's exact reason text in
+`culture/agentirc/client.py:660-666`. A contract test imports both
+sites and verifies the wording stays in sync — if a future commit
+edits one without the other, that test breaks at the same commit,
+not at runtime in production.
+
+Defensive: the parser also validates the candidate prefix is
+non-empty, ≤32 chars, and matches `[a-z0-9-]+` (same charset
+`sanitize_agent_name` produces) so a hostile IRCd that sends a
+crafted 432 with shell metacharacters can never influence the
+client's chosen nick.
+
+**Bridge (persistent, holds session)** — fails loud. Pre-9.1.7 the
+bridge had NO 432 handler at all: if the IRCd rejected the nick,
+the read loop kept spinning, `self.connected` stayed False, and the
+daemon log showed nothing actionable. v9.1.7 adds 432 + 433
+handlers that log the IRCd's reason text verbatim with the
+actionable fix, set `self._should_run = False`, and close the
+writer so the read loop exits cleanly. The bridge does NOT
+auto-recover the nick.
+
+Why bridges don't auto-recover: an adversarial-critique workflow
+before implementation identified 8 blockers in the
+naive-auto-recovery design — AuditWriter / IPC socket symlink
+desync when `self.nick` mutates, owner_map / role_map / DM-routing
+lookups keyed on the stale original nick, hostile-IRCd attack
+surface (432 becomes a server-controlled trigger to change client
+identity over plain TCP), and log-spam loops under a flapping
+IRCd. Fail-loud + operator restart is the right shape for
+persistent transports.
+
+### Bug for the observer — Earlier 9.1.6 test contract updated
+
+`test_observer_raises_on_erroneous_nick` (v9.1.6) asserted 432
+raised IMMEDIATELY. v9.1.7's auto-recovery overrides that for
+canonical 432 shapes — the test is renamed to
+`test_observer_raises_on_unparseable_432` and pinned to the
+fallback path where the IRCd's reason text doesn't match the
+canonical shape (parser returns None, original behavior applies).
+
+### All-backends propagation
+
+Per the cite-don't-import rule, the bridge 432 + 433 handlers
+ship in every backend's transport copy:
+
+- `culture/clients/bridge/irc_transport.py` — primary, full doc.
+- `culture/clients/claude/irc_transport.py`
+- `culture/clients/codex/irc_transport.py`
+- `culture/clients/copilot/irc_transport.py`
+- `culture/clients/acp/irc_transport.py`
+- `packages/agent-harness/irc_transport.py` — template.
+
+### Tests
+
+- 16 new tests in `tests/test_observer_registration.py` covering:
+  parser canonical shapes, parser rejection of non-canonical /
+  hostile shapes, IRCd-source contract, 432 auto-recovery happy
+  path (two-attempt handler), `_MAX_DRIFT_RETRIES = 1` cap,
+  unparseable-432 fallback.
+- 247/247 across `tests/test_observer_registration.py` +
+  `tests/test_manifest_config.py` + `tests/test_boss_cli.py` +
+  `tests/cc_plugin/` + `tests/test_culture_bridge_cli.py`.
+- All 5 backend `irc_transport.py` copies smoke-import.
+
 ## [9.1.6] - 2026-06-04
 
 ### Fixed — BUG 1: IRC observer wedged on registration rejections
