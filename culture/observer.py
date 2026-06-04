@@ -89,7 +89,7 @@ class RegistrationRejected(ConnectionError):
             f"with server_name={server_name!r} (read from server.yaml). "
             f"If the running IRCd was started with a different --name, "
             f"this is in-place server.name drift — run "
-            f"`culture migrate boss-prefix <old> <new>` to fix worker yamls "
+            f"`culture server migrate-prefix <old> <new>` to fix worker yamls "
             f"and restart the IRCd with the correct --name."
         )
 
@@ -169,16 +169,21 @@ class IRCObserver:
             timeout=REGISTER_TIMEOUT,
         )
 
-        nick = self._temp_nick()
-        writer.write(f"NICK {nick}\r\n".encode())
-        writer.write("USER _peek 0 * :culture observer\r\n".encode())
-        await writer.drain()
-
-        buffer = ""
-        # Keep a bounded ring of the last 16 lines we received so the
-        # timeout path can report what actually came over the wire.
-        received_tail: deque[str] = deque(maxlen=16)
+        # v9.1.6 — every exit path BEFORE the successful return must
+        # close ``writer`` (Qodo PR #58 #4). Pre-9.1.6 only the
+        # TimeoutError branch closed; the connection-closed branch and
+        # the new RegistrationRejected branch leaked the socket.
         try:
+            nick = self._temp_nick()
+            writer.write(f"NICK {nick}\r\n".encode())
+            writer.write("USER _peek 0 * :culture observer\r\n".encode())
+            await writer.drain()
+
+            buffer = ""
+            # Keep a bounded ring of the last 16 lines we received so
+            # the timeout path can report what actually came over the
+            # wire.
+            received_tail: deque[str] = deque(maxlen=16)
             while True:
                 data = await asyncio.wait_for(reader.read(4096), timeout=RECV_TIMEOUT)
                 if not data:
@@ -205,6 +210,14 @@ class IRCObserver:
                 f"If the running IRCd was started with a different "
                 f"--name, that's in-place server.name drift."
             )
+        except BaseException:
+            # Qodo PR #58 #4 — close the writer for ANY exit path
+            # that isn't a successful return: ConnectionError raised
+            # on EOF, RegistrationRejected raised on fatal numerics,
+            # or anything else. Without this, the fix for BUG 1 would
+            # have leaked one socket per rejected connection.
+            writer.close()
+            raise
 
     async def _disconnect(self, writer: asyncio.StreamWriter) -> None:
         """Send QUIT and close."""

@@ -203,22 +203,56 @@ def _cmd_migrate_prefix(args: argparse.Namespace) -> None:
     runs this migration automatically; this command is the explicit
     one-shot for the recovery case.
     """
+    import yaml as _yaml
+
     from culture.config import (
-        load_config_or_default,
+        load_culture_yaml,
+        load_server_config,
         rename_worker_boss_prefix,
     )
 
     from .shared.constants import DEFAULT_CONFIG
 
+    config_path = args.config or DEFAULT_CONFIG
+
+    # v9.1.6 r2 (Qodo PR #58 #7) — surface every config-read failure
+    # as a clean CLI error rather than a raw traceback. The recovery
+    # workflow is by definition reached after server.yaml is in a
+    # strange state, so this path needs to tolerate every shape of
+    # file corruption.
+    try:
+        cfg = load_server_config(config_path)
+    except FileNotFoundError:
+        print(
+            f"Error: server config not found at {config_path}. "
+            f"Set CULTURE_HOME or pass --config to point at your server.yaml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except (_yaml.YAMLError, ValueError, OSError) as exc:
+        print(
+            f"Error: could not parse server config at {config_path}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     from_prefix = args.from_prefix
     to_prefix = args.to_prefix
+    # v9.1.6 r2 (Qodo PR #58 #3) — when ``to`` is omitted, the
+    # default came from ``load_config_or_default`` which would have
+    # silently produced ``ServerConfig().server.name == "culture"``
+    # for a missing file, rewriting worker bosses to the default
+    # name behind the operator's back. Now we require the
+    # explicitly-loaded server.yaml (above) to carry a non-empty
+    # ``server.name``; otherwise the operator is asked to pass
+    # ``<to>`` explicitly.
     if to_prefix is None:
-        try:
-            cfg = load_config_or_default(args.config or DEFAULT_CONFIG)
-            to_prefix = cfg.server.name
-        except Exception as exc:
+        to_prefix = cfg.server.name
+        if not to_prefix:
             print(
-                f"Could not read current server.name from {args.config}: {exc}",
+                "Error: <to> was not provided and server.yaml has no "
+                "server.name set. Pass `culture server migrate-prefix "
+                "<from> <to>` explicitly.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -230,9 +264,6 @@ def _cmd_migrate_prefix(args: argparse.Namespace) -> None:
     if args.dry_run:
         # Replicate the matching logic without writing — load each
         # culture.yaml + count rewrites that WOULD happen.
-        from culture.config import load_culture_yaml, load_server_config
-
-        cfg = load_server_config(args.config or DEFAULT_CONFIG)
         old_match = f"{from_prefix}-"
         seen_dirs: set[str] = set()
         would_rewrite: list[tuple[str, str, str]] = []
@@ -254,7 +285,7 @@ def _cmd_migrate_prefix(args: argparse.Namespace) -> None:
             print(f"  {d}: {ob} → {nb}")
         return
 
-    rewrites = rename_worker_boss_prefix(args.config or DEFAULT_CONFIG, from_prefix, to_prefix)
+    rewrites = rename_worker_boss_prefix(config_path, from_prefix, to_prefix)
     if not rewrites:
         print(
             f"No worker culture.yaml had a boss: field starting with "

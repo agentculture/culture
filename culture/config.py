@@ -842,12 +842,26 @@ def rename_manifest_server(
     if old_name == new_name:
         return old_name, []
 
+    # v9.1.6 r2 (Qodo PR #58 #5) — migrate the worker culture.yaml
+    # ``boss:`` fields BEFORE rewriting server.yaml. If the worker
+    # migration raises mid-flight, server.yaml is still intact and
+    # the operator can fix the underlying cause and retry. v9.1.6 r1
+    # had the order reversed — server.yaml got saved first, then if
+    # the worker migration crashed, the system was left with
+    # ``server.name = new`` while every worker still had
+    # ``boss: <old>-foo``, reintroducing the original BUG 2 state.
+    #
+    # Residual atomicity window: if the worker migration succeeds
+    # but ``save_server_config`` then fails, workers have boss:
+    # rewritten to the NEW prefix while server.yaml still records
+    # the OLD name. Recovery path: ``culture server migrate-prefix
+    # <new> <old>`` to roll the worker side back. The window is
+    # narrow because ``save_server_config`` is atomic via
+    # tmpfile+rename.
+    rename_worker_boss_prefix(config_path, old_name, new_name)
+
     config.server.name = new_name
     save_server_config(str(config_path), config)
-
-    # v9.1.6 — migrate worker boss: fields before returning so callers
-    # don't observe a half-renamed state.
-    rename_worker_boss_prefix(config_path, old_name, new_name)
 
     renamed = [(f"{old_name}-{suffix}", f"{new_name}-{suffix}") for suffix in config.manifest]
     return old_name, renamed
