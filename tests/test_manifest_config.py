@@ -21,6 +21,7 @@ from culture.config import (
     remove_manifest_agent,
     rename_manifest_agent,
     rename_manifest_server,
+    rename_worker_boss_prefix,
     save_culture_yaml,
     save_server_config,
     unarchive_manifest_agent,
@@ -315,3 +316,137 @@ def test_load_config_or_default_missing(tmpdir):
     config = load_config_or_default(path, fallback=os.path.join(tmpdir, "also-missing.yaml"))
     assert config.server.name == "culture"
     assert config.agents == []
+
+
+# -----------------------------------------------------------------------
+# v9.1.6 — boss-prefix migration (BUG 2 fix)
+# -----------------------------------------------------------------------
+
+
+def _make_worker(tmpdir, suffix: str, boss: str):
+    """Create a per-worker directory with a culture.yaml that records
+    a ``boss:`` field (the field BUG 2 leaves stale after an in-place
+    ``server.name`` change)."""
+    wdir = os.path.join(tmpdir, "helpers", suffix)
+    os.makedirs(wdir, exist_ok=True)
+    save_culture_yaml(
+        wdir,
+        [AgentConfig(suffix=suffix, backend="claude", extras={"boss": boss})],
+    )
+    return wdir
+
+
+def test_rename_worker_boss_prefix_rewrites_matching(tmpdir):
+    """Workers whose stored boss: prefix matches old_prefix get
+    rewritten; workers whose prefix does NOT match are untouched.
+
+    This is the load-bearing AD-2 multi-project safety guarantee:
+    when migrating ``local → plenty``, a worker with
+    ``boss: fork-rearch-qa`` (a DIFFERENT project boss) must not be
+    accidentally relabeled."""
+    w1 = _make_worker(tmpdir, "w1", "local-boss")
+    w2 = _make_worker(tmpdir, "w2", "local-st4ck-boss")
+    w_foreign = _make_worker(tmpdir, "wforeign", "fork-rearch-qa")
+
+    server_path = os.path.join(tmpdir, "server.yaml")
+    config = ServerConfig(
+        server=ServerConnConfig(name="local"),
+        manifest={"w1": w1, "w2": w2, "wforeign": w_foreign},
+    )
+    save_server_config(server_path, config)
+
+    rewrites = rename_worker_boss_prefix(server_path, "local", "plenty")
+
+    # Only the two ``local-*`` workers were touched.
+    assert len(rewrites) == 2
+    rewritten_dirs = {d for d, _, _ in rewrites}
+    assert w1 in rewritten_dirs
+    assert w2 in rewritten_dirs
+    assert w_foreign not in rewritten_dirs
+
+    # Verify on disk.
+    assert load_culture_yaml(w1)[0].extras["boss"] == "plenty-boss"
+    # Multi-hyphen suffix is preserved past the first hyphen.
+    assert load_culture_yaml(w2)[0].extras["boss"] == "plenty-st4ck-boss"
+    # AD-2 isolation: foreign project boss unchanged.
+    assert load_culture_yaml(w_foreign)[0].extras["boss"] == "fork-rearch-qa"
+
+
+def test_rename_worker_boss_prefix_idempotent(tmpdir):
+    """Running the migration twice does not double-rewrite."""
+    w1 = _make_worker(tmpdir, "w1", "local-boss")
+    server_path = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_path,
+        ServerConfig(
+            server=ServerConnConfig(name="plenty"),
+            manifest={"w1": w1},
+        ),
+    )
+
+    first = rename_worker_boss_prefix(server_path, "local", "plenty")
+    second = rename_worker_boss_prefix(server_path, "local", "plenty")
+
+    assert len(first) == 1
+    assert len(second) == 0
+    assert load_culture_yaml(w1)[0].extras["boss"] == "plenty-boss"
+
+
+def test_rename_worker_boss_prefix_no_op_when_prefixes_match(tmpdir):
+    """Same old/new prefix is a no-op (defensive — operator runs it
+    twice as a safety check)."""
+    w1 = _make_worker(tmpdir, "w1", "plenty-boss")
+    server_path = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_path,
+        ServerConfig(
+            server=ServerConnConfig(name="plenty"),
+            manifest={"w1": w1},
+        ),
+    )
+
+    assert rename_worker_boss_prefix(server_path, "plenty", "plenty") == []
+    assert load_culture_yaml(w1)[0].extras["boss"] == "plenty-boss"
+
+
+def test_rename_worker_boss_prefix_partial_prefix_does_not_match(tmpdir):
+    """``local`` should NOT match ``local2-*`` — the migration only
+    triggers on EXACT-prefix-plus-hyphen. Defends against
+    ``local`` operators accidentally clobbering ``local2`` projects."""
+    w = _make_worker(tmpdir, "w1", "local2-boss")
+    server_path = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_path,
+        ServerConfig(
+            server=ServerConnConfig(name="local"),
+            manifest={"w1": w},
+        ),
+    )
+
+    rewrites = rename_worker_boss_prefix(server_path, "local", "plenty")
+    assert rewrites == []
+    assert load_culture_yaml(w)[0].extras["boss"] == "local2-boss"
+
+
+def test_rename_manifest_server_auto_migrates_boss_prefix(tmpdir):
+    """The full ``culture server rename`` flow must now (v9.1.6)
+    migrate worker boss: fields atomically. Pre-9.1.6 the server name
+    got renamed but workers were stranded with stale prefixes — the
+    root cause of BUG 2."""
+    w1 = _make_worker(tmpdir, "w1", "local-boss")
+    server_path = os.path.join(tmpdir, "server.yaml")
+    save_server_config(
+        server_path,
+        ServerConfig(
+            server=ServerConnConfig(name="local"),
+            manifest={"w1": w1},
+        ),
+    )
+
+    old_name, renamed = rename_manifest_server(server_path, "plenty")
+
+    assert old_name == "local"
+    assert renamed == [("local-w1", "plenty-w1")]
+    # Both server config AND worker culture.yaml were updated.
+    assert load_config(server_path).server.name == "plenty"
+    assert load_culture_yaml(w1)[0].extras["boss"] == "plenty-boss"

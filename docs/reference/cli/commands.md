@@ -192,6 +192,55 @@ culture rename spark-culture claude --config /path/to/server.yaml
 culture assign culture-culture spark --config /path/to/server.yaml
 ```
 
+### `culture server migrate-prefix` (v9.1.6+)
+
+Rewrite the `boss:` prefix on every worker's `culture.yaml`.
+
+```bash
+culture server migrate-prefix <from> [<to>] [--dry-run]
+```
+
+Use this when the server's name has changed in a way that left
+existing workers with a stale boss prefix — most commonly when the
+operator edited `~/.culture/server.yaml::server.name` directly
+(bypassing `culture server rename`). The proper rename path
+(`culture server rename <new>`) runs this migration automatically as
+of v9.1.6; the standalone verb is the explicit one-shot for the
+recovery case.
+
+| Argument | Meaning |
+|---|---|
+| `<from>` | The OLD server prefix currently stored in worker `boss:` fields (e.g. `local`). |
+| `<to>` | OPTIONAL. The NEW server prefix to rewrite to. Defaults to the current `server.yaml::server.name`. |
+| `--dry-run` | Show what would be rewritten without modifying any file. |
+
+Matching is exact-prefix-plus-hyphen (so `local` does NOT match
+`local2-*` workers). Workers whose stored `boss` starts with a
+different prefix are not touched — this preserves the AD-2
+multi-project safety: migrating `local → plenty` will not affect a
+worker whose stored boss is `fork-rearch-qa`.
+
+#### Why renames now migrate workers
+
+Before v9.1.6, `culture server rename` updated only `server.yaml`
+and PID files; per-worker `culture.yaml` `boss:` fields were left
+with the old prefix. The next `culture boss brief / read / close`
+invocation hit "owned by another boss" because the ownership check
+compared the now-renamed boss nick against the stored stale value.
+v9.1.6 closes that gap end-to-end.
+
+#### Symptoms of the underlying drift
+
+If you see any of these, you likely need `migrate-prefix`:
+
+- `culture boss brief <w>` → `Timed out waiting for server welcome; brief NOT sent`
+- `culture boss read <w>` → `<w> is not your worker (owned by another boss)`
+- `culture agent stop <w>` → `<w> is not your child — only its parent may close it`
+
+The v9.1.6 observer rejection-numerics surfacing
+(`culture/observer.py::RegistrationRejected`) also points at this
+migration in its error message when it detects the drift.
+
 ### Default config path resolution (v9.1.5+)
 
 When `--config` is not passed, the CLI defaults to `server.yaml`

@@ -4,6 +4,113 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.6] - 2026-06-04
+
+### Fixed — BUG 1: IRC observer wedged on registration rejections
+
+Another agent reported "Timed out waiting for server welcome; brief
+NOT sent" on every `culture boss brief`. Long-lived bridges worked;
+fresh connections did not. A discover/synthesize/critique workflow
+traced the root cause to **server.name drift between disk and
+runtime**: the user had edited `~/.culture/server.yaml::server.name`
+in-place (recovering from the v9.1.5 test-fixture leak). The running
+IRCd cached its server name at startup; observer code reads server.yaml
+fresh on every connection. So when the observer minted a temp nick
+using the new value (`plenty-_peekXXX`), the IRCd's nick handler
+(`culture/agentirc/client.py:660-666`) sent
+`ERR_ERRONEUSNICKNAME (432) Nickname must start with local-`. The
+observer's registration loop only handled `001` (welcome) and
+`433` (nick in use) — `432` was silently dropped, the loop continued
+reading, hit `RECV_TIMEOUT` after 5s, and surfaced as the misleading
+"Timed out waiting for server welcome" with zero diagnostic value.
+
+This release pins the v9.1.6 contract on
+`culture/observer.py::IRCObserver._connect_and_register`:
+
+- Any IRC numeric in `_FATAL_REGISTRATION_NUMERICS` (432, 464, 465,
+  466, 421) raises a new `RegistrationRejected(ConnectionError)`
+  immediately. The exception carries the numeric, the server's
+  verbatim reason text, the attempted nick, the server_name from
+  `server.yaml`, host, and port. Operators see the actual cause +
+  a hint to run `culture server migrate-prefix <old> <new>`.
+- The `TimeoutError` path additionally reports the last 16 lines
+  received so a NOVEL rejection numeric (one not in the fatal set)
+  still leaves a paper trail.
+
+### Fixed — BUG 2: server-rename strands existing workers
+
+Same root cause, different symptom path. After an in-place
+`server.name` change (or a legitimate `culture server rename` — the
+proper rename path had the same gap), every worker's
+`culture.yaml::boss:` field still recorded the OLD server-prefix
+(e.g. `boss: local-boss`). The running boss now resolved
+`CULTURE_NICK = plenty-boss`. Every ownership check
+(`boss.py:332`, `agent.py:770`, +5 sites) compared
+`plenty-boss == local-boss`, returned False, and rejected each
+operation as "owned by another boss" / "not your child — only its
+parent may close it". Archived workers were particularly stranded:
+`unarchive_manifest_agent` only flipped `state` and never touched
+the `boss:` field.
+
+**Two paths fixed:**
+
+1. **The legitimate path** — `rename_manifest_server` (used by
+   `culture server rename`) now atomically rewrites
+   every worker's `boss:` field from `<old-prefix>-<suffix>` to
+   `<new-prefix>-<suffix>` before returning. Pre-9.1.6 the rename
+   updated `server.yaml::server.name` and the PID files, but left
+   per-worker `culture.yaml` untouched.
+
+2. **The recovery path** — new
+   `culture server migrate-prefix <from> [<to>] [--dry-run]` CLI verb
+   for the case where the operator already changed `server.name`
+   manually (bypassing `culture server rename`). Walks every worker
+   in the manifest, loads its `culture.yaml`, rewrites matching
+   `boss:` fields, saves. Idempotent.
+
+   ```bash
+   # Recovery for the v9.1.5 leak's manual fix path:
+   culture server migrate-prefix local         # uses current server.name as <to>
+   culture server migrate-prefix local plenty  # explicit
+   culture server migrate-prefix local plenty --dry-run
+   ```
+
+**AD-2 multi-project safety** preserved by exact-prefix matching:
+when migrating `local → plenty`, a worker whose stored boss
+happens to start with a DIFFERENT prefix (e.g. `fork-rearch-qa-w1`
+with `boss: fork-rearch-qa`) is NOT touched. Match is
+`<old>-` (prefix + literal hyphen) so `local` does not match
+`local2`.
+
+The adversarial-critique workflow that ran before implementation
+explicitly **rejected** a suffix-only ownership-comparison fix (the
+naive shape) because it would create cross-project privilege
+escalation in the AD-2 multi-project model — `fork-rearch-qa`
+could close `culture-rearch-qa`'s workers. Migration is the right
+shape; suffix-tolerance is not.
+
+### New helper
+
+- `culture.config.rename_worker_boss_prefix(config_path, old, new)`
+  exposed for programmatic use. Idempotent, no-op on equal
+  prefixes, returns a list of `(directory, old_boss, new_boss)`
+  tuples for the caller to log.
+
+### Tests
+
+- 7 new tests in `tests/test_observer_registration.py` spinning up
+  a fake IRCd that sends fatal numerics + asserting
+  `RegistrationRejected` surfaces with the right fields, plus a
+  novel-numeric case that exercises the timeout-tail reporting.
+- 5 new tests in `tests/test_manifest_config.py` covering the
+  migration helper: matching rewrite, idempotence, no-op on equal
+  prefixes, partial-prefix safety (`local` ≠ `local2`), AD-2
+  multi-project safety (foreign boss prefix untouched), and
+  end-to-end via `rename_manifest_server`.
+- 231/231 across the affected suites. Real `~/.culture/server.yaml`
+  verified untouched throughout (CULTURE_HOME isolation working
+  cleanly post-9.1.5).
+
 ## [9.1.5] - 2026-06-04
 
 ### Fixed — CULTURE_HOME isolation in CLI config-path defaults

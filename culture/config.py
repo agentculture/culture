@@ -755,18 +755,110 @@ def rename_manifest_agent(config_path: str | Path, old_nick: str, new_nick: str)
     save_culture_yaml(directory, agents)
 
 
+def rename_worker_boss_prefix(
+    config_path: str | Path, old_prefix: str, new_prefix: str
+) -> list[tuple[str, str, str]]:
+    """Rewrite the ``boss:`` field in every worker's ``culture.yaml``
+    where the current value starts with ``<old_prefix>-``.
+
+    v9.1.6: BUG 2 — workers stored ``boss: local-foo`` (i.e. with the
+    server-prefix-at-spawn-time baked in) and ``rename_manifest_server``
+    only updated ``server.yaml::server.name`` — leaving every worker
+    with a stale prefix. After a server rename (or in-place
+    ``server.name`` edit) the ownership check
+    ``caller == worker.boss`` would compare ``new-foo`` against
+    stored ``old-foo`` and reject everything as "owned by another
+    boss".
+
+    The rewrite is safe across the AD-2 multi-project model: a worker
+    whose stored ``boss`` happens to start with a DIFFERENT prefix
+    (e.g. ``fork-rearch-qa-w1`` with ``boss: fork-rearch-qa``, when
+    we're migrating ``local`` → ``plenty``) is not touched. Match is
+    exact-prefix-plus-hyphen so ``local`` does not match ``local2``.
+
+    Args:
+        config_path: server.yaml path.
+        old_prefix: bare prefix without trailing hyphen (e.g. ``"local"``).
+        new_prefix: bare new prefix without trailing hyphen
+            (e.g. ``"plenty"``).
+
+    Returns:
+        List of ``(directory, old_boss, new_boss)`` tuples — one per
+        rewritten ``boss:`` field. Empty list when no rewrites needed
+        (idempotent).
+    """
+    if old_prefix == new_prefix:
+        return []
+
+    config = load_server_config(config_path)
+    old_match = f"{old_prefix}-"
+    new_match_root = f"{new_prefix}-"
+
+    rewrites: list[tuple[str, str, str]] = []
+    # Each manifest directory may host more than one AgentConfig (legacy
+    # multi-agent culture.yaml layout); load all + rewrite + save all.
+    seen_dirs: set[str] = set()
+    for _suffix, directory in config.manifest.items():
+        if directory in seen_dirs:
+            continue
+        seen_dirs.add(directory)
+        try:
+            agents = load_culture_yaml(directory)
+        except (FileNotFoundError, ValueError):
+            continue
+        changed = False
+        for agent in agents:
+            boss = agent.extras.get("boss", "") or ""
+            if boss.startswith(old_match):
+                # Replace the prefix BEFORE the first hyphen only —
+                # leave any further hyphens in the agent half intact
+                # (e.g. ``local-st4ck-boss`` → ``plenty-st4ck-boss``).
+                new_boss = new_match_root + boss[len(old_match) :]
+                agent.extras["boss"] = new_boss
+                rewrites.append((directory, boss, new_boss))
+                changed = True
+        if changed:
+            save_culture_yaml(directory, agents)
+    return rewrites
+
+
 def rename_manifest_server(
     config_path: str | Path, new_name: str
 ) -> tuple[str, list[tuple[str, str]]]:
-    """Rename the server. Nicks are computed at load time, so only server.name changes.
+    """Rename the server.
 
-    Returns (old_name, [(old_nick, new_nick), ...]) for informational purposes.
+    Returns (old_name, [(old_nick, new_nick), ...]) — informational.
+
+    v9.1.6: also rewrites the ``boss:`` field on every worker whose
+    stored prefix matched the OLD server name. Pre-9.1.6 this step was
+    missing — the manifest's ``server.name`` got updated, but
+    individual worker ``culture.yaml`` files kept their stale
+    ``boss: <old>-xxx`` strings, breaking every subsequent ownership
+    check ("owned by another boss" errors). See ``rename_worker_boss_prefix``.
     """
     config = load_server_config(config_path)
     old_name = config.server.name
 
     if old_name == new_name:
         return old_name, []
+
+    # v9.1.6 r2 (Qodo PR #58 #5) — migrate the worker culture.yaml
+    # ``boss:`` fields BEFORE rewriting server.yaml. If the worker
+    # migration raises mid-flight, server.yaml is still intact and
+    # the operator can fix the underlying cause and retry. v9.1.6 r1
+    # had the order reversed — server.yaml got saved first, then if
+    # the worker migration crashed, the system was left with
+    # ``server.name = new`` while every worker still had
+    # ``boss: <old>-foo``, reintroducing the original BUG 2 state.
+    #
+    # Residual atomicity window: if the worker migration succeeds
+    # but ``save_server_config`` then fails, workers have boss:
+    # rewritten to the NEW prefix while server.yaml still records
+    # the OLD name. Recovery path: ``culture server migrate-prefix
+    # <new> <old>`` to roll the worker side back. The window is
+    # narrow because ``save_server_config`` is atomic via
+    # tmpfile+rename.
+    rename_worker_boss_prefix(config_path, old_name, new_name)
 
     config.server.name = new_name
     save_server_config(str(config_path), config)

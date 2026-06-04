@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+from collections import deque
 
 from culture.protocol.message import Message
 
@@ -28,6 +29,71 @@ logger = logging.getLogger(__name__)
 RECV_TIMEOUT = 5.0
 # Timeout for the full connect + register cycle
 REGISTER_TIMEOUT = 10.0
+
+# IRC numerics that mean "registration cannot proceed" — surface them
+# verbatim instead of letting the registration loop wedge to RECV_TIMEOUT.
+# v9.1.6: the observer pre-9.1.6 only handled 001 (welcome) and 433 (nick
+# in use). Any other rejection numeric — most importantly 432
+# (ERR_ERRONEUSNICKNAME) which the IRCd sends when the observer's nick
+# doesn't match the server's expected ``<server_name>-`` prefix — was
+# silently dropped. The loop then read no further data, hit
+# RECV_TIMEOUT, and surfaced as "Timed out waiting for server welcome"
+# with zero diagnostic value (the actual cause: server.yaml's
+# ``server.name`` drifted from what the running IRCd was started with).
+_FATAL_REGISTRATION_NUMERICS = frozenset(
+    {
+        "432",  # ERR_ERRONEUSNICKNAME — bad nick shape (prefix mismatch lives here)
+        "464",  # ERR_PASSWDMISMATCH — server requires PASS
+        "465",  # ERR_YOUREBANNEDCREEP — banned
+        "466",  # ERR_YOUWILLBEBANNED
+        "421",  # ERR_UNKNOWNCOMMAND for NICK/USER (some IRCds use this)
+    }
+)
+
+
+class RegistrationRejected(ConnectionError):
+    """The IRCd rejected the observer's registration with an
+    actionable error numeric. Raised instead of letting the loop wedge
+    to RECV_TIMEOUT, which previously masked server-name drift.
+
+    Attributes:
+        numeric: the IRC numeric the server sent (e.g. ``"432"``).
+        server_text: the server's reason text (e.g. ``"Nickname must
+            start with plenty-"``).
+        attempted_nick: the nick the observer tried to register.
+        server_name: the server name the observer used to mint the
+            nick (read from ``server.yaml``).
+        host: TCP host the observer connected to.
+        port: TCP port.
+    """
+
+    def __init__(
+        self,
+        numeric: str,
+        server_text: str,
+        attempted_nick: str,
+        server_name: str,
+        host: str,
+        port: int,
+    ) -> None:
+        self.numeric = numeric
+        self.server_text = server_text
+        self.attempted_nick = attempted_nick
+        self.server_name = server_name
+        self.host = host
+        self.port = port
+        super().__init__(
+            f"IRC server rejected observer registration: "
+            f"{numeric} {server_text!r}. "
+            f"Attempted nick {attempted_nick!r} against {host}:{port} "
+            f"with server_name={server_name!r} (read from server.yaml). "
+            f"If the running IRCd was started with a different --name, "
+            f"this is in-place server.name drift — run "
+            f"`culture server migrate-prefix <old> <new>` to fix worker yamls "
+            f"and restart the IRCd with the correct --name."
+        )
+
+
 # How long to wait for the response to a HISTORY query before giving up.
 # IRC HISTORY replies are interleaved with PRIVMSGs from other channels;
 # we keep reading until HISTORYEND or this deadline.
@@ -54,7 +120,17 @@ class IRCObserver:
     async def _process_registration_line(
         self, line: str, writer: asyncio.StreamWriter, nick: str
     ) -> tuple[bool, str]:
-        """Handle one line during registration. Returns (done, nick)."""
+        """Handle one line during registration. Returns (done, nick).
+
+        v9.1.6: also raises :class:`RegistrationRejected` when the
+        server sends a fatal registration numeric (see
+        ``_FATAL_REGISTRATION_NUMERICS``). Previously these numerics
+        were silently dropped — the loop continued reading and the
+        observer wedged to ``RECV_TIMEOUT`` reporting only "Timed out
+        waiting for server welcome", which gave operators zero
+        diagnostic value when the actual cause was in-place
+        ``server.name`` drift (BUG 1).
+        """
         msg = Message.parse(line)
         if msg.command == "001":
             return True, nick
@@ -62,38 +138,86 @@ class IRCObserver:
             nick = self._temp_nick()
             writer.write(f"NICK {nick}\r\n".encode())
             await writer.drain()
+            return False, nick
+        if msg.command in _FATAL_REGISTRATION_NUMERICS:
+            # The server's "reason" text is typically the trailing
+            # param (everything after the last `:`). For 432 the IRCd
+            # sends e.g. ``432 <nick> :Nickname must start with plenty-``.
+            server_text = msg.params[-1] if msg.params else ""
+            raise RegistrationRejected(
+                numeric=msg.command,
+                server_text=server_text,
+                attempted_nick=nick,
+                server_name=self.server_name,
+                host=self.host,
+                port=self.port,
+            )
         return False, nick
 
     async def _connect_and_register(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, str]:
         """Open a TCP connection, register with a temp nick, and return the streams.
 
         Returns (reader, writer, nick).
+
+        v9.1.6: the ``TimeoutError`` path now reports the last few
+        lines actually received so an operator who hits a NOVEL
+        rejection numeric (one not in ``_FATAL_REGISTRATION_NUMERICS``)
+        still gets a clue rather than a bare "timed out" message.
         """
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port),
             timeout=REGISTER_TIMEOUT,
         )
 
-        nick = self._temp_nick()
-        writer.write(f"NICK {nick}\r\n".encode())
-        writer.write("USER _peek 0 * :culture observer\r\n".encode())
-        await writer.drain()
-
-        buffer = ""
+        # v9.1.6 — every exit path BEFORE the successful return must
+        # close ``writer`` (Qodo PR #58 #4). Pre-9.1.6 only the
+        # TimeoutError branch closed; the connection-closed branch and
+        # the new RegistrationRejected branch leaked the socket.
         try:
+            nick = self._temp_nick()
+            writer.write(f"NICK {nick}\r\n".encode())
+            writer.write("USER _peek 0 * :culture observer\r\n".encode())
+            await writer.drain()
+
+            buffer = ""
+            # Keep a bounded ring of the last 16 lines we received so
+            # the timeout path can report what actually came over the
+            # wire.
+            received_tail: deque[str] = deque(maxlen=16)
             while True:
                 data = await asyncio.wait_for(reader.read(4096), timeout=RECV_TIMEOUT)
                 if not data:
-                    raise ConnectionError("Connection closed during registration")
+                    raise ConnectionError(
+                        f"Connection to {self.host}:{self.port} closed during "
+                        f"registration. Attempted nick {nick!r}. "
+                        f"Last lines received: {list(received_tail)!r}"
+                    )
                 buffer += data.decode(errors="replace")
                 while "\r\n" in buffer:
                     line, buffer = buffer.split("\r\n", 1)
+                    if line.strip():
+                        received_tail.append(line)
                     done, nick = await self._process_registration_line(line, writer, nick)
                     if done:
                         return reader, writer, nick
         except asyncio.TimeoutError:
             writer.close()
-            raise ConnectionError("Timed out waiting for server welcome")
+            raise ConnectionError(
+                f"Timed out waiting for server welcome from "
+                f"{self.host}:{self.port}. Attempted nick {nick!r} "
+                f"(server_name={self.server_name!r} from server.yaml). "
+                f"Last lines received: {list(received_tail)!r}. "
+                f"If the running IRCd was started with a different "
+                f"--name, that's in-place server.name drift."
+            )
+        except BaseException:
+            # Qodo PR #58 #4 — close the writer for ANY exit path
+            # that isn't a successful return: ConnectionError raised
+            # on EOF, RegistrationRejected raised on fatal numerics,
+            # or anything else. Without this, the fix for BUG 1 would
+            # have leaked one socket per rejected connection.
+            writer.close()
+            raise
 
     async def _disconnect(self, writer: asyncio.StreamWriter) -> None:
         """Send QUIT and close."""
