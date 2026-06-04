@@ -66,19 +66,24 @@ async def _start_fake_ircd(handler):
 
 
 @pytest.mark.asyncio
-async def test_observer_raises_on_erroneous_nick(unused_tcp_port):
-    """When the IRCd sends ``432`` rejecting the nick prefix, the
-    observer raises ``RegistrationRejected`` IMMEDIATELY — no wait for
-    RECV_TIMEOUT, no bare "Timed out waiting for welcome" message."""
+async def test_observer_raises_on_unparseable_432(unused_tcp_port):
+    """When the IRCd sends ``432`` with a reason text the v9.1.7
+    drift parser CANNOT extract a valid prefix from, the observer
+    surfaces the original ``RegistrationRejected`` immediately —
+    NO infinite retry, NO bare "timed out waiting for welcome".
+
+    v9.1.6 behavior (raise on 432) is preserved as the FALLBACK for
+    cases where the 432 text isn't the IRCd's canonical
+    ``"Nickname must start with X-"`` shape. v9.1.7 layers
+    auto-recovery on top for the canonical shape only.
+    """
 
     async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         nick, _ = await _drain_registration_lines(reader)
-        # IRCd ERR_ERRONEUSNICKNAME shape: ":server 432 <nick> :<reason>"
-        writer.write(f":local 432 {nick} :Nickname must start with local-\r\n".encode())
+        # NON-canonical 432 — parser returns None, so no recovery
+        # is attempted and the original behavior applies.
+        writer.write(f":local 432 {nick} :Your nick is funky\r\n".encode())
         await writer.drain()
-        # Hold the connection open briefly so the observer sees the line
-        # before the close. Pre-9.1.6 the observer would have ignored the
-        # 432, waited for 001, and hit RECV_TIMEOUT.
         await asyncio.sleep(0.1)
         writer.close()
 
@@ -88,13 +93,108 @@ async def test_observer_raises_on_erroneous_nick(unused_tcp_port):
         with pytest.raises(RegistrationRejected) as exc:
             await observer._connect_and_register()
 
-        # Structured fields the operator needs to diagnose.
         assert exc.value.numeric == "432"
-        assert "Nickname must start with local-" in exc.value.server_text
         assert exc.value.attempted_nick.startswith("plenty-_peek")
         assert exc.value.server_name == "plenty"
-        # Verbose message includes the migration hint.
-        assert "culture migrate boss-prefix" in str(exc.value) or "migrate-prefix" in str(exc.value)
+        # The hint still points operators at the recovery tool even
+        # when auto-recovery couldn't fire.
+        assert "migrate-prefix" in str(exc.value)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_observer_auto_recovers_from_canonical_432(caplog):
+    """v9.1.7 — when the IRCd sends a canonical 432
+    ``Nickname must start with local-`` and ``self.server_name``
+    is ``plenty``, the observer parses ``local``, retries ONCE
+    with the corrected prefix, completes registration, and logs
+    ONE warning naming the migration command.
+
+    This is the BUG 1 root-cause fix the user reported.
+    """
+    attempts: list[str] = []
+
+    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        nick, _ = await _drain_registration_lines(reader)
+        attempts.append(nick)
+        if nick.startswith("plenty-"):
+            # First attempt: reject with canonical 432.
+            writer.write(f":local 432 {nick} :Nickname must start with local-\r\n".encode())
+            await writer.drain()
+            await asyncio.sleep(0.05)
+            writer.close()
+            return
+        # Second attempt (corrected prefix): accept.
+        writer.write(f":local 001 {nick} :Welcome\r\n".encode())
+        await writer.drain()
+        # Hold open so the observer can return the streams cleanly.
+        try:
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+
+    import logging as _logging
+
+    caplog.set_level(_logging.WARNING)
+    server, host, port = await _start_fake_ircd(handler)
+    try:
+        observer = IRCObserver(host=host, port=port, server_name="plenty")
+        reader, writer, nick = await observer._connect_and_register()
+        writer.close()
+
+        # Two attempts: the first under the stale 'plenty' prefix,
+        # the second under the auto-corrected 'local' prefix.
+        assert len(attempts) == 2
+        assert attempts[0].startswith("plenty-_peek")
+        assert attempts[1].startswith("local-_peek")
+        # The returned nick reflects the actual successful one.
+        assert nick.startswith("local-_peek")
+        # self.server_name is NOT mutated — config-of-record stays
+        # whatever's on disk so the operator notices the drift.
+        assert observer.server_name == "plenty"
+
+        # Exactly one warning, with the actionable command.
+        drift_warns = [r for r in caplog.records if "drift" in r.message.lower()]
+        assert len(drift_warns) == 1
+        assert "culture server migrate-prefix" in drift_warns[0].message
+        assert "plenty" in drift_warns[0].message
+        assert "local" in drift_warns[0].message
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_observer_does_not_retry_more_than_once():
+    """Hard cap: a SECOND 432 (e.g. the IRCd lied or the prefix
+    changed between attempts) surfaces as RegistrationRejected.
+    No infinite loop. _MAX_DRIFT_RETRIES = 1."""
+    attempts: list[str] = []
+
+    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        nick, _ = await _drain_registration_lines(reader)
+        attempts.append(nick)
+        # Always reject — first with one prefix, then with another.
+        if len(attempts) == 1:
+            writer.write(f":local 432 {nick} :Nickname must start with local-\r\n".encode())
+        else:
+            writer.write(f":local 432 {nick} :Nickname must start with other-\r\n".encode())
+        await writer.drain()
+        await asyncio.sleep(0.05)
+        writer.close()
+
+    server, host, port = await _start_fake_ircd(handler)
+    try:
+        observer = IRCObserver(host=host, port=port, server_name="plenty")
+        with pytest.raises(RegistrationRejected) as exc:
+            await observer._connect_and_register()
+        # We tried exactly twice — the original + one drift retry.
+        assert len(attempts) == 2
+        # The surfaced rejection is the SECOND one (after retry).
+        assert exc.value.numeric == "432"
+        assert "other-" in exc.value.server_text
     finally:
         server.close()
         await server.wait_closed()
@@ -230,3 +330,86 @@ def test_fatal_numerics_does_not_include_001_or_433():
     has explicit handling for both."""
     assert "001" not in _FATAL_REGISTRATION_NUMERICS
     assert "433" not in _FATAL_REGISTRATION_NUMERICS
+
+
+# ---------------------------------------------------------------------------
+# v9.1.7 — drift-prefix parser unit tests + IRCd source contract
+# ---------------------------------------------------------------------------
+
+
+from culture.observer import _parse_expected_prefix  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Nickname must start with local-", "local"),
+        ("Nickname must start with plenty-", "plenty"),
+        ("Nickname must start with fork-rearch-", "fork-rearch"),
+        # Trailing whitespace is tolerated (some IRCds pad).
+        ("Nickname must start with thor-   ", "thor"),
+    ],
+)
+def test_parse_expected_prefix_canonical_shapes(text, expected):
+    assert _parse_expected_prefix(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "Your nick is funky",
+        "Bad nickname",
+        # No trailing hyphen — not the IRCd's canonical shape.
+        "Nickname must start with local",
+        # Mid-string match would be a bug — the regex is anchored.
+        "Suffix only: Nickname must start with X- and other stuff",
+    ],
+)
+def test_parse_expected_prefix_rejects_non_canonical(text):
+    assert _parse_expected_prefix(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Uppercase forbidden — IRC server names are lowercase ASCII.
+        "Nickname must start with LOCAL-",
+        # Unicode + shell metacharacters — hostile-IRCd defense.
+        "Nickname must start with $(rm -rf /)-",
+        "Nickname must start with foo;ls-",
+        "Nickname must start with " + "a" * 33 + "-",
+    ],
+)
+def test_parse_expected_prefix_rejects_hostile_shapes(text):
+    """Defensive: even if the parser regex matches, the result must
+    pass the charset + length check or be rejected. A hostile IRCd
+    never influences our nick choice."""
+    assert _parse_expected_prefix(text) is None
+
+
+def test_parser_contract_with_ircd_reason_text():
+    """Contract test — the parser regex is tied byte-for-byte to the
+    IRCd's reason text in ``culture/agentirc/client.py:660-666``. If
+    a future commit edits one without the other, THIS test breaks
+    at that commit (catch in CI), not at runtime in production.
+    """
+    import inspect
+
+    from culture.agentirc import client as ircd_client
+
+    src = inspect.getsource(
+        ircd_client._handle_nick
+        if hasattr(ircd_client, "_handle_nick")
+        else ircd_client.Client._handle_nick
+    )  # noqa: E501
+    # The IRCd's reason text is built with an f-string against
+    # expected_prefix. Verify the literal substring is intact.
+    assert "Nickname must start with " in src, (
+        "IRCd reason text changed in client.py — update "
+        "culture/observer.py::_DRIFT_PARSE_RE to match."
+    )
+    # Sanity: feed a representative IRCd reason text through the
+    # parser to confirm round-trip.
+    canonical = "Nickname must start with someserver-"
+    assert _parse_expected_prefix(canonical) == "someserver"

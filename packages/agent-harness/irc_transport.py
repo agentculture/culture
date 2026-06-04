@@ -92,6 +92,13 @@ class IRCTransport:
             "404": self._on_cannotsendtochan,  # ERR_CANNOTSENDTOCHAN
             "474": self._on_bannedfromchan,  # ERR_BANNEDFROMCHAN
             "ERROR": self._on_server_error,
+            # v9.1.7 — fail-loud on registration rejection. See bridge
+            # variant for the design rationale (no nick mutation —
+            # AuditWriter / IPC / owner_map all key on the original
+            # nick, and the observer auto-recovers separately because
+            # it is ephemeral).
+            "432": self._on_erroneous_nick,  # ERR_ERRONEUSNICKNAME
+            "433": self._on_nick_in_use,  # ERR_NICKNAMEINUSE
         }
 
     def _span(self, name: str, attrs: dict | None = None) -> AbstractContextManager:
@@ -333,6 +340,50 @@ class IRCTransport:
     async def _on_ping(self, msg: Message) -> None:
         token = msg.params[0] if msg.params else ""
         await self._send_raw(f"PONG :{token}")
+
+    async def _on_erroneous_nick(self, msg) -> None:
+        """v9.1.7 — IRCd rejected our nick (432). Surface verbatim
+        and exit (no nick mutation; see bridge variant for the
+        adversarial-critique blockers that ruled out auto-recovery
+        in long-lived transports)."""
+        server_text = msg.params[-1] if msg.params else ""
+        logger.error(
+            "Transport nick %r rejected by IRCd at %s:%s (432): %s. "
+            "Server.name drift — run `culture server migrate-prefix "
+            "<old> <new>` AND restart the IRCd with the right --name.",
+            self.nick,
+            self.host,
+            self.port,
+            server_text,
+        )
+        self._should_run = False
+        try:
+            if self._writer is not None:
+                self._writer.close()
+        except OSError:
+            pass
+
+    async def _on_nick_in_use(self, msg) -> None:
+        """v9.1.7 — IRCd rejected our nick (433). Likely a duplicate
+        process holding the same nick. Surface + exit so the operator
+        can resolve, rather than minting a fresh identity behind their
+        back."""
+        server_text = msg.params[-1] if msg.params else ""
+        logger.error(
+            "Transport nick %r already in use on IRCd at %s:%s (433): %s. "
+            "Another process is holding this nick — find and stop it "
+            "before retrying.",
+            self.nick,
+            self.host,
+            self.port,
+            server_text,
+        )
+        self._should_run = False
+        try:
+            if self._writer is not None:
+                self._writer.close()
+        except OSError:
+            pass
 
     async def _on_welcome(self, msg: Message) -> None:
         self.connected = True

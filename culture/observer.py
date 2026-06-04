@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import secrets
 from collections import deque
 
@@ -29,6 +30,68 @@ logger = logging.getLogger(__name__)
 RECV_TIMEOUT = 5.0
 # Timeout for the full connect + register cycle
 REGISTER_TIMEOUT = 10.0
+
+# v9.1.7 — auto-recover from server.name drift. When the IRCd rejects
+# the observer's nick with 432 because the configured server prefix
+# (read from ``server.yaml``) doesn't match the IRCd's actual
+# ``--name``, parse the expected prefix from the IRCd's reason text
+# (``"Nickname must start with local-"``), retry once with a corrected
+# nick, and log a warning. Connection-local effective prefix — we do
+# NOT mutate ``self.server_name`` (config-of-record).
+_DRIFT_PARSE_RE = re.compile(r"Nickname must start with (\S+)-\s*$")
+# Hard cap on retries per connect — exactly one. A SECOND 432 means
+# the IRCd's expected prefix isn't what its 432 text claimed, which
+# is a deeper bug and should surface as the normal RegistrationRejected.
+_MAX_DRIFT_RETRIES = 1
+
+
+def _parse_expected_prefix(server_text: str) -> str | None:
+    """Extract the ``<expected>`` prefix from a 432 reason text of
+    shape ``"Nickname must start with <expected>-"``.
+
+    Tied byte-for-byte to ``culture/agentirc/client.py:660-666``:
+
+    .. code-block:: python
+
+        expected_prefix = f"{self.server.config.name}-"
+        if not nick.startswith(expected_prefix):
+            await self.send_numeric(
+                replies.ERR_ERRONEUSNICKNAME,
+                nick,
+                f"Nickname must start with {expected_prefix}",
+            )
+
+    A contract test imports both sites and verifies the wording
+    stays in sync — if a future commit edits the IRCd's reason
+    string, the contract test fires at the same commit, not at
+    runtime in production.
+
+    Returns the bare server name (without the trailing hyphen) on
+    match, or ``None`` if the reason text doesn't match the IRCd's
+    canonical shape. ``None`` fall-through means we surface the
+    original RegistrationRejected rather than guessing.
+
+    Defensive: also validates the candidate is non-empty, ≤32 chars,
+    and matches ``[a-z0-9-]+`` (same shape ``sanitize_agent_name``
+    enforces). A hostile IRCd that sends a weird reason text never
+    influences our nick choice.
+    """
+    if not server_text:
+        return None
+    m = _DRIFT_PARSE_RE.search(server_text)
+    if m is None:
+        return None
+    candidate = m.group(1)
+    if not (1 <= len(candidate) <= 32):
+        return None
+    # Match the same charset ``culture/config.py::sanitize_agent_name``
+    # produces — lowercase ASCII alphanumeric + hyphen — so a hostile
+    # IRCd can't slip control chars or shell metacharacters into the
+    # nick we then send back.
+    if not re.fullmatch(r"[a-z0-9-]+", candidate):
+        return None
+    return candidate
+
 
 # IRC numerics that mean "registration cannot proceed" — surface them
 # verbatim instead of letting the registration loop wedge to RECV_TIMEOUT.
@@ -113,12 +176,31 @@ class IRCObserver:
         self.server_name = server_name
 
     def _temp_nick(self) -> str:
-        """Generate a temporary nick with server prefix."""
+        """Generate a temporary nick with server prefix (uses
+        ``self.server_name`` — the config-of-record). For a
+        drift-recovery retry, see ``_temp_nick_for``."""
+        return self._temp_nick_for(self.server_name)
+
+    def _temp_nick_for(self, server_prefix: str) -> str:
+        """Mint a temp nick under an explicit server prefix.
+
+        v9.1.7 — the drift auto-recovery shell in
+        ``_connect_and_register`` calls this with the IRCd-supplied
+        prefix parsed from a 432 reply, instead of mutating
+        ``self.server_name``. The connection-local override keeps
+        ``self.server_name`` congruent with what's on disk so
+        operators don't get gaslit by an observer that silently
+        reports a different server name than ``server.yaml`` records.
+        """
         suffix = secrets.token_hex(2)  # 4 hex chars
-        return f"{self.server_name}-_peek{suffix}"
+        return f"{server_prefix}-_peek{suffix}"
 
     async def _process_registration_line(
-        self, line: str, writer: asyncio.StreamWriter, nick: str
+        self,
+        line: str,
+        writer: asyncio.StreamWriter,
+        nick: str,
+        effective_prefix: str | None = None,
     ) -> tuple[bool, str]:
         """Handle one line during registration. Returns (done, nick).
 
@@ -135,7 +217,11 @@ class IRCObserver:
         if msg.command == "001":
             return True, nick
         if msg.command == "433":
-            nick = self._temp_nick()
+            # Mint a fresh temp nick under the prefix THIS connection
+            # is currently using — under drift recovery that's the
+            # IRCd-supplied prefix, not ``self.server_name``.
+            prefix = effective_prefix if effective_prefix is not None else self.server_name
+            nick = self._temp_nick_for(prefix)
             writer.write(f"NICK {nick}\r\n".encode())
             await writer.drain()
             return False, nick
@@ -159,10 +245,59 @@ class IRCObserver:
 
         Returns (reader, writer, nick).
 
-        v9.1.6: the ``TimeoutError`` path now reports the last few
-        lines actually received so an operator who hits a NOVEL
-        rejection numeric (one not in ``_FATAL_REGISTRATION_NUMERICS``)
-        still gets a clue rather than a bare "timed out" message.
+        v9.1.7 — auto-recovers from server.name drift: if the IRCd
+        rejects the first attempt with ``432 Nickname must start with
+        <expected>-``, parses ``<expected>`` from the reply, mints a
+        corrected nick under that prefix, and retries ONCE. The retry
+        opens a FRESH TCP connection (the first attempt's socket is
+        closed by the inner exception handler) — no half-state. The
+        ``self.server_name`` attribute is NOT mutated: it stays
+        congruent with what's on disk so operators don't get gaslit.
+        On successful recovery, one WARNING-level log fires with the
+        actionable fix command.
+
+        v9.1.6 (still in force): every non-success exit path closes
+        the writer; the ``TimeoutError`` message reports the last 16
+        lines received so a novel rejection numeric still leaves a
+        paper trail.
+        """
+        effective_prefix = self.server_name
+        for attempt in range(_MAX_DRIFT_RETRIES + 1):
+            try:
+                return await self._connect_and_register_once(effective_prefix)
+            except RegistrationRejected as exc:
+                # Only 432 (ERR_ERRONEUSNICKNAME) is recoverable. Hard
+                # cap at _MAX_DRIFT_RETRIES. Everything else (incl. a
+                # SECOND 432 with the same parsed prefix) surfaces.
+                if attempt >= _MAX_DRIFT_RETRIES or exc.numeric != "432":
+                    raise
+                parsed = _parse_expected_prefix(exc.server_text)
+                if parsed is None or parsed == effective_prefix:
+                    raise
+                logger.warning(
+                    "Observer detected server.name drift on %s:%s — "
+                    "server.yaml says %r, IRCd requires %r-. Used %r- "
+                    "for this connection. Fix permanently: "
+                    "`culture server migrate-prefix %s %s`",
+                    self.host,
+                    self.port,
+                    self.server_name,
+                    parsed,
+                    parsed,
+                    self.server_name,
+                    parsed,
+                )
+                effective_prefix = parsed
+        # Loop body either returns or raises. This is unreachable but
+        # mypy needs a terminal branch.
+        raise RuntimeError("unreachable: connect_and_register retry loop fell through")
+
+    async def _connect_and_register_once(
+        self, effective_prefix: str
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, str]:
+        """One TCP connect + register attempt under a specific server
+        prefix. The outer retry shell in ``_connect_and_register``
+        wraps this with v9.1.7 drift recovery.
         """
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port),
@@ -174,7 +309,7 @@ class IRCObserver:
         # TimeoutError branch closed; the connection-closed branch and
         # the new RegistrationRejected branch leaked the socket.
         try:
-            nick = self._temp_nick()
+            nick = self._temp_nick_for(effective_prefix)
             writer.write(f"NICK {nick}\r\n".encode())
             writer.write("USER _peek 0 * :culture observer\r\n".encode())
             await writer.drain()
@@ -197,7 +332,9 @@ class IRCObserver:
                     line, buffer = buffer.split("\r\n", 1)
                     if line.strip():
                         received_tail.append(line)
-                    done, nick = await self._process_registration_line(line, writer, nick)
+                    done, nick = await self._process_registration_line(
+                        line, writer, nick, effective_prefix=effective_prefix
+                    )
                     if done:
                         return reader, writer, nick
         except asyncio.TimeoutError:
