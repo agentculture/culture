@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.5] - 2026-06-04
+
+### Fixed — CULTURE_HOME isolation in CLI config-path defaults
+
+``culture/cli/shared/constants.py`` exported three module-level
+strings — ``DEFAULT_CONFIG``, ``DEFAULT_SERVER_CONFIG``,
+``LEGACY_CONFIG`` — each computed at module-import time via
+``os.path.expanduser("~/.culture/server.yaml")``. Because
+``os.path.expanduser`` resolves ``~`` from ``$HOME`` (NOT from
+``CULTURE_HOME``), every test that set ``CULTURE_HOME=<tmp>`` and
+invoked the CLI saw the argparse defaults still point at the
+operator's REAL ``~/.culture/server.yaml``.
+
+A passing v9.1.4 boundary-acceptance test
+(``test_spawn_at_exact_limit_accepts_validation_step``) was the
+one that surfaced the bug: the spawn chain ``culture boss spawn``
+→ ``culture agent create`` ran in a subprocess that inherited
+``CULTURE_HOME=<tmp>`` correctly, but the agent CLI's
+``--config`` default was the pre-resolved string from
+``DEFAULT_CONFIG``. Result: the test wrote
+``server.name = "ssssssssssssssssssssssssssssss"`` (its synthetic
+30-s server prefix) and a worker entry
+``wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww: /private/tmp/pytest-of-test/.../helpers/...``
+into the LIVE operator manifest. The operator only noticed when
+they opened Mission Control and saw a phantom worker on the mesh
+that didn't belong to any real spawn.
+
+This release replaces the import-time string constants with:
+
+- ``culture_home() -> str`` — honors ``CULTURE_HOME`` env, falls
+  back to ``~/.culture``
+- ``default_config_path() -> str`` — ``culture_home()/server.yaml``
+- ``default_legacy_config_path() -> str`` — ``culture_home()/agents.yaml``
+- ``default_log_dir() -> str`` — ``culture_home()/logs``
+
+The legacy names ``DEFAULT_CONFIG`` / ``DEFAULT_SERVER_CONFIG`` /
+``LEGACY_CONFIG`` / ``LOG_DIR`` are preserved via PEP 562
+``module.__getattr__`` so existing ``from .constants import …``
+sites continue to work — but every read now resolves
+``CULTURE_HOME`` at access time rather than once at import. The
+load-bearing argparse defaults (``default=DEFAULT_CONFIG``) thus
+get the right path when the parser is built inside a subprocess
+whose env was just set by the test runner.
+
+### Tests
+
+- New regression test
+  ``test_spawn_at_exact_limit_does_not_corrupt_live_manifest``
+  hashes the operator's live ``~/.culture/server.yaml`` before and
+  after a boss-spawn invocation under ``CULTURE_HOME=<tmp>`` and
+  asserts bit-for-bit identical. Pre-9.1.5 this test would fail
+  hard with a sha256 mismatch — captures the regression directly.
+- 205/205 across ``tests/test_boss_cli.py`` +
+  ``tests/cc_plugin/`` + ``tests/test_culture_bridge_cli.py``.
+
+### Known follow-up (NOT in this PR)
+
+- ``culture/clients/claude/daemon.py:139`` and
+  ``culture/clients/copilot/daemon.py:66`` hard-code ``/tmp`` as
+  their socket-dir fallback when ``XDG_RUNTIME_DIR`` is unset. On
+  macOS (where ``XDG_RUNTIME_DIR`` is never set) these daemons
+  bind their IPC sockets at ``/tmp/culture-<nick>.sock`` instead of
+  the user-private ``~/Library/Caches/culture/run/<nick>.sock``
+  location ``culture/clients/bridge/daemon.py`` correctly uses.
+  This release does NOT fix that — separate issue.
+
 ## [9.1.4] - 2026-06-04
 
 ### Fixed — bridge spawn uses the right Python interpreter

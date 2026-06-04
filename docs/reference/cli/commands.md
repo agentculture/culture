@@ -191,3 +191,27 @@ culture server rename spark --config /path/to/server.yaml
 culture rename spark-culture claude --config /path/to/server.yaml
 culture assign culture-culture spark --config /path/to/server.yaml
 ```
+
+### Default config path resolution (v9.1.5+)
+
+When `--config` is not passed, the CLI defaults to `server.yaml`
+under `CULTURE_HOME` (env variable). When `CULTURE_HOME` is not
+set, the CLI falls back to `~/.culture`. So:
+
+| `CULTURE_HOME` | Default `--config` |
+|---|---|
+| unset | `~/.culture/server.yaml` |
+| `/path/to/dir` | `/path/to/dir/server.yaml` |
+
+Same precedence applies to `agents.yaml` (legacy manifest) and the
+`logs/` directory.
+
+`--config` always wins over `CULTURE_HOME` when both are set:
+
+```bash
+CULTURE_HOME=/tmp/A culture agent status --config /tmp/B/server.yaml
+# Reads /tmp/B/server.yaml
+```
+
+For the full operator guide on `CULTURE_HOME`, see
+[`docs/culture-home-env.md`](../../culture-home-env.md).

@@ -203,16 +203,68 @@ class TestSpawnValidation:
 
     def test_spawn_at_exact_limit_accepts_validation_step(self, home, monkeypatch):
         """Right at the boundary — the length check must allow the
-        nick through. We don't need the agent-create call itself to
-        succeed; we only check that the validation gate doesn't
-        reject. Monkey-patch the subsequent ``subprocess.run`` so the
-        test stays hermetic."""
+        nick through.
+
+        v9.1.5: this test exposed and fixed a CULTURE_HOME isolation
+        bug — pre-9.1.5 the agent-create subprocess fell back to the
+        module-level constant ``DEFAULT_CONFIG = os.path.expanduser(
+        '~/.culture/server.yaml')`` instead of honoring
+        ``CULTURE_HOME``, so it wrote the test's ``ssss-wwww`` worker
+        into the LIVE operator manifest, corrupting ``server.name``.
+        The companion test
+        ``test_spawn_at_exact_limit_does_not_corrupt_live_manifest``
+        captures the regression directly.
+        """
         # 30 + 1 (hyphen) + 33 = 64 chars total
         server = "s" * 30
         suffix = "w" * 33
         res = _run(["spawn", suffix, "--server", server], home)
         # The agent-create step may fail (we don't stub it), but the
         # failure should NOT be the length-check rejection.
+        assert "64-char limit" not in res.stderr
+
+    def test_spawn_at_exact_limit_does_not_corrupt_live_manifest(self, home, tmp_path, monkeypatch):
+        """Regression for the v9.1.5 leak: a boss-spawn invocation
+        under CULTURE_HOME=<tmp> must NOT touch the operator's real
+        ``~/.culture/server.yaml``.
+
+        Pre-9.1.5 the spawn's agent-create subprocess used
+        ``DEFAULT_CONFIG`` (computed at import time from ``~``, NOT
+        from ``CULTURE_HOME``). A literal operator manifest was
+        overwritten during a single CI run.
+
+        Hermetic by construction (Qodo PR #57 bug #1): we sandbox
+        ``HOME`` (and ``USERPROFILE`` for Windows) to a fresh tmp dir,
+        plant a sentinel ``server.yaml`` under that fake home, run
+        the spawn, and assert the sentinel is bit-for-bit unchanged.
+        The operator's real ``~/.culture/`` is never read or written.
+        Pre-9.1.5 the spawn would resolve ``~`` against this sandbox
+        and overwrite the sentinel, so the test still fires hard on a
+        regression.
+        """
+        import hashlib
+
+        fake_home = tmp_path / "fake-home"
+        (fake_home / ".culture").mkdir(parents=True)
+        sandbox_manifest = fake_home / ".culture" / "server.yaml"
+        sentinel = (
+            "server:\n" "  name: sentinel\n" "  host: 127.0.0.1\n" "  port: 6667\n" "agents: {}\n"
+        )
+        sandbox_manifest.write_text(sentinel)
+        monkeypatch.setenv("HOME", str(fake_home))
+        # Windows uses USERPROFILE — set both so the test stays portable
+        # even though the suite currently runs only on Unix.
+        monkeypatch.setenv("USERPROFILE", str(fake_home))
+
+        before = hashlib.sha256(sandbox_manifest.read_bytes()).hexdigest()
+        res = _run(["spawn", "w" * 33, "--server", "s" * 30], home)
+        after = hashlib.sha256(sandbox_manifest.read_bytes()).hexdigest()
+        assert before == after, (
+            f"boss-spawn under CULTURE_HOME={home} corrupted the sandboxed "
+            f"manifest at {sandbox_manifest}. before={before[:12]} "
+            f"after={after[:12]}. CULTURE_HOME isolation is leaking — see "
+            f"culture/cli/shared/constants.py"
+        )
         assert "64-char limit" not in res.stderr
 
 
