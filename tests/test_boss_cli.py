@@ -203,16 +203,62 @@ class TestSpawnValidation:
 
     def test_spawn_at_exact_limit_accepts_validation_step(self, home, monkeypatch):
         """Right at the boundary — the length check must allow the
-        nick through. We don't need the agent-create call itself to
-        succeed; we only check that the validation gate doesn't
-        reject. Monkey-patch the subsequent ``subprocess.run`` so the
-        test stays hermetic."""
+        nick through.
+
+        v9.1.5: this test exposed and fixed a CULTURE_HOME isolation
+        bug — pre-9.1.5 the agent-create subprocess fell back to the
+        module-level constant ``DEFAULT_CONFIG = os.path.expanduser(
+        '~/.culture/server.yaml')`` instead of honoring
+        ``CULTURE_HOME``, so it wrote the test's ``ssss-wwww`` worker
+        into the LIVE operator manifest, corrupting ``server.name``.
+        The companion test
+        ``test_spawn_at_exact_limit_does_not_corrupt_live_manifest``
+        captures the regression directly.
+        """
         # 30 + 1 (hyphen) + 33 = 64 chars total
         server = "s" * 30
         suffix = "w" * 33
         res = _run(["spawn", suffix, "--server", server], home)
         # The agent-create step may fail (we don't stub it), but the
         # failure should NOT be the length-check rejection.
+        assert "64-char limit" not in res.stderr
+
+    def test_spawn_at_exact_limit_does_not_corrupt_live_manifest(self, home, tmp_path):
+        """Regression for the v9.1.5 leak: a boss-spawn invocation
+        under CULTURE_HOME=<tmp> must NOT touch the live operator's
+        ``~/.culture/server.yaml``.
+
+        Pre-9.1.5 this test would fail because the spawn's
+        agent-create subprocess used ``DEFAULT_CONFIG`` (computed at
+        import time from ``~``, NOT from ``CULTURE_HOME``). A literal
+        operator manifest was overwritten during a single CI run.
+        """
+        import hashlib
+
+        live_manifest = os.path.expanduser("~/.culture/server.yaml")
+        if not os.path.exists(live_manifest):
+            # On a clean CI runner there's no live manifest; the
+            # test reduces to "spawn does not create a live manifest".
+            res = _run(["spawn", "w" * 33, "--server", "s" * 30], home)
+            assert not os.path.exists(live_manifest), (
+                f"boss-spawn under CULTURE_HOME={home} created a live "
+                f"manifest at {live_manifest} — CULTURE_HOME isolation is leaking"
+            )
+            assert "64-char limit" not in res.stderr
+            return
+
+        # Local-dev path: snapshot the live manifest before, verify
+        # bit-for-bit unchanged after.
+        with open(live_manifest, "rb") as fh:
+            before = hashlib.sha256(fh.read()).hexdigest()
+        res = _run(["spawn", "w" * 33, "--server", "s" * 30], home)
+        with open(live_manifest, "rb") as fh:
+            after = hashlib.sha256(fh.read()).hexdigest()
+        assert before == after, (
+            f"boss-spawn under CULTURE_HOME={home} corrupted the live "
+            f"manifest at {live_manifest}. before={before[:12]} after={after[:12]}. "
+            f"CULTURE_HOME isolation is leaking — see culture/cli/shared/constants.py"
+        )
         assert "64-char limit" not in res.stderr
 
 
