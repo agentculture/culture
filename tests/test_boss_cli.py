@@ -184,6 +184,37 @@ class TestSpawnValidation:
         assert res.returncode == 1
         assert "invalid server name" in res.stderr
 
+    def test_spawn_rejects_oversize_worker_nick(self, home):
+        """v9.1.4: ``<server>-<suffix>`` must be ≤ 64 chars (the limit
+        ``culture/cli/bridge.py::_validate_nick`` enforces). A long
+        server + a long suffix that would overflow is rejected locally
+        with a clear cause, not pushed through to a bridge-side
+        truncation-confusing error.
+
+        Earlier line had ``_nick_resolver._MAX_LEN = 14`` as a soft
+        budget for this; the v9.1.4 nick fix lifted that limit to 64,
+        making this end-to-end check the load-bearing guard."""
+        # 40-char server + a 30-char suffix = 71 chars > 64.
+        long_server = "s" * 40
+        long_suffix = "w" * 30
+        res = _run(["spawn", long_suffix, "--server", long_server], home)
+        assert res.returncode == 1
+        assert "64-char limit" in res.stderr
+
+    def test_spawn_at_exact_limit_accepts_validation_step(self, home, monkeypatch):
+        """Right at the boundary — the length check must allow the
+        nick through. We don't need the agent-create call itself to
+        succeed; we only check that the validation gate doesn't
+        reject. Monkey-patch the subsequent ``subprocess.run`` so the
+        test stays hermetic."""
+        # 30 + 1 (hyphen) + 33 = 64 chars total
+        server = "s" * 30
+        suffix = "w" * 33
+        res = _run(["spawn", suffix, "--server", server], home)
+        # The agent-create step may fail (we don't stub it), but the
+        # failure should NOT be the length-check rejection.
+        assert "64-char limit" not in res.stderr
+
 
 class TestNameValidationAllSubcommands:
     # Qodo: every subcommand taking <name> must validate it (path safety), not

@@ -707,6 +707,23 @@ def _cmd_spawn(args: argparse.Namespace) -> None:
     if worker_nick == boss:
         print("Error: a boss cannot spawn a worker with its own nick", file=sys.stderr)
         sys.exit(1)
+    # v9.1.4 — bound the spawned nick by the same limit
+    # ``culture/cli/bridge.py::_validate_nick`` enforces. Without this
+    # check, a long-named boss (e.g. ``culture-plenty-ai-guide-mobile``,
+    # 30 chars) spawning a worker (``-checkout-bot``, +13) would build
+    # a 43-char nick the bridge accepts — fine — but a 40-char boss
+    # plus a 30-char suffix would build a 71-char nick the bridge
+    # rejects with a tail-truncating error message the operator finds
+    # confusing. Reject locally with a clear cause.
+    if len(worker_nick) > 64:
+        print(
+            f"Error: worker nick {worker_nick!r} is {len(worker_nick)} "
+            "chars, exceeding the 64-char limit (culture/cli/bridge.py "
+            "::_validate_nick). Shorten either the boss nick "
+            "(CULTURE_BOSS_NICK) or the worker suffix.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     cwd = args.cwd or os.path.join(culture_home(), "helpers", name)
     os.makedirs(cwd, exist_ok=True)
 

@@ -10,11 +10,19 @@ identity. Priority order:
     (e) legacy fallback ``local-boss`` with a warning logged
 
 The resulting nick is sanitized to ``[A-Za-z0-9_-]`` (lowercased), and
-clipped to 14 characters so ``<boss>-<worker-suffix>`` stays well under
-IRC's 30-char nick cap. If sanitization leaves the candidate too short
-(<3 chars), the resolver drops to (d) and finally (e). This module is
-intentionally dependency-free — it runs from a CC hook subprocess where
-``uv``-installed packages may or may not be importable.
+clipped to ``_BRIDGE_MAX_LEN`` (64 — matches the cap
+``culture/cli/bridge.py::_validate_nick`` enforces) ONCE at the
+``resolve_project_nick`` boundary. Primitives (``_sanitize`` /
+``_qualify``) no longer truncate independently — the 14-char clip the
+v9.1.1 line shipped silently dropped the tail of long project names
+(``plenty-ai-guide-mobile`` → ``plenty-ai-guid``) and double-clipped
+already-qualified inputs (``local-st4ck-boss`` → ``local-st4ck-bo``).
+
+If sanitization leaves the candidate too short (<``_MIN_LEN`` = 3
+chars), the resolver drops to the next priority tier and finally to
+``local-boss``. This module is intentionally dependency-free — it runs
+from a CC hook subprocess where ``uv``-installed packages may or may
+not be importable.
 """
 
 from __future__ import annotations
@@ -31,7 +39,22 @@ logger = logging.getLogger(__name__)
 # the same project name don't end up registering different nicks just
 # because one of them happened to capitalize.
 _VALID_CHARS_RE = re.compile(r"[^A-Za-z0-9_-]+")
-_MAX_LEN = 14
+
+# Final-boundary clip applied once in ``resolve_project_nick``.
+# Matches the upper bound ``culture/cli/bridge.py::_validate_nick``
+# enforces — anything past 64 is rejected by the bridge CLI anyway,
+# so the resolver should clip cleanly with a warning rather than
+# producing a value the spawn will reject.
+_BRIDGE_MAX_LEN = 64
+
+# Documented (but not run-time enforced) budget for the agent half of
+# a ``culture boss spawn <suffix>`` child nick. The resolved boss nick
+# plus a hyphen plus a worker suffix must stay under ``_BRIDGE_MAX_LEN``;
+# the boss-spawn CLI now validates this end-to-end (v9.1.4). We keep
+# the constant here so the resolver has a single named home for the
+# concept the v9.1.x earlier line was using ``_MAX_LEN = 14`` for.
+_SUFFIX_BUDGET = 14
+
 _MIN_LEN = 3
 _LEGACY_FALLBACK = "local-boss"
 
@@ -89,26 +112,46 @@ def _qualify(candidate: str) -> str:
 
     If *candidate* already contains a hyphen we keep it as-is (it's
     treated as already-qualified). Otherwise we prefix
-    ``<server_name>-`` and re-clip the total to ``_MAX_LEN`` so the
-    canonical worker-suffix budget is preserved.
+    ``<server_name>-``. No truncation here — the v9.1.1 line's
+    ``_MAX_LEN`` slice was producing surprising tail-loss; the single
+    final clip lives in ``resolve_project_nick``.
     """
     if "-" in candidate:
         return candidate
     server = _server_name()
-    agent_budget = max(_MIN_LEN, _MAX_LEN - len(server) - 1)  # 1 for hyphen
-    return f"{server}-{candidate[:agent_budget]}"
+    return f"{server}-{candidate}"
 
 
 def _sanitize(candidate: str) -> str:
-    """Return ``candidate`` lowercased, stripped of non-[A-Za-z0-9_-]
-    characters, and clipped to ``_MAX_LEN``. Returns empty string when
-    nothing survives sanitization."""
+    """Return ``candidate`` lowercased and stripped of non-[A-Za-z0-9_-]
+    characters. Returns empty string when nothing survives sanitization.
+
+    v9.1.4: no longer clips to ``_MAX_LEN`` — that pre-qualify clip
+    silently lost the tail of long project names. The final boundary
+    clip happens once in ``resolve_project_nick``.
+    """
     if not candidate:
         return ""
     cleaned = _VALID_CHARS_RE.sub("-", candidate).strip("-").lower()
-    if not cleaned:
-        return ""
-    return cleaned[:_MAX_LEN]
+    return cleaned
+
+
+def _clip_to_bridge_max(nick: str) -> str:
+    """Final boundary clip. Logs a WARNING when the clip actually
+    fires so the operator notices that their input was longer than
+    the bridge's accepted limit."""
+    if len(nick) <= _BRIDGE_MAX_LEN:
+        return nick
+    clipped = nick[:_BRIDGE_MAX_LEN]
+    logger.warning(
+        "resolve_project_nick: candidate %r exceeds %d-char bridge "
+        "limit, clipping to %r — set CULTURE_BOSS_NICK to a shorter "
+        "value if you want to control the final shape.",
+        nick,
+        _BRIDGE_MAX_LEN,
+        clipped,
+    )
+    return clipped
 
 
 def _is_acceptable(candidate: str) -> bool:
@@ -193,34 +236,35 @@ def resolve_project_nick(cwd: str) -> str:
     if env_value:
         sanitized = _sanitize(env_value)
         if _is_acceptable(sanitized):
-            return _qualify(sanitized)
+            return _clip_to_bridge_max(_qualify(sanitized))
 
     # (b) culture.yaml nick: field
     yaml_value = _read_yaml_nick(cwd)
     if yaml_value:
         sanitized = _sanitize(yaml_value)
         if _is_acceptable(sanitized):
-            return _qualify(sanitized)
+            return _clip_to_bridge_max(_qualify(sanitized))
 
     # (c) git remote-origin basename
     git_basename = _git_remote_basename(cwd)
     if git_basename:
         sanitized = _sanitize(git_basename)
         if _is_acceptable(sanitized):
-            return _qualify(sanitized)
+            return _clip_to_bridge_max(_qualify(sanitized))
 
     # (d) cwd basename
     cwd_basename = os.path.basename(cwd.rstrip("/")) if cwd else ""
     if cwd_basename:
         sanitized = _sanitize(cwd_basename)
         if _is_acceptable(sanitized):
-            return _qualify(sanitized)
+            return _clip_to_bridge_max(_qualify(sanitized))
 
-    # (e) legacy fallback — already qualified, ``_qualify`` is a no-op.
+    # (e) legacy fallback — already qualified and short, the clip
+    # is a no-op but keeps the contract uniform.
     logger.warning(
         "resolve_project_nick(%r): no env/yaml/git/basename resolved a "
         "valid nick — falling back to legacy %s",
         cwd,
         _LEGACY_FALLBACK,
     )
-    return _LEGACY_FALLBACK
+    return _clip_to_bridge_max(_LEGACY_FALLBACK)

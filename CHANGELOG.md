@@ -4,6 +4,115 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.4] - 2026-06-04
+
+### Fixed — bridge spawn uses the right Python interpreter
+
+The SessionStart hook spawned the bridge with
+``[sys.executable, "-m", "culture", ...]`` (and the boss-spawn /
+boss-close paths did the same). When CC fires a hook under bare
+``python3`` from ``~/.claude/settings.json``, ``sys.executable``
+resolves to the system / Homebrew python — which lacks PyYAML and
+dies with ``ModuleNotFoundError: yaml`` the moment the spawned
+process imports ``culture/cli/agent.py``. The v9.1.2 spawn-honesty
+layer surfaced the traceback correctly; the interpreter selection
+was wrong.
+
+This release introduces ``culture/clients/claude/cc_plugin/_python_resolver.py``
+with a 3-step resolution ladder, fail-loud at every boundary:
+
+1. **``$CULTURE_PYTHON`` env override** — operator escape hatch.
+   Validated via subprocess (``<path> -c 'import culture'``) with a
+   2s timeout. Fails hard if the env var is set but the named
+   interpreter can't import culture — silently falling through
+   would mask explicit configuration.
+2. **Repo walk from ``os.path.realpath(__file__)``** → find a
+   ``.venv/bin/python3`` next to a ``pyproject.toml`` with
+   line-anchored ``name = "culture"``. The hook's resolved location
+   is ground truth: the repo CC was told to wire up at install time
+   is exactly the repo whose ``.venv`` is the right interpreter.
+   Line-anchored regex (not substring) defends against pyproject
+   files for OTHER projects that merely mention culture in a
+   comment. ``realpath`` (not ``abspath``) defends against symlink
+   traps.
+3. **``sys.executable`` last resort + stderr warning** naming the
+   bug class. The SessionStart honesty layer surfaces any
+   subsequent ``ModuleNotFoundError`` so the operator sees a real
+   error and can set ``CULTURE_PYTHON`` to fix it.
+
+The earlier blueprint considered two additional steps (sibling
+``culture`` launcher discovery + ``shutil.which("culture")`` PATH
+search with subprocess verification). Adversarial-critique workflow
+(``wqkmqwp6o``) before implementation surfaced 5 blockers:
+async/sync mismatch in SSE handlers, 2s shell-out latency stalling
+the resolver on first-run, race on the per-process cache, PATH
+trust + shebang trust, and last-resort warning being deceptive
+'success'. Those steps were dropped from the implementation.
+
+### Fixed — nick resolver no longer truncates long project names
+
+``culture/clients/claude/cc_plugin/_nick_resolver.py`` had two
+truncation sites:
+
+- ``_sanitize`` clipped every input to 14 chars BEFORE
+  ``_qualify`` ran. A cwd basename of ``plenty-ai-guide-mobile``
+  (22 chars) became ``plenty-ai-guid`` (14 chars) — dropping the
+  agent half's tail silently.
+- ``_qualify`` re-clipped the agent half to ``_MAX_LEN - len(server) - 1``
+  chars, double-truncating already-clipped inputs. An already-
+  qualified ``local-st4ck-boss`` (16 chars) would have been
+  re-clipped to ``local-st4ck-bo`` had it gone through the bare
+  branch.
+
+This release adopts "limit at boundary, not at primitives":
+``_sanitize`` and ``_qualify`` no longer truncate. A single
+``_clip_to_bridge_max`` runs once at the ``resolve_project_nick``
+boundary, capping at ``_BRIDGE_MAX_LEN = 64`` (matches the upper
+bound ``culture/cli/bridge.py::_validate_nick`` enforces). The clip
+emits a WARNING log when it actually fires so operators notice that
+their input was outsized.
+
+The constant ``_MAX_LEN = 14`` is gone; the surviving named constant
+``_SUFFIX_BUDGET = 14`` is documentation-only and reserved for
+future per-spawn-suffix validation. Its run-time analog ships in
+this release: ``culture/cli/boss.py::_cmd_spawn`` now rejects
+``<boss>-<suffix>`` combinations exceeding 64 chars with a clear
+cause, so a long-named boss can't silently fail the bridge's
+validation step.
+
+### Operator-visible behavior changes
+
+- Nicks for projects whose names exceed 14 chars now reflect the
+  full project name rather than a truncated 14-char prefix. A
+  ``plenty-ai-guide-mobile`` cwd that resolved to
+  ``plenty-ai-guid`` pre-9.1.4 now resolves to
+  ``plenty-ai-guide-mobile`` (the input already contains a hyphen,
+  so ``_qualify`` treats it as already-qualified). Operators with
+  scripts that depended on the 14-char shape need to update them.
+- ``culture boss spawn`` rejects oversize worker nicks locally
+  rather than passing them through to a confusing bridge-side
+  rejection. Shorten either the boss nick (``CULTURE_BOSS_NICK``)
+  or the worker suffix.
+- New env var ``CULTURE_PYTHON`` documented in
+  ``docs/cc-plugin-python-resolver.md``.
+
+### Tests
+
+- 20 new tests in ``tests/cc_plugin/test_python_resolver.py``
+  covering every ladder step, the symlink-trust defense, the
+  comment-mention rejection, the env-override fail-hard
+  contract, the per-process cache + copy-not-reference contract.
+- 4 existing nick tests updated to assert the new
+  no-truncate-below-64 contract (the previous assertions captured
+  the buggy 14-char behavior).
+- 4 new nick tests including the verbatim production regression
+  case (``plenty-ai-guide-mobile``).
+- 2 new boss-spawn validation tests for the 64-char rejection +
+  exact-boundary acceptance.
+
+205/205 across ``tests/cc_plugin/`` + ``tests/test_boss_cli.py``
++ ``tests/test_culture_bridge_cli.py``.
+
 ## [9.1.2] - 2026-06-04
 
 ### Fixed — mesh-onboarding collisions
