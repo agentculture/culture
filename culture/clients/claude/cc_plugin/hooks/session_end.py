@@ -26,13 +26,28 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 try:  # pragma: no cover — import guard
-    from culture.clients.claude.cc_plugin import _bridge_client
+    from culture.clients.claude.cc_plugin import _bridge_client, _python_resolver
     from culture.clients.claude.cc_plugin._nick_resolver import resolve_project_nick
 except ImportError:  # pragma: no cover
     _bridge_client = None  # type: ignore[assignment]
+    _python_resolver = None  # type: ignore[assignment]
 
     def resolve_project_nick(cwd: str) -> str:  # type: ignore[misc]
         return os.environ.get("CULTURE_NICK") or os.environ.get("CULTURE_BOSS_NICK", "local-boss")
+
+
+def _culture_argv_prefix() -> list[str]:
+    """See ``hooks/session_start.py::_culture_argv_prefix``."""
+    if _python_resolver is None:  # pragma: no cover — degraded path
+        return [sys.executable, "-m", "culture"]
+    try:
+        return _python_resolver.culture_python()
+    except RuntimeError:
+        # SessionEnd is best-effort; if CULTURE_PYTHON is misconfigured
+        # we still try the bare interpreter rather than aborting the
+        # teardown. The session is closing anyway — a worker that
+        # can't be cleanly closed leaks at most until next launch.
+        return [sys.executable, "-m", "culture"]
 
 
 def _read_stdin_json() -> dict[str, Any]:
@@ -61,7 +76,7 @@ def _stop_owned_workers(nick: str) -> None:
         suffix = entry.get("suffix") or ""
         if not suffix:
             continue
-        cmd = [sys.executable, "-m", "culture", "boss", "close", suffix]
+        cmd = [*_culture_argv_prefix(), "boss", "close", suffix]
         env = dict(os.environ)
         env["CULTURE_NICK"] = nick
         try:

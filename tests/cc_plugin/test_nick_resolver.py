@@ -52,15 +52,49 @@ class TestPriorityA:
         monkeypatch.setenv("CULTURE_BOSS_NICK", " Fork/Rearch ")
         assert resolve_project_nick(str(isolated_cwd)) == "fork-rearch"
 
-    def test_env_var_clipped_to_max_len(self, isolated_cwd, monkeypatch):
-        """A long env value is clipped THEN prefixed with the server
-        name so the total still fits in ``_MAX_LEN`` and is valid
-        ``<server>-<agent>`` shape (Rule 428343)."""
+    def test_env_var_survives_above_14_chars(self, isolated_cwd, monkeypatch):
+        """v9.1.4: a long env value is NO LONGER clipped to 14 chars.
+        The pre-9.1.4 14-char clip was dropping tails of long project
+        names (``plenty-ai-guide-mobile`` → ``plenty-ai-guid``) and
+        had no enforcement basis on the wire — the bridge CLI accepts
+        up to 64 chars. The single boundary clip is at
+        ``_BRIDGE_MAX_LEN = 64``."""
         monkeypatch.setenv("CULTURE_BOSS_NICK", "abcdefghijklmnopqrstuvwxyz")
         out = resolve_project_nick(str(isolated_cwd))
-        assert len(out) <= 14
-        # ``local-`` (6 chars) + 8 char agent budget = 14 total.
-        assert out == "local-abcdefgh"
+        # ``local-`` (6 chars) + the full 26-char alphabet = 32 chars,
+        # well under 64. No truncation.
+        assert out == "local-abcdefghijklmnopqrstuvwxyz"
+        assert len(out) == 32
+
+    def test_env_var_at_bridge_max_passes_through(self, isolated_cwd, monkeypatch):
+        """Right at the 64-char limit — pass through, no warning."""
+        # ``local-`` (6) + 58 a's = 64 chars exactly.
+        monkeypatch.setenv("CULTURE_BOSS_NICK", "a" * 58)
+        out = resolve_project_nick(str(isolated_cwd))
+        assert out == "local-" + "a" * 58
+        assert len(out) == 64
+
+    def test_env_var_above_bridge_max_clipped_with_warning(self, isolated_cwd, monkeypatch, caplog):
+        """v9.1.4: the boundary clip at 64 chars DOES fire when the
+        prefixed total exceeds the bridge CLI's limit. Emits a WARNING
+        so the operator notices."""
+        monkeypatch.setenv("CULTURE_BOSS_NICK", "a" * 80)  # → 86 prefixed
+        caplog.set_level(logging.WARNING)
+        out = resolve_project_nick(str(isolated_cwd))
+        assert len(out) == 64
+        assert out.startswith("local-")
+        assert any("exceeds" in r.message and "64" in r.message for r in caplog.records)
+
+    def test_plenty_ai_guide_mobile_regression(self, isolated_cwd, monkeypatch):
+        """The exact case from the production bug report — cwd basename
+        ``plenty-ai-guide-mobile`` (22 chars) used to truncate to
+        ``plenty-ai-guid`` (14 chars), then _qualify saw a hyphen and
+        returned it as-is. v9.1.4: the full input survives."""
+        # Already contains a hyphen → _qualify treats it as
+        # already-qualified, no prefix added.
+        monkeypatch.setenv("CULTURE_BOSS_NICK", "plenty-ai-guide-mobile")
+        out = resolve_project_nick(str(isolated_cwd))
+        assert out == "plenty-ai-guide-mobile"
 
     def test_too_short_env_falls_through_to_d(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CULTURE_BOSS_NICK", "ab")
@@ -124,18 +158,19 @@ class TestPriorityC:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         # Falls through to (d) cwd basename → qualified with ``local-``
-        # prefix and clipped to ``_MAX_LEN``. ``isolated_cwd``'s name
-        # ``test_git_unavailable_falls_through`` is hyphen-free after
-        # sanitization (underscores survive but no hyphen) so the
-        # prefix path applies.
-        # The autouse ``_pin_server_name`` fixture forces the prefix to
-        # ``local`` regardless of the dataclass default, so the
-        # observable output here uses ``local`` even after Qodo PR #54
-        # #4 swapped the constant to ``culture``.
+        # prefix. v9.1.4: no clip — the full sanitized basename
+        # survives below the 64-char bridge limit. ``isolated_cwd``'s
+        # name is the pytest test-fixture path's basename (underscores
+        # become hyphens in sanitization, no length issues).
         pinned_server = "local"
-        agent_budget = _nick_resolver._MAX_LEN - len(pinned_server) - 1
-        expected_agent = isolated_cwd.name.lower()[:agent_budget]
-        assert resolve_project_nick(str(isolated_cwd)) == f"{pinned_server}-{expected_agent}"
+        expected_agent = _nick_resolver._sanitize(isolated_cwd.name)
+        # The fully-sanitized basename might contain a hyphen (pytest
+        # generates ``test_<name><n>`` paths), and _qualify treats
+        # any hyphen as "already qualified" → no prefix added.
+        if "-" in expected_agent:
+            assert resolve_project_nick(str(isolated_cwd)) == expected_agent
+        else:
+            assert resolve_project_nick(str(isolated_cwd)) == f"{pinned_server}-{expected_agent}"
 
 
 class TestPriorityD:
@@ -195,8 +230,10 @@ class TestSanitization:
         assert _nick_resolver._sanitize("") == ""
         assert _nick_resolver._sanitize("!!!") == ""
 
-    def test_sanitize_clips_to_max(self):
-        assert _nick_resolver._sanitize("a" * 100) == "a" * 14
+    def test_sanitize_no_longer_clips(self):
+        """v9.1.4: ``_sanitize`` no longer truncates. The single
+        boundary clip lives in ``resolve_project_nick``."""
+        assert _nick_resolver._sanitize("a" * 100) == "a" * 100
 
 
 class TestQualifyServerAgent:
@@ -212,10 +249,13 @@ class TestQualifyServerAgent:
         assert _nick_resolver._qualify("local-fork") == "local-fork"
         assert _nick_resolver._qualify("local-st4ck-boss") == "local-st4ck-boss"
 
-    def test_long_bare_candidate_clipped_then_prefixed(self):
-        # Agent budget = 14 - len("local-") = 8.
-        assert _nick_resolver._qualify("abcdefghijklmnop") == "local-abcdefgh"
-        assert len(_nick_resolver._qualify("abcdefghijklmnop")) == 14
+    def test_long_bare_candidate_prefixed_no_truncation(self):
+        """v9.1.4: ``_qualify`` no longer truncates the agent half.
+        A long bare candidate gets the full server prefix + full
+        candidate; the final boundary clip in
+        ``resolve_project_nick`` handles any over-64 overflow."""
+        assert _nick_resolver._qualify("abcdefghijklmnop") == "local-abcdefghijklmnop"
+        assert len(_nick_resolver._qualify("abcdefghijklmnop")) == 22
 
     def test_default_server_name_matches_dataclass_default(self):
         """Qodo PR #54 #4: ``_DEFAULT_SERVER_NAME`` must match

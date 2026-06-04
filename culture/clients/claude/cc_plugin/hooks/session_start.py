@@ -42,7 +42,7 @@ if _REPO_ROOT not in sys.path:
 # ``culture`` package on PYTHONPATH, fall back to the minimal stand-ins
 # so SessionStart never hard-fails CC startup.
 try:  # pragma: no cover — import guard
-    from culture.clients.claude.cc_plugin import _bridge_client
+    from culture.clients.claude.cc_plugin import _bridge_client, _python_resolver
     from culture.clients.claude.cc_plugin._nick_resolver import resolve_project_nick
 except ImportError:  # pragma: no cover — fallback path
 
@@ -50,6 +50,19 @@ except ImportError:  # pragma: no cover — fallback path
         return os.environ.get("CULTURE_BOSS_NICK", "local-boss") or "local-boss"
 
     _bridge_client = None  # type: ignore[assignment]
+    _python_resolver = None  # type: ignore[assignment]
+
+
+def _culture_argv_prefix() -> list[str]:
+    """Return ``[python, "-m", "culture"]`` resolved via the v9.1.4
+    python resolver, or fall back to bare ``sys.executable`` when the
+    resolver module is unavailable (degraded PYTHONPATH). The fallback
+    matches pre-9.1.4 behavior so this hook never hard-fails on the
+    resolution step — but the spawn it produces may still hit the
+    yaml-missing bug the resolver was written to fix."""
+    if _python_resolver is None:  # pragma: no cover — degraded path
+        return [sys.executable, "-m", "culture"]
+    return _python_resolver.culture_python()
 
 
 def _read_stdin_json() -> dict[str, Any]:
@@ -102,7 +115,15 @@ def _ensure_bridge_running(nick: str, repo_root: str) -> str | None:
             "CULTURE_BOSS_NICK explicitly or ensure ~/.culture/server.yaml "
             "is readable."
         )
-    cmd = [sys.executable, "-m", "culture", "bridge", "start", nick]
+    # v9.1.4: the python resolver raises RuntimeError when
+    # ``CULTURE_PYTHON`` is set but broken — surface that to the
+    # operator via the same honesty channel rather than letting the
+    # exception explode SessionStart.
+    try:
+        argv_prefix = _culture_argv_prefix()
+    except RuntimeError as exc:
+        return f"python resolver rejected the configured interpreter: {exc}"
+    cmd = [*argv_prefix, "bridge", "start", nick]
     try:
         proc = subprocess.Popen(  # noqa: S603 — fixed command shape
             cmd,
@@ -163,7 +184,7 @@ def _spawn_owned_workers(nick: str) -> None:
         suffix = entry.get("suffix") or ""
         if not suffix or entry.get("running"):
             continue
-        cmd = [sys.executable, "-m", "culture", "boss", "spawn", suffix]
+        cmd = [*_culture_argv_prefix(), "boss", "spawn", suffix]
         env = dict(os.environ)
         env["CULTURE_NICK"] = nick
         try:
