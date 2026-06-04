@@ -239,6 +239,17 @@ class AgentDaemon:
             return os.path.join(mac_dir, f"{nick}.sock")
         return os.path.join("/tmp", f"culture-{nick}.sock")
 
+    @property
+    def transport(self) -> IRCTransport:
+        """v9.1.7 r2 — public accessor for the IRC transport so the
+        ``__main__._run`` outer loop can await ``transport.fatal_exit``
+        and exit cleanly when the IRCd rejects registration (Qodo
+        PR #59 #3). Raises if accessed before ``start()`` has run.
+        """
+        if self._transport is None:
+            raise RuntimeError("Bridge daemon transport not started yet")
+        return self._transport
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

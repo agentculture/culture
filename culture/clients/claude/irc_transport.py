@@ -68,6 +68,9 @@ class IRCTransport:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._read_task: asyncio.Task | None = None
+        # v9.1.7 — set by 432/433 handlers; signals the daemon's
+        # outer main loop to exit. See _on_erroneous_nick.
+        self.fatal_exit = asyncio.Event()
         self._reconnecting = False
         self._should_run = False
         self._background_tasks: set[asyncio.Task] = set()
@@ -358,6 +361,7 @@ class IRCTransport:
             self.port,
             server_text,
         )
+        self.fatal_exit.set()
         self._should_run = False
         try:
             if self._writer is not None:
@@ -380,6 +384,7 @@ class IRCTransport:
             self.port,
             server_text,
         )
+        self.fatal_exit.set()
         self._should_run = False
         try:
             if self._writer is not None:

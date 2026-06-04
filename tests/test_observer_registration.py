@@ -388,28 +388,65 @@ def test_parse_expected_prefix_rejects_hostile_shapes(text):
     assert _parse_expected_prefix(text) is None
 
 
-def test_parser_contract_with_ircd_reason_text():
-    """Contract test — the parser regex is tied byte-for-byte to the
-    IRCd's reason text in ``culture/agentirc/client.py:660-666``. If
-    a future commit edits one without the other, THIS test breaks
-    at that commit (catch in CI), not at runtime in production.
+@pytest.mark.asyncio
+async def test_parser_contract_round_trip_against_real_ircd():
+    """Contract test (v9.1.7 r2 — Qodo PR #59 #4): the v9.1.7 r1
+    version of this test grepped the IRCd source for the literal
+    substring ``"Nickname must start with "`` — a future commit
+    that drops the keyword while leaving the substring in a comment
+    or a removed string would silently break runtime auto-recovery
+    without failing CI.
+
+    The r2 version spins up a REAL ``AgentIRCd`` instance in-process
+    with ``--name=someserver``, connects a raw TCP client, sends a
+    ``NICK`` with the wrong prefix, captures the IRCd's 432 reply
+    verbatim from the wire, and feeds the reason text through
+    ``_parse_expected_prefix``. The byte-for-byte round-trip catches
+    any wording change at the IRCd that would break the parser —
+    not at runtime in production, here in CI at the same commit.
     """
-    import inspect
+    from culture.agentirc.config import ServerConfig as IRCdServerConfig
+    from culture.agentirc.ircd import IRCd
 
-    from culture.agentirc import client as ircd_client
+    cfg = IRCdServerConfig(name="someserver", host="127.0.0.1", port=0)
+    ircd = IRCd(cfg)
+    await ircd.start()
+    try:
+        # Resolve the port the IRCd actually bound to.
+        port = ircd._server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            writer.write(b"NICK badprefix-test\r\nUSER c 0 * :c\r\n")
+            await writer.drain()
 
-    src = inspect.getsource(
-        ircd_client._handle_nick
-        if hasattr(ircd_client, "_handle_nick")
-        else ircd_client.Client._handle_nick
-    )  # noqa: E501
-    # The IRCd's reason text is built with an f-string against
-    # expected_prefix. Verify the literal substring is intact.
-    assert "Nickname must start with " in src, (
-        "IRCd reason text changed in client.py — update "
-        "culture/observer.py::_DRIFT_PARSE_RE to match."
-    )
-    # Sanity: feed a representative IRCd reason text through the
-    # parser to confirm round-trip.
-    canonical = "Nickname must start with someserver-"
-    assert _parse_expected_prefix(canonical) == "someserver"
+            captured_reason = None
+            for _ in range(20):
+                line = await asyncio.wait_for(reader.readline(), timeout=1.0)
+                if not line:
+                    break
+                decoded = line.decode().strip()
+                if " 432 " in decoded:
+                    # Format: ":server 432 <nick> :<reason>"
+                    captured_reason = decoded.split(":", 2)[-1]
+                    break
+            assert captured_reason is not None, (
+                "IRCd did not send a 432 within 20 lines — registration "
+                "behavior changed; update the parser AND this test together."
+            )
+
+            parsed = _parse_expected_prefix(captured_reason)
+            assert parsed == "someserver", (
+                f"Parser failed to extract expected prefix from real "
+                f"IRCd reason {captured_reason!r}. Either the IRCd's "
+                f"reason text changed in culture/agentirc/client.py OR "
+                f"the parser regex in culture/observer.py::_DRIFT_PARSE_RE "
+                f"diverged. Update them in lockstep."
+            )
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+    finally:
+        await ircd.stop()

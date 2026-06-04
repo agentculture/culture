@@ -139,9 +139,38 @@ async def _run(config, agent) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    await stop_event.wait()
-    logger.info("Shutting down bridge %s", agent.nick)
+    # v9.1.7 r2 — Qodo PR #59 #3: also wait on the transport's
+    # fatal_exit event so a 432/433 from the IRCd triggers a clean
+    # daemon shutdown (PID file removed, IPC socket closed,
+    # ``culture bridge status`` reflects the failure). Pre-r2 the
+    # transport stopped its read loop but the daemon kept idling on
+    # stop_event — operator saw "running" status with no IRC
+    # connection. Wait on whichever fires first.
+    fatal_exit = daemon.transport.fatal_exit
+    stop_task = asyncio.create_task(stop_event.wait())
+    fatal_task = asyncio.create_task(fatal_exit.wait())
+    try:
+        done, pending = await asyncio.wait(
+            {stop_task, fatal_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        for task in (stop_task, fatal_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(stop_task, fatal_task, return_exceptions=True)
+
+    if fatal_exit.is_set():
+        logger.error(
+            "Bridge %s exiting due to fatal IRC registration error "
+            "(see preceding error lines for the IRCd's reason and "
+            "actionable fix).",
+            agent.nick,
+        )
+    else:
+        logger.info("Shutting down bridge %s", agent.nick)
     await daemon.stop()
+    if fatal_exit.is_set():
+        sys.exit(1)
 
 
 if __name__ == "__main__":

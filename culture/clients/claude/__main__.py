@@ -71,9 +71,32 @@ async def _run_single(config, agent) -> None:
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
-    await stop_event.wait()
-    logger.info("Shutting down %s", agent.nick)
+
+    # v9.1.7 r2 — Qodo PR #59 #3: also wait on transport.fatal_exit
+    # so a 432/433 from the IRCd triggers a clean daemon shutdown
+    # rather than leaving the worker idling with a closed socket.
+    fatal_exit = daemon.transport.fatal_exit
+    stop_task = asyncio.create_task(stop_event.wait())
+    fatal_task = asyncio.create_task(fatal_exit.wait())
+    try:
+        await asyncio.wait({stop_task, fatal_task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in (stop_task, fatal_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(stop_task, fatal_task, return_exceptions=True)
+
+    if fatal_exit.is_set():
+        logger.error(
+            "Agent %s exiting due to fatal IRC registration error "
+            "(see preceding error lines for the IRCd's reason).",
+            agent.nick,
+        )
+    else:
+        logger.info("Shutting down %s", agent.nick)
     await daemon.stop()
+    if fatal_exit.is_set():
+        sys.exit(1)
 
 
 def _run_multi(config, agents) -> None:
