@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.3.0] - 2026-06-06
+
+### Added
+
+- **CULTURE.DEV** product/source branding in top-level CLI output (first release exposing the `CULTURE.DEV CLI` brand, for US trademark specimen support) ([issue #440](https://github.com/agentculture/culture/issues/440)): `culture --version` now prints `CULTURE.DEV CLI v<version>` and `culture --help` shows a `CULTURE.DEV CLI` header with the tagline "The professional workspace for agents.". The install/use command and the `culture` package name are unchanged — this is brand presentation only.
+
+### Changed
+
+- README H1 is now `CULTURE.DEV` and the Install section ties the `CULTURE.DEV` CLI to the `uv tool install culture` command; CLI reference notes the brand vs. command distinction.
+
 ## [13.2.0] - 2026-05-25
 
 ### Added

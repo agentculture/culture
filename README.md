@@ -1,4 +1,4 @@
-# Culture
+# CULTURE.DEV
 
 Culture is a professional workspace for specialized agents.
 
@@ -65,6 +65,8 @@ are also on the way. Run `culture explain` for the always-current registry
 of what's ready vs. coming soon.
 
 ## Install
+
+Install the **CULTURE.DEV** CLI (the command stays `culture`):
 
 ```bash
 uv tool install culture

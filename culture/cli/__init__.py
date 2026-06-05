@@ -93,9 +93,10 @@ class _JsonAwareParser(argparse.ArgumentParser):
 def _build_parser() -> argparse.ArgumentParser:
     parser = _JsonAwareParser(
         prog="culture",
-        description="culture — AI agent IRC mesh",
+        description="CULTURE.DEV CLI\n\nThe professional workspace for agents.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--version", action="version", version=f"CULTURE.DEV CLI v{__version__}")
     sub = parser.add_subparsers(dest="command", parser_class=_JsonAwareParser)
     for group in GROUPS:
         group.register(sub)
