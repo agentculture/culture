@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.8] - 2026-06-05
+
+### Fixed — BUG 1a (Plenty dogfood): agent-create silently overwrote server.name
+
+v9.1.7 surfaced drift correctly + shipped the migrate-prefix
+recovery verb. The Plenty ship-night dogfood
+(`docs/v9.1.7-plenty-session-dogfood-findings.md`) found drift was
+still being **introduced** by `culture agent create --server X`,
+which silently overwrote `server.name` in `server.yaml` whenever
+`X` disagreed with the current value. `culture boss spawn`
+(including the SessionStart hook's auto-spawn) always passes
+`--server <prefix>` derived from CULTURE_NICK, so a CC session
+boss named `plenty-ai-guide-mobile` (prefix `plenty`) running
+against an IRCd started `--name local` would rewrite
+`server.name = plenty` on every spawn. The drift then propagated
+to every observer + bridge.
+
+v9.1.8 closes the introduction path with a **single-writer rule**:
+only `culture server rename` may change `server.name` after
+`server.yaml` exists. `agent create`:
+
+1. Captures `server.yaml`'s pre-existence at the top of the handler
+   (so `add_to_manifest`'s side-effect file creation doesn't mask
+   the drift check).
+2. Refuses with a clear error pointing at `culture server rename`
+   when the file pre-existed and the operator passed `--server X`
+   != current name.
+3. Preserves first-time install ergonomics: when the file did NOT
+   pre-exist, `--server X` initializes `server.name=X`.
+
+### BUG 2 (archive→unarchive ownership) — downstream of BUG 1a
+
+Same root cause: drifted CULTURE_NICK prefix vs workers' stored
+`boss:` field. v9.1.8 prevents introduction. The cure
+(`culture server migrate-prefix`, v9.1.6) remains the path for
+operators already in a drifted state.
+
+### Tests
+
+- `test_spawn_with_drifted_server_prefix_fails_loud` — pre-creates
+  server.yaml with name=local, spawns --server plenty, asserts
+  refusal + bit-for-bit unchanged file.
+- `test_spawn_first_time_install_writes_server_name` — clean home,
+  --server X initializes server.name=X.
+- 249/249 across affected suites.
+
+### Docs
+
+- `docs/server-name-drift-recovery.md` extended with v9.1.8
+  prevention section + BUG 2 connection.
+
 ## [9.1.7] - 2026-06-04
 
 ### Fixed — server.name drift root cause: observer auto-recovers, bridges fail loud

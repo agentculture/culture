@@ -414,7 +414,46 @@ def _save_agent_to_directory(agent: AgentConfig) -> None:
 
 
 def _cmd_create(args: argparse.Namespace) -> None:
+    # v9.1.8 — Plenty dogfood BUG 1a: capture server.yaml's
+    # pre-existence BEFORE any subsequent write touches it
+    # (``add_to_manifest`` below would otherwise create the file as a
+    # side effect with a default ``server.name`` = "culture", which
+    # would mask the drift-detection check at the bottom).
+    pre_existing_server_yaml = os.path.exists(args.config)
+
     config = load_config_or_default(args.config)
+
+    # v9.1.8 — refuse the drift case BEFORE any on-disk side effect.
+    # Pre-9.1.8 the check + write at the bottom of this function ran
+    # AFTER ``add_to_manifest`` had already added the worker entry,
+    # so a refused operation still left partial state in
+    # ``server.yaml``. Run the check up front: if the operator passed
+    # ``--server X`` and server.yaml already records a different
+    # name, refuse without writing anything anywhere.
+    if pre_existing_server_yaml and args.server and args.server != config.server.name:
+        # v9.1.8 r2 (Qodo PR #60 #2) — use a hosted URL instead of a
+        # repo-relative path. The wheel build (see pyproject.toml's
+        # ``[tool.hatch.build.targets.wheel]``) only packages
+        # ``culture/``, not the repo-level ``docs/`` tree, so a path
+        # like ``docs/server-name-drift-recovery.md`` is a dead-end
+        # for pip-installed operators. The fix command is inline
+        # below; the URL is for operators who want the full design
+        # context.
+        print(
+            f"Error: --server {args.server!r} disagrees with current "
+            f"server.name {config.server.name!r} in {args.config}. "
+            f"v9.1.8+: agent-create no longer silently rewrites "
+            f"server.name to match --server (was the root cause of "
+            f"server-name drift in v9.1.7 dogfood). To resolve: "
+            f"either run `culture server rename {args.server}` to "
+            f"adopt the new name across the mesh, or pass "
+            f"`--server {config.server.name}` to match what's "
+            f"already on disk. Full design context: "
+            f"https://github.com/edo-ceder/culture/blob/main/docs/"
+            f"server-name-drift-recovery.md",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     server_name = args.server or config.server.name or "culture"
     suffix = args.nick or sanitize_agent_name(os.path.basename(os.getcwd()))
@@ -428,7 +467,27 @@ def _cmd_create(args: argparse.Namespace) -> None:
     _save_agent_to_directory(agent)
     add_to_manifest(args.config, suffix, agent.directory)
 
-    if args.server and args.server != config.server.name:
+    # v9.1.8 — Plenty dogfood BUG 1a: pre-9.1.8 this branch SILENTLY
+    # overwrote ``server.name`` in server.yaml whenever ``--server X``
+    # disagreed with the current value. ``culture boss spawn`` always
+    # passes ``--server <prefix>`` derived from CULTURE_NICK, so every
+    # spawn under prefix drift (CC session boss = ``plenty-foo`` while
+    # the IRCd was started ``--name local``) rewrote ``server.name``
+    # to ``plenty``. The drift then propagated to every observer +
+    # bridge that read server.yaml, the IRCd rejected them all with
+    # 432 ``Nickname must start with local-``, and the mesh wedged
+    # for new work. v9.1.7 caught the drift HONESTLY (observer
+    # auto-recovered, bridge failed loud); v9.1.8 prevents the drift
+    # from being INTRODUCED in the first place by enforcing the
+    # single-writer rule: only ``culture server rename`` may change
+    # ``server.name`` once server.yaml exists.
+    # v9.1.8 — first-time install path: server.yaml didn't exist when
+    # the handler started AND the operator passed ``--server X``.
+    # Initialize ``server.name`` to X so subsequent
+    # ``culture agent create`` / ``culture server rename`` work
+    # against the seeded value. Drift-refusal for the file-exists
+    # case ran at the top of the function (before any side effect).
+    if not pre_existing_server_yaml and args.server and args.server != config.server.name:
         config.server.name = args.server
         save_server_config(str(args.config), config)
 
