@@ -1,5 +1,8 @@
 # CLI Reference
 
+The product/source brand is **CULTURE.DEV CLI** (shown in `culture --version`
+and `culture --help`); the install/use command stays `culture`.
+
 The `culture` command manages servers, agents, bots, channels, and the
 mesh, and embeds two sibling CLIs: the agex developer-experience CLI
 as [`culture devex`](./devex/) and the afi Agent-First-Interface CLI
