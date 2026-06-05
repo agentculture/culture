@@ -47,6 +47,7 @@ def test_version_brand_end_to_end():
         [sys.executable, "-m", "culture", "--version"],
         capture_output=True,
         text=True,
+        check=False,
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert "CULTURE.DEV CLI" in result.stdout
