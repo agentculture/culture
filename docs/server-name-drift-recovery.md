@@ -22,6 +22,64 @@ Pre-9.1.6 this surfaced as a silent timeout (`Timed out waiting for
 server welcome`) with zero diagnostic value. Pre-9.1.7 the bridge
 spun in the read loop indefinitely with no log entry.
 
+## v9.1.8 behavior — prevention at the writer
+
+v9.1.7 surfaced drift to operators (observer auto-recover, bridge
+fail-loud) and shipped the `culture server migrate-prefix`
+recovery verb. But the Plenty ship-night dogfood (2026-06-05)
+found drift was still being **introduced** by an unaudited writer:
+`culture agent create --server X` (invoked by every `culture boss
+spawn`, including the SessionStart hook's auto-spawn) silently
+overwrote `server.yaml::server.name` to `X` whenever it disagreed
+with the current value. With a CC session boss named
+`plenty-ai-guide-mobile` and an IRCd running with `--name local`,
+every spawn under that session rewrote `server.name` to `plenty`,
+which then propagated to every observer and bridge that read
+`server.yaml`. The IRCd rejected them all with 432, and the mesh
+wedged for new work until the operator ran `migrate-prefix`.
+
+v9.1.8 closes that introduction path with a **single-writer rule**:
+**only `culture server rename` may change `server.name` after
+`server.yaml` exists.** `culture agent create --server X` now:
+
+1. Captures `server.yaml`'s pre-existence at the top of the
+   handler.
+2. If the file existed AND `args.server != config.server.name`,
+   refuses with a clear error pointing at the canonical migration
+   path (`culture server rename` or pass `--server <current>` to
+   match).
+3. If the file did NOT exist when the handler started, treats
+   `--server X` as the initial seed value (first-time install
+   ergonomics preserved).
+
+The fail-loud error reads:
+
+```
+Error: --server 'plenty' disagrees with current server.name 'local'
+in ~/.culture/server.yaml. v9.1.8+: agent-create no longer silently
+rewrites server.name to match --server (was the root cause of
+server-name drift in v9.1.7 dogfood — see
+docs/server-name-drift-recovery.md). To resolve: either run
+`culture server rename plenty` to adopt the new name across the
+mesh, or pass `--server local` to match what's already on disk.
+```
+
+This applies uniformly to direct CLI use AND to every flow that
+calls into `agent create` — including `culture boss spawn`, which
+the SessionStart hook auto-invokes for every owned worker.
+
+### What this means for BUG 2 (archive → unarchive ownership)
+
+The dogfood also flagged archive→unarchive leaving workers
+unmanageable. That's downstream of BUG 1a: once the boss's prefix
+drifts (because `boss spawn` wrote a different `server.name` to
+`server.yaml`), the ownership check at `boss.py::_foreign_worker`
+compares the now-drifted CULTURE_NICK against the worker's stored
+`boss:` field and rejects every operation. By preventing
+introduction, v9.1.8 closes the cause; the cure (`culture server
+migrate-prefix`) remains the path for an operator already in the
+drifted state.
+
 ## v9.1.7 behavior — split by transport lifecycle
 
 The recovery story is split by **transport lifecycle** because the

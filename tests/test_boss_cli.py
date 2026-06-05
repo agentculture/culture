@@ -223,6 +223,61 @@ class TestSpawnValidation:
         # failure should NOT be the length-check rejection.
         assert "64-char limit" not in res.stderr
 
+    def test_spawn_with_drifted_server_prefix_fails_loud(self, home):
+        """v9.1.8 — Plenty dogfood BUG 1a: when ``server.yaml`` exists
+        with one ``server.name`` and ``boss spawn`` (or ``agent create``)
+        is invoked with a DIFFERENT ``--server X``, the CLI must REFUSE
+        the silent overwrite that pre-9.1.8 was the root cause of
+        server-name drift introduction. The error must point at the
+        canonical migration path (``culture server rename``)."""
+        import yaml as _yaml
+
+        # Pre-create server.yaml with server.name=local.
+        server_yaml = os.path.join(str(home), "server.yaml")
+        with open(server_yaml, "w") as fh:
+            _yaml.safe_dump({"server": {"name": "local"}, "agents": {}}, fh)
+        before_bytes = open(server_yaml, "rb").read()
+
+        # Spawn with --server plenty (the drift case).
+        res = _run(["spawn", "w1", "--server", "plenty"], home)
+
+        # The CLI must refuse — not silently rewrite server.name.
+        assert res.returncode == 1
+        assert "disagrees with current server.name" in res.stderr
+        assert "culture server rename" in res.stderr
+
+        # server.yaml MUST be untouched.
+        after_bytes = open(server_yaml, "rb").read()
+        assert before_bytes == after_bytes, (
+            "agent-create with --server X under drift wrote server.yaml — "
+            "the v9.1.8 single-writer rule is leaking."
+        )
+
+    def test_spawn_first_time_install_writes_server_name(self, home):
+        """v9.1.8 — first-time install: when ``server.yaml`` does NOT
+        yet exist, ``agent create --server X`` initializes it with
+        ``server.name = X``. The fail-loud rule applies only after
+        the file exists with a different name.
+
+        Keeps the bootstrap ergonomics of ``culture agent create``
+        usable on a fresh machine (no manual ``culture server start``
+        required to seed server.yaml)."""
+        import yaml as _yaml
+
+        server_yaml = os.path.join(str(home), "server.yaml")
+        assert not os.path.exists(server_yaml)
+
+        # spawn → agent create chain on a clean home.
+        res = _run(["spawn", "w1", "--server", "freshmesh"], home)
+        # The spawn may fail at later steps (no IRCd running), but the
+        # server.name initialization should land on disk first.
+        assert os.path.exists(server_yaml)
+        with open(server_yaml) as fh:
+            data = _yaml.safe_load(fh)
+        assert data["server"]["name"] == "freshmesh"
+        # No "disagrees" error on first-time install.
+        assert "disagrees with current server.name" not in res.stderr
+
     def test_spawn_at_exact_limit_does_not_corrupt_live_manifest(self, home, tmp_path, monkeypatch):
         """Regression for the v9.1.5 leak: a boss-spawn invocation
         under CULTURE_HOME=<tmp> must NOT touch the operator's real
