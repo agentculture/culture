@@ -236,7 +236,12 @@ class TestSpawnValidation:
         server_yaml = os.path.join(str(home), "server.yaml")
         with open(server_yaml, "w") as fh:
             _yaml.safe_dump({"server": {"name": "local"}, "agents": {}}, fh)
-        before_bytes = open(server_yaml, "rb").read()
+        # Qodo PR #60 #3 — use context managers for the byte-snapshot
+        # reads so the file handle is deterministically released even
+        # under stricter runtimes or alternative file-locking
+        # environments.
+        with open(server_yaml, "rb") as fh:
+            before_bytes = fh.read()
 
         # Spawn with --server plenty (the drift case).
         res = _run(["spawn", "w1", "--server", "plenty"], home)
@@ -247,7 +252,8 @@ class TestSpawnValidation:
         assert "culture server rename" in res.stderr
 
         # server.yaml MUST be untouched.
-        after_bytes = open(server_yaml, "rb").read()
+        with open(server_yaml, "rb") as fh:
+            after_bytes = fh.read()
         assert before_bytes == after_bytes, (
             "agent-create with --server X under drift wrote server.yaml — "
             "the v9.1.8 single-writer rule is leaking."

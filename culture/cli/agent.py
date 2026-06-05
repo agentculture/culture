@@ -431,17 +431,26 @@ def _cmd_create(args: argparse.Namespace) -> None:
     # ``--server X`` and server.yaml already records a different
     # name, refuse without writing anything anywhere.
     if pre_existing_server_yaml and args.server and args.server != config.server.name:
+        # v9.1.8 r2 (Qodo PR #60 #2) — use a hosted URL instead of a
+        # repo-relative path. The wheel build (see pyproject.toml's
+        # ``[tool.hatch.build.targets.wheel]``) only packages
+        # ``culture/``, not the repo-level ``docs/`` tree, so a path
+        # like ``docs/server-name-drift-recovery.md`` is a dead-end
+        # for pip-installed operators. The fix command is inline
+        # below; the URL is for operators who want the full design
+        # context.
         print(
             f"Error: --server {args.server!r} disagrees with current "
             f"server.name {config.server.name!r} in {args.config}. "
             f"v9.1.8+: agent-create no longer silently rewrites "
             f"server.name to match --server (was the root cause of "
-            f"server-name drift in v9.1.7 dogfood — see "
-            f"docs/server-name-drift-recovery.md). To resolve: "
+            f"server-name drift in v9.1.7 dogfood). To resolve: "
             f"either run `culture server rename {args.server}` to "
             f"adopt the new name across the mesh, or pass "
             f"`--server {config.server.name}` to match what's "
-            f"already on disk.",
+            f"already on disk. Full design context: "
+            f"https://github.com/edo-ceder/culture/blob/main/docs/"
+            f"server-name-drift-recovery.md",
             file=sys.stderr,
         )
         sys.exit(1)
