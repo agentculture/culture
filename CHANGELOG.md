@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [9.1.9] - 2026-06-06
+
+### Fixed — E2E harness exposes IRCd ACL CULTURE_HOME leak (the load-bearing fix)
+
+The earlier 9.1.5–9.1.8 patches each claimed to close "no session has
+gotten past brief" (per the Plenty dogfood), but none of them did —
+they were all verified by unit tests that never exercised the actual
+failure path. A first-pass E2E harness on this branch (real IRCd in
+pytest's process + real `culture bridge` subprocess + fake TCP worker
++ real `culture boss brief` subprocess) reproduced the failure and
+traced it back to ``culture/agentirc/client.py::_load_owner_map`` —
+which resolves the manifest via ``culture_home()`` (env-derived). The
+in-process IRCd was reading the operator's REAL
+``~/.culture/server.yaml`` rather than the test sandbox, and 432-
+rejecting every test JOIN to ``#task-<suffix>``.
+
+`tests/e2e/conftest.py`'s ``e2e_ircd`` fixture now binds
+``CULTURE_HOME`` / ``HOME`` / ``XDG_RUNTIME_DIR`` on the pytest
+process via ``monkeypatch.setenv`` (not just on subprocess env), and
+flushes the module-level owner_map / role_map caches at fixture entry
++ exit. ``register_fake_worker`` also invalidates the ACL cache after
+manifest mutation so tests don't hit the 5s TTL with stale data.
+
+### Added — E2E test harness with 7 load-bearing tests
+
+`tests/e2e/`:
+
+- `test_brief_happy_path.py` — full brief delivery on the wire.
+- `test_multi_worker_isolation.py` — no cross-talk between workers.
+- `test_foreign_boss_refused.py` — team-isolation invariant (×2).
+- `test_archive_unarchive_ownership.py` — Plenty BUG 2 reproduction:
+  with consistent server prefix, archive→unarchive preserves
+  ownership (validates BUG 2 was downstream of BUG 1).
+- `test_server_name_drift.py` — Plenty BUG 1 contract: drifted
+  ``server.name`` fails loud at the bridge (v9.1.7 fail-loud) (×2).
+
+Real `~/.culture/server.yaml` md5 verified unchanged across the full
+suite — no test pollution into the operator's manifest.
+
+### Fixed — misleading `culture boss brief` error string
+
+`culture/cli/boss.py::_cmd_brief` was collapsing two distinct error
+paths ("IPC connect failed" and "IPC connected but the bridge replied
+ok=False") into the single message "the boss daemon is not reachable
+over IPC", which sent operators to the wrong remediation. The
+bridge's actual error text (typically "Not joined to <channel>") is
+now surfaced.
+
+### Docs
+
+- `docs/v9.1.9-e2e-harness-and-acl-isolation-fix.md` — release notes
+  for this fix + how to extend the harness.
+
 ## [9.1.8] - 2026-06-05
 
 ### Fixed — BUG 1a (Plenty dogfood): agent-create silently overwrote server.name

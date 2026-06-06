@@ -591,20 +591,39 @@ def _cmd_brief(args: argparse.Namespace) -> None:
 
         persist_section(channel, f"brief → {nick}", args.task)
     else:
-        # v8.19.23: actionable error. Without this the orchestrator has to
-        # guess: is the IRC server down? Did the worker crash? Is "boss
-        # daemon" a thing distinct from "boss identity"? Tell them exactly
-        # what to run.
+        # v9.1.9: distinguish "IPC connect failed" (resp is None) from
+        # "bridge replied with an error" (resp dict with ok=False).
+        # Previously every failure printed the misleading "boss daemon
+        # not reachable over IPC" — including races where the bridge
+        # IPC was healthy but had replied "Not joined to <channel>".
+        # The Plenty dogfood ("no session has gotten past brief")
+        # traced one of its mystery failures back to this collapsed
+        # error string.
         boss = _boss_nick()
-        print(
-            f"Error: could not brief {nick} — the boss daemon ({boss}) is not\n"
-            f"reachable over IPC. Start it with:\n"
-            f"\n"
-            f"    culture agent start {boss}\n"
-            f"\n"
-            f"Then re-run this brief.",
-            file=sys.stderr,
-        )
+        if resp is None:
+            print(
+                f"Error: could not brief {nick} — the boss daemon ({boss}) is not\n"
+                f"reachable over IPC. Start it with:\n"
+                f"\n"
+                f"    culture agent start {boss}\n"
+                f"\n"
+                f"Then re-run this brief.",
+                file=sys.stderr,
+            )
+        else:
+            err = resp.get("error", "<no error text returned>")
+            print(
+                f"Error: brief to {nick} in {channel} was REJECTED by the boss daemon\n"
+                f"({boss}). IPC replied:\n"
+                f"\n"
+                f"    {err}\n"
+                f"\n"
+                f"This usually means the bridge has not joined {channel} yet (the\n"
+                f"JOIN echo from the IRCd hasn't been processed) or the bridge's\n"
+                f"membership cache is stale. Confirm with `culture boss read\n"
+                f"{name}` that the channel is reachable, then re-run.",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
 
