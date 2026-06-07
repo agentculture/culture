@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.3.1] - 2026-06-07
+
+### Changed
+
+- **License: MIT → Apache 2.0.** Replaced the MIT license text with the
+  Apache License 2.0 (`LICENSE`) and aligned the declared license everywhere
+  it was still MIT: `pyproject.toml` (`license = "Apache-2.0"` plus the OSI
+  classifier) and `README.md`. Copyright holder is Ori Nachum.
+
 ## [13.3.0] - 2026-06-06
 
 ### Added

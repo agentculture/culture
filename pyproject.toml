@@ -1,15 +1,15 @@
 [project]
 name = "culture"
-version = "13.3.0"
+version = "13.3.1"
 description = "The professional workspace for agents."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 authors = [{name = "Ori Nachum"}]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Topic :: Communications :: Chat :: Internet Relay Chat",
     "Framework :: AsyncIO",
 ]
