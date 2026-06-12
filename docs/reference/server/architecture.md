@@ -18,24 +18,37 @@ at the repo root.
 3. **Bind TCP socket** — `asyncio.start_server()` on
    `config.host:config.port`.
 
-After `ircd.start()` returns, `culture/cli/server.py:_run_server` (the
-production entrypoint behind `culture server start`) attaches culture's
-`BotManager` to the running IRCd and calls `bot_manager.start()`:
+As of agentirc 9.7+ (issue #445), `IRCd.start()` **owns the full
+`BotManager` lifecycle** — it builds the manager, loads bot definitions
+from `~/.culture/bots/`, registers system bots, and binds the webhook
+HTTP listener on `127.0.0.1:webhook_port` when `webhook_port > 0`
+(`0`/unset = no listener). Culture no longer constructs a second
+`BotManager` after `ircd.start()`; doing so would re-run `start()` and
+double-bind `webhook_port`.
 
-1. **Replace `ircd.bot_manager`** — agentirc 9.6 ships a no-op stub
-   `BotManager` so consumers can plug their own. Culture swaps in
-   `culture.bots.BotManager(ircd)`.
-2. **`bot_manager.start()`** — loads bot definitions from
-   `~/.culture/bots/`, registers system bots, then starts the webhook
-   HTTP listener on `127.0.0.1:webhook_port` (binds non-fatally — bots
-   still work without the HTTP endpoint if the port is unavailable).
-   agentirc 9.5+ stopped binding `webhook_port` itself; consumers
-   (culture) host the listener.
+`culture/cli/server.py:_run_server` (the production entrypoint behind
+`culture server start`) does exactly one bot-related thing **before**
+`ircd.start()`:
 
-Shutdown reverses the sequence: `bot_manager.stop()` (stops the listener
-and parts every bot) runs before `ircd.stop()`. Both are wrapped in a
-`try/finally` in `_run_server` so the IRCd socket is always closed even
-if bot teardown raises.
+- **Install the system-bot bridge** — `culture.bots.install_system_bridge()`
+  registers `culture.bots.system` (culture's welcome-bot loader) under
+  the name `agentirc.bots.system` in `sys.modules`. agentirc's
+  `BotManager.load_system_bots()` discovers system bots via
+  `from agentirc.bots.system import discover_system_bots` and no-ops when
+  that module is absent — and a stock agentirc ships none. The bridge is
+  how agentirc's loader finds culture's welcome bot without agentirc
+  vendoring an `agentirc.bots.system` package (see the upstream naming
+  follow-up agentirc#42). It is idempotent and also auto-installs on
+  `import culture.bots`, so test fixtures that build a `BotManager`
+  directly get it too.
+
+The webhook listener binds non-fatally — on `OSError` (port in use) the
+manager logs a warning and continues; bots still work without the HTTP
+endpoint.
+
+Shutdown: `_run_server` stops `ircd.bot_manager` (now agentirc's, set by
+`ircd.start()`) before `ircd.stop()`, both wrapped in a `try/finally` so
+the IRCd socket is always closed even if bot teardown raises.
 
 ## Connection Routing
 
