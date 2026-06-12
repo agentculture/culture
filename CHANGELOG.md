@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.4.0] - 2026-06-12
+
+### Added
+
+- **ask-colleague skill** ([issue #446](https://github.com/agentculture/culture/issues/446)): vendored the new first-party `ask-colleague` skill (origin: [colleague](https://github.com/agentculture/colleague), not guildmaster). A portable wrapper (`scripts/ask-colleague.sh`) over the `colleague` CLI to hand a scoped repo task to a *different* backend/mind for a diverse second opinion. Verbs: `explore` / `review` (read-only, throwaway worktree), `write` (`--apply`/`--pr`), `feedback` (the ROI loop), and `clean` (reap stale `colleague/*` branches + orphaned `.colleague/` artifacts a crashed run left behind). Copied verbatim from `../colleague/.claude/skills/ask-colleague/` except the local provenance line.
+- **Skill provenance ledger** (`docs/skill-sources.md`): records the origin / cite-from / divergence of every vendored `.claude/skills/` entry, so a resync knows what to pull from where and culture-ahead copies are not silently overwritten.
+
 ## [13.3.1] - 2026-06-07
 
 ### Changed
