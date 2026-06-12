@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.4.0] - 2026-06-13
+
+### Added
+
+- culture.bots.install_system_bridge() — registers culture.bots.system as agentirc.bots.system so agentirc 9.7+ BotManager.load_system_bots discovers culture's welcome bot (issue #445).
+
+### Changed
+
+- Bot framework forwarded to agentirc.bots: culture/bots/{bot_manager,bot,config,filter_dsl,template_engine,http_listener}.py are now sys.modules re-export shims; the in-tree implementation is deleted. Pinned agentirc-cli>=9.7.0,<10.
+- culture server start no longer constructs a second BotManager — agentirc 9.7+ IRCd.start() owns the lifecycle and binds the webhook listener once. --webhook-port 0 now disables the webhook listener (no bind).
+- culture bot CLI now calls agentirc's validate_bot_name at every name->path chokepoint, inheriting the path-traversal guard. Three-part <server>-<owner>-<name> naming preserved.
+
+### Fixed
+
+- Webhook listener double-bind on culture server start (a second BotManager was started after IRCd.start()).
+- Bot-name path traversal in culture bot create/start/stop/inspect/archive/unarchive (now guarded by validate_bot_name).
+
 ## [13.3.1] - 2026-06-07
 
 ### Changed
