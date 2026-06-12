@@ -26,7 +26,7 @@ propagation.
 | Skill | Origin | Cite from | Divergence |
 |-------|--------|-----------|------------|
 | `agent-config` | guildmaster (forked from steward) | `../guildmaster/.claude/skills/agent-config/` | culture-ahead (`scripts/show.sh`) |
-| `ask-colleague` | **colleague** (first-party) | `../colleague/.claude/skills/ask-colleague/` | culture-ahead¹ |
+| `ask-colleague` | **colleague** (first-party) | `../colleague/.claude/skills/ask-colleague/` | culture-ahead (prompts)¹ |
 | `assign-to-workforce` | devague (re-broadcast via guildmaster) | `../guildmaster/.claude/skills/assign-to-workforce/` | verbatim |
 | `cicd` | guildmaster | `../guildmaster/.claude/skills/cicd/` | culture-ahead (`status` / `await`, `scripts/workflow.sh`) |
 | `communicate` | guildmaster | `../guildmaster/.claude/skills/communicate/` | culture-ahead (`scripts/fetch-issues.sh`) |
@@ -56,17 +56,18 @@ propagation.
   Look for the `# culture-divergence:` header in the file to see why a copy
   diverges.
 
-¹ `ask-colleague` is not byte-verbatim against colleague — two divergences,
-both to reapply after a re-vendor until upstream adopts them:
+¹ `ask-colleague` is not byte-verbatim against colleague — one remaining
+divergence to reapply after a re-vendor until upstream adopts it:
 
 - **Prompts** (`prompts/{explore,review,write}.md`) carry **markdownlint-only**
   blank-line-around-list (MD032) fixes for culture's stricter config —
   whitespace only, no change to prompt content.
-- **`scripts/ask-colleague.sh`** carries a **culture-ahead** fix to
-  `resolve_colleague()`: the `uv run` local-dev fallback now also searches the
-  `--repo` target (not just `$PWD`), so invoking with `colleague` off `PATH` but
-  `--repo` at a colleague checkout resolves instead of failing "CLI not found"
-  (PR #447, Qodo finding). Marked with a `# culture-divergence:` header and
-  tracked upstream as
-  [colleague#181](https://github.com/agentculture/colleague/issues/181) — drop
-  the divergence once colleague adopts it and culture re-vendors.
+
+The earlier **`scripts/ask-colleague.sh`** divergence — a culture-ahead fix to
+`resolve_colleague()` so the `uv run` local-dev fallback also searches the
+`--repo` target, not just `$PWD` (PR #447), tracked upstream as
+[colleague#181](https://github.com/agentculture/colleague/issues/181) — has been
+**adopted upstream and re-vendored verbatim** from colleague#183
+([PR #448](https://github.com/agentculture/culture/pull/448)). The
+`# culture-divergence:` header is gone and the wrapper now matches upstream; the
+behaviour (repo-aware `uv` fallback) is unchanged.
