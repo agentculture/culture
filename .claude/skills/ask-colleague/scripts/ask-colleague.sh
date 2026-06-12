@@ -43,18 +43,7 @@ PROMPTS_DIR="$SKILL_DIR/prompts"
 # ── resolve the colleague CLI (installed, then local-dev fallback) ─────────
 COLLEAGUE=()
 
-# culture-divergence: ahead of colleague's verbatim copy. Upstream's
-# resolve_colleague() walks up only from $PWD for the `uv run` local-dev
-# fallback, so invoking from outside a colleague checkout with `colleague` not
-# on PATH — but --repo pointing at one — wrongly fails "CLI not found" (culture
-# PR #447, Qodo finding). Fixed here to also search the --repo target and to run
-# uv against the found checkout via --project (so CWD no longer has to be inside
-# it). Offered back upstream as agentculture/colleague#181; drop this divergence
-# once colleague adopts it and culture re-vendors.
 _colleague_via_uv() {
-    # Walk up from $1; if a colleague source checkout is found and uv is
-    # available, set COLLEAGUE to run colleague from that checkout. Returns 0 on
-    # success, 1 otherwise.
     local dir="$1"
     while [[ -n "$dir" ]] && [[ "$dir" != "/" ]]; do
         if [[ -f "$dir/pyproject.toml" ]] \
@@ -73,10 +62,7 @@ resolve_colleague() {
         COLLEAGUE=(colleague)        # installed tool — the normal case
         return 0
     fi
-    # Local-dev fallback: a colleague source checkout we can `uv run` from. Try
-    # the invocation dir ($PWD) first, then the --repo target — which may itself
-    # be the colleague checkout (e.g. reviewing colleague's own diff).
-    _colleague_via_uv "$PWD" && return 0
+    _colleague_via_uv "$PWD"  && return 0
     _colleague_via_uv "$REPO" && return 0
     cat >&2 <<'EOF'
 error: colleague CLI not found.
@@ -274,7 +260,9 @@ print_result() {
     # real repo) -> print a copy-paste `grade:` hint with the explicit task-id, so
     # the caller never has to rely on `last` (issue #132). A preview leaves it
     # empty (its artifact was discarded with the worktree, so it is not gradable).
-    ASK_COLLEAGUE_REAL_ARTIFACT_DIR="${1:-}" ASK_COLLEAGUE_GRADABLE="${2:-}" python3 -c '
+    # $3 (optional): exit code from the colleague drive command, propagated to
+    # the caller when the drive itself failed.
+    ASK_COLLEAGUE_REAL_ARTIFACT_DIR="${1:-}" ASK_COLLEAGUE_GRADABLE="${2:-}" ASK_COLLEAGUE_DRIVE_RC="${3:-}" python3 -c '
 import sys, json, os
 raw = sys.stdin.read().strip()
 if not raw:
@@ -313,7 +301,7 @@ ap = d.get("artifacts_path")
 real_dir = os.environ.get("ASK_COLLEAGUE_REAL_ARTIFACT_DIR") or ""
 if ap and real_dir:
     ap = os.path.join(real_dir, os.path.basename(ap))
-if ap:
+if ap and os.environ.get("ASK_COLLEAGUE_GRADABLE") == "1":
     print("artifact:", ap, file=out)
 # A drive is gradable whenever its artifact survives — including a FAILED drive
 # (colleague writes an artifact on failure too, h5): a failure rated 1/5 is exactly
@@ -321,7 +309,14 @@ if ap:
 # `out` (stderr on failure), matching the rest of the failure digest.
 if tid and os.environ.get("ASK_COLLEAGUE_GRADABLE") == "1":
     print("grade:", "ask-colleague feedback", tid, "--rating N", file=out)
-sys.exit(0 if ok else 1)
+if ok:
+    sys.exit(0)
+else:
+    rc = os.environ.get("ASK_COLLEAGUE_DRIVE_RC")
+    if rc in ("1", "2"):
+        sys.exit(int(rc))
+    else:
+        sys.exit(1)
 '
 }
 
@@ -439,8 +434,8 @@ _add_worktree() {
 run_readonly() {
     local instruction="$1"
     _add_worktree
-    local out
-    out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$_WT" --no-pr "${COMMON_FLAGS[@]}")" || true
+    local out rc=0
+    out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$_WT" --no-pr "${COMMON_FLAGS[@]}")" || rc=$?
     _DRIVE_BRANCH="$(printf '%s' "$out" | _extract_branch)"
     # Preserve the artifact to the real repo BEFORE the EXIT trap removes the
     # worktree, so the drive can be graded by its task-id (`ask-colleague feedback
@@ -454,7 +449,7 @@ run_readonly() {
         real_dir="$REPO/.colleague"
         gradable="1"
     fi
-    printf '%s' "$out" | print_result "$real_dir" "$gradable"
+    printf '%s' "$out" | print_result "$real_dir" "$gradable" "$rc"
 }
 
 # ── write preview (default): drive in a throwaway worktree, show the would-be ──
@@ -463,8 +458,8 @@ run_readonly() {
 run_preview() {
     local instruction="$1"
     _add_worktree
-    local out
-    out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$_WT" --no-pr "${COMMON_FLAGS[@]}")" || true
+    local out rc=0
+    out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$_WT" --no-pr "${COMMON_FLAGS[@]}")" || rc=$?
     _DRIVE_BRANCH="$(printf '%s' "$out" | _extract_branch)"
 
     # Capture the would-be patch before _cleanup_worktree deletes the drive branch.
@@ -473,9 +468,9 @@ run_preview() {
         patch="$(git -C "$REPO" diff "HEAD..$_DRIVE_BRANCH" 2>/dev/null || true)"
     fi
 
-    local rc=0
-    printf '%s' "$out" | print_result || rc=$?
-    if [[ "$rc" -eq 0 ]]; then
+    local prc=0
+    printf '%s' "$out" | print_result "" "" "$rc" || prc=$?
+    if [[ "$prc" -eq 0 ]]; then
         if [[ -n "$patch" ]]; then
             printf '\n--- preview diff (NOT applied — pass --apply to land it) ---\n'
             printf '%s\n' "$patch"
@@ -483,7 +478,7 @@ run_preview() {
             printf '\n(preview: no file changes reported; NOT applied)\n'
         fi
     fi
-    return "$rc"
+    return "$prc"
 }
 
 # ── write verb: preview by default; --apply lands a drive branch; --pr opens a ─
@@ -510,20 +505,22 @@ run_write() {
     # top — read-only/preview verbs run in a clean worktree and must not get it),
     # which sidesteps the `set -u` empty-array expansion hazard.
     [[ "$ALLOW_DIRTY" -eq 1 ]] && COMMON_FLAGS+=(--allow-dirty)
-    # `|| true`: a failed drive (`colleague drive` returns 1 when status != ok,
-    # printing the result JSON to stdout) must still flow into print_result so the
-    # digest is emitted (to stderr) and the wrapper exits non-zero — not aborted by
-    # `set -e` at the assignment, which would swallow the digest. Matches the
-    # read-only / preview paths, which already guard this way.
-    local out
+    # `|| rc=$?`: a failed drive (`colleague drive` exits non-zero, printing the
+    # result JSON to stdout) must still flow into print_result so the digest is
+    # emitted (to stderr) and the wrapper propagates the drive's real exit code.
+    # The rc is captured (declaration split from the assignment so `local` doesn't
+    # mask it) rather than discarded with `|| true`, which would have collapsed the
+    # tri-state rc; `set -e` does not abort at the assignment. Matches the
+    # read-only / preview paths, which guard this way.
+    local out rc=0
     if [[ "$OPEN_PR" -eq 1 ]]; then
-        out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$REPO" "${COMMON_FLAGS[@]}")" || true
+        out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$REPO" "${COMMON_FLAGS[@]}")" || rc=$?
     else
-        out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$REPO" --no-pr "${COMMON_FLAGS[@]}")" || true
+        out="$("${COLLEAGUE[@]}" drive "$instruction" --repo "$REPO" --no-pr "${COMMON_FLAGS[@]}")" || rc=$?
     fi
     # A landed write persists its artifact in the real repo and moves `last`, so it
     # is gradable — print the `grade:` hint (with the explicit task-id).
-    printf '%s' "$out" | print_result "" "1"
+    printf '%s' "$out" | print_result "" "1" "$rc"
 }
 
 # ── feedback verb: grade a finished drive (the ROI loop) ────────────────────

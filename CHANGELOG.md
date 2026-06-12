@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+
+## [13.4.1] - 2026-06-12
+
+### Changed
+
+- **Re-vendored the `ask-colleague` skill wrapper from colleague#183**
+  (`.claude/skills/ask-colleague/scripts/ask-colleague.sh`): `resolve_colleague()`
+  now honors `--repo` for the `uv` local-dev fallback, the `colleague drive`
+  tri-state exit code (0/1/2) propagates end-to-end instead of collapsing to 1,
+  and a non-preserved read-only run no longer prints a dead `artifact:` line into
+  a throwaway worktree. Wrapper-only — an existing `SKILL.md` and prompt
+  templates are left untouched (they carry a repo-specific provenance token and
+  may diverge). Where the skill was absent, it is added fresh (wrapper +
+  `SKILL.md` + prompts). Refs: colleague#183, #180, #181.
+
 ## [13.4.0] - 2026-06-12
 
 ### Added
