@@ -162,14 +162,21 @@ async def test_stop_unknown_bot(server):
 async def test_start_creates_http_listener(server, tmp_path, monkeypatch):
     """`BotManager.start()` loads bots + system bots + binds a real HTTP listener.
 
-    Uses the real `HttpListener` against an OS-assigned port (the `server`
-    fixture sets `webhook_port=0`) and probes `/health` to confirm the
-    listener actually bound.
+    agentirc 9.7+ binds the webhook listener only when ``webhook_port > 0``
+    (port 0/unset = no webhook, the documented contract). The `server` fixture
+    sets ``webhook_port=0``, so this test claims a free port and sets it before
+    starting, then probes `/health` to confirm the listener actually bound.
     """
+    import socket
+
     import aiohttp
 
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
+
+    with socket.socket() as _probe:
+        _probe.bind(("127.0.0.1", 0))
+        server.config.webhook_port = _probe.getsockname()[1]
 
     mgr = BotManager(server)
     await mgr.start()
@@ -194,10 +201,14 @@ async def test_start_swallows_listener_oserror(server, tmp_path, monkeypatch, ca
     OSError can't be deterministically forced on a real `HttpListener`
     without racing another process for a port, so we patch
     `HttpListener.start` itself to raise. The rest of the manager flow
-    runs against the real `server` fixture.
+    runs against the real `server` fixture. A non-zero `webhook_port` is
+    required for agentirc 9.7+ to reach the listener path at all (port 0 =
+    no webhook); the patched `start` raises before any real bind, so the
+    value need only be > 0.
     """
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
+    server.config.webhook_port = 65500
 
     async def _bad_start(self):
         raise OSError("address already in use")

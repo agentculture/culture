@@ -131,7 +131,7 @@ def test_top_level_deprecation_notice_logged_once_per_process(tmp_path, caplog):
     )
 
     reset_fires_event_warning_state()
-    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+    with caplog.at_level(logging.INFO, logger="agentirc.bots.config"):
         load_bot_config(path)
         first = len(caplog.records)
         load_bot_config(path)
@@ -171,7 +171,7 @@ def test_top_level_deprecation_dedup_keyed_by_path_not_name(tmp_path, caplog):
     )
 
     reset_fires_event_warning_state()
-    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+    with caplog.at_level(logging.INFO, logger="agentirc.bots.config"):
         load_bot_config(path_a)
         load_bot_config(path_b)
 
@@ -197,7 +197,7 @@ def test_top_level_deprecation_handles_unhashable_name(tmp_path, caplog):
     )
 
     reset_fires_event_warning_state()
-    with caplog.at_level(logging.INFO, logger="culture.bots.config"):
+    with caplog.at_level(logging.INFO, logger="agentirc.bots.config"):
         cfg = load_bot_config(path)
 
     assert cfg.fires_event is not None
