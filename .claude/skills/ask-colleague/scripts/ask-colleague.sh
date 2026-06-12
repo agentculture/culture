@@ -42,24 +42,42 @@ PROMPTS_DIR="$SKILL_DIR/prompts"
 
 # ── resolve the colleague CLI (installed, then local-dev fallback) ─────────
 COLLEAGUE=()
+
+# culture-divergence: ahead of colleague's verbatim copy. Upstream's
+# resolve_colleague() walks up only from $PWD for the `uv run` local-dev
+# fallback, so invoking from outside a colleague checkout with `colleague` not
+# on PATH — but --repo pointing at one — wrongly fails "CLI not found" (culture
+# PR #447, Qodo finding). Fixed here to also search the --repo target and to run
+# uv against the found checkout via --project (so CWD no longer has to be inside
+# it). Offered back upstream (agentculture/colleague); drop this divergence once
+# re-vendored.
+_colleague_via_uv() {
+    # Walk up from $1; if a colleague source checkout is found and uv is
+    # available, set COLLEAGUE to run colleague from that checkout. Returns 0 on
+    # success, 1 otherwise.
+    local dir="$1"
+    while [[ -n "$dir" ]] && [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/pyproject.toml" ]] \
+            && grep -q '^name = "colleague"' "$dir/pyproject.toml" 2>/dev/null; then
+            command -v uv >/dev/null 2>&1 || return 1
+            COLLEAGUE=(uv run --project "$dir" colleague)
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
 resolve_colleague() {
     if command -v colleague >/dev/null 2>&1; then
         COLLEAGUE=(colleague)        # installed tool — the normal case
         return 0
     fi
-    # Local-dev fallback: inside the colleague checkout, run via uv.
-    local dir="$PWD"
-    while [[ -n "$dir" ]] && [[ "$dir" != "/" ]]; do
-        if [[ -f "$dir/pyproject.toml" ]] \
-            && grep -q '^name = "colleague"' "$dir/pyproject.toml" 2>/dev/null; then
-            if command -v uv >/dev/null 2>&1; then
-                COLLEAGUE=(uv run colleague)
-                return 0
-            fi
-            break
-        fi
-        dir=$(dirname "$dir")
-    done
+    # Local-dev fallback: a colleague source checkout we can `uv run` from. Try
+    # the invocation dir ($PWD) first, then the --repo target — which may itself
+    # be the colleague checkout (e.g. reviewing colleague's own diff).
+    _colleague_via_uv "$PWD" && return 0
+    _colleague_via_uv "$REPO" && return 0
     cat >&2 <<'EOF'
 error: colleague CLI not found.
 hint: install it with `uv tool install colleague` (or `pipx install colleague`),

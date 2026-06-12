@@ -26,7 +26,7 @@ propagation.
 | Skill | Origin | Cite from | Divergence |
 |-------|--------|-----------|------------|
 | `agent-config` | guildmaster (forked from steward) | `../guildmaster/.claude/skills/agent-config/` | culture-ahead (`scripts/show.sh`) |
-| `ask-colleague` | **colleague** (first-party) | `../colleague/.claude/skills/ask-colleague/` | verbatim¹ |
+| `ask-colleague` | **colleague** (first-party) | `../colleague/.claude/skills/ask-colleague/` | culture-ahead¹ |
 | `assign-to-workforce` | devague (re-broadcast via guildmaster) | `../guildmaster/.claude/skills/assign-to-workforce/` | verbatim |
 | `cicd` | guildmaster | `../guildmaster/.claude/skills/cicd/` | culture-ahead (`status` / `await`, `scripts/workflow.sh`) |
 | `communicate` | guildmaster | `../guildmaster/.claude/skills/communicate/` | culture-ahead (`scripts/fetch-issues.sh`) |
@@ -56,7 +56,15 @@ propagation.
   Look for the `# culture-divergence:` header in the file to see why a copy
   diverges.
 
-¹ The three `ask-colleague` prompt files (`prompts/{explore,review,write}.md`)
-carry **markdownlint-only** blank-line-around-list (MD032) fixes for culture's
-stricter config — whitespace only, no change to prompt content. A resync diff
-against colleague will show those blank lines; reapply them after re-vendoring.
+¹ `ask-colleague` is not byte-verbatim against colleague — two divergences,
+both to reapply after a re-vendor until upstream adopts them:
+
+- **Prompts** (`prompts/{explore,review,write}.md`) carry **markdownlint-only**
+  blank-line-around-list (MD032) fixes for culture's stricter config —
+  whitespace only, no change to prompt content.
+- **`scripts/ask-colleague.sh`** carries a **culture-ahead** fix to
+  `resolve_colleague()`: the `uv run` local-dev fallback now also searches the
+  `--repo` target (not just `$PWD`), so invoking with `colleague` off `PATH` but
+  `--repo` at a colleague checkout resolves instead of failing "CLI not found"
+  (PR #447, Qodo finding). Marked with a `# culture-divergence:` header and
+  offered back to colleague.
