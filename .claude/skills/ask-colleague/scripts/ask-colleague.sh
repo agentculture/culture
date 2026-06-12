@@ -49,8 +49,8 @@ COLLEAGUE=()
 # on PATH — but --repo pointing at one — wrongly fails "CLI not found" (culture
 # PR #447, Qodo finding). Fixed here to also search the --repo target and to run
 # uv against the found checkout via --project (so CWD no longer has to be inside
-# it). Offered back upstream (agentculture/colleague); drop this divergence once
-# re-vendored.
+# it). Offered back upstream as agentculture/colleague#181; drop this divergence
+# once colleague adopts it and culture re-vendors.
 _colleague_via_uv() {
     # Walk up from $1; if a colleague source checkout is found and uv is
     # available, set COLLEAGUE to run colleague from that checkout. Returns 0 on

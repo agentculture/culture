@@ -67,4 +67,6 @@ both to reapply after a re-vendor until upstream adopts them:
   `--repo` target (not just `$PWD`), so invoking with `colleague` off `PATH` but
   `--repo` at a colleague checkout resolves instead of failing "CLI not found"
   (PR #447, Qodo finding). Marked with a `# culture-divergence:` header and
-  offered back to colleague.
+  tracked upstream as
+  [colleague#181](https://github.com/agentculture/colleague/issues/181) — drop
+  the divergence once colleague adopts it and culture re-vendors.
