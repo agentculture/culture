@@ -1,0 +1,243 @@
+{
+  "slug": "culture-doctor-a-top-level-command-that-diagnoses",
+  "title": "culture doctor: a top-level command that diagnoses drift between the ~/.culture/server.yaml agent manifest and the on-disk culture.yaml repos, exiting non-zero when it finds problems",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-06-13T17:19:17Z",
+  "updated": "2026-06-13T17:33:53Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "culture doctor: a top-level command that diagnoses drift between the ~/.culture/server.yaml agent manifest and the on-disk culture.yaml repos, exiting non-zero when it finds problems",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "a top-level 'culture doctor' verb is registered in the CLI group list and dispatches without colliding with 'culture agents doctor' (the steward forward)",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "culture operators running a mesh host (e.g. spark) who manage the agent manifest, plus CI/ops automation that needs a machine-checkable gate",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "the command is runnable by an operator with no args (sensible defaults) and emits machine-parseable output (--json) for CI/ops gating",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c3",
+      "kind": "after_state",
+      "text": "an operator runs 'culture doctor' and gets a categorized report of manifest<->filesystem drift (broken registrations, unregistered repos, suffix collisions) with a non-zero exit code when problems exist",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "the report cleanly separates the three drift classes and each problem line names the offending nick/repo and the suggested fix command (e.g. 'culture agents unregister <suffix>' / 'culture agents register <path>')",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c4",
+      "kind": "before_state",
+      "text": "drift is only surfaced as a side-effect WARNING inside resolve_agents() when agents are resolved; there is no first-class command to audit the manifest, and nothing detects unregistered repos or suffix collisions at all",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "doctor reuses the existing resolve_agents()/load_culture_yaml() validation in culture/config.py rather than reimplementing the missing-dir / missing-yaml / suffix-not-in-yaml checks",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "stale manifest entries and unregistered repos silently break agent start/observe; operators discover drift by accident. A doctor makes the existing resolve_agents() validation a first-class, scriptable health check",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "the warning logic in resolve_agents() remains the runtime path; doctor surfaces the same findings as an explicit, exit-coded report without changing resolve-time behavior",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "culture doctor checks manifest<->filesystem consistency ONLY; it does NOT do agent alignment/config-quality doctoring (that stays 'culture agents doctor' forwarded to steward) and it does not auto-fix or mutate the manifest",
+      "origin": "user",
+      "status": "rejected",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "running 'culture doctor' performs zero writes to server.yaml or any culture.yaml, verified by a test asserting the manifest file is byte-identical before/after",
+          "status": "rejected"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c7",
+      "kind": "success_signal",
+      "text": "on a healthy host doctor exits 0 with an all-clear; on the current spark host it reports 3 missing-dir registrations, ~44 unregistered culture.yaml repos, and the culture-sonar-cli/daria suffix collision, and exits non-zero",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "exit code is 0 only when zero problems are found in ALL three classes; any class-1 or class-3 problem forces non-zero; class-2 (unregistered repos) severity is a confirmed decision (warning-only vs error)",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c8",
+      "kind": "non_goal",
+      "text": "not an auto-remediation tool (no auto-unregister/auto-register); not a watcher/daemon; does not reach across linked peers or other hosts' manifests",
+      "origin": "user",
+      "status": "rejected",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "doctor scans a configurable repo root (default: parent dir of registered repos / a sensible workspace root) to find on-disk culture.yaml files for the unregistered-repo check",
+      "origin": "llm",
+      "status": "rejected",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "the scan root is discoverable without guessing: doctor derives candidate roots from the parent directories of already-registered manifest paths (and accepts an explicit --root override), so it works on any host without hardcoding /home/spark/git",
+          "status": "rejected"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c10",
+      "kind": "decision",
+      "text": "lives as a top-level 'culture doctor' verb (own CLI group), NOT under 'culture agents', to avoid the steward-forwarded doctor verb",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "for class-2, doctor enumerates the relevant GitHub org(s) remotely and lists repos whose default (main) branch contains a culture.yaml; it compares that org-declared agent set against the local manifest and reports org repos with culture.yaml that are not registered on this host (warning-only)",
+      "origin": "llm",
+      "status": "rejected",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "doctor discovers the org(s) to enumerate from the git remotes of already-registered repos (their origin owner) rather than hardcoding an org, and accepts an explicit --org override; detection of culture.yaml on main uses the GitHub API (gh) without cloning",
+          "status": "rejected"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "for class-2 (unregistered repos), doctor scans the local filesystem one level above the culture repo (the workspace parent, e.g. /home/spark/git) for */culture.yaml and reports any whose directory is not in the manifest \u2014 warning-only, exit 0; default root = the culture repo's parent, overridable with --root",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "the scan root defaults to the parent directory of the culture repo (resolved at runtime, not hardcoded to /home/spark/git) and accepts --root PATH; the comparison is local-disk vs the Culture-CLI-managed manifest only \u2014 no network, no git remotes, no org calls",
+          "status": "rejected"
+        },
+        {
+          "id": "h11",
+          "text": "class-2 findings are warning-only: they print with a 'culture agents register <path>' hint and never change the exit code; only class-1 (broken registration) and class-3 (suffix collision) make doctor exit non-zero",
+          "status": "confirmed"
+        },
+        {
+          "id": "h14",
+          "text": "the class-2 scan root is derived from the culture repo's OWN location at runtime \u2014 its parent directory \u2014 discovered via the manifest's self-entry for this repo (falling back to the in-tree cwd repo root), so moving the workspace to /git2 moves the scan root automatically; never hardcoded; --root overrides",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c13",
+      "kind": "boundary",
+      "text": "culture doctor checks manifest<->filesystem consistency and can REGISTER discovered repos into our own server.yaml manifest (opt-in, e.g. --fix/--register); it never edits the other repos' culture.yaml or any file we don't own, and it never does agent alignment/config-quality doctoring (that stays 'culture agents doctor' forwarded to steward)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "a test proves doctor never modifies any discovered repo's culture.yaml (those files byte-identical before/after, even in --fix mode); only ~/.culture/server.yaml may change, and only when the fix is explicitly requested",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c14",
+      "kind": "non_goal",
+      "text": "not an auto-UNregister tool (removing stale class-1 entries stays a human decision / suggested command); not a watcher/daemon; does not reach across linked peers or other hosts' manifests; never writes to a repo's own culture.yaml",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c15",
+      "kind": "requirement",
+      "text": "doctor offers an opt-in fix that registers class-2 repos (on-disk culture.yaml not in the manifest) by ADDING them to ~/.culture/server.yaml via the existing add_to_manifest()/register path; default run stays read-only/diagnose; the fix writes only server.yaml, never the discovered repo's culture.yaml",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "the fix path reuses add_to_manifest()/the existing register code (not a parallel writer), is idempotent (re-running registers nothing new), and prints exactly which suffix->path entries it added; default invocation makes zero writes",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    }
+  ],
+  "open_vagueness": []
+}
