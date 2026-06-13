@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - Webhook listener double-bind on culture server start (a second BotManager was started after IRCd.start()).
 - Bot-name path traversal in culture bot create/start/stop/inspect/archive/unarchive (now guarded by validate_bot_name).
+- test_start_creates_http_listener: removed a free-port TOCTOU — the webhook listener bind now retries with a fresh port if the probed port is lost between probe and bind (PR #449 review).
 
 ## [13.3.1] - 2026-06-07
 
