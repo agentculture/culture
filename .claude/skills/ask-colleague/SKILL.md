@@ -7,20 +7,18 @@ description: >
   isn't a stronger model; it's a second, independent mind, and that diversity is
   the value: `ask-colleague review` gets a candid second opinion on a diff,
   `ask-colleague explore` gets a fresh read of an area, `ask-colleague write`
-  hands off a small implementation, `ask-colleague feedback` grades a finished
-  work item (the ROI loop), and `ask-colleague clean` reaps stale/corrupt
-  `colleague/*` branches a crashed run left behind (which can break `git fetch`).
-  Reach for it REFLEXIVELY, the way you'd lean over to the
+  hands off a small implementation, and `ask-colleague feedback` grades a finished
+  work item (the ROI loop). Reach for it REFLEXIVELY, the way you'd lean over to the
   teammate at the next desk — not only when asked: before you present or open a PR
   on a non-trivial committed diff, run `review` for a diverse second opinion; for a
   fresh read of an unfamiliar area whose answer is independent of your current
   context, run `explore`. Both are read-only — isolated in a throwaway git
-  worktree, zero side effects to your tree/branch — so the reflex is always safe; the
-  side-effecting `write --apply` / `write --pr` still needs the user's go-ahead. Triggers when the
+  worktree, zero side effects — so the reflex is always safe; the side-effecting
+  `write --apply` / `write --pr` still needs the user's go-ahead. Triggers when the
   user says "ask colleague", "ask a colleague to review/explore/write this", "have
   colleague take a look", "get a second opinion", "ask the other model", "rate that
-  work item", "clean up a crashed colleague run" — and still on the legacy "outsource this".
-  Colleague's output is a second opinion to verify and own, never authority.
+  work item" — and still on the legacy "outsource this". Colleague's output is a second
+  opinion to verify and own, never authority.
 ---
 
 # ask-colleague — lean on colleague as a different mind
@@ -97,11 +95,10 @@ else an install hint.
 
 | Verb | What it does | Side effects |
 |------|--------------|--------------|
-| `explore "<question or area>"` | Read-only investigation of the repo; the model reads and reports findings. | **None** to your working tree / branch — runs in a throwaway worktree at HEAD; writes only a gradable run artifact under the gitignored `.colleague/` bookkeeping dir. |
-| `review "<what to focus on>" [--base main]` | A diverse second opinion on the **committed** diff (`<base>...HEAD`). | **None** to your working tree / branch — throwaway worktree, committed changes only; writes only a gradable run artifact under the gitignored `.colleague/` bookkeeping dir. |
-| `write "<task>" [--apply\|--pr]` | Implement a change. **Previews by default** (throwaway worktree, prints the would-be diff); `--apply` lands a work branch in place; `--pr` pushes + opens a PR. | **None** to your working tree / branch by default (preview); a `colleague/<id>` work branch / PR only with `--apply` / `--pr`. |
+| `explore "<question or area>"` | Read-only investigation of the repo; the model reads and reports findings. | **None** — runs in a throwaway worktree at HEAD. |
+| `review "<what to focus on>" [--base main]` | A diverse second opinion on the **committed** diff (`<base>...HEAD`). | **None** — throwaway worktree; reviews committed changes only. |
+| `write "<task>" [--apply\|--pr]` | Implement a change. **Previews by default** (throwaway worktree, prints the would-be diff); `--apply` lands a work branch in place; `--pr` pushes + opens a PR. | **None** by default (preview); a `colleague/<id>` work branch / PR only with `--apply` / `--pr`. |
 | `feedback <id\|last> [--rating N]` | **Grade a finished work item** (the ROI loop). With `--rating N` (1–5, plus `--notes`) it records feedback; without, it shows the work item's existing feedback. `last` resolves the most recent work item in `--repo`. | Writes `.colleague/<id>.feedback.json` only when `--rating` is given; read-only otherwise. |
-| `clean [--dry-run]` | **Reap what a crashed run left behind** (#162): stale/corrupt `colleague/*` branches + orphaned 0-byte `.colleague/` artifacts that can wedge `git fetch`. Scoped strictly to `colleague/*` (never touches an unrelated branch); conservative with `.git/objects` (reports 0-byte loose objects + suggests `git prune`, never deletes them). A thin pass-through to `colleague clean`. | Deletes corrupt `colleague/<id>` refs + 0-byte `.colleague/` artifacts in `--repo`; `--dry-run` changes nothing. |
 
 ### Options
 
@@ -119,7 +116,6 @@ else an install hint.
 | `--rating N` | (`feedback`) record a 1–5 quality rating for the work item. |
 | `--notes "..."` | (`feedback`) free-text notes stored with the rating. |
 | `--by NAME` | (`feedback`) who is grading (default: colleague's resolved identity). |
-| `--dry-run` | (`clean`) report what would be reaped without changing anything. |
 
 The result printed to stdout is the work item's `TaskResult.summary` (plus
 `changed_files` / work branch for `write`), parsed from `colleague work
@@ -144,11 +140,6 @@ The result printed to stdout is the work item's `TaskResult.summary` (plus
   says how *good* it was — together they let you compute the **ROI of asking
   colleague** and decide whether to ask again (and which backend). Grade the most
   recent work item with `ask-colleague feedback last --rating 4 --notes "…"`.
-- **clean** — recovery, not routine. A crashed / interrupted `write --apply` can
-  leave a dangling `colleague/<id>` branch pointing at half-written (0-byte)
-  objects that **breaks `git fetch` / `git pull`**. Run `ask-colleague clean`
-  (or `colleague clean`) to reap it — start with `--dry-run` to see what it would
-  remove. It only ever touches `colleague/*` refs and `.colleague/` artifacts.
 
 ## Hard rules (do not violate)
 
@@ -177,19 +168,11 @@ The result printed to stdout is the work item's `TaskResult.summary` (plus
   uncommitted work, commit it first.
 - The default backend is whatever single model is running locally; a multi-model
   fleet (different model per verb) is separate infrastructure.
-- **Every verb writes bookkeeping under `.colleague/`** (run artifacts for
-  explore/review/write; feedback records; the `last_work` pointer) — none of it
-  in your tracked tree, but in a repo that does **not** already gitignore
-  `.colleague/` it shows up as untracked files. **Add `.colleague/` to your
-  `.gitignore`** (keep `!/.colleague/commands/` if you commit command templates).
-- **A crashed run can wedge `git fetch`.** A `write --apply` interrupted
-  mid-commit can leave a dangling `colleague/<id>` branch + 0-byte artifacts;
-  `ask-colleague clean` recovers it. A SIGKILL/OOM *during* the commit can still
-  corrupt git objects (git/filesystem durability, not the skill's to guarantee)
-  — which is exactly what `clean` is for.
 
 ## Provenance
 
 This is a **first-party** colleague skill — colleague is its origin. It is
-the inverse of the other skills under `.claude/skills/`, which culture vendors *from* guildmaster. See `docs/skill-sources.md`. The `cite, don't import`
-policy holds: downstream repos copy it, they don't symlink or depend on it.
+the inverse of the other skills under `.claude/skills/`, which
+rollout-cli vendors *from* guildmaster. See `docs/skill-sources.md`.
+The `cite, don't import` policy holds: downstream repos copy it, they don't
+symlink or depend on it.
