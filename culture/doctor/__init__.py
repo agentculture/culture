@@ -9,7 +9,6 @@ from culture.doctor.checks import (
     check_unregistered,
 )
 from culture.doctor.discovery import discover_ondisk_repos, resolve_scan_root
-from culture.doctor.fix import register_unregistered
 from culture.doctor.model import DoctorReport, Finding
 
 __all__ = ["run_doctor", "DoctorReport", "Finding"]
@@ -18,11 +17,14 @@ __all__ = ["run_doctor", "DoctorReport", "Finding"]
 def run_doctor(
     config: ServerConfig,
     root_override: str | None = None,
-    fix: bool = False,
-    config_path: str | None = None,
     cwd: str | None = None,
 ) -> DoctorReport:
-    """Run the full culture doctor diagnostic pass."""
+    """Run the full culture doctor diagnostic pass (read-only).
+
+    Diagnosis only — applying the opt-in fix is the caller's job (the CLI calls
+    :func:`culture.doctor.fix.register_unregistered` on ``report.class2``), so
+    the registered-pairs list is surfaced to the operator.
+    """
     report = DoctorReport()
 
     report.class1 = check_registrations(config)
@@ -32,8 +34,5 @@ def run_doctor(
 
     report.class2 = check_unregistered(config, discovered)
     report.class3 = check_suffix_collisions(config, discovered)
-
-    if fix and config_path is not None:
-        register_unregistered(config_path, report.class2)
 
     return report

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from yaml import YAMLError
+
 from culture.config import load_culture_yaml
+
+logger = logging.getLogger("culture")
 
 
 @dataclass
@@ -61,7 +66,10 @@ def discover_ondisk_repos(root) -> list[RepoOnDisk]:
     for child in sorted(p for p in root.iterdir() if p.is_dir()):
         try:
             agents = load_culture_yaml(str(child))
-        except Exception:
+        except (OSError, ValueError, YAMLError) as exc:
+            # No culture.yaml (the common case) or an unreadable/malformed one:
+            # skip it, but don't swallow the reason entirely.
+            logger.debug("skipping %s during doctor scan: %s", child, exc)
             continue
         results.append(
             RepoOnDisk(

@@ -76,8 +76,8 @@ def test_clean_report_exit_zero(tmp_path):
     assert report.ok is True
 
 
-def test_fix_false_writes_nothing(tmp_path):
-    """When fix=False, run_doctor must not modify the config file."""
+def test_run_doctor_writes_nothing(tmp_path):
+    """run_doctor is diagnosis-only — it must never modify the config file."""
     server_yaml = tmp_path / "server.yaml"
     server_yaml.write_text("server:\n  name: spark\nagents: {}\n")
     original_bytes = server_yaml.read_bytes()
@@ -94,11 +94,6 @@ def test_fix_false_writes_nothing(tmp_path):
         manifest={},
     )
 
-    run_doctor(
-        config,
-        root_override=str(ws),
-        fix=False,
-        config_path=str(server_yaml),
-    )
+    run_doctor(config, root_override=str(ws))
 
     assert server_yaml.read_bytes() == original_bytes

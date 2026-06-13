@@ -36,7 +36,7 @@ def register(subparsers):
 
 def dispatch(args):
     config = load_config_or_default(args.config)
-    report = run_doctor(config, root_override=args.root, config_path=args.config)  # diagnose only
+    report = run_doctor(config, root_override=args.root)  # diagnose only
     if args.json:
         from dataclasses import asdict
 
