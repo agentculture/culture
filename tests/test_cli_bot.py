@@ -414,3 +414,83 @@ class TestBotUnarchive:
         assert reloaded.archived_at == ""
         assert reloaded.archived_reason == ""
         assert "Bot unarchived: spark-ori-dead" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Path-traversal guard (validate_bot_name)
+# ---------------------------------------------------------------------------
+
+
+class TestPathTraversalGuard:
+    """Ensure validate_bot_name rejects traversal attempts at every chokepoint."""
+
+    def test_create_rejects_dotdot_name(self, bots_dir, stub_config, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_create(
+                argparse.Namespace(
+                    name="../evil",
+                    owner="spark-ori",
+                    channels=[],
+                    trigger="webhook",
+                    mention=None,
+                    template=None,
+                    dm_owner=False,
+                    description="",
+                    config="~/.culture/server.yaml",
+                )
+            )
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "invalid bot name" in err
+        # No directory created outside bots_dir
+        parent = bots_dir.parent
+        assert not (parent / "evil").exists()
+
+    def test_create_rejects_slash_name(self, bots_dir, stub_config, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_create(
+                argparse.Namespace(
+                    name="foo/bar",
+                    owner="spark-ori",
+                    channels=[],
+                    trigger="webhook",
+                    mention=None,
+                    template=None,
+                    dm_owner=False,
+                    description="",
+                    config="~/.culture/server.yaml",
+                )
+            )
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "invalid bot name" in err
+
+    def test_start_rejects_dotdot_name(self, bots_dir, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_start(_args(name="../evil"))
+        assert exc.value.code == 1
+        assert "invalid bot name" in capsys.readouterr().err
+
+    def test_stop_rejects_dotdot_name(self, bots_dir, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_stop(_args(name="../evil"))
+        assert exc.value.code == 1
+        assert "invalid bot name" in capsys.readouterr().err
+
+    def test_inspect_rejects_dotdot_name(self, bots_dir, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_inspect(_args(name="../evil"))
+        assert exc.value.code == 1
+        assert "invalid bot name" in capsys.readouterr().err
+
+    def test_archive_rejects_dotdot_name(self, bots_dir, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_archive(_args(name="../evil", reason=""))
+        assert exc.value.code == 1
+        assert "invalid bot name" in capsys.readouterr().err
+
+    def test_unarchive_rejects_dotdot_name(self, bots_dir, capsys):
+        with pytest.raises(SystemExit) as exc:
+            bot_mod._bot_unarchive(_args(name="../evil"))
+        assert exc.value.code == 1
+        assert "invalid bot name" in capsys.readouterr().err

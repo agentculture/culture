@@ -29,6 +29,20 @@ disable=
     W1202,  # logging-format-interpolation
     W1203,  # logging-fstring-interpolation
 
+[TYPECHECK]
+# culture.bots.* are sys.modules aliases of agentirc.bots.* (issue #445 cutover):
+# the real symbols live in agentirc and are bound at import time, so pylint's
+# static analysis cannot see them and emits false no-name-in-module / no-member.
+# Treat the aliased modules as dynamic so importers (culture/cli/bot.py, etc.)
+# lint cleanly. The agentirc package owns the real definitions + their tests.
+ignored-modules=
+    culture.bots.bot_manager,
+    culture.bots.bot,
+    culture.bots.config,
+    culture.bots.filter_dsl,
+    culture.bots.template_engine,
+    culture.bots.http_listener
+
 [REPORTS]
 output-format=text
 reports=yes

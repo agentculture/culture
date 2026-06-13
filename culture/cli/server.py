@@ -9,9 +9,12 @@ it lands under ``culture server <verb>`` for free.
 
 The 7 culture-owned verbs are NOT forwarded because:
 
-- ``start`` embeds ``agentirc.ircd.IRCd`` in-process and registers
-  culture's ``BotManager`` against it. Forwarding to ``agentirc start``
-  would lose the bot registration — bots would never load.
+- ``start`` embeds ``agentirc.ircd.IRCd`` in-process and installs
+  culture's system-bot bridge (``culture.bots.install_system_bridge``)
+  before ``ircd.start()`` so agentirc's ``load_system_bots`` discovers
+  culture's welcome bot. agentirc 9.7+ ``IRCd.start()`` owns the
+  ``BotManager`` lifecycle; forwarding to ``agentirc start`` would skip
+  the bridge — culture's system bots would never load.
 - ``stop`` and ``status`` operate on culture's own PID file
   (``~/.culture/pids/server-<name>.pid``), which ``start`` writes.
   Forwarding either to agentirc would read a different file and never
@@ -481,7 +484,15 @@ async def _run_server(
     from agentirc.config import ServerConfig
     from agentirc.ircd import IRCd
 
-    from culture.bots.bot_manager import BotManager
+    import culture.bots
+
+    # Bridge culture's system-bot loader into agentirc before the IRCd starts.
+    # agentirc 9.7+ `IRCd.start()` owns the BotManager lifecycle — it builds the
+    # manager, loads bots, runs `load_system_bots()` (which imports
+    # `agentirc.bots.system`), and binds `webhook_port`. agentirc ships no
+    # `agentirc.bots.system`, so this registers `culture.bots.system` under that
+    # name; idempotent (importing culture.bots already installed it). See #445.
+    culture.bots.install_system_bridge()
 
     config = ServerConfig(
         name=name,
@@ -492,15 +503,12 @@ async def _run_server(
         data_dir=data_dir,
     )
     ircd = IRCd(config)
+    # `IRCd.start()` drives `BotManager.start()` itself (loads bots + system
+    # bots + binds the webhook listener once). Do NOT build a second BotManager
+    # here — that would re-run `start()` and double-bind `webhook_port` (#445).
     await ircd.start()
 
     try:
-        # agentirc 9.6 ships a stub `bot_manager` that no-ops. Replace it
-        # with culture's, then load bots and start the webhook listener —
-        # agentirc stopped binding `webhook_port` in 9.5, so consumers
-        # own that surface.
-        ircd.bot_manager = BotManager(ircd)
-        await ircd.bot_manager.start()
         logger.info("Server '%s' listening on %s:%d", name, host, port)
 
         for lc in config.links:

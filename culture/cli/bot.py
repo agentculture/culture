@@ -87,7 +87,7 @@ def dispatch(args: argparse.Namespace) -> None:
 
 
 def _bot_create(args: argparse.Namespace) -> None:
-    from culture.bots.config import BOTS_DIR, BotConfig, save_bot_config
+    from culture.bots.config import BOTS_DIR, BotConfig, save_bot_config, validate_bot_name
 
     if not args.name.strip():
         print("Error: bot name cannot be empty", file=sys.stderr)
@@ -103,6 +103,10 @@ def _bot_create(args: argparse.Namespace) -> None:
         else:
             owner_suffix = owner
         name = f"{server_name}-{owner_suffix}-{name}"
+
+    if not validate_bot_name(name):
+        print(f"Error: invalid bot name '{name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_config = BotConfig(
         name=name,
@@ -134,7 +138,11 @@ def _bot_create(args: argparse.Namespace) -> None:
 
 
 def _bot_start(args: argparse.Namespace) -> None:
-    from culture.bots.config import BOTS_DIR
+    from culture.bots.config import BOTS_DIR, validate_bot_name
+
+    if not validate_bot_name(args.name):
+        print(f"Error: invalid bot name '{args.name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_dir = BOTS_DIR / args.name
     if not (bot_dir / BOT_CONFIG_FILE).exists():
@@ -146,7 +154,11 @@ def _bot_start(args: argparse.Namespace) -> None:
 
 
 def _bot_stop(args: argparse.Namespace) -> None:
-    from culture.bots.config import BOTS_DIR
+    from culture.bots.config import BOTS_DIR, validate_bot_name
+
+    if not validate_bot_name(args.name):
+        print(f"Error: invalid bot name '{args.name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_dir = BOTS_DIR / args.name
     if not (bot_dir / BOT_CONFIG_FILE).exists():
@@ -213,7 +225,11 @@ def _bot_list(args: argparse.Namespace) -> None:
 
 
 def _bot_inspect(args: argparse.Namespace) -> None:
-    from culture.bots.config import BOTS_DIR, load_bot_config
+    from culture.bots.config import BOTS_DIR, load_bot_config, validate_bot_name
+
+    if not validate_bot_name(args.name):
+        print(f"Error: invalid bot name '{args.name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_dir = BOTS_DIR / args.name
     yaml_path = bot_dir / BOT_CONFIG_FILE
@@ -255,7 +271,11 @@ def _bot_inspect(args: argparse.Namespace) -> None:
 def _bot_archive(args: argparse.Namespace) -> None:
     import time as _time
 
-    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config, validate_bot_name
+
+    if not validate_bot_name(args.name):
+        print(f"Error: invalid bot name '{args.name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_dir = BOTS_DIR / args.name
     yaml_path = bot_dir / BOT_CONFIG_FILE
@@ -280,7 +300,11 @@ def _bot_archive(args: argparse.Namespace) -> None:
 
 
 def _bot_unarchive(args: argparse.Namespace) -> None:
-    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config
+    from culture.bots.config import BOTS_DIR, load_bot_config, save_bot_config, validate_bot_name
+
+    if not validate_bot_name(args.name):
+        print(f"Error: invalid bot name '{args.name}'", file=sys.stderr)
+        sys.exit(1)
 
     bot_dir = BOTS_DIR / args.name
     yaml_path = bot_dir / BOT_CONFIG_FILE

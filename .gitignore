@@ -216,10 +216,14 @@ safety-results.json
 .superpowers/
 .worktrees/
 
-# colleague run bookkeeping (the ask-colleague skill writes run artifacts,
-# feedback records, and the last_work pointer here). Not tracked.
-.colleague/
-
 # Per-host backups of the repo-root culture.yaml (e.g.
 # culture.yaml.daria-acp-bak). The canonical culture.yaml IS tracked.
 /culture.yaml.*-bak
+
+# devague (/think) working state — commit only frames/ and exported specs.
+.devague/reviews/
+.devague/questions/
+.devague/current
+
+# ask-colleague bookkeeping (run artifacts, feedback, last_work pointer).
+.colleague/

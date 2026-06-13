@@ -162,17 +162,36 @@ async def test_stop_unknown_bot(server):
 async def test_start_creates_http_listener(server, tmp_path, monkeypatch):
     """`BotManager.start()` loads bots + system bots + binds a real HTTP listener.
 
-    Uses the real `HttpListener` against an OS-assigned port (the `server`
-    fixture sets `webhook_port=0`) and probes `/health` to confirm the
-    listener actually bound.
+    agentirc 9.7+ binds the webhook listener only when ``webhook_port > 0``
+    (port 0/unset = no webhook, the documented contract). The `server` fixture
+    sets ``webhook_port=0``, so this test claims a free port and sets it before
+    starting, then probes `/health` to confirm the listener actually bound.
     """
+    import socket
+
     import aiohttp
 
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
 
-    mgr = BotManager(server)
-    await mgr.start()
+    # Claim a free port and start the listener. Probing a port then releasing
+    # it before BotManager binds is a TOCTOU window — another process can grab
+    # the port in between, and agentirc's manager swallows the resulting bind
+    # OSError (see test_start_swallows_listener_oserror), leaving
+    # ``_http_listener is None``. Retry with a fresh port so a lost race
+    # re-probes instead of intermittently failing the assertion.
+    mgr = None
+    for _attempt in range(5):
+        with socket.socket() as _probe:
+            _probe.bind(("127.0.0.1", 0))
+            server.config.webhook_port = _probe.getsockname()[1]
+        mgr = BotManager(server)
+        await mgr.start()
+        if mgr._http_listener is not None:
+            break
+        await mgr.stop()  # lost the port race — retry with a fresh one
+    else:
+        pytest.fail("webhook listener never bound after 5 free-port attempts")
     assert mgr._http_listener is not None
 
     # Confirm the listener actually bound by hitting /health.
@@ -194,10 +213,14 @@ async def test_start_swallows_listener_oserror(server, tmp_path, monkeypatch, ca
     OSError can't be deterministically forced on a real `HttpListener`
     without racing another process for a port, so we patch
     `HttpListener.start` itself to raise. The rest of the manager flow
-    runs against the real `server` fixture.
+    runs against the real `server` fixture. A non-zero `webhook_port` is
+    required for agentirc 9.7+ to reach the listener path at all (port 0 =
+    no webhook); the patched `start` raises before any real bind, so the
+    value need only be > 0.
     """
     monkeypatch.setattr(bm_mod, "BOTS_DIR", tmp_path)
     monkeypatch.setattr("culture.bots.bot.BOTS_DIR", tmp_path)
+    server.config.webhook_port = 65500
 
     async def _bad_start(self):
         raise OSError("address already in use")

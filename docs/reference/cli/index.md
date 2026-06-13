@@ -53,7 +53,7 @@ culture server start --name spark --port 6667 --foreground
 | `--port` | `6667` | Listen port |
 | `--link` | none | Peer link: `name:host:port:password[:trust]` (repeatable). Trust is `full` (default) or `restricted`. |
 | `--mesh-config` | none | Read links from `mesh.yaml` + OS keyring (no passwords in CLI args) |
-| `--webhook-port` | `7680` | HTTP port for bot webhooks |
+| `--webhook-port` | `7680` | HTTP port for bot webhooks. `0` disables the webhook listener (no bind) — webhook-trigger bots get no HTTP ingress; event/mention bots are unaffected. |
 | `--data-dir` | `~/.culture/data` | Data directory for persistent storage |
 | `--foreground` | off | Run in foreground instead of daemonizing. Required for service managers (systemd, launchd, Task Scheduler). |
 

@@ -1,0 +1,258 @@
+{
+  "slug": "culture-s-bot-framework-is-now-a-thin-forward-to-a",
+  "title": "culture's bot framework is now a thin forward to agentirc.bots \u2014 culture/bots/* and culture/cli/bot.py are re-export shims, the in-tree implementation is gone, and every culture bot verb plus the bot-coupled tests work unchanged against the agentirc-owned BotManager",
+  "frame_slug": "culture-s-bot-framework-is-now-a-thin-forward-to-a",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-06-12T21:16:50Z",
+  "updated": "2026-06-12T21:19:21Z",
+  "targets": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "culture's bot framework is now a thin forward to agentirc.bots \u2014 culture/bots/* and culture/cli/bot.py are re-export shims, the in-tree implementation is gone, and every culture bot verb plus the bot-coupled tests work unchanged against the agentirc-owned BotManager"
+    },
+    {
+      "id": "h7",
+      "kind": "honesty",
+      "text": "after the PR, culture/bots/* and culture/cli/bot.py contain no implementation logic \u2014 only re-exports/forwards \u2014 and git shows the implementation files deleted"
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "culture maintainers + the mesh: anyone running culture bot verbs, the IRCd's bot/webhook lifecycle, and CI that exercises bot-coupled tests"
+    },
+    {
+      "id": "h8",
+      "kind": "honesty",
+      "text": "operators running culture bot ... and the IRCd bot/webhook lifecycle observe identical behaviour to pre-cutover (CLI verbs, webhook dispatch, bot events)"
+    },
+    {
+      "id": "c3",
+      "kind": "after_state",
+      "text": "culture/bots/* and culture/cli/bot.py are thin re-export shims to agentirc.bots.*; the in-tree bot implementation is deleted; agentirc-cli is pinned to a version that ships agentirc.bots"
+    },
+    {
+      "id": "h1",
+      "kind": "honesty",
+      "text": "importing culture.bots.bot_manager / .bot / .config / .filter_dsl / .template_engine / .http_listener after the cutover yields the agentirc classes and passes existing tests with no AttributeError on any previously-public-or-test-reached symbol"
+    },
+    {
+      "id": "c4",
+      "kind": "before_state",
+      "text": "culture hosts a full in-tree bot implementation under culture/bots/* (bot_manager, bot, config, filter_dsl, template_engine, http_listener, virtual_client, system/) and culture/cli/bot.py; agentirc 9.6.0 (currently pinned) has no agentirc.bots"
+    },
+    {
+      "id": "h9",
+      "kind": "honesty",
+      "text": "agentirc-cli is bumped from the current >=9.6,<10 pin to one that guarantees agentirc.bots exists (>=9.7.0), and uv.lock is refreshed in the same PR"
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "completes the copy-first->test->culture-replaces protocol (extraction never loses functionality), unblocks front-door slimming (#33), and culture inherits two agentirc bugfixes (bot-name path traversal, registry corruption on partial start) for free"
+    },
+    {
+      "id": "h10",
+      "kind": "honesty",
+      "text": "the two agentirc bugfixes (bot-name path traversal via validate_bot_name, registry corruption on partial start) are present by virtue of forwarding, with no buggy logic re-ported into culture"
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "not re-porting bot logic into culture, not changing the bot YAML spec or ~/.culture/bots on-disk layout, not touching other backends' harnesses, not a multi-PR rollout \u2014 single pin->forward->delete PR"
+    },
+    {
+      "id": "h11",
+      "kind": "honesty",
+      "text": "the bot YAML spec and ~/.culture/bots on-disk layout (BOTS_DIR, BOT_CONFIG_FILE) are unchanged, and no other backend harness is touched"
+    },
+    {
+      "id": "c7",
+      "kind": "success_signal",
+      "text": "agentirc-cli pinned & lockfile refreshed; culture/bots/* + culture/cli/bot.py are shims with the implementation deleted; culture bot verbs still work; the four named bot-coupled tests + test_cli_bot + test_bot + test_events_bot_trigger stay green; no window where the bot framework exists in neither repo"
+    },
+    {
+      "id": "h2",
+      "kind": "honesty",
+      "text": "after pin->forward->delete, /run-tests is green (the four named tests + test_cli_bot + test_bot + test_events_bot_trigger + test_cli_server bot cases) with no in-tree bot implementation remaining"
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "culture bot create must preserve its three-part <server>-<owner>-<name> naming (or a deliberate decision to accept agentirc's two-part <owner>-<name>), since agentirc bot create has no server concept"
+    },
+    {
+      "id": "h3",
+      "kind": "honesty",
+      "text": "culture bot create <owner> <name> still yields a bot whose nick matches the pre-cutover three-part form (or the user has explicitly accepted the two-part form), verified by test_cli_bot"
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "the IRCd bot/webhook lifecycle must not double-start: agentirc IRCd.start() now drives BotManager.start(); if culture's server wrapper also starts a BotManager the listener binds twice"
+    },
+    {
+      "id": "h4",
+      "kind": "honesty",
+      "text": "with agentirc 9.7+ IRCd.start() driving BotManager.start(), culture's _run_server starts exactly one BotManager and binds webhook_port exactly once (no double-start)"
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "re-export shims must expose every symbol culture's own code AND tests import, including deep internals: EmitEventSpec, _check_rate, _DynamicEventType, _render_data_values, and the system-bot discovery hook (discover_system_bots)"
+    },
+    {
+      "id": "h5",
+      "kind": "honesty",
+      "text": "culture.bots.system stays real culture code (agentirc ships no bots.system); culture's welcome system bot is still discovered and registered after cutover, verified by test_welcome_bot"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "culture/cli/server.py must be reworked (not just import-forwarded): let agentirc IRCd.start() own BotManager lifecycle and inject culture's system-bot discovery, instead of constructing+starting a second culture BotManager"
+    },
+    {
+      "id": "h12",
+      "kind": "honesty",
+      "text": "_run_server no longer constructs a second BotManager; it injects sys.modules['agentirc.bots.system']=culture.bots.system before ircd.start(); test_welcome_bot passes and webhook_port binds once"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "summary": "Pin agentirc-cli and refresh the lockfile",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "pyproject.toml pins agentirc-cli>=9.7.0,<10 (up from >=9.6,<10)",
+        "uv.lock refreshed in the same change; 'uv run python -c \"import agentirc.bots\"' succeeds"
+      ],
+      "deps": [],
+      "covers": [
+        "h9",
+        "c7"
+      ]
+    },
+    {
+      "id": "t2",
+      "summary": "Forward the six core bot modules to agentirc.bots.* as re-export shims",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "culture/bots/{bot_manager,bot,config,filter_dsl,template_engine,http_listener}.py each re-export their agentirc.bots counterpart and contain no implementation logic",
+        "importing culture.bots.bot_manager/.bot/.config/.filter_dsl/.template_engine/.http_listener yields the agentirc classes with no AttributeError on EmitEventSpec, _check_rate, _DynamicEventType, _render_data_values",
+        "the two agentirc bugfixes (validate_bot_name path-traversal guard, registry-corruption-on-partial-start) are present via forwarding with no buggy logic re-ported; test_bot and test_events_bot_trigger green"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c3",
+        "h1",
+        "c10",
+        "h10"
+      ]
+    },
+    {
+      "id": "t3",
+      "summary": "Rework culture/cli/server.py: sys.modules system-bot bridge + single BotManager",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "_run_server injects sys.modules['agentirc.bots.system']=culture.bots.system BEFORE ircd.start()",
+        "_run_server constructs no second BotManager (IRCd.start() owns lifecycle); webhook_port binds exactly once (no double-start)"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c9",
+        "c12",
+        "h4",
+        "h12"
+      ]
+    },
+    {
+      "id": "t4",
+      "summary": "Forward culture/cli/bot.py to agentirc verbs, preserving 3-part naming",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "culture bot create/start/stop/list/inspect/archive/unarchive forward to the agentirc bot verbs",
+        "culture bot create yields a nick of the form <server>-<owner>-<name>; test_cli_bot green"
+      ],
+      "deps": [
+        "t1",
+        "t2"
+      ],
+      "covers": [
+        "c8",
+        "h3"
+      ]
+    },
+    {
+      "id": "t5",
+      "summary": "Keep culture/bots/system as real code; welcome bot loads via the bridge",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "culture.bots.system stays real culture code (not deleted/forwarded); its imports resolve against the config shim",
+        "the welcome system bot is discovered and registered through agentirc's BotManager.load_system_bots via the sys.modules bridge; test_welcome_bot green"
+      ],
+      "deps": [
+        "t2",
+        "t3"
+      ],
+      "covers": [
+        "h5"
+      ]
+    },
+    {
+      "id": "t6",
+      "summary": "Delete the in-tree implementation; preserve YAML/on-disk contract",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "git shows the in-tree bot implementation deleted; culture/bots/* and culture/cli/bot.py contain only re-exports/forwards",
+        "the bot YAML spec and ~/.culture/bots on-disk layout (BOTS_DIR, BOT_CONFIG_FILE) are unchanged; no other backend harness is touched"
+      ],
+      "deps": [
+        "t2",
+        "t3",
+        "t4"
+      ],
+      "covers": [
+        "c1",
+        "c4",
+        "c6",
+        "h7",
+        "h11"
+      ]
+    },
+    {
+      "id": "t7",
+      "summary": "Full verification: tests green + behaviour parity, no coverage gap window",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "/run-tests green incl. test_bot_event_dispatch_span, test_bot_run_span, test_metrics_bots, test_welcome_bot, test_cli_bot, test_bot, test_events_bot_trigger, and test_cli_server bot cases",
+        "culture bot verbs + IRCd bot/webhook lifecycle behave identically to pre-cutover (CLI verbs, webhook dispatch, bot events); pin->forward->delete done in one PR with no window where the framework exists in neither repo"
+      ],
+      "deps": [
+        "t2",
+        "t3",
+        "t4",
+        "t5",
+        "t6"
+      ],
+      "covers": [
+        "c2",
+        "c5",
+        "h2",
+        "h8"
+      ]
+    }
+  ],
+  "risks": []
+}
