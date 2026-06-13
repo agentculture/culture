@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.6.0] - 2026-06-13
+
+### Added
+
+- `culture doctor` — a top-level command that diagnoses drift between the ~/.culture/server.yaml agent manifest and the on-disk culture.yaml repos. Detects three drift classes (broken registrations, unregistered repos, suffix collisions), exits non-zero on class-1/class-3, supports --json for CI gating, --root to override the scan root, and an opt-in --fix/--register that adds unregistered repos to server.yaml via the existing add_to_manifest path (never touching the repos own culture.yaml). Distinct from the steward-forwarded `culture agents doctor` (agent alignment).
+
 ## [13.5.0] - 2026-06-13
 
 ### Added
