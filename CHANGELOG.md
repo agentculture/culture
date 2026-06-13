@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [13.4.0] - 2026-06-13
+## [13.5.0] - 2026-06-13
 
 ### Added
 
@@ -21,6 +21,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Webhook listener double-bind on culture server start (a second BotManager was started after IRCd.start()).
 - Bot-name path traversal in culture bot create/start/stop/inspect/archive/unarchive (now guarded by validate_bot_name).
 - test_start_creates_http_listener: removed a free-port TOCTOU — the webhook listener bind now retries with a fresh port if the probed port is lost between probe and bind (PR #449 review).
+
+## [13.4.1] - 2026-06-12
+
+### Changed
+
+- **Re-vendored the `ask-colleague` skill wrapper from colleague#183**
+  (`.claude/skills/ask-colleague/scripts/ask-colleague.sh`): `resolve_colleague()`
+  now honors `--repo` for the `uv` local-dev fallback, the `colleague drive`
+  tri-state exit code (0/1/2) propagates end-to-end instead of collapsing to 1,
+  and a non-preserved read-only run no longer prints a dead `artifact:` line into
+  a throwaway worktree. Wrapper-only — an existing `SKILL.md` and prompt
+  templates are left untouched (they carry a repo-specific provenance token and
+  may diverge). Where the skill was absent, it is added fresh (wrapper +
+  `SKILL.md` + prompts). Refs: colleague#183, #180, #181.
+
+## [13.4.0] - 2026-06-12
+
+### Added
+
+- **ask-colleague skill** ([issue #446](https://github.com/agentculture/culture/issues/446)): vendored the new first-party `ask-colleague` skill (origin: [colleague](https://github.com/agentculture/colleague), not guildmaster). A portable wrapper (`scripts/ask-colleague.sh`) over the `colleague` CLI to hand a scoped repo task to a *different* backend/mind for a diverse second opinion. Verbs: `explore` / `review` (read-only, throwaway worktree), `write` (`--apply`/`--pr`), `feedback` (the ROI loop), and `clean` (reap stale `colleague/*` branches + orphaned `.colleague/` artifacts a crashed run left behind). Copied from `../colleague/.claude/skills/ask-colleague/` verbatim except for three local divergences: the provenance line; markdownlint-only blank-line (MD032) fixes in the prompt files; and a **culture-ahead fix to `resolve_colleague()`** — the `uv` local-dev fallback now also searches the `--repo` target (not just `$PWD`), so invoking with `colleague` off `PATH` but `--repo` pointing at a colleague checkout resolves instead of failing "CLI not found" (PR [#447](https://github.com/agentculture/culture/pull/447) Qodo finding). The fix carries a `# culture-divergence:` header and is offered back upstream to colleague.
+- **Skill provenance ledger** (`docs/skill-sources.md`): records the origin / cite-from / divergence of every vendored `.claude/skills/` entry, so a resync knows what to pull from where and culture-ahead copies are not silently overwritten.
 
 ## [13.3.1] - 2026-06-07
 
