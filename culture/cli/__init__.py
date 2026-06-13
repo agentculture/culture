@@ -32,6 +32,7 @@ from culture.cli import (
     channel,
     console,
     devex,
+    doctor,
     introspect,
     mesh,
     server,
@@ -40,7 +41,7 @@ from culture.cli import (
 from culture.cli._errors import EXIT_USER_ERROR, CultureError
 from culture.cli._output import emit_error
 
-GROUPS = [agents, server, mesh, channel, bot, skills, devex, afi, console, introspect]
+GROUPS = [agents, server, mesh, channel, bot, skills, devex, afi, console, introspect, doctor]
 
 
 def _names_of(group) -> set[str]:
