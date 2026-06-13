@@ -80,10 +80,14 @@ def check_suffix_collisions(config, discovered) -> list[Finding]:
                     )
                 )
 
-    # (b) duplicate suffix across two discovered repos
+    # (b) duplicate suffix across two discovered repos. Suffixes already bound
+    # in the manifest are check (a)'s responsibility — skip them here so a
+    # manifest collision isn't double-reported.
     seen: dict[str, str] = {}
     for repo in discovered:
         for s in repo.suffixes:
+            if s in config.manifest:
+                continue
             resolved = str(Path(repo.directory).resolve())
             if s in seen and seen[s] != resolved:
                 findings.append(

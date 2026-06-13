@@ -15,6 +15,9 @@ full contract.
 culture while alignment verbs (`doctor`, `show`, `overview`) forward
 to [`steward-cli`](./agents.md). See
 [`culture agents` reference](./agents.md) for the full verb map.
+Note the distinct top-level **`culture doctor`** (manifest ↔ filesystem
+drift), which is unrelated to the steward-forwarded `culture agents
+doctor` (agent alignment) — see [Doctor](#doctor-manifest-health) below.
 `culture skills announce-update` likewise forwards to
 `steward announce-skill-update` (see the
 [`culture agents` reference](./agents.md#culture-skills-announce-update)).
@@ -474,6 +477,23 @@ Restore an archived bot.
 
 ```bash
 culture bot unarchive spark-ori-ghci
+```
+
+## Doctor (manifest health)
+
+`culture doctor` is a top-level command that diagnoses drift between the
+agent manifest (`~/.culture/server.yaml`) and the on-disk `culture.yaml`
+repos: broken registrations (class 1), unregistered repos (class 2,
+warning-only), and suffix collisions (class 3). It exits non-zero on
+class-1/class-3 so it gates CI, supports `--json`, `--root`, and an opt-in
+`--fix`/`--register` that adds unregistered repos to the manifest (writing
+only `server.yaml`). It is distinct from the steward-forwarded `culture
+agents doctor` (agent alignment). Full reference: [Doctor](../../doctor.md).
+
+```bash
+culture doctor            # report drift; exit non-zero on real breakage
+culture doctor --json     # machine-readable, for CI
+culture doctor --fix      # register unregistered repos (opt-in)
 ```
 
 ## Configuration

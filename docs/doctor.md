@@ -71,6 +71,13 @@ registration or a suffix collision — which makes the command a reliable gate:
 culture doctor || echo "manifest drift detected"
 ```
 
+The `--json` payload also carries an `ok` field, which is **stricter** than the
+exit code: `ok` is `true` only when there are *no findings at all* (including
+class-2 warnings), whereas `exit_code` is `0` as long as there are no class-1 or
+class-3 errors. Gate CI on `exit_code` (or the process exit status); gate on
+`ok` only if you also want unregistered-repo warnings to fail the build. The
+exit code is `0` or `1`.
+
 ## The `--fix` action
 
 `culture doctor --fix` (alias `--register`) registers each class-2 repo into the
@@ -80,9 +87,11 @@ writes at all.
 
 The fix writes **only** `~/.culture/server.yaml`. It never edits a discovered
 repo's `culture.yaml` or any file culture does not own, and it is idempotent
-(re-running registers nothing new). It does not touch class-1 (broken
-registrations) or class-3 (collisions) — those remain a human decision, surfaced
-with their suggested commands.
+(re-running registers nothing new). With no class-2 findings it is a no-op. It
+does not touch class-1 (broken registrations, surfaced with an `unregister`
+hint) or class-3 (suffix collisions, reported for manual resolution — there is
+no safe auto-fix, since resolving a collision means renaming a suffix in a repo
+culture does not own). Those remain a human decision.
 
 ## Example
 

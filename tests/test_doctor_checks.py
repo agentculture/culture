@@ -156,3 +156,38 @@ def test_class3_no_false_positive():
 
     findings = check_suffix_collisions(config, discovered)
     assert findings == []
+
+
+def test_class3_manifest_collision_not_double_reported():
+    """A manifest collision is reported once, even when the registered repo
+    is also present on disk (the duplicate-across-discovered check must defer
+    to the manifest-collision check)."""
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"daria": "/path/daria"},
+    )
+    discovered = [
+        RepoOnDisk("/path/daria", ["daria"]),  # the registered repo, on disk
+        RepoOnDisk("/other/sonar", ["daria"]),  # collides with the manifest
+    ]
+
+    findings = check_suffix_collisions(config, discovered)
+    assert len(findings) == 1
+    assert findings[0].subject == "daria"
+    assert "/other/sonar" in findings[0].path
+
+
+def test_class3_pure_ondisk_duplicate_flagged():
+    """Two unregistered repos sharing a suffix (not in the manifest) collide."""
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={},
+    )
+    discovered = [
+        RepoOnDisk("/x/one", ["dup"]),
+        RepoOnDisk("/y/two", ["dup"]),
+    ]
+
+    findings = check_suffix_collisions(config, discovered)
+    assert len(findings) == 1
+    assert findings[0].drift_class == 3
