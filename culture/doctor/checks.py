@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from yaml import YAMLError
+
 from culture.config import load_culture_yaml
 from culture.doctor.model import Finding
 
@@ -26,7 +28,8 @@ def check_registrations(config) -> list[Finding]:
                     f"culture agents unregister {suffix}",
                 )
             )
-        except ValueError as e:
+        except (ValueError, YAMLError) as e:
+            # Malformed/unloadable culture.yaml is itself a broken registration.
             findings.append(
                 Finding(
                     1,
@@ -59,11 +62,9 @@ def check_unregistered(config, discovered) -> list[Finding]:
     return findings
 
 
-def check_suffix_collisions(config, discovered) -> list[Finding]:
-    """Class 3: suffix collisions between manifest and discovered repos."""
+def _manifest_collisions(config, discovered) -> list[Finding]:
+    """A discovered suffix already bound to a DIFFERENT path in the manifest."""
     findings: list[Finding] = []
-
-    # (a) a discovered suffix already bound to a DIFFERENT path in the manifest
     for repo in discovered:
         for s in repo.suffixes:
             if s in config.manifest and str(Path(config.manifest[s]).resolve()) != str(
@@ -79,10 +80,14 @@ def check_suffix_collisions(config, discovered) -> list[Finding]:
                         "",
                     )
                 )
+    return findings
 
-    # (b) duplicate suffix across two discovered repos. Suffixes already bound
-    # in the manifest are check (a)'s responsibility — skip them here so a
-    # manifest collision isn't double-reported.
+
+def _discovered_duplicates(config, discovered) -> list[Finding]:
+    """The same suffix declared by two discovered repos. Suffixes already bound
+    in the manifest are :func:`_manifest_collisions`' responsibility — skip them
+    here so a manifest collision isn't double-reported."""
+    findings: list[Finding] = []
     seen: dict[str, str] = {}
     for repo in discovered:
         for s in repo.suffixes:
@@ -102,5 +107,9 @@ def check_suffix_collisions(config, discovered) -> list[Finding]:
                 )
             else:
                 seen[s] = resolved
-
     return findings
+
+
+def check_suffix_collisions(config, discovered) -> list[Finding]:
+    """Class 3: suffix collisions between manifest and discovered repos."""
+    return _manifest_collisions(config, discovered) + _discovered_duplicates(config, discovered)

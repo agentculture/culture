@@ -34,40 +34,45 @@ def register(subparsers):
     )
 
 
+def _emit_json(report) -> None:
+    from dataclasses import asdict
+
+    payload = {
+        "class1": [asdict(f) for f in report.class1],
+        "class2": [asdict(f) for f in report.class2],
+        "class3": [asdict(f) for f in report.class3],
+        "ok": report.ok,
+        "exit_code": report.exit_code,
+    }
+    print(json.dumps(payload, indent=2))
+
+
+def _render_human(report) -> None:
+    if report.ok:
+        print("✓ culture doctor: no drift detected")
+        return
+    sections = [
+        ("Broken registrations (class 1)", report.class1, "✗"),
+        ("Unregistered repos (class 2, warning)", report.class2, "•"),
+        ("Suffix collisions (class 3)", report.class3, "⚠"),
+    ]
+    for label, findings, icon in sections:
+        if not findings:
+            continue
+        print(f"{label}:")
+        for f in findings:
+            print(f"  {icon} {f.subject}: {f.message}")
+            if f.fix_hint:
+                print(f"      fix: {f.fix_hint}")
+
+
 def dispatch(args):
     config = load_config_or_default(args.config)
     report = run_doctor(config, root_override=args.root)  # diagnose only
     if args.json:
-        from dataclasses import asdict
-
-        payload = {
-            "class1": [asdict(f) for f in report.class1],
-            "class2": [asdict(f) for f in report.class2],
-            "class3": [asdict(f) for f in report.class3],
-            "ok": report.ok,
-            "exit_code": report.exit_code,
-        }
-        print(json.dumps(payload, indent=2))
+        _emit_json(report)
     else:
-        if report.ok:
-            print("✓ culture doctor: no drift detected")
-        else:
-            if report.class1:
-                print("Broken registrations (class 1):")
-                for f in report.class1:
-                    print(f"  ✗ {f.subject}: {f.message}")
-                    if f.fix_hint:
-                        print(f"      fix: {f.fix_hint}")
-            if report.class2:
-                print("Unregistered repos (class 2, warning):")
-                for f in report.class2:
-                    print(f"  • {f.subject}: {f.message}")
-                    if f.fix_hint:
-                        print(f"      fix: {f.fix_hint}")
-            if report.class3:
-                print("Suffix collisions (class 3):")
-                for f in report.class3:
-                    print(f"  ⚠ {f.subject}: {f.message}")
+        _render_human(report)
     if args.fix and report.class2:
         added = register_unregistered(args.config, report.class2)
         for suffix, directory in added:

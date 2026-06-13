@@ -49,6 +49,23 @@ def test_class1_three_kinds(tmp_path):
     assert all(f.severity == "error" for f in findings)
 
 
+def test_class1_malformed_yaml_is_finding_not_crash(tmp_path):
+    """A registered repo with a malformed culture.yaml is a class-1 finding,
+    not an uncaught YAMLError crash (Qodo review)."""
+    bad_dir = tmp_path / "bad"
+    bad_dir.mkdir()
+    (bad_dir / "culture.yaml").write_text("suffix: x\nbroken: [1, 2,\n")  # unterminated flow
+
+    config = ServerConfig(
+        server=ServerConnConfig(name="spark"),
+        manifest={"x": str(bad_dir)},
+    )
+
+    findings = check_registrations(config)  # must not raise
+    assert len(findings) == 1
+    assert findings[0].drift_class == 1
+
+
 def test_class1_clean(tmp_path):
     """A well-formed manifest entry produces no findings."""
     good_dir = str(tmp_path / "good")
