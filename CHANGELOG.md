@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.6.1] - 2026-06-14
+
+### Changed
+
+- Cap dependency upper bounds to the engine-validated versions ahead of the culture-core cutover: agex-cli<0.14, afi-cli<0.4, the OpenTelemetry stack <1.42 (and instrumentation/semconv <0.63b0), and the copilot extra github-copilot-sdk==0.2.0. A fresh uv.lock previously rode loose bounds that would resolve to newer releases known to break the afi/agent_experience imports, the per-test OTel InMemoryMetricReader injection (SDK 1.42), and the copilot backend (sdk 0.2.3+). Constraints-only change: no resolved version or source changed; full suite stays green (1446 passed).
+
 ## [13.6.0] - 2026-06-13
 
 ### Added

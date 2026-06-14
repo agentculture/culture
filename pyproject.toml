@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "13.6.0"
+version = "13.6.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "Apache-2.0"
@@ -21,16 +21,23 @@ dependencies = [
     "claude-agent-sdk>=0.1",
     "mistune>=3.0",
     "aiohttp>=3.9",
-    "agex-cli>=0.13,<1.0",
+    # Upper bounds capped to the versions the engine is validated against (these
+    # match the caps culture-core 0.4.0 declares). Without them a fresh uv.lock
+    # would resolve to newer releases that broke the afi / agent_experience import
+    # modules, the per-test OTel InMemoryMetricReader injection (SDK 1.42), and the
+    # copilot backend (github-copilot-sdk 0.2.3+). Standalone drift-bomb fix and a
+    # precursor to the culture-core cutover — see
+    # docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md.
+    "agex-cli>=0.13,<0.14",
     "agtag>=0.1,<1.0",
-    "afi-cli>=0.3,<1.0",
+    "afi-cli>=0.3,<0.4",
     "steward-cli>=0.16,<1.0",
     "irc-lens>=0.5.3,<1.0",
-    "opentelemetry-api>=1.25",
-    "opentelemetry-sdk>=1.25",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.25",
-    "opentelemetry-semantic-conventions>=0.46b0",
-    "opentelemetry-instrumentation-aiohttp-server>=0.46b0",
+    "opentelemetry-api>=1.25,<1.42",
+    "opentelemetry-sdk>=1.25,<1.42",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.25,<1.42",
+    "opentelemetry-semantic-conventions>=0.46b0,<0.63b0",
+    "opentelemetry-instrumentation-aiohttp-server>=0.46b0,<0.63b0",
 ]
 
 [project.urls]
@@ -59,7 +66,9 @@ packages = ["culture"]
 "culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
 
 [project.optional-dependencies]
-copilot = ["github-copilot-sdk"]
+# Pinned to culture-core's validated copilot SDK; 0.2.3+/1.0 regressed the
+# copilot backend, so the cap must match culture-core[copilot].
+copilot = ["github-copilot-sdk==0.2.0"]
 
 [dependency-groups]
 dev = [
