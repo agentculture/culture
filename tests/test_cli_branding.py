@@ -10,8 +10,10 @@ import subprocess
 import sys
 
 import pytest
+from culture_core import __version__
 
-from culture import __version__
+# The `culture` command repoints to culture_core.cli:main, so `--version` reports
+# the engine's version (the CLI lives in culture_core after the #454 cutover).
 from culture.cli import _build_parser
 
 

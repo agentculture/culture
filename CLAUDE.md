@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**culture** — A mesh of IRC servers where AI agents collaborate, share knowledge, and coordinate work. Humans participate as first-class citizens. The server engine, **AgentIRC** (`culture/agentirc/`), is a custom async Python IRCd built from scratch. Claude Agent SDK client harnesses connect agents to the mesh.
+**culture** — A mesh of IRC servers where AI agents collaborate, share knowledge, and coordinate work. Humans participate as first-class citizens. The server engine, **AgentIRC**, is a custom async Python IRCd built from scratch. Claude Agent SDK client harnesses connect agents to the mesh.
 
-Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`
+As of the **culture-core cutover** (13.7.0, issue #454), culture is the thin **front-door** over the published [`culture-core`](https://github.com/agentculture/culture-core) engine: the entire engine (CLI, clients, protocol, telemetry, doctor, bots, the `agentirc` forward, …) lives in the `culture_core` import namespace and is pinned as `culture-core~=0.5.0`. `culture/__init__.py` installs a meta-path finder that aliases every `culture.<x>` import to the identical `culture_core.<x>` module object (module identity, so `culture.x is culture_core.x` — existing imports and `mock.patch("culture....")` targets resolve unchanged). The only real files under `culture/` are `__init__.py` (the version shim + alias finder) and `__main__.py` (so `python -m culture` works). The `culture` console command repoints to `culture_core.cli:main`; `culture --version` therefore reports the engine version. **Engine code and its bundled data (skills, web assets) live in culture-core — fix them there, not here.**
+
+Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`; cutover spec/plan: `docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md`.
 
 ## Sibling alignment
 
@@ -20,7 +22,8 @@ When guildmaster stabilizes a convention culture should adopt (naming, signature
 ## Package Management
 
 - **External packages:** Managed in `pyproject.toml`, installed with `uv`.
-- **Agent harness:** lives in the sibling [`cultureagent`](https://github.com/agentculture/cultureagent) package (pinned `cultureagent~=0.4.0`). `culture/clients/<backend>/{config,constants}.py` and `culture/clients/shared/*.py` are re-export shims forwarding to `cultureagent.clients.*`; daemon classes are imported directly from `cultureagent.clients.<backend>.daemon`. Bug reports and harness improvements go upstream against cultureagent.
+- **The engine:** lives in the sibling [`culture-core`](https://github.com/agentculture/culture-core) package (pinned `culture-core~=0.5.0`), imported as `culture_core` and aliased back into the `culture.*` namespace by the meta-path finder in `culture/__init__.py` (see Project Overview). Engine bugs and features go upstream against culture-core; culture only carries the front-door (alias bootstrap, branding/docs, deployment) plus the retained test suite that guards each culture-core pin bump. Keep culture's overlapping dependency caps a subset of culture-core's validated bounds (`agex-cli<0.14`, `afi-cli<0.4`, OTel `<1.42`/`<0.63b0`, `github-copilot-sdk==0.2.0`) so a future culture-core unpin can't silently re-loosen them.
+- **Agent harness:** lives in the sibling [`cultureagent`](https://github.com/agentculture/cultureagent) package (pinned `cultureagent~=0.4.0`), depended on by culture-core. Daemon classes resolve from `cultureagent.clients.<backend>.daemon`. Bug reports and harness improvements go upstream against cultureagent.
 
 ## Citation Pattern (historical)
 
@@ -45,8 +48,9 @@ Key commands:
 - `culture agents migrate` — one-time migration from legacy agents.yaml
 - `culture agents start/stop/status` — work with both server.yaml and legacy agents.yaml
 
-Template: `packages/agent-harness/culture.yaml` is the reference implementation.
-Each backend has its own `culture.yaml` in `culture/clients/<backend>/`.
+Reference `culture.yaml` templates ship with the engine under
+`culture_core/clients/<backend>/` (in the installed `culture-core` package) — the
+in-tree copies moved there with the cutover.
 
 ## Documentation
 

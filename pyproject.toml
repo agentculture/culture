@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "13.6.1"
+version = "13.7.0"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "Apache-2.0"
@@ -15,6 +15,12 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
+    # The Culture engine. culture is the thin front-door; the reusable core
+    # (cli/clients/protocol/telemetry/doctor/… — the culture_core namespace)
+    # lives in this dependency and is aliased back into the culture.* namespace
+    # by the meta-path finder in culture/__init__.py. Pinned to 0.5.x: the caps
+    # below mirror culture-core's validated bounds (see the comment on them).
+    "culture-core~=0.5.0",
     "agentirc-cli>=9.7.0,<10",
     "cultureagent~=0.4.0",
     "anthropic>=0.40",
@@ -44,31 +50,26 @@ dependencies = [
 Homepage = "https://github.com/OriNachum/culture"
 
 [project.scripts]
-culture = "culture.cli:main"
+# Repointed to the engine entry point (culture-core ships the same command). The
+# in-tree culture.cli is gone; culture_core.cli:main is the identical CLI.
+culture = "culture_core.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
+# culture ships only the front-door package: culture/__init__.py (the version
+# shim + the meta-path alias finder onto culture_core). The engine modules and
+# their bundled data (skills SKILL.md/scripts, overview/web/style.css, welcome
+# bot.yaml) ship from the culture-core dependency now — the in-tree copies and
+# their force-include manifest were removed in the cutover.
 packages = ["culture"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"culture/skills/culture/SKILL.md" = "culture/skills/culture/SKILL.md"
-"culture/skills/communicate/SKILL.md" = "culture/skills/communicate/SKILL.md"
-"culture/skills/communicate/scripts/post-issue.sh" = "culture/skills/communicate/scripts/post-issue.sh"
-"culture/skills/communicate/scripts/post-comment.sh" = "culture/skills/communicate/scripts/post-comment.sh"
-"culture/skills/communicate/scripts/fetch-issues.sh" = "culture/skills/communicate/scripts/fetch-issues.sh"
-"culture/skills/communicate/scripts/mesh-message.sh" = "culture/skills/communicate/scripts/mesh-message.sh"
-"culture/skills/communicate/scripts/templates/skill-update-brief.md" = "culture/skills/communicate/scripts/templates/skill-update-brief.md"
-"culture/skills/communicate/scripts/templates/skill-new-brief.md" = "culture/skills/communicate/scripts/templates/skill-new-brief.md"
-"culture/overview/web/style.css" = "culture/overview/web/style.css"
-"culture/bots/system/welcome/bot.yaml" = "culture/bots/system/welcome/bot.yaml"
-
 [project.optional-dependencies]
-# Pinned to culture-core's validated copilot SDK; 0.2.3+/1.0 regressed the
-# copilot backend, so the cap must match culture-core[copilot].
-copilot = ["github-copilot-sdk==0.2.0"]
+# Forward to culture-core's copilot extra so the validated github-copilot-sdk
+# pin (0.2.0 — 0.2.3+/1.0 regressed the backend) is sourced from the engine.
+copilot = ["culture-core[copilot]"]
 
 [dependency-groups]
 dev = [
@@ -103,14 +104,13 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Ratchet floor — see docs/coverage-baseline.md for the per-phase log.
-# Phase 6 (2026-05-13): final sweep to 90. Added coverage for
-# culture/credentials.py (now 100%), culture/pidfile.py (now 98%),
-# culture/cli/shared/ipc.py (now 98%), culture/cli/shared/formatting.py
-# (now 100%), culture/cli/afi.py (now 93%), culture/cli/devex.py
-# (now 100%). Project-wide measured: 90.28%. The 60→90 ratchet is
-# complete. Future drops below 90 should be treated as regressions
-# rather than re-baselined.
+# After the culture-core cutover (13.7.0, #454) `source = ["culture"]` measures
+# only the front-door package (culture/__init__.py + culture/__main__.py); the
+# engine moved to culture-core and is coverage-gated in culture-core's own CI.
+# The front-door is small and fully exercised (100%), so the 90 floor still holds
+# trivially. (Pre-cutover this ratchet guarded the in-tree engine to 90% — see
+# docs/coverage-baseline.md for that history.) The retained engine suite still
+# runs here as the per-pin behaviour guard; it just isn't what this floor counts.
 fail_under = 90
 show_missing = true
 exclude_lines = [

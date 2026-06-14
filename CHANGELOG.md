@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.7.0] - 2026-06-14
+
+### Changed
+
+- culture now runs on the published **culture-core** engine: pins `culture-core~=0.5.0` and replaces the in-tree `culture/` engine (91 modules) with a meta-path alias finder in `culture/__init__.py` that maps every `culture.<x>` import to the identical `culture_core.<x>` module (module identity preserved, so existing imports and `mock.patch("culture....")` targets resolve unchanged). Unblocks front-door slimming (#454).
+- The `culture` console entry point repoints to `culture_core.cli:main`; `python -m culture` still works via a thin `culture/__main__.py`. `culture --version` now reports the engine version.
+- The `copilot` extra forwards to `culture-core[copilot]`; the wheel no longer force-includes bundled skill/web data (it ships from culture-core).
+- Retained the full engine test suite as the per-pin guard, running it through the aliases; added a front-door packaging test (`tests/test_frontdoor_cutover.py`).
+
 ## [13.6.1] - 2026-06-14
 
 ### Changed

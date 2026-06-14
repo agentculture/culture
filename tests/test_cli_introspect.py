@@ -4,7 +4,10 @@ import json
 import subprocess
 import sys
 
-from culture import __version__
+from culture_core import __version__
+
+# `culture learn --json` is served by culture_core.cli after the #454 cutover, so
+# the payload version is the engine's version.
 from culture.cli import introspect
 
 

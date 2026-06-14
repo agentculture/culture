@@ -33,10 +33,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import culture
+import culture_core
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SKILL_DIR = Path(culture.__file__).parent / "skills" / "communicate"
+# The communicate skill's bundled scripts/SKILL.md ship from the culture_core
+# engine after the #454 cutover (the in-tree culture/skills tree is gone), so
+# resolve the skill dir from the installed engine package.
+SKILL_DIR = Path(culture_core.__file__).parent / "skills" / "communicate"
 
 
 def test_post_issue_wraps_agtag() -> None:
