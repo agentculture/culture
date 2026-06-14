@@ -1,0 +1,248 @@
+{
+  "slug": "culture-now-runs-on-the-published-culture-core-eng",
+  "title": "culture now runs on the published culture-core engine: it pins culture-core 0.4.0, the in-tree culture/ tree is gone (deleted or reduced to thin re-export shims), and the operator's culture CLI, telemetry, and config discovery work exactly as before",
+  "frame_slug": "culture-now-runs-on-the-published-culture-core-eng",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-06-14T14:36:47Z",
+  "updated": "2026-06-14T14:38:40Z",
+  "targets": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "culture now runs on the published culture-core engine: it pins culture-core 0.4.0, the in-tree culture/ tree is gone (deleted or reduced to thin re-export shims), and the operator's culture CLI, telemetry, and config discovery work exactly as before"
+    },
+    {
+      "id": "h6",
+      "kind": "honesty",
+      "text": "after the cutover a clean install of culture pulls culture-core 0.4.0 as a dependency and the repo holds no in-tree engine implementation (only shims and/or front-door code)"
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "culture operators (the people running the mesh / installing culture) and the culture front-door maintainers who own the slimmed repo; downstream is unchanged for them"
+    },
+    {
+      "id": "h7",
+      "kind": "honesty",
+      "text": "operators take no action and notice no difference; front-door maintainers can change branding/docs/deploy without touching engine code"
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "culture 13.6.0 carries the full 85-module engine in-tree (culture/), has no culture-core dependency, declares loose dep bounds (afi-cli<1.0, agex-cli<1.0, unbounded OTel) that only stay green because uv.lock is stale, and its console entry point is culture = culture.cli:main"
+    },
+    {
+      "id": "h8",
+      "kind": "honesty",
+      "text": "culture 13.6.0 on main verifiably has the 85-module culture/ tree, no culture-core dep, loose bounds, and culture=culture.cli:main (checkable in pyproject.toml + git)"
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "culture pins culture-core==0.4.0 (uv.lock refreshed), overlapping bounds aligned down to culture-core's caps, the in-tree culture/ tree deleted or reduced to thin re-export shims onto culture_core.*, the console entry resolved, the test suite re-pointed, and a version bump applied \u2014 all in one PR"
+    },
+    {
+      "id": "h9",
+      "kind": "honesty",
+      "text": "the sub-changes (pin+lock, bound-align, shim/delete, entry-point, test migration, bump) can land together with no intermediate broken commit"
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "this is the unblocking step for front-door slimming: with the engine moved to its own PyPI package, culture becomes the thin public face (branding/docs/deploy) and the reusable core lives once, matching the agentirc and cultureagent extractions; it also fixes the latent dependency-drift bomb that a fresh lock refresh would otherwise detonate"
+    },
+    {
+      "id": "h10",
+      "kind": "honesty",
+      "text": "front-door slimming genuinely depends on this cutover and the drift risk is real \u2014 a fresh lock without the pin resolves to broken afi-cli/agex-cli/OTel/copilot versions"
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "not re-litigating the extraction itself (culture-core#2/#3 are done and 0.4.0 is published); not absorbing agentirc or cultureagent (they stay separate embedded deps); not changing any wire/identity strings (telemetry culture.* names, culture.yaml filename); not loosening culture-core's dependency caps"
+    },
+    {
+      "id": "h11",
+      "kind": "honesty",
+      "text": "the PR touches no wire/identity strings and does not modify agentirc/cultureagent deps or culture-core's caps"
+    },
+    {
+      "id": "c7",
+      "kind": "boundary",
+      "text": "not a behavior change for operators \u2014 the culture CLI surface, output, and config discovery must be byte-for-byte the same; this is a packaging/sourcing move only"
+    },
+    {
+      "id": "h12",
+      "kind": "honesty",
+      "text": "diffing culture CLI help/output/config-discovery before vs after the cutover shows no operator-visible change"
+    },
+    {
+      "id": "c8",
+      "kind": "success_signal",
+      "text": "culture's full test suite passes against the pinned culture-core engine after a fresh uv.lock refresh (green because of the pin, not despite it)"
+    },
+    {
+      "id": "h13",
+      "kind": "honesty",
+      "text": "running culture's retained test suite after the uv.lock refresh exits 0"
+    },
+    {
+      "id": "c9",
+      "kind": "success_signal",
+      "text": "the culture operator command works unchanged end-to-end (dual entry point), and culture.yaml discovery + culture.* telemetry metric names are observably identical to 13.6.0"
+    },
+    {
+      "id": "h14",
+      "kind": "honesty",
+      "text": "culture --help and a representative command produce output identical to 13.6.0 and culture.yaml is discovered from the same paths"
+    },
+    {
+      "id": "c10",
+      "kind": "success_signal",
+      "text": "a fresh resolve of culture's declared bounds can no longer pull a broken newer afi-cli / agex-cli / OTel / copilot-sdk \u2014 the aligned caps make the validated versions the only resolvable ones"
+    },
+    {
+      "id": "h15",
+      "kind": "honesty",
+      "text": "a dependency resolve cannot select afi-cli>=0.4, agex-cli>=0.14, OTel>=1.42, or copilot-sdk>0.2.0 given culture's aligned bounds"
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "culture pins culture-core (==0.4.0 or ~=0.4.0) and refreshes uv.lock in the same PR"
+    },
+    {
+      "id": "h1",
+      "kind": "honesty",
+      "text": "after the pin, a fresh 'uv lock' resolves culture-core to exactly 0.4.0 and the lock refresh stays green (no broken transitive afi-cli/agex-cli/OTel pulled)"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "culture aligns its overlapping dependency declarations down to culture-core's validated caps: agex-cli<0.14, afi-cli<0.4, OTel stack <1.42 and the instrumentation/semconv line <0.63b0"
+    },
+    {
+      "id": "h2",
+      "kind": "honesty",
+      "text": "culture's declared bounds become a subset of culture-core's caps, so a future culture-core unpin cannot silently re-loosen them, and the validated versions remain the only resolvable ones"
+    },
+    {
+      "id": "c13",
+      "kind": "requirement",
+      "text": "the cutover ships as a single PR following pin -> forward/shim -> delete, with no functionality gap at any commit"
+    },
+    {
+      "id": "h3",
+      "kind": "honesty",
+      "text": "every commit on the branch leaves culture importable and the culture CLI runnable \u2014 no commit deletes the in-tree engine before the pin+shim that replaces it is in place"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "summary": "pyproject + lock: pin culture-core==0.4.0, align overlapping dep bounds down to culture-core's caps (agex-cli<0.14, afi-cli<0.4, OTel stack <1.42, instrumentation/semconv <0.63b0), repoint console entry culture=culture_core.cli:main, refresh uv.lock",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "pyproject.toml pins culture-core (==0.4.0 or ~=0.4.0) and [project.scripts] culture = culture_core.cli:main",
+        "agex-cli<0.14, afi-cli<0.4, OTel api/sdk/exporter <1.42 and instrumentation/semconv <0.63b0 are declared (subset of culture-core's caps)",
+        "uv lock succeeds, resolves culture-core to 0.4.0, and a resolve cannot select afi-cli>=0.4 / agex-cli>=0.14 / OTel>=1.42 / copilot-sdk>0.2.0"
+      ],
+      "deps": [],
+      "covers": [
+        "c11",
+        "c12",
+        "c10",
+        "c5",
+        "h1",
+        "h2",
+        "h15",
+        "h10"
+      ]
+    },
+    {
+      "id": "t2",
+      "summary": "shim the in-tree culture/ tree: replace all 85 modules with thin re-export shims onto culture_core.* so import culture.x keeps working; sequence so no commit deletes a module before its shim/pin is in place",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "every former culture/<mod> is a shim re-exporting culture_core.<mod>; import culture.cli/.doctor/.clients/.protocol/.telemetry resolves to culture_core.*",
+        "no commit on the branch leaves culture un-importable or the CLI un-runnable (pin+shim land together, no broken intermediate)"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c1",
+        "c4",
+        "c13",
+        "h6",
+        "h9",
+        "h3"
+      ]
+    },
+    {
+      "id": "t3",
+      "summary": "version bump 13.6.0 -> next + CHANGELOG entry for the culture-core cutover (via /version-bump)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "version bumped from 13.6.0 in pyproject.toml; CHANGELOG.md has a new top section describing the pin->shim cutover; version-check CI passes"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c13"
+      ]
+    },
+    {
+      "id": "t4",
+      "summary": "front-door packaging/smoke test: assert the culture entry point resolves to culture_core.cli:main, culture-core==0.4.0 is a locked dep, and import culture works",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "new test asserts importlib.metadata entry point 'culture' targets culture_core.cli:main and that import culture succeeds",
+        "test asserts culture-core 0.4.0 is the locked/declared engine dependency"
+      ],
+      "deps": [
+        "t1",
+        "t2"
+      ],
+      "covers": [
+        "c9",
+        "h6",
+        "h7"
+      ]
+    },
+    {
+      "id": "t5",
+      "summary": "behavior-parity verification: full retained engine suite green through the shims after a fresh lock, and culture CLI help / culture.yaml discovery / culture.* telemetry names observably identical to 13.6.0",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "/run-tests passes: all retained engine tests green against the pinned culture-core",
+        "culture --help output, culture.yaml discovery paths, and culture.* telemetry metric names match 13.6.0 (no operator-visible change; no wire-string change)"
+      ],
+      "deps": [
+        "t2",
+        "t4"
+      ],
+      "covers": [
+        "c8",
+        "c2",
+        "c3",
+        "c6",
+        "c7",
+        "h7",
+        "h8",
+        "h11",
+        "h12",
+        "h13",
+        "h14"
+      ]
+    }
+  ],
+  "risks": []
+}
