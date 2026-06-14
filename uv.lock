@@ -621,7 +621,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "13.6.0"
+version = "13.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -668,22 +668,22 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "afi-cli", specifier = ">=0.3,<1.0" },
+    { name = "afi-cli", specifier = ">=0.3,<0.4" },
     { name = "agentirc-cli", specifier = ">=9.7.0,<10" },
-    { name = "agex-cli", specifier = ">=0.13,<1.0" },
+    { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },
     { name = "cultureagent", specifier = "~=0.4.0" },
-    { name = "github-copilot-sdk", marker = "extra == 'copilot'" },
+    { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
     { name = "irc-lens", specifier = ">=0.5.3,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
-    { name = "opentelemetry-api", specifier = ">=1.25" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.25" },
-    { name = "opentelemetry-instrumentation-aiohttp-server", specifier = ">=0.46b0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.25" },
-    { name = "opentelemetry-semantic-conventions", specifier = ">=0.46b0" },
+    { name = "opentelemetry-api", specifier = ">=1.25,<1.42" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.25,<1.42" },
+    { name = "opentelemetry-instrumentation-aiohttp-server", specifier = ">=0.46b0,<0.63b0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.25,<1.42" },
+    { name = "opentelemetry-semantic-conventions", specifier = ">=0.46b0,<0.63b0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "steward-cli", specifier = ">=0.16,<1.0" },
 ]
