@@ -39,8 +39,14 @@ class _CultureCoreAliasFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader
 
     Limitation: ``importlib.reload(culture.x)`` is a no-op — ``create_module``
     returns the already-loaded ``culture_core.x`` and ``exec_module`` does
-    nothing; reload the ``culture_core.x`` module directly if you need that.
+    nothing meaningful; reload the ``culture_core.x`` module directly if needed.
     """
+
+    def __init__(self):
+        # Maps an alias name ("culture.x") -> the engine module's own ModuleSpec,
+        # captured in create_module so exec_module can undo the import machinery's
+        # clobber of the shared object's __spec__ (see exec_module).
+        self._engine_specs = {}
 
     def find_spec(self, fullname, path=None, target=None):
         if not fullname.startswith(_PREFIX):
@@ -55,12 +61,24 @@ class _CultureCoreAliasFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader
     def create_module(self, spec):
         core_name = _CORE + spec.name[len(_PREFIX) :]
         module = importlib.import_module(core_name)
+        # Returning the engine module gives identity (culture.x IS culture_core.x).
+        # But the import machinery will next run _init_module_attrs(alias_spec,
+        # module), which unconditionally overwrites this shared object's __spec__
+        # with our alias spec — dropping submodule_search_locations and so
+        # breaking importlib.resources for the engine package. Capture the real
+        # spec now; exec_module restores it.
+        self._engine_specs[spec.name] = module.__spec__
         sys.modules[spec.name] = module  # identity alias
         return module
 
     def exec_module(self, module):
-        # Already executed as culture_core.<x>; nothing more to do.
-        pass
+        # The module already ran as culture_core.<x>; nothing to execute. Restore
+        # the engine module's canonical __spec__ that _init_module_attrs just
+        # clobbered with our alias spec, so culture_core introspection /
+        # importlib.resources / reload keep working after a culture.* import.
+        engine_spec = self._engine_specs.pop(module.__spec__.name, None)
+        if engine_spec is not None:
+            module.__spec__ = engine_spec
 
 
 if not any(isinstance(f, _CultureCoreAliasFinder) for f in sys.meta_path):

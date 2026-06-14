@@ -70,6 +70,27 @@ def test_deeply_nested_module_identity():
     assert culture.clients.claude.config is culture_core.clients.claude.config
 
 
+def test_alias_preserves_engine_module_spec_and_resources():
+    """Importing culture.<x> must NOT corrupt the shared engine module's __spec__.
+
+    Because culture.x IS culture_core.x, the import machinery's _init_module_attrs
+    would otherwise overwrite culture_core.x.__spec__ with the alias spec (name
+    'culture.x', no submodule_search_locations), which breaks importlib.resources
+    on engine packages. The finder restores the canonical spec in exec_module.
+    """
+    import importlib
+    import importlib.resources as resources
+
+    importlib.import_module("culture.skills")  # alias the engine package
+
+    spec = culture_core.skills.__spec__
+    assert spec.name == "culture_core.skills"
+    assert spec.submodule_search_locations is not None
+    # Resource loading on the engine package still resolves bundled data.
+    files = resources.files("culture_core.skills")
+    assert (files / "communicate" / "SKILL.md").is_file()
+
+
 def test_bare_import_culture_is_the_real_front_door():
     """`import culture` returns the real front-door module (it has no dot, so the
     finder ignores it) — not an alias of culture_core."""
