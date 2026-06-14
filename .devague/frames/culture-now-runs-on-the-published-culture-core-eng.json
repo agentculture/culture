@@ -4,14 +4,14 @@
   "schema_version": 1,
   "status": "exported",
   "created": "2026-06-14T14:27:31Z",
-  "updated": "2026-06-14T14:35:58Z",
+  "updated": "2026-06-14T19:43:33Z",
   "claims": [
     {
       "id": "c1",
       "kind": "announcement",
       "text": "culture now runs on the published culture-core engine: it pins culture-core 0.4.0, the in-tree culture/ tree is gone (deleted or reduced to thin re-export shims), and the operator's culture CLI, telemetry, and config discovery work exactly as before",
       "origin": "user",
-      "status": "confirmed",
+      "status": "rejected",
       "honesty_conditions": [
         {
           "id": "h6",
@@ -59,7 +59,7 @@
       "kind": "after_state",
       "text": "culture pins culture-core==0.4.0 (uv.lock refreshed), overlapping bounds aligned down to culture-core's caps, the in-tree culture/ tree deleted or reduced to thin re-export shims onto culture_core.*, the console entry resolved, the test suite re-pointed, and a version bump applied \u2014 all in one PR",
       "origin": "user",
-      "status": "confirmed",
+      "status": "rejected",
       "honesty_conditions": [
         {
           "id": "h9",
@@ -171,7 +171,7 @@
       "kind": "requirement",
       "text": "culture pins culture-core (==0.4.0 or ~=0.4.0) and refreshes uv.lock in the same PR",
       "origin": "llm",
-      "status": "confirmed",
+      "status": "rejected",
       "honesty_conditions": [
         {
           "id": "h1",
@@ -219,7 +219,7 @@
       "kind": "decision",
       "text": "the in-tree culture/ tree is reduced to thin re-export shims onto culture_core.* (so import culture.x keeps working) rather than deleted outright",
       "origin": "llm",
-      "status": "confirmed",
+      "status": "rejected",
       "honesty_conditions": [
         {
           "id": "h4",
@@ -317,6 +317,77 @@
         {
           "id": "h19",
           "text": "the existing 96 test files pass unmodified because the shims make each culture.<name> import resolve to its culture_core counterpart, and the full suite green-lights every culture-core pin bump",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c20",
+      "kind": "requirement",
+      "text": "culture pins culture-core ~=0.5.0 (the release that forwards the doctor feature, culture#453 / culture-core#4) and refreshes uv.lock in the same PR; 0.4.0 is no longer the target because it lacks the doctor package, cli doctor group, and 7 doctor tests",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h20",
+          "text": "a fresh uv lock resolves culture-core to 0.5.0 (not 0.4.0), and culture_core.doctor + the cli doctor group + the 7 doctor tests are reachable through the aliases, so the cutover loses no functionality",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c21",
+      "kind": "decision",
+      "text": "the in-tree culture/ tree is replaced via sys.modules module-identity aliasing \u2014 each culture.<mod> IS the same module object as culture_core.<mod>, not naive 'from culture_core.x import *' re-exports \u2014 so the 152 mock.patch('culture....') targets patch the live engine module and the suite passes unmodified",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h21",
+          "text": "every mock.patch('culture.<x>') target resolves to the identical module object culture_core uses (sys.modules['culture.x'] is sys.modules['culture_core.x']), so the full retained suite passes unmodified and import culture.doctor resolves to culture_core.doctor",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q3",
+          "text": "where does the alias bootstrap live, and what fails loudly if culture_core renames or drops a module the alias map still lists?",
+          "resolved": false,
+          "blocking": false
+        }
+      ],
+      "links": []
+    },
+    {
+      "id": "c22",
+      "kind": "after_state",
+      "text": "culture pins culture-core==0.5.0 (uv.lock refreshed); overlapping bounds were already aligned to culture-core's caps in the merged precursor PR #455; the in-tree culture/ tree is replaced by sys.modules aliases onto culture_core.*; the console entry is repointed to culture_core.cli:main; a version bump is applied \u2014 all in one follow-up PR",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h22",
+          "text": "a clean checkout after the follow-up PR holds no in-tree engine implementation (only the sys.modules alias bootstrap + front-door code), pulls culture-core 0.5.0, and the culture CLI / telemetry names / culture.yaml discovery are byte-for-byte identical to pre-cutover",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c23",
+      "kind": "announcement",
+      "text": "culture now runs on the published culture-core engine: it pins culture-core 0.5.0, the in-tree culture/ tree is gone (replaced by sys.modules module-identity aliases onto culture_core.*), and the operator's culture CLI, telemetry, and config discovery work exactly as before",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h23",
+          "text": "after the cutover a clean install of culture pulls culture-core 0.5.0 as a dependency and the repo holds no in-tree engine implementation (only the sys.modules alias bootstrap and front-door code)",
           "status": "confirmed"
         }
       ],
