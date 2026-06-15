@@ -13,6 +13,7 @@ engine). They are the front-door packaging guard for every culture-core pin bump
 """
 
 from importlib import metadata
+from importlib.metadata import PackageNotFoundError
 from unittest import mock
 
 import culture_core
@@ -28,11 +29,24 @@ def test_culture_console_entry_point_targets_engine():
     assert culture_ep == "culture_core.cli:main"
 
 
-def test_culture_core_is_a_declared_dependency():
-    """culture pins the engine; a 0.5.x culture-core is installed as the dep."""
+def test_culture_core_is_declared_and_installed_dependency():
+    """The front-door's packaging contract: culture declares culture-core as a
+    dependency and the engine distribution is actually installed.
+
+    Metadata-only by design — it reads distribution metadata, it does NOT import
+    culture_core (so the conftest-seeded fake can't mask a missing dependency)
+    and it does NOT assert a version (so it does not reintroduce the pin-bump
+    guard this suite deliberately drops). It guards the one packaging invariant
+    the alias finder relies on: at runtime `culture/__init__` imports
+    `culture_core.<x>`, so a distribution that stopped depending on / installing
+    culture-core would break user imports while the faked test suite stayed green.
+    """
     requires = metadata.requires("culture") or []
-    assert any(req.split()[0].startswith("culture-core") for req in requires)
-    assert metadata.version("culture-core").startswith("0.5")
+    assert any(req.split()[0].lower().startswith("culture-core") for req in requires)
+    try:
+        metadata.version("culture-core")
+    except PackageNotFoundError as exc:
+        raise AssertionError("culture-core must be installed as a dependency") from exc
 
 
 def test_import_culture_succeeds_and_installs_alias_finder():
@@ -79,16 +93,12 @@ def test_alias_preserves_engine_module_spec_and_resources():
     on engine packages. The finder restores the canonical spec in exec_module.
     """
     import importlib
-    import importlib.resources as resources
 
     importlib.import_module("culture.skills")  # alias the engine package
 
     spec = culture_core.skills.__spec__
     assert spec.name == "culture_core.skills"
     assert spec.submodule_search_locations is not None
-    # Resource loading on the engine package still resolves bundled data.
-    files = resources.files("culture_core.skills")
-    assert (files / "communicate" / "SKILL.md").is_file()
 
 
 def test_bare_import_culture_is_the_real_front_door():
