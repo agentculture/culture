@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.7.1] - 2026-06-15
+
+### Changed
+
+- culture's test suite now exercises only the front-door integration contract: it runs against a behavior-free fake culture_core (tests/_fake_engine.py) seeded into sys.modules via tests/conftest.py, so a culture_core internal change can no longer redden culture's CI (the real engine is never imported during the suite).
+- Removed the ~1400 engine-logic tests (129 files, plus tests/harness/ and tests/telemetry/) that re-exercised culture_core behavior through the alias; that logic is culture_core's domain, covered by its own upstream suite. Consequence: culture's CI no longer guards culture-core pin bumps — that safety now lives entirely in culture_core's upstream CI (see the 2026-06-15 test-isolation spec).
+
 ## [13.7.0] - 2026-06-14
 
 ### Changed
