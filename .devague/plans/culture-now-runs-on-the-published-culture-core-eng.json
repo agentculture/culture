@@ -4,19 +4,9 @@
   "frame_slug": "culture-now-runs-on-the-published-culture-core-eng",
   "schema_version": 1,
   "status": "exported",
-  "created": "2026-06-14T14:36:47Z",
-  "updated": "2026-06-14T14:38:40Z",
+  "created": "2026-06-14T19:46:05Z",
+  "updated": "2026-06-14T19:48:01Z",
   "targets": [
-    {
-      "id": "c1",
-      "kind": "announcement",
-      "text": "culture now runs on the published culture-core engine: it pins culture-core 0.4.0, the in-tree culture/ tree is gone (deleted or reduced to thin re-export shims), and the operator's culture CLI, telemetry, and config discovery work exactly as before"
-    },
-    {
-      "id": "h6",
-      "kind": "honesty",
-      "text": "after the cutover a clean install of culture pulls culture-core 0.4.0 as a dependency and the repo holds no in-tree engine implementation (only shims and/or front-door code)"
-    },
     {
       "id": "c2",
       "kind": "audience",
@@ -36,16 +26,6 @@
       "id": "h8",
       "kind": "honesty",
       "text": "culture 13.6.0 on main verifiably has the 85-module culture/ tree, no culture-core dep, loose bounds, and culture=culture.cli:main (checkable in pyproject.toml + git)"
-    },
-    {
-      "id": "c4",
-      "kind": "after_state",
-      "text": "culture pins culture-core==0.4.0 (uv.lock refreshed), overlapping bounds aligned down to culture-core's caps, the in-tree culture/ tree deleted or reduced to thin re-export shims onto culture_core.*, the console entry resolved, the test suite re-pointed, and a version bump applied \u2014 all in one PR"
-    },
-    {
-      "id": "h9",
-      "kind": "honesty",
-      "text": "the sub-changes (pin+lock, bound-align, shim/delete, entry-point, test migration, bump) can land together with no intermediate broken commit"
     },
     {
       "id": "c5",
@@ -108,16 +88,6 @@
       "text": "a dependency resolve cannot select afi-cli>=0.4, agex-cli>=0.14, OTel>=1.42, or copilot-sdk>0.2.0 given culture's aligned bounds"
     },
     {
-      "id": "c11",
-      "kind": "requirement",
-      "text": "culture pins culture-core (==0.4.0 or ~=0.4.0) and refreshes uv.lock in the same PR"
-    },
-    {
-      "id": "h1",
-      "kind": "honesty",
-      "text": "after the pin, a fresh 'uv lock' resolves culture-core to exactly 0.4.0 and the lock refresh stays green (no broken transitive afi-cli/agex-cli/OTel pulled)"
-    },
-    {
       "id": "c12",
       "kind": "requirement",
       "text": "culture aligns its overlapping dependency declarations down to culture-core's validated caps: agex-cli<0.14, afi-cli<0.4, OTel stack <1.42 and the instrumentation/semconv line <0.63b0"
@@ -136,59 +106,90 @@
       "id": "h3",
       "kind": "honesty",
       "text": "every commit on the branch leaves culture importable and the culture CLI runnable \u2014 no commit deletes the in-tree engine before the pin+shim that replaces it is in place"
+    },
+    {
+      "id": "c20",
+      "kind": "requirement",
+      "text": "culture pins culture-core ~=0.5.0 (the release that forwards the doctor feature, culture#453 / culture-core#4) and refreshes uv.lock in the same PR; 0.4.0 is no longer the target because it lacks the doctor package, cli doctor group, and 7 doctor tests"
+    },
+    {
+      "id": "h20",
+      "kind": "honesty",
+      "text": "a fresh uv lock resolves culture-core to 0.5.0 (not 0.4.0), and culture_core.doctor + the cli doctor group + the 7 doctor tests are reachable through the aliases, so the cutover loses no functionality"
+    },
+    {
+      "id": "c22",
+      "kind": "after_state",
+      "text": "culture pins culture-core==0.5.0 (uv.lock refreshed); overlapping bounds were already aligned to culture-core's caps in the merged precursor PR #455; the in-tree culture/ tree is replaced by sys.modules aliases onto culture_core.*; the console entry is repointed to culture_core.cli:main; a version bump is applied \u2014 all in one follow-up PR"
+    },
+    {
+      "id": "h22",
+      "kind": "honesty",
+      "text": "a clean checkout after the follow-up PR holds no in-tree engine implementation (only the sys.modules alias bootstrap + front-door code), pulls culture-core 0.5.0, and the culture CLI / telemetry names / culture.yaml discovery are byte-for-byte identical to pre-cutover"
+    },
+    {
+      "id": "c23",
+      "kind": "announcement",
+      "text": "culture now runs on the published culture-core engine: it pins culture-core 0.5.0, the in-tree culture/ tree is gone (replaced by sys.modules module-identity aliases onto culture_core.*), and the operator's culture CLI, telemetry, and config discovery work exactly as before"
+    },
+    {
+      "id": "h23",
+      "kind": "honesty",
+      "text": "after the cutover a clean install of culture pulls culture-core 0.5.0 as a dependency and the repo holds no in-tree engine implementation (only the sys.modules alias bootstrap and front-door code)"
     }
   ],
   "tasks": [
     {
       "id": "t1",
-      "summary": "pyproject + lock: pin culture-core==0.4.0, align overlapping dep bounds down to culture-core's caps (agex-cli<0.14, afi-cli<0.4, OTel stack <1.42, instrumentation/semconv <0.63b0), repoint console entry culture=culture_core.cli:main, refresh uv.lock",
+      "summary": "pyproject + lock: add and pin culture-core ~=0.5.0 (the release forwarding doctor), repoint console entry [project.scripts] culture = culture_core.cli:main, and refresh uv.lock. The bound caps (agex-cli<0.14, afi-cli<0.4, OTel <1.42 / instrumentation+semconv <0.63b0, copilot==0.2.0) already landed in PR #455 \u2014 verify they remain, do not re-edit them",
       "origin": "llm",
       "status": "confirmed",
       "acceptance_criteria": [
-        "pyproject.toml pins culture-core (==0.4.0 or ~=0.4.0) and [project.scripts] culture = culture_core.cli:main",
-        "agex-cli<0.14, afi-cli<0.4, OTel api/sdk/exporter <1.42 and instrumentation/semconv <0.63b0 are declared (subset of culture-core's caps)",
-        "uv lock succeeds, resolves culture-core to 0.4.0, and a resolve cannot select afi-cli>=0.4 / agex-cli>=0.14 / OTel>=1.42 / copilot-sdk>0.2.0"
+        "pyproject.toml declares culture-core ~=0.5.0 (or ==0.5.0) in dependencies and [project.scripts] culture = 'culture_core.cli:main'",
+        "the #455 caps remain present and unchanged (agex-cli<0.14, afi-cli<0.4, OTel <1.42, instrumentation/semconv <0.63b0, github-copilot-sdk==0.2.0)",
+        "uv lock succeeds and resolves culture-core to exactly 0.5.0; a fresh resolve cannot select afi-cli>=0.4, agex-cli>=0.14, OTel>=1.42, or copilot-sdk>0.2.0"
       ],
       "deps": [],
       "covers": [
-        "c11",
-        "c12",
+        "c20",
+        "h20",
         "c10",
-        "c5",
-        "h1",
-        "h2",
         "h15",
+        "c12",
+        "h2",
+        "c5",
         "h10"
       ]
     },
     {
       "id": "t2",
-      "summary": "shim the in-tree culture/ tree: replace all 85 modules with thin re-export shims onto culture_core.* so import culture.x keeps working; sequence so no commit deletes a module before its shim/pin is in place",
+      "summary": "replace the in-tree culture/ tree with a single sys.modules module-identity alias bootstrap onto culture_core.*: each culture.<mod> is registered as the SAME module object as culture_core.<mod> (not 'from culture_core.x import *' re-exports), then delete the in-tree engine implementation. Sequence so the pin (t1) lands before/with the alias swap \u2014 no broken intermediate commit",
       "origin": "llm",
       "status": "confirmed",
       "acceptance_criteria": [
-        "every former culture/<mod> is a shim re-exporting culture_core.<mod>; import culture.cli/.doctor/.clients/.protocol/.telemetry resolves to culture_core.*",
-        "no commit on the branch leaves culture un-importable or the CLI un-runnable (pin+shim land together, no broken intermediate)"
+        "a single alias bootstrap makes sys.modules['culture.<x>'] is sys.modules['culture_core.<x>'] for every engine module; the in-tree implementation files are deleted (only the bootstrap + front-door code remain)",
+        "import culture.cli / .doctor / .clients / .protocol / .telemetry each resolves to the identical culture_core.* object (import culture.doctor is culture_core.doctor)",
+        "every commit on the branch leaves 'import culture' working and the culture CLI runnable \u2014 no commit deletes a module before the alias+pin that replaces it is in place"
       ],
       "deps": [
         "t1"
       ],
       "covers": [
-        "c1",
-        "c4",
+        "c23",
+        "h23",
+        "c22",
+        "h22",
         "c13",
-        "h6",
-        "h9",
         "h3"
       ]
     },
     {
       "id": "t3",
-      "summary": "version bump 13.6.0 -> next + CHANGELOG entry for the culture-core cutover (via /version-bump)",
+      "summary": "version bump 13.6.1 -> 13.7.0 (minor: new dependency-sourcing of the engine) + Keep-a-Changelog entry describing the 0.5.0 pin + sys.modules alias cutover, via /version-bump",
       "origin": "llm",
       "status": "confirmed",
       "acceptance_criteria": [
-        "version bumped from 13.6.0 in pyproject.toml; CHANGELOG.md has a new top section describing the pin->shim cutover; version-check CI passes"
+        "pyproject.toml version bumped from 13.6.1 to 13.7.0; CHANGELOG.md has a new top section describing the culture-core 0.5.0 pin + alias cutover; version-check CI passes"
       ],
       "deps": [
         "t1"
@@ -199,12 +200,12 @@
     },
     {
       "id": "t4",
-      "summary": "front-door packaging/smoke test: assert the culture entry point resolves to culture_core.cli:main, culture-core==0.4.0 is a locked dep, and import culture works",
+      "summary": "front-door packaging/smoke test: assert the 'culture' entry point resolves to culture_core.cli:main, culture-core 0.5.0 is the locked/declared engine dep, import culture works, and culture.doctor aliases culture_core.doctor (guards the doctor functionality through the alias)",
       "origin": "llm",
       "status": "confirmed",
       "acceptance_criteria": [
-        "new test asserts importlib.metadata entry point 'culture' targets culture_core.cli:main and that import culture succeeds",
-        "test asserts culture-core 0.4.0 is the locked/declared engine dependency"
+        "a new test asserts the importlib.metadata entry point 'culture' targets culture_core.cli:main and that 'import culture' succeeds",
+        "the test asserts culture-core 0.5.0 is the locked/declared engine dependency and that culture.doctor is culture_core.doctor"
       ],
       "deps": [
         "t1",
@@ -212,18 +213,17 @@
       ],
       "covers": [
         "c9",
-        "h6",
-        "h7"
+        "h14"
       ]
     },
     {
       "id": "t5",
-      "summary": "behavior-parity verification: full retained engine suite green through the shims after a fresh lock, and culture CLI help / culture.yaml discovery / culture.* telemetry names observably identical to 13.6.0",
+      "summary": "behavior-parity verification: full retained suite green through the aliases after a fresh uv.lock (including the 7 doctor tests via the alias), and culture --help / culture.yaml discovery / culture.* telemetry names observably identical to pre-cutover",
       "origin": "llm",
       "status": "confirmed",
       "acceptance_criteria": [
-        "/run-tests passes: all retained engine tests green against the pinned culture-core",
-        "culture --help output, culture.yaml discovery paths, and culture.* telemetry metric names match 13.6.0 (no operator-visible change; no wire-string change)"
+        "/run-tests passes: all retained engine tests (incl. the 7 doctor tests) green against the pinned culture-core 0.5.0 through the aliases",
+        "culture --help output, culture.yaml discovery paths, and culture.* telemetry metric names match pre-cutover (no operator-visible change; no wire/identity-string change)"
       ],
       "deps": [
         "t2",
@@ -231,16 +231,15 @@
       ],
       "covers": [
         "c8",
-        "c2",
-        "c3",
-        "c6",
-        "c7",
-        "h7",
-        "h8",
-        "h11",
-        "h12",
         "h13",
-        "h14"
+        "c2",
+        "h7",
+        "c3",
+        "h8",
+        "c6",
+        "h11",
+        "c7",
+        "h12"
       ]
     }
   ],
