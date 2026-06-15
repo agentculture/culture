@@ -6,10 +6,12 @@ of the real installed engine. The builder MUST NOT import the real
 ``culture_core`` — it constructs every module from scratch — so the surviving
 front-door tests exercise only the alias finder, never engine behavior.
 
-Each test seeds the fake into ``sys.modules`` and unconditionally restores the
-prior state in a ``finally`` block (via the ``seeded_fake`` fixture), so the
-rest of the suite — which under pytest-xdist still runs against the real engine
-— is never left with a polluted ``sys.modules``.
+The whole front-door suite runs against this fake: ``tests/conftest.py`` seeds
+it into ``sys.modules`` once per (xdist) worker, so the real engine is never
+imported during the run. Each contract test below builds its OWN fresh fake and
+seeds/restores it in a ``finally`` block (via the ``seeded_fake`` fixture) —
+restoring the prior state relative to that conftest-seeded baseline, so a
+contract test never disturbs the session-wide fake the rest of the suite uses.
 """
 
 import importlib
