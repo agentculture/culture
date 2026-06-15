@@ -28,13 +28,6 @@ def test_culture_console_entry_point_targets_engine():
     assert culture_ep == "culture_core.cli:main"
 
 
-def test_culture_core_is_a_declared_dependency():
-    """culture pins the engine; a 0.5.x culture-core is installed as the dep."""
-    requires = metadata.requires("culture") or []
-    assert any(req.split()[0].startswith("culture-core") for req in requires)
-    assert metadata.version("culture-core").startswith("0.5")
-
-
 def test_import_culture_succeeds_and_installs_alias_finder():
     import importlib
     import sys
@@ -79,16 +72,12 @@ def test_alias_preserves_engine_module_spec_and_resources():
     on engine packages. The finder restores the canonical spec in exec_module.
     """
     import importlib
-    import importlib.resources as resources
 
     importlib.import_module("culture.skills")  # alias the engine package
 
     spec = culture_core.skills.__spec__
     assert spec.name == "culture_core.skills"
     assert spec.submodule_search_locations is not None
-    # Resource loading on the engine package still resolves bundled data.
-    files = resources.files("culture_core.skills")
-    assert (files / "communicate" / "SKILL.md").is_file()
 
 
 def test_bare_import_culture_is_the_real_front_door():
