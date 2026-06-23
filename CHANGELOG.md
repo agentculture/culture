@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [13.8.0] - 2026-06-23
+
+### Added
+
+- **Vendored the `remember` + `recall` memory skills from eidetic-cli**
+  (cite-don't-import) — the write/read halves of eidetic's shared
+  `~/.eidetic/memory` surface, so this agent (Claude and its colleague backend)
+  can persist facts across sessions and recall them later, sharing one store.
+  `remember` drives `eidetic remember` (idempotent upsert of one JSON record or
+  an NDJSON batch on stdin, dedup by id + content hash); `recall` drives
+  `eidetic recall` with four search modes — exact / approximate / keyword /
+  hybrid — each hit carrying text, full provenance metadata, a relevance score,
+  and a freshness signal. The `.sh` wrappers are byte-verbatim from eidetic-cli
+  (their first-party origin); each `SKILL.md` is localized only in the
+  illustrative `--scope <nick>` examples (Provenance keeps "First-party to
+  eidetic-cli"). Both default to this agent's PRIVATE scope, reading the suffix
+  from `culture.yaml`. Runtime dep: the `eidetic` CLI on PATH (else a local
+  eidetic-cli checkout with `uv`). Propagated by rollout-cli's `eidetic-memory`
+  recipe.
+
 ## [13.7.1] - 2026-06-15
 
 ### Changed
