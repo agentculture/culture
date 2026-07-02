@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.0] - 2026-07-02
+
+### Added
+
+- Per-backend optional extras: `culture[claude]`, `culture[acp]`, `culture[codex]` (empty, symmetry), `culture[copilot]`, `culture[all-backends]` — mapped to cultureagent's backend-* extras (#462 Phase C)
+- Missing-SDK remediation hints: every `_create_<backend>_daemon` factory probes its SDK extra and fails with the exact `pip install culture[<extra>]` command (all-backends rule; claude/acp fail at import, copilot lazily — the probe unifies)
+- Guard tests: no SDK import may enter `culture_core/` (AST scan), slim-env import proxy, and a culture-core sweep pinning the retired dist out of pyproject/uv.lock
+- docs/install-extras.md — slim vs extras install matrix
+
+### Changed
+
+- `anthropic` and `claude-agent-sdk` moved from core dependencies to the `[claude]`/`[acp]` extras and the dev dependency group — a default install is now slim
+
 ## [14.0.0] - 2026-07-02
 
 ### Added
