@@ -20,7 +20,7 @@ an ``int`` return code (for the universal-verb handlers, which must
 return ``(stdout, rc)``).
 
 The long-term target is every embedded CLI exposing a clean
-``main(argv) -> int`` (agent-first CLI contract owned by afi-cli). Until
+``main(argv) -> int`` (agent-first CLI contract owned by agentfront). Until
 then, typer-backed CLIs like agex-cli can be wrapped in a small entry
 adapter that calls the typer ``app`` — the plumbing here stays unchanged.
 """

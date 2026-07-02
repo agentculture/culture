@@ -8,12 +8,12 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "afi-cli"
-version = "0.3.0"
+name = "agentfront"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/20/c5172963bf440aba92b68a9d043151fb3dd543626fdad1cf846520d1e418/afi_cli-0.3.0.tar.gz", hash = "sha256:884aa1a5b539eedac8b38ea7c89f3c77f4ad1fe4e9d8c0659d306e45d16240ae", size = 92435, upload-time = "2026-04-23T14:55:41.684Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/c2/acf94fc4274161b3c6983b9308544ff7f6ea376ade72c13f7bfeb3dd0711/agentfront-0.20.0.tar.gz", hash = "sha256:990901c75b04cff4d6413eeb510f2fb1c33332a8d43267aa86e5c0e2380f2c37", size = 485014, upload-time = "2026-07-02T06:04:58.983Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/c1/af36f135cde37206333fd318bd92d49c4e2152d5122687653274fb54300e/afi_cli-0.3.0-py3-none-any.whl", hash = "sha256:f760a92bf1782fc470c3a1cdffef3c4f8014e749475332f45ce43811855ada7f", size = 54411, upload-time = "2026-04-23T14:55:42.662Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/95/8fd2a19d2b92fe1500bb28587af722d28638f95e70a0d8ac191cd45b2a72/agentfront-0.20.0-py3-none-any.whl", hash = "sha256:1c6b20006e3aad858ed6cb4ef6c3f7181c2b27c54e82eb269f31658707bdfd98", size = 140246, upload-time = "2026-07-02T06:04:57.696Z" },
 ]
 
 [[package]]
@@ -621,10 +621,10 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.1.1"
+version = "14.1.2"
 source = { editable = "." }
 dependencies = [
-    { name = "afi-cli" },
+    { name = "agentfront" },
     { name = "agentirc-cli" },
     { name = "agex-cli" },
     { name = "agtag" },
@@ -679,7 +679,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "afi-cli", specifier = ">=0.3,<0.4" },
+    { name = "agentfront", specifier = ">=0.20,<0.21" },
     { name = "agentirc-cli", specifier = ">=9.7.0,<10" },
     { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },

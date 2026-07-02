@@ -9,7 +9,7 @@ Commands are organized into noun-based groups:
     culture bot      {create,start,stop,list,inspect,archive,unarchive}
     culture skills   {install}
     culture devex    {...developer-experience passthrough (powered by agex-cli)...}
-    culture afi      {...agent-first interface passthrough (powered by afi-cli)...}
+    culture afi      {...agent-first interface passthrough (powered by agentfront)...}
 
 Universal verbs (available at the root):
     culture explain [topic]    full description of topic (default: culture)
