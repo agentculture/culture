@@ -6,10 +6,11 @@
 # forwards every flag verbatim — so `recall.sh "<query>" --mode hybrid --json`
 # is exactly `eidetic recall "<query>" --mode hybrid --json`.
 #
-# The store is the files backend at ~/.eidetic/memory by default — a home-dir
-# path OUTSIDE any git worktree, so Claude and the colleague backend (which runs
-# in throwaway worktrees) read the SAME memories. Set EIDETIC_DATA_DIR to opt out
-# of sharing; set EIDETIC_MONGO_URI / NEO4J_URI + --backend for a server store.
+# The store is the files backend. Default location resolves per-operation:
+# PUBLIC records inside a git repo → <repo-root>/.eidetic/memory (committed,
+# team-shared); PRIVATE records, or any record outside a git repo →
+# $HOME/.eidetic/memory (never committed). Recall reads both stores and merges.
+# An explicit EIDETIC_DATA_DIR wins and short-circuits to that single dir.
 
 set -euo pipefail
 
@@ -34,12 +35,10 @@ resolve_eidetic() {
         fi
         dir=$(dirname "$dir")
     done
-    cat >&2 <<'EOF'
-error: eidetic CLI not found.
-hint: install it with `uv tool install eidetic-cli` (or `pipx install eidetic-cli`),
-      or run from inside the eidetic-cli checkout with `uv` available.
-      The console script is `eidetic` (dist name: eidetic-cli).
-EOF
+    # In a vendored copy there is no eidetic-cli checkout to fall back to, so the
+    # only honest remedy is to install the CLI. One `error:` + one `hint:` line.
+    printf 'error: eidetic CLI not found.\n' >&2
+    printf 'hint: install it with: uv tool install eidetic-cli (or pipx install eidetic-cli); the console script is eidetic.\n' >&2
     return 1
 }
 
@@ -65,9 +64,16 @@ EOF
 }
 
 case "${1:-}" in
-    -h | --help | help | "")
+    -h | --help)
         usage
         exit 0
+        ;;
+    "")
+        # A missing query is a usage error, not success. The bareword `help` is
+        # a legitimate search term, so it is intentionally NOT a usage alias.
+        printf 'error: no query given.\n' >&2
+        printf 'hint: recall.sh "<query>" [--mode ...] [--json]; run recall.sh --help for usage.\n' >&2
+        exit 1
         ;;
 esac
 
@@ -100,9 +106,12 @@ resolve_scope() {
             # inline `# comment` or trailing space can't bleed into the scope),
             # then strip surrounding quotes only — matching the canonical parser
             # in .claude/skills/cicd/scripts/_resolve-nick.sh.
+            # `|| true`: under `set -o pipefail`, `head -n1` closing the pipe
+            # early can SIGPIPE `sed`, making the substitution non-zero and
+            # aborting the script. An empty parse must yield "" here, not exit.
             suffix=$(sed -n \
                 's/^[[:space:]]*-\{0,1\}[[:space:]]*suffix:[[:space:]]*\([^[:space:]]*\).*/\1/p' \
-                "$dir/culture.yaml" | head -n1 | tr -d "\"'")
+                "$dir/culture.yaml" | head -n1 | tr -d "\"'" || true)
             break
         fi
         dir=$(dirname "$dir")
@@ -127,7 +136,20 @@ if ! has_flag --scope "$@"; then
     EIDETIC_SCOPE=$(resolve_scope)
     if [ -n "$EIDETIC_SCOPE" ]; then
         SCOPE_ARGS+=(--scope "$EIDETIC_SCOPE")
-        has_flag --visibility "$@" || SCOPE_ARGS+=(--visibility private)
+        # rollout-cli eidetic-memory recipe POLICY OVERRIDE (not eidetic's
+        # upstream private default): default to PUBLIC, so a plain recall queries
+        # the in-repo public pool (<repo>/.eidetic/memory) this repo writes to.
+        # Pass --visibility private to also surface this agent's private ($HOME)
+        # notes. The two-store read model reads both dirs regardless.
+        has_flag --visibility "$@" || SCOPE_ARGS+=(--visibility public)
+    elif ! has_flag --visibility "$@"; then
+        # No suffix AND no explicit --visibility: the query runs against
+        # eidetic's own default (scope=default, visibility=public), not this
+        # agent's private personal scope — so an empty result isn't silently
+        # misread. Warn on stderr (stdout stays clean for --json). Warn ONLY
+        # here: an explicit --scope (outer guard) or --visibility (this guard) is
+        # a deliberate choice, honored verbatim, so either flag silences this.
+        printf 'warning: no culture.yaml suffix resolved; querying the public default scope rather than a private personal scope. Pass --scope or --visibility to target deliberately.\n' >&2
     fi
 fi
 
