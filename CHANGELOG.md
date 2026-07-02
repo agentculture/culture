@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.3] - 2026-07-02
+
+### Fixed
+
+- An explicitly set unknown agent backend no longer silently runs the claude daemon: _resolve_daemon_factory raises CultureError naming the valid backends (observed in production: an agent configured with a not-yet-existing backend ran as claude unnoticed). Unset/empty backend keeps the claude default; the opencode alias is unchanged (PR2b of the three-minds plan, #467).
+
 ## [14.1.2] - 2026-07-02
 
 ### Added
