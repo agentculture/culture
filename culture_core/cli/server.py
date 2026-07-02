@@ -1,13 +1,14 @@
-"""Server subcommands: culture server {start,stop,status,default,rename,archive,unarchive}.
+"""Server subcommands: culture server
+{start,stop,status,default,rename,archive,unarchive,install,uninstall}.
 
 Renamed back from ``culture chat`` in culture 10.0.0 — the surface
-manages a server (lifecycle + agentirc passthrough), not a chat. The 7
+manages a server (lifecycle + agentirc passthrough), not a chat. The 9
 verbs above stay culture-owned; everything else (``restart``, ``link``,
 ``logs``, ``version``, ``serve``, plus any new verb agentirc adds in
 future versions) falls through verbatim to ``agentirc.cli.dispatch`` so
 it lands under ``culture server <verb>`` for free.
 
-The 7 culture-owned verbs are NOT forwarded because:
+The culture-owned verbs are NOT forwarded because:
 
 - ``start`` embeds ``agentirc.ircd.IRCd`` in-process and installs
   culture's system-bot bridge (``culture_core.bots.install_system_bridge``)
@@ -22,6 +23,9 @@ The 7 culture-owned verbs are NOT forwarded because:
 - ``default``, ``rename``, ``archive``, ``unarchive`` operate on
   culture's local config (``~/.culture/server.yaml``). Agentirc has no
   notion of them.
+- ``install`` and ``uninstall`` provision the ``culture-server-<name>``
+  auto-start service unit (durable mesh, ``docs/durable-mesh.md``) via
+  ``culture_core.persistence``. Agentirc knows nothing about units.
 """
 
 from __future__ import annotations
@@ -58,7 +62,12 @@ from .shared.constants import (
     DEFAULT_CONFIG,
     LOG_DIR,
 )
-from .shared.mesh import parse_link, resolve_links_from_mesh
+from .shared.mesh import (
+    build_server_start_cmd,
+    load_mesh_or_generate,
+    parse_link,
+    resolve_links_from_mesh,
+)
 
 logger = logging.getLogger("culture")
 
@@ -168,6 +177,32 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help=_CONFIG_HELP,
     )
 
+    # install/uninstall resolve the server identity from mesh.yaml (falling
+    # back to generating it from ~/.culture/server.yaml), the same config
+    # resolution `culture mesh setup` uses — hence a mesh.yaml --config
+    # default here, not the server.yaml one the other verbs take.
+    _MESH_CONFIG_HELP = (
+        "Path to mesh.yaml (default: ~/.culture/mesh.yaml; generated from "
+        "~/.culture/server.yaml when missing)"
+    )
+    srv_install = server_sub.add_parser(
+        "install", help="Install an auto-start service unit for the server"
+    )
+    srv_install.add_argument(
+        "--config",
+        default=os.path.expanduser("~/.culture/mesh.yaml"),
+        help=_MESH_CONFIG_HELP,
+    )
+
+    srv_uninstall = server_sub.add_parser(
+        "uninstall", help="Remove the server's auto-start service unit"
+    )
+    srv_uninstall.add_argument(
+        "--config",
+        default=os.path.expanduser("~/.culture/mesh.yaml"),
+        help=_MESH_CONFIG_HELP,
+    )
+
 
 def _cmd_default(args: argparse.Namespace) -> None:
     """Set the default server name."""
@@ -219,7 +254,7 @@ def dispatch(args: argparse.Namespace) -> None:
         print(
             "Usage: culture server "
             "{start|stop|status|default|rename|archive|unarchive"
-            "|restart|link|logs|version|serve}",
+            "|install|uninstall|restart|link|logs|version|serve}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -245,6 +280,8 @@ def dispatch(args: argparse.Namespace) -> None:
         "rename": _server_rename,
         "archive": _server_archive,
         "unarchive": _server_unarchive,
+        "install": _server_install,
+        "uninstall": _server_uninstall,
     }
     handler = handlers.get(verb)
     if handler is None:
@@ -717,6 +754,59 @@ def _server_status(args: argparse.Namespace) -> None:
     else:
         print(f"Server '{args.name}': not running (stale PID {pid})")
         remove_pid(pid_name)
+
+
+# -----------------------------------------------------------------------
+# Install / Uninstall — server service unit (durable mesh)
+# -----------------------------------------------------------------------
+
+
+def _load_mesh_for_provisioning(config_path: str):
+    """Resolve the mesh config a provisioning verb operates on.
+
+    Reuses the exact resolution ``culture mesh setup`` uses (mesh.yaml,
+    falling back to generating one from ``~/.culture/server.yaml``) so
+    the unit `culture server install` writes is identical to the one
+    bulk setup would write. Raises a user error when neither exists.
+    """
+    mesh = load_mesh_or_generate(config_path)
+    if mesh is None:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"no mesh config at {config_path} and no server config at {DEFAULT_CONFIG}",
+            "start a server with 'culture server start' (and register agents with "
+            "'culture agents register'), then rerun: culture server install",
+        )
+    return mesh
+
+
+def _server_install(args: argparse.Namespace) -> None:
+    """Install a systemd/launchd/scheduled-task unit for the server.
+
+    Idempotent: rerunning rewrites the same unit content and re-enables it.
+    """
+    from culture_core.persistence import install_service
+
+    mesh = _load_mesh_for_provisioning(args.config)
+    server_name = mesh.server.name
+
+    culture_cmd = [sys.executable, "-m", "culture_core"]
+    server_cmd = build_server_start_cmd(mesh, culture_cmd, args.config)
+    svc = f"culture-server-{server_name}"
+    path = install_service(svc, server_cmd, f"culture-core server {server_name}")
+    print(f"Installed {svc} → {path}")
+
+
+def _server_uninstall(args: argparse.Namespace) -> None:
+    """Remove the server's service unit. Graceful no-op if not installed."""
+    from culture_core.persistence import uninstall_service
+
+    mesh = _load_mesh_for_provisioning(args.config)
+    svc = f"culture-server-{mesh.server.name}"
+    if uninstall_service(svc):
+        print(f"Uninstalled {svc}")
+    else:
+        print(f"{svc} is not installed — nothing to do")
 
 
 # -----------------------------------------------------------------------

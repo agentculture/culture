@@ -91,6 +91,24 @@ def generate_mesh_from_agents(mesh_config_path: str):
     return mesh
 
 
+def load_mesh_or_generate(config_path: str):
+    """Load mesh.yaml, falling back to generating it from the server manifest.
+
+    This is the one config resolution used by every verb that provisions
+    the server's service unit (``culture mesh setup``,
+    ``culture server install``/``uninstall``): read *config_path*
+    (mesh.yaml); if it doesn't exist, derive one from ``DEFAULT_CONFIG``
+    (``~/.culture/server.yaml``) and save it. Returns ``None`` when
+    neither file exists — callers raise their own user error.
+    """
+    from culture_core.mesh_config import load_mesh_config
+
+    try:
+        return load_mesh_config(config_path)
+    except FileNotFoundError:
+        return generate_mesh_from_agents(config_path)
+
+
 def build_server_start_cmd(
     mesh, culture_cmd: "list[str] | str", mesh_config_path: str
 ) -> list[str]:
