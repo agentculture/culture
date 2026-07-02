@@ -27,14 +27,14 @@
   - honesty: Reboot test: systemctl reboot, wait, then chat.agentculture.org loads the console with no manual bring-up
 - The all-backends parity rule and its CI job are updated to whatever the new supported backend set is — colleague counts as a backend for parity
   - honesty: A test PR touching only one backend directory fails backend-parity CI naming the missing backends of the NEW set
-- Copilot and acp are deprecated: parity CI + all-backends rule narrow to claude/codex/colleague, docs and extras mark the two as deprecated, and the release is a MAJOR version bump; actual removal timeline is parked
-  - honesty: On the release: pip install culture[copilot] still works but warns/documents deprecation; backend-parity CI enforces exactly claude/codex/colleague; CHANGELOG carries a major-version breaking entry
 - Culture's own interface is agentfront-derived: one App registry declares culture's docs and tools once, and the CLI, MCP server, and HTTP surfaces are derived from it (the surfaces cannot drift apart); the existing culture CLI command names keep working
   - honesty: agentfront's own rubric gate (agentfront cli doctor) passes on culture's CLI surface, and the existing CLI test suite passes unchanged (command names and behavior preserved)
 - The ENTIRE mesh survives host restarts (user requirement 2026-07-02): not just IRCd/console/tunnel — every registered agent (spark-agentirc, spark-colleague, future registrations) runs under an enabled systemd user unit with linger, and rejoins the mesh after an unattended reboot
   - honesty: After the unattended reboot test, culture agents status shows every registered agent running and joined, with zero manual steps
 - Durable-mesh provisioning is a CLI-supported product capability, not hand-ops (user steer 2026-07-02): culture agents install exists today; server, console, and tunnel provisioning must be equally supported so others — or a machine move — reach a reboot-surviving mesh from documented commands alone. This is part of the offering that is culture
   - honesty: On a fresh machine or after a machine move, the documented culture CLI flow alone — no hand-written unit files — yields the reboot-surviving mesh; spark's hand-written server/console/tunnel units get replaced by CLI-provisioned ones as the verification
+- Copilot and acp are NOT deprecated (user decision 2026-07-02, supersedes the earlier deprecation choice): they go STALE — kept installable and working as-is, exempt from the three-backend parity obligation, marked stale in docs — and will be validated and re-added to the supported set in the future. No removal, no breaking change, no major bump on their account
+  - honesty: pip install culture[copilot] / culture[acp] still resolve and those backends still start; docs mark both stale with the future re-validation path; backend-parity CI enforces claude/codex/colleague and does not fire on copilot/acp-only changes
 
 ## Honesty conditions
 

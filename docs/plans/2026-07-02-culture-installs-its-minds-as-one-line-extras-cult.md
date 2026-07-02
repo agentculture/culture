@@ -32,13 +32,6 @@ slug: `culture-installs-its-minds-as-one-line-extras-cult` · status: `exported`
 - acceptance:
   - Negative test: a PR touching a single backend directory fails backend-parity naming the missing backends of the NEW three-backend set
 
-### t8 — PR3b — copilot/acp deprecation + MAJOR version bump: extras stay installable but documented deprecated; CHANGELOG breaking entry; removal-timeline follow-up issue opened
-
-- depends on: t7
-- covers: c17, h6
-- acceptance:
-  - pip install culture[copilot] still resolves; deprecation documented in docs + CHANGELOG major entry present
-
 ### t9 — PR4a — agentfront App registry: culture declares its docs and tools once in an agentfront App; the CLI surface derives from it while every existing culture command name keeps working
 
 - depends on: t5
@@ -80,6 +73,15 @@ slug: `culture-installs-its-minds-as-one-line-extras-cult` · status: `exported`
 - covers: c14, h4, h8, h15, c1, h16
 - acceptance:
   - Post-reboot with zero manual steps: console 200 through Access, all registered agents running and joined, install headline re-verified; transcript recorded before declaring done
+
+### t15 — PR3b — stale marking for copilot/acp (supersedes the rejected deprecation task): docs + pyproject extras comments mark both backends STALE with the future re-validation path; no deprecation warnings, no removal, no major bump; parity exemption verified
+
+- depends on: t7
+- covers: c23, h18
+- acceptance:
+  - pip install culture[copilot] and culture[acp] still resolve and those backends still start
+  - docs mark copilot/acp stale with the re-validation path; no deprecation warning emitted anywhere
+  - backend-parity CI does not fire on a copilot/acp-only change (exemption test)
 
 ### t1 — PR2a — culture-side colleague wiring: 'colleague' extra in pyproject (cultureagent[backend-colleague]), _create_colleague_daemon factory + registry entry, culture.yaml template and docs page
 

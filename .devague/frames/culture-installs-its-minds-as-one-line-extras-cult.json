@@ -4,7 +4,7 @@
   "schema_version": 1,
   "status": "exported",
   "created": "2026-07-02T11:49:52Z",
-  "updated": "2026-07-02T12:24:16Z",
+  "updated": "2026-07-02T13:41:00Z",
   "claims": [
     {
       "id": "c1",
@@ -249,7 +249,7 @@
       "kind": "requirement",
       "text": "Copilot and acp are deprecated: parity CI + all-backends rule narrow to claude/codex/colleague, docs and extras mark the two as deprecated, and the release is a MAJOR version bump; actual removal timeline is parked",
       "origin": "llm",
-      "status": "confirmed",
+      "status": "rejected",
       "honesty_conditions": [
         {
           "id": "h6",
@@ -329,6 +329,22 @@
         {
           "id": "h17",
           "text": "On a fresh machine or after a machine move, the documented culture CLI flow alone \u2014 no hand-written unit files \u2014 yields the reboot-surviving mesh; spark's hand-written server/console/tunnel units get replaced by CLI-provisioned ones as the verification",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c23",
+      "kind": "requirement",
+      "text": "Copilot and acp are NOT deprecated (user decision 2026-07-02, supersedes the earlier deprecation choice): they go STALE \u2014 kept installable and working as-is, exempt from the three-backend parity obligation, marked stale in docs \u2014 and will be validated and re-added to the supported set in the future. No removal, no breaking change, no major bump on their account",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h18",
+          "text": "pip install culture[copilot] / culture[acp] still resolve and those backends still start; docs mark both stale with the future re-validation path; backend-parity CI enforces claude/codex/colleague and does not fire on copilot/acp-only changes",
           "status": "confirmed"
         }
       ],
