@@ -46,11 +46,14 @@ invocation). See `irc-lens config init --help` for available flags.
 | `culture console overview` | Pure passthrough to `irc-lens overview`. |
 | `culture console learn` | Pure passthrough to `irc-lens learn`. |
 | `culture console stop` | **Culture-owned.** Stop the locally-running console. |
+| `culture console install [--config PATH]` | **Culture-owned.** Install the `culture-console-<name>` auto-start unit. |
+| `culture console uninstall` | **Culture-owned.** Remove the auto-start unit (no-op if absent). |
 | `culture console --help` | irc-lens's own help. |
 
-`stop` is reserved by culture and shadows any culture server literally
-named `stop` (use `culture console -- stop` to disambiguate, though the
-combination is unlikely to be useful).
+`stop`, `install`, and `uninstall` are reserved by culture and shadow
+any culture server literally named after them (use `culture console --
+<name>` to disambiguate, though the combination is unlikely to be
+useful).
 
 ## Port-conflict UX
 
@@ -140,6 +143,25 @@ culture console stop --web-port 8766  # stop a side-by-side console
 
 `stop` does not affect the AgentIRC server or any agents — only the
 local console process for the requested port.
+
+## `culture console install` / `uninstall`
+
+```bash
+culture console install                                   # ExecStart defers to irc-lens's default config
+culture console install --config ~/.config/irc-lens/config.yaml
+culture console uninstall
+```
+
+Installs `culture-console-<name>.service` (Linux systemd user unit;
+launchd/scheduled-task on macOS/Windows) running `<python> -m
+culture_core console serve [--config <path>]`. The `<name>` is the
+server name from `~/.culture/server.yaml` — the same place agent units
+resolve their server — and the unit is ordered `After=`/`Wants=`
+`culture-server-<name>.service`. Both verbs are culture-side,
+intercepted before passthrough (irc-lens knows nothing about service
+units), and idempotent: install twice rewrites the identical unit and
+re-enables; uninstall of an absent unit is a friendly no-op (exit 0).
+See [Durable mesh](../../durable-mesh.md).
 
 ## See also
 
