@@ -24,6 +24,7 @@ from culture_core.devtools.backend_parity import (
     evaluate_parity,
     factory_backends_changed,
     main,
+    stale_factory_line_ranges,
     touched_backends,
 )
 
@@ -247,6 +248,74 @@ def test_escape_hatch_ignores_marker_free_diff():
     assert escape_hatch_justifications("+    plain = 1\n-    gone = 2\n") == []
 
 
+def test_escape_hatch_excludes_markers_in_excluded_line_range():
+    # An added marker whose new-file line falls in an excluded range is dropped;
+    # one outside the range still counts. Hunk header sets the new-file start.
+    diff = (
+        f"+++ b/{AGENTS_CLI_PATH}\n"
+        "@@ -1,0 +10,3 @@\n"
+        f"+    a = 1  {ESCAPE_HATCH_MARKER} inside stale factory\n"
+        f"+    b = 2  {ESCAPE_HATCH_MARKER} still inside\n"
+        f"+    c = 3  {ESCAPE_HATCH_MARKER} outside stale factory\n"
+    )
+    # Lines 10 and 11 are excluded; line 12 is honored.
+    excluded = {AGENTS_CLI_PATH: [(10, 11)]}
+    assert escape_hatch_justifications(diff, excluded) == ["outside stale factory"]
+    # Without the exclusion all three count.
+    assert escape_hatch_justifications(diff) == [
+        "inside stale factory",
+        "still inside",
+        "outside stale factory",
+    ]
+
+
+def test_escape_hatch_exclusion_is_scoped_to_the_named_path():
+    # An exclusion for agents.py must not suppress a marker in another file.
+    diff = (
+        "+++ b/culture_core/clients/claude/config.py\n"
+        "@@ -1,0 +10,1 @@\n"
+        f"+    a = 1  {ESCAPE_HATCH_MARKER} claude knob\n"
+    )
+    excluded = {AGENTS_CLI_PATH: [(1, 100)]}
+    assert escape_hatch_justifications(diff, excluded) == ["claude knob"]
+
+
+# ---------------------------------------------------------------------------
+# stale_factory_line_ranges
+# ---------------------------------------------------------------------------
+
+_MULTI_FACTORY_SOURCE = '''\
+def _create_claude_daemon(config, agent):
+    """claude."""
+    return "claude"
+
+
+def _create_copilot_daemon(config, agent):
+    """copilot (stale)."""
+    x = 1
+    return "copilot"
+
+
+def _create_acp_daemon(config, agent):
+    return "acp"
+'''
+
+
+def test_stale_factory_line_ranges_maps_only_non_enforced_factories():
+    ranges = stale_factory_line_ranges(_MULTI_FACTORY_SOURCE, ("claude", "codex"))
+    # copilot spans lines 6-9, acp spans 12-13; claude (enforced) is excluded.
+    assert ranges == [(6, 9), (12, 13)]
+
+
+def test_stale_factory_line_ranges_empty_when_all_enforced():
+    assert stale_factory_line_ranges(_MULTI_FACTORY_SOURCE, ("claude", "copilot", "acp")) == []
+
+
+def test_stale_factory_line_ranges_tolerates_missing_or_unparsable_source():
+    assert stale_factory_line_ranges(None, ("claude",)) == []
+    assert stale_factory_line_ranges("def broken(:\n", ("claude",)) == []
+
+
 # ---------------------------------------------------------------------------
 # evaluate_parity (the decision + message)
 # ---------------------------------------------------------------------------
@@ -460,6 +529,47 @@ def test_check_parity_marker_in_stale_dir_does_not_open_hatch(parity_repo: Path)
     assert not result.passed
     assert result.justifications == ()
     assert "Missing backends: codex" in result.message
+
+
+def test_check_parity_marker_in_stale_factory_block_does_not_open_hatch(parity_repo: Path):
+    # Qodo #470: agents.py is guarded whole, so a `# backend-specific:` marker
+    # planted inside a *stale* factory block (_create_copilot_daemon) must not
+    # excuse an unrelated partial change to an enforced backend.
+    _touch_backend(parity_repo, "claude")
+    agents = parity_repo / AGENTS_CLI_PATH
+    agents.write_text(
+        agents.read_text().replace(
+            '    return "copilot"',
+            f"    X = 1  {ESCAPE_HATCH_MARKER} marker hidden in stale factory\n"
+            '    return "copilot"',
+        )
+    )
+    _git(parity_repo, "commit", "-qam", "claude change + marker in stale copilot factory")
+
+    result = check_parity("HEAD~1", "HEAD", cwd=parity_repo)
+    assert not result.passed
+    assert result.justifications == ()
+    assert result.touched == ("claude",)
+    assert "Missing backends: codex" in result.message
+
+
+def test_check_parity_marker_in_enforced_factory_block_opens_hatch(parity_repo: Path):
+    # The mirror image: a marker inside an *enforced* factory block is honored,
+    # so a genuinely backend-specific claude factory change stays justifiable.
+    agents = parity_repo / AGENTS_CLI_PATH
+    agents.write_text(
+        agents.read_text().replace(
+            '    return "claude"',
+            f"    X = 1  {ESCAPE_HATCH_MARKER} claude SDK only exposes this\n"
+            '    return "claude"',
+        )
+    )
+    _git(parity_repo, "commit", "-qam", "claude factory change, justified in place")
+
+    result = check_parity("HEAD~1", "HEAD", cwd=parity_repo)
+    assert result.passed
+    assert result.touched == ("claude",)
+    assert result.justifications == ("claude SDK only exposes this",)
 
 
 def test_check_parity_factory_edit_counts_as_backend_touch(parity_repo: Path):

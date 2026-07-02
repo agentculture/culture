@@ -27,7 +27,10 @@ backend-specific code can carry a justification marker on an added line::
 
     # backend-specific: <reason>
 
-which makes the guard pass and surfaces the justification in its output.
+which makes the guard pass and surfaces the justification in its output. The
+marker only counts on the enforced surface: markers added under a stale
+backend's client dir, or inside a stale ``_create_<backend>_daemon`` block of
+``agents.py``, are ignored so they cannot excuse a partial enforced change.
 
 CI entry point (exit 0/1)::
 
@@ -65,6 +68,11 @@ AGENTS_CLI_PATH = "culture_core/cli/agents.py"
 ESCAPE_HATCH_MARKER = "# backend-specific:"
 
 _FACTORY_NAME_RE = re.compile(r"^_create_([a-z0-9_]+)_daemon$")
+
+#: Matches a unified-diff hunk header, capturing the new-file start line so the
+#: escape-hatch scan can locate an added line within its file (and thus tell
+#: whether it sits inside a stale factory block that must not open the hatch).
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 @dataclass(frozen=True)
@@ -172,6 +180,40 @@ def factory_backends_changed(
     return changed
 
 
+def stale_factory_line_ranges(source: str | None, enforced: Sequence[str]) -> list[tuple[int, int]]:
+    """1-based inclusive line ranges of *stale* ``_create_<backend>_daemon`` blocks.
+
+    A "stale" factory is one whose backend is not in *enforced* (e.g.
+    ``_create_copilot_daemon`` / ``_create_acp_daemon`` today). The escape-hatch
+    scan must ignore ``# backend-specific:`` markers landing inside these ranges:
+    ``agents.py`` is guarded as a whole, so a marker planted in a stale factory
+    block would otherwise excuse an unrelated partial change to an enforced
+    backend (see :func:`escape_hatch_justifications`). Ranges are computed from
+    the *head* source, aligning with the diff's new-file line numbers. A missing
+    or unparsable ``source`` yields an empty list.
+    """
+    if source is None:
+        return []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    enforced = tuple(enforced)
+    ranges: list[tuple[int, int]] = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        match = _FACTORY_NAME_RE.match(node.name)
+        if not match or match.group(1) in enforced:
+            continue
+        # Cover any decorators too, so a marker on a decorator line of a stale
+        # factory is excluded as well.
+        start = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+        end = node.end_lineno if node.end_lineno is not None else node.lineno
+        ranges.append((start, end))
+    return ranges
+
+
 def _marker_comment_reason(code_line: str) -> str | None:
     """Return the marker's reason iff it appears in a real ``#`` comment.
 
@@ -203,7 +245,42 @@ def _marker_comment_reason(code_line: str) -> str | None:
     return reason or "(no reason given)"
 
 
-def escape_hatch_justifications(diff_text: str) -> list[str]:
+def _iter_added_lines(diff_text: str):
+    """Yield ``(path, new_lineno, code)`` for every added line of a unified diff.
+
+    Tracks the current file (from ``+++ b/<path>`` headers) and the new-file
+    line number (from ``@@ ... +start[,len] @@`` hunk headers) so a caller can
+    locate an added line within its file. Removed lines and diff/file/hunk
+    headers are skipped; context lines only advance the new-file counter. When
+    the input is a bare fragment without headers (as some unit tests pass),
+    ``path`` is ``None`` and ``new_lineno`` starts at 0.
+    """
+    path: str | None = None
+    new_lineno = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+++"):
+            target = line[3:].strip()
+            path = target[2:] if target[:2] in ("a/", "b/") else target
+            continue
+        if line.startswith("---"):
+            continue
+        hunk = _HUNK_RE.match(line)
+        if hunk:
+            new_lineno = int(hunk.group(1))
+            continue
+        if line.startswith("+"):
+            yield path, new_lineno, line[1:]
+            new_lineno += 1
+        elif line.startswith(" "):
+            new_lineno += 1
+        # Removed lines ('-'), diff/index/mode headers, and "\ No newline"
+        # markers neither yield nor advance the new-file counter.
+
+
+def escape_hatch_justifications(
+    diff_text: str,
+    excluded_ranges: dict[str, list[tuple[int, int]]] | None = None,
+) -> list[str]:
     """Collect ``# backend-specific: <reason>`` justifications from a diff.
 
     Only *added* lines count (``+`` prefix, excluding ``+++`` file headers) —
@@ -211,12 +288,20 @@ def escape_hatch_justifications(diff_text: str) -> list[str]:
     escape hatch — and only when the marker is a real comment, not text
     inside a string literal (see :func:`_marker_comment_reason`). Duplicate
     justifications are collapsed, order preserved.
+
+    *excluded_ranges* maps a file path to 1-based inclusive line ranges whose
+    added markers are ignored — used to drop markers landing inside stale
+    factory blocks of ``agents.py`` (see :func:`stale_factory_line_ranges`), so
+    a justification planted in exempt code cannot excuse a partial change to an
+    enforced backend.
     """
+    excluded_ranges = excluded_ranges or {}
     justifications: list[str] = []
-    for line in diff_text.splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
+    for path, lineno, code in _iter_added_lines(diff_text):
+        ranges = excluded_ranges.get(path) if path is not None else None
+        if ranges and any(start <= lineno <= end for start, end in ranges):
             continue
-        reason = _marker_comment_reason(line[1:])
+        reason = _marker_comment_reason(code)
         if reason is not None and reason not in justifications:
             justifications.append(reason)
     return justifications
@@ -359,12 +444,20 @@ def check_parity(
     changed = _changed_paths(base_ref, head_ref, cwd)
     touched = touched_backends(changed, backends)
 
+    excluded_ranges: dict[str, list[tuple[int, int]]] = {}
     if AGENTS_CLI_PATH in changed:
         base_source = _show_file(base_ref, AGENTS_CLI_PATH, cwd)
         head_source = _show_file(head_ref, AGENTS_CLI_PATH, cwd)
         touched |= factory_backends_changed(base_source, head_source, backends)
+        # Markers inside stale factory blocks (copilot/acp — anything not
+        # enforced) must not open the hatch; agents.py is guarded whole.
+        stale_ranges = stale_factory_line_ranges(head_source, backends)
+        if stale_ranges:
+            excluded_ranges[AGENTS_CLI_PATH] = stale_ranges
 
-    justifications = escape_hatch_justifications(_guarded_diff(base_ref, head_ref, cwd, backends))
+    justifications = escape_hatch_justifications(
+        _guarded_diff(base_ref, head_ref, cwd, backends), excluded_ranges
+    )
     return evaluate_parity(touched, justifications, backends)
 
 
