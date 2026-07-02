@@ -1,45 +1,57 @@
 # Testing
 
-## Front-door test suite
+## One suite, the engine's
 
-culture is the thin front-door over the culture_core engine. Its test suite covers ONLY the front-door integration seam: the alias finder in `culture/__init__.py`, the console entry point, module identity, and `mock.patch` targeting. It does NOT test culture_core logic.
+Since the 14.0.0 merge-back (issue #462) the `culture_core` engine lives
+in-tree again, and its full test suite (1683 tests) runs here — this is the
+only suite. It came over verbatim from culture-core 0.17.0:
 
-## The fake culture_core
+- Real servers on OS-assigned random ports, real TCP connections — no server
+  mocks.
+- pytest-asyncio in strict mode (explicit `@pytest.mark.asyncio` markers).
+- pytest-xdist parallel execution (`-n auto`); coverage floor 90, enforced.
+- `tests/conftest.py` stubs `claude_agent_sdk` at collection time (tests never
+  call the real SDK) and provides the `IRCTestClient` / OTel in-memory
+  fixtures.
 
-`tests/_fake_engine.py` builds a behavior-free structural skeleton via `build_fake_culture_core()`. It exposes exactly the modules the front-door touches:
+Run it with `/run-tests` (parallel, verbose) or `/run-tests --ci` (adds
+coverage + xml). Do not run `pytest` directly.
 
-- `culture_core` (top-level package)
-- `culture_core.cli` with `main` and `doctor`
-- `culture_core.clients.claude.config`
-- `culture_core.persistence`
-- `culture_core.protocol`
-- `culture_core.telemetry`
-- `culture_core.doctor`
-- `culture_core.pidfile` with `read_pid`
-- `culture_core.skills`
+## The front-door seam tests
 
-Each module has an empty `__path__` so unseeded submodules raise `ModuleNotFoundError`. The fake imports NO real engine code.
+`tests/test_frontdoor_cutover.py` pins the import seam introduced by the #454
+cutover and retained by the merge-back: the meta-path finder in
+`culture/__init__.py` aliases every `culture.<x>` import to the identical
+`culture_core.<x>` module object (module identity), the `culture` console
+command targets `culture_core.cli:main`, and the distribution ships both
+packages with no dependency on the retired `culture-core` dist.
 
-## Injection
+These tests run against the **real in-tree engine**. The split-era
+behavior-free fake `culture_core` harness (`tests/_fake_engine.py` and its
+conftest seeding) is gone: its purpose was to decouple culture's CI from an
+externally pinned engine distribution, and no such distribution exists
+anymore.
 
-`tests/conftest.py` seeds the fake into `sys.modules` before any test imports `culture.*`. Because pytest-xdist spawns fresh workers, the injection runs afresh in each worker, so `culture.<x>` always resolves to the fake. The real engine is never imported during the suite (`culture_core.__file__` is `None`).
+## Guard suites worth knowing
 
-## Deliberate decision and tradeoff
+- `tests/test_engine_identity.py` — forbids stale migration markers, stale
+  `culture/<engine-dir>/` paths, and stale dotted `culture.<module>` refs in
+  engine code (wire/identity strings like `culture.agentirc`, `culture.irc.*`,
+  and the `culture.yaml` filename are allowlisted — never rename those). The
+  front-door suite is exempt from the dotted-ref scan: exercising the
+  `culture.*` alias namespace is its job.
+- `tests/test_packaging_entrypoints.py` — pins the packaging contract: the
+  `culture` and `culture-core` console scripts (both →
+  `culture_core.cli:main`) from one distribution, telemetry wire strings, and
+  the `CULTURE_YAML` constant.
+- `tests/test_backend_parity.py` + the `backend-parity` CI job — the
+  all-backends rule (`python -m culture_core.devtools.backend_parity`).
 
-Because culture's CI runs ONLY against the fake, it no longer guards culture_core pin bumps. That regression-safety is delegated entirely to culture_core's own upstream CI.
+## History
 
-**Accepted tradeoff:** a culture_core release could break culture silently until runtime.
-
-## Follow-up: manual release smoke check
-
-Since CI no longer exercises the real engine, releases should include a manual smoke check against the installed real culture_core:
-
-```bash
-culture --version
-python -c "import culture.cli"
-```
-
-## References
-
-- Spec: `docs/specs/2026-06-15-culture-s-test-suite-now-tests-only-the-front-door.md`
-- Plan: `docs/plans/2026-06-15-culture-s-test-suite-now-tests-only-the-front-door.md`
+The 13.7.x front-door-only arrangement (fake engine, pin-decoupled CI) is
+documented in `docs/specs/2026-06-15-culture-s-test-suite-now-tests-only-the-front-door.md`
+and was reversed by the merge-back. See
+`docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md`
+for the cutover that created the split, and issue #462 for the decision to end
+it.

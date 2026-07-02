@@ -621,7 +621,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "13.7.1"
+version = "14.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "afi-cli" },
@@ -631,7 +631,6 @@ dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
-    { name = "culture-core" },
     { name = "cultureagent" },
     { name = "irc-lens" },
     { name = "mistune" },
@@ -646,7 +645,7 @@ dependencies = [
 
 [package.optional-dependencies]
 copilot = [
-    { name = "culture-core", extra = ["copilot"] },
+    { name = "github-copilot-sdk" },
 ]
 
 [package.dev-dependencies]
@@ -676,9 +675,8 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "claude-agent-sdk", specifier = ">=0.1" },
-    { name = "culture-core", specifier = "~=0.5.0" },
-    { name = "culture-core", extras = ["copilot"], marker = "extra == 'copilot'" },
     { name = "cultureagent", specifier = "~=0.4.0" },
+    { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
     { name = "irc-lens", specifier = ">=0.5.3,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
     { name = "opentelemetry-api", specifier = ">=1.25,<1.42" },
@@ -707,39 +705,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.1" },
     { name = "pytest-xdist", specifier = ">=3.0" },
     { name = "safety", specifier = ">=2.3.0" },
-]
-
-[[package]]
-name = "culture-core"
-version = "0.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "afi-cli" },
-    { name = "agentirc-cli" },
-    { name = "agex-cli" },
-    { name = "agtag" },
-    { name = "aiohttp" },
-    { name = "anthropic" },
-    { name = "claude-agent-sdk" },
-    { name = "cultureagent" },
-    { name = "irc-lens" },
-    { name = "mistune" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc" },
-    { name = "opentelemetry-instrumentation-aiohttp-server" },
-    { name = "opentelemetry-sdk" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "pyyaml" },
-    { name = "steward-cli" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/57/0e/580bf3269723078d8d7effeed42a5239605ff2fb0810342eec6e3ae6c1d0/culture_core-0.5.0.tar.gz", hash = "sha256:8161d53df1c59c63ae40d216fe265eb3d1a6f66ede80b5b3550eb07913a92018", size = 572223, upload-time = "2026-06-14T16:58:17.505Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/c1/7f9abe42320ea0207466cf49fbea7fd06a64c481f1c2527fb0ec7db39c0b/culture_core-0.5.0-py3-none-any.whl", hash = "sha256:e5500e94fc37775165bdc3ce3ffd6846ee251361f6221b80435d045130407e79", size = 182213, upload-time = "2026-06-14T16:58:16.089Z" },
-]
-
-[package.optional-dependencies]
-copilot = [
-    { name = "github-copilot-sdk" },
 ]
 
 [[package]]

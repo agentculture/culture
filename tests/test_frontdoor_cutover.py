@@ -1,25 +1,28 @@
-"""Pin the culture → culture_core front-door cutover (issue #454).
+"""Pin the culture.* → culture_core.* alias seam (issues #454, #462).
 
-culture is now the thin front-door over the published ``culture-core`` engine.
-The in-tree engine is gone; ``culture/__init__.py`` installs a meta-path finder
-that aliases every ``culture.<x>`` import to the identical ``culture_core.<x>``
-module object (MODULE IDENTITY), and the ``culture`` console command resolves to
+The ``culture_core`` engine ships in-tree again since the 14.0.0 merge-back
+(culture#462), but the import seam introduced by the #454 cutover is unchanged:
+``culture/__init__.py`` installs a meta-path finder that aliases every
+``culture.<x>`` import to the identical ``culture_core.<x>`` module object
+(MODULE IDENTITY), and the ``culture`` console command resolves to
 ``culture_core.cli:main``.
 
-These tests guard the cutover invariants: the entry point target, the engine
-dependency, and module-identity aliasing (the property that keeps the retained
-engine suite's ``mock.patch("culture....")`` targets resolving against the live
-engine). They are the front-door packaging guard for every culture-core pin bump.
+These tests guard the seam invariants: the entry point target, the
+single-distribution packaging contract (no external culture-core dist), and
+module-identity aliasing (the property that keeps the engine suite's
+``mock.patch("culture....")`` targets resolving against the live engine).
+They run against the real in-tree engine — the behavior-free fake
+``culture_core`` harness from the split era is gone, because its purpose
+(decoupling culture CI from an externally pinned engine dist) no longer exists.
 """
 
 from importlib import metadata
-from importlib.metadata import PackageNotFoundError
 from unittest import mock
 
-import culture_core
 import pytest
 
 import culture
+import culture_core
 
 
 def test_culture_console_entry_point_targets_engine():
@@ -29,24 +32,27 @@ def test_culture_console_entry_point_targets_engine():
     assert culture_ep == "culture_core.cli:main"
 
 
-def test_culture_core_is_declared_and_installed_dependency():
-    """The front-door's packaging contract: culture declares culture-core as a
-    dependency and the engine distribution is actually installed.
+def test_engine_ships_in_tree_not_as_dependency():
+    """The merged packaging contract (culture#462): one distribution, both packages.
 
-    Metadata-only by design — it reads distribution metadata, it does NOT import
-    culture_core (so the conftest-seeded fake can't mask a missing dependency)
-    and it does NOT assert a version (so it does not reintroduce the pin-bump
-    guard this suite deliberately drops). It guards the one packaging invariant
-    the alias finder relies on: at runtime `culture/__init__` imports
-    `culture_core.<x>`, so a distribution that stopped depending on / installing
-    culture-core would break user imports while the faked test suite stayed green.
+    culture must NOT declare the retired ``culture-core`` distribution as a
+    dependency — the engine ships inside the ``culture`` wheel itself. And the
+    imported ``culture_core`` must be the sibling package of the ``culture``
+    front-door (same install root), not a module resolved from a separately
+    installed engine dist.
     """
     requires = metadata.requires("culture") or []
-    assert any(req.split()[0].lower().startswith("culture-core") for req in requires)
-    try:
-        metadata.version("culture-core")
-    except PackageNotFoundError as exc:
-        raise AssertionError("culture-core must be installed as a dependency") from exc
+    stale = [req for req in requires if req.split()[0].lower().startswith("culture-core")]
+    assert not stale, f"culture must not depend on the retired culture-core dist: {stale}"
+
+    import pathlib
+
+    culture_root = pathlib.Path(culture.__file__).resolve().parent.parent
+    engine_root = pathlib.Path(culture_core.__file__).resolve().parent.parent
+    assert engine_root == culture_root, (
+        "culture_core must ship alongside the culture front-door package "
+        f"(one distribution): {engine_root} != {culture_root}"
+    )
 
 
 def test_import_culture_succeeds_and_installs_alias_finder():

@@ -51,7 +51,7 @@ NEED_COMBINE=""
 NEED_XML=""
 
 if [[ -n "$CI_MODE" ]]; then
-    CMD+=(-n auto --cov=culture --cov-report= -v)
+    CMD+=(-n auto --cov=culture --cov=culture_core --cov-report= -v)
     NEED_COMBINE=1
     NEED_XML=1
 elif [[ -n "$QUIET" ]]; then
@@ -60,7 +60,7 @@ elif [[ -n "$QUIET" ]]; then
 else
     [[ -n "$PARALLEL" ]] && CMD+=(-n auto)
     if [[ -n "$COVERAGE" ]]; then
-        CMD+=(--cov=culture --cov-report=)
+        CMD+=(--cov=culture --cov=culture_core --cov-report=)
         NEED_COMBINE=1
     fi
     CMD+=(-v)

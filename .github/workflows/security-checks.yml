@@ -25,11 +25,11 @@ jobs:
       - run: uv sync
 
       - name: Run Bandit
-        run: uv run bandit -r culture/ -f json -o bandit-results.json -c pyproject.toml
+        run: uv run bandit -r culture/ culture_core/ -f json -o bandit-results.json -c pyproject.toml
         continue-on-error: true
 
       - name: Run Pylint
-        run: uv run pylint culture/ --rcfile=.pylintrc --output-format=json:pylint-results.json,text
+        run: uv run pylint culture/ culture_core/ --rcfile=.pylintrc --output-format=json:pylint-results.json,text
         continue-on-error: true
 
       - name: Run Safety dependency check

@@ -30,16 +30,26 @@ disable=
     W1203,  # logging-fstring-interpolation
 
 [TYPECHECK]
-# The entire culture.* namespace is a runtime alias of culture_core.* after the
-# culture-core cutover (#454): culture/__init__.py installs a meta-path finder
-# that maps each culture.<x> import to the identical culture_core.<x> module at
-# import time. pylint's static analysis cannot follow the finder, so it emits
-# false import-error / no-name-in-module / no-member for every culture.* import.
-# Treat the whole namespace as dynamic; the culture-core package owns the real
-# definitions and lints/tests them. (Supersedes the per-module culture.bots.*
-# entries from the #445 bots cutover, now covered by this.)
+# The entire culture.* namespace is a runtime alias of culture_core.*: since
+# the #454 cutover culture/__init__.py installs a meta-path finder that maps
+# each culture.<x> import to the identical culture_core.<x> module at import
+# time. pylint's static analysis cannot follow the finder, so it emits false
+# import-error / no-name-in-module / no-member for every culture.* import —
+# treat the whole namespace as dynamic. The engine lives in-tree again since
+# the merge-back (#462) and lints as culture_core below.
+#
+# culture_core.bots.* are sys.modules aliases of agentirc.bots.* (issue #445
+# cutover): the real symbols live in agentirc and are bound at import time, so
+# pylint emits false no-name-in-module / no-member for them too. The agentirc
+# package owns the real definitions + their tests.
 ignored-modules=
-    culture
+    culture,
+    culture_core.bots.bot_manager,
+    culture_core.bots.bot,
+    culture_core.bots.config,
+    culture_core.bots.filter_dsl,
+    culture_core.bots.template_engine,
+    culture_core.bots.http_listener
 
 [REPORTS]
 output-format=text

@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.0.0] - 2026-07-02
+
+### Added
+
+- The `culture_core` engine ships in-tree again (Phase A of #462): `culture_core/` and its full test suite (1683 tests) absorbed verbatim from agentculture/culture-core@bbb11c0 (v0.17.0). The standalone culture-core dist is retired; engine fixes land here now.
+- `culture-core` console script as a compatibility alias for standalone-era installs and generated service units — same `culture_core.cli:main` entry point; the CLI derives its program name from argv[0].
+- CI `backend-parity` job ported from culture-core: `python -m culture_core.devtools.backend_parity --base origin/main` enforces the all-backends rule on every PR (escape hatch: `# backend-specific: <reason>`).
+- Engine rules folded into CLAUDE.md: all-backends rule, telemetry/identity wire strings (`culture.*` names and the `culture.yaml` filename are never swept to `culture_core.*`), and the capped-dependency rationale.
+- culture-core's in-repo eidetic decision record migrated to `.eidetic/memory/culture-core__public.jsonl` (scope preserved).
+
+### Changed
+
+- BREAKING: the `culture-core~=0.5.0` dependency is gone — one distribution ships both the `culture` front-door and the `culture_core` engine (`packages = ["culture", "culture_core"]`, force-include data-file manifest carried verbatim and verified against a built wheel). The import seam is unchanged: `culture.<x>` still aliases the identical `culture_core.<x>` module.
+- The engine suite is THE test suite: the behavior-free fake `culture_core` harness (13.7.1 front-door isolation) is removed, the front-door seam tests in tests/test_frontdoor_cutover.py run against the real in-tree engine, and the packaging guards pin the one-dist contract (no culture-core dependency; both console scripts from this wheel).
+- Coverage spans both packages at the 90% floor (currently 92%); Sonar sources/exclusions and the S4828 scoping rebased onto `culture_core/`; coverage.xml emits relative paths for SonarCloud.
+- `culture_core/__init__.py` reads the version from the `culture` dist; `culture --version` and `culture-core --version` report the same (front-door) version.
+- docs/testing.md rewritten for the merged tree; dependency caps now carry the engine's authoritative rationale in pyproject.toml.
+
+### Fixed
+
+- Pin drift by construction: the engine can no longer lag behind a stale `culture-core` pin (culture sat on 0.5.x while the engine reached 0.17.0) — the failure mode that motivated the merge-back.
+
 ## [13.9.0] - 2026-06-24
 
 ### Added

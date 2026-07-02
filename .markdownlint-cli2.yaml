@@ -26,3 +26,6 @@ ignores:
   - "node_modules/**"
   - ".local/**"
   - "docs/superpowers/**"  # internal plan/spec drafts
+  # Engine package data (bundled SKILL.md, brief templates) — shipped verbatim
+  # in the wheel via the force-include manifest; not reformatted here.
+  - "culture_core/**"

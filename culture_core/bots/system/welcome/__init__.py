@@ -1,0 +1,1 @@
+"""Welcome system bot."""

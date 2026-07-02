@@ -33,5 +33,5 @@ extend-ignore =
     S606,
     S607
 per-file-ignores =
-    culture/protocol/commands.py:S105
+    culture_core/protocol/commands.py:S105
     tests/*:S101,S105,S106
