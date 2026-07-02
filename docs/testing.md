@@ -3,7 +3,7 @@
 ## One suite, the engine's
 
 Since the 14.0.0 merge-back (issue #462) the `culture_core` engine lives
-in-tree again, and its full test suite (~1400 tests) runs here — this is the
+in-tree again, and its full test suite (1683 tests) runs here — this is the
 only suite. It came over verbatim from culture-core 0.17.0:
 
 - Real servers on OS-assigned random ports, real TCP connections — no server
