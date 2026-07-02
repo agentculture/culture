@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import logging
 import os
 import signal
@@ -18,7 +19,12 @@ if TYPE_CHECKING:
     from culture_core.clients.codex.config import AgentConfig as CodexAgentConfig
     from culture_core.clients.copilot.config import AgentConfig as CopilotAgentConfig
 
-from culture_core.cli._errors import EXIT_USER_ERROR, CultureError, classify_daemon_exit
+from culture_core.cli._errors import (
+    EXIT_ENV_ERROR,
+    EXIT_USER_ERROR,
+    CultureError,
+    classify_daemon_exit,
+)
 from culture_core.cli._passthrough import _translate_exit
 from culture_core.config import (
     AgentConfig,
@@ -627,8 +633,51 @@ def _make_backend_config(config: DaemonConfig, backend_daemon_config_cls):
     )
 
 
+# Backend -> (extra name, SDK modules that extra provides). The SDKs are
+# optional extras since Phase C of #462; every factory probes before building
+# its daemon (all-backends rule) because the failure mode differs per backend:
+# claude/acp break at daemon import (top-level SDK imports in cultureagent),
+# copilot only lazily at session start. codex declares no SDK.
+_BACKEND_SDK_PROBES = {
+    "claude": ("claude", ("claude_agent_sdk", "anthropic")),
+    "acp": ("acp", ("claude_agent_sdk", "anthropic")),
+    "copilot": ("copilot", ("copilot",)),
+    "codex": (None, ()),
+}
+
+
+def _require_backend_sdk(backend: str) -> None:
+    """Fail fast with a remediation hint when the backend's SDK extra is missing."""
+    extra, modules = _BACKEND_SDK_PROBES[backend]
+    if not extra:
+        return
+    for module in modules:
+        # An already-imported module is available by definition (and may carry
+        # __spec__=None — e.g. a test stub — which makes find_spec raise);
+        # sys.modules[module] is None is the import-system marker for "blocked".
+        if module in sys.modules:
+            found = sys.modules[module] is not None
+        else:
+            try:
+                found = importlib.util.find_spec(module) is not None
+            except (ImportError, ValueError):
+                found = False
+        if not found:
+            raise CultureError(
+                code=EXIT_ENV_ERROR,
+                message=(
+                    f"the {backend} backend needs the '{extra}' extra "
+                    f"(missing module: {module})"
+                ),
+                remediation=(
+                    f"pip install 'culture[{extra}]'  " f"(or: uv tool install 'culture[{extra}]')"
+                ),
+            )
+
+
 def _create_codex_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create a Codex backend daemon."""
+    _require_backend_sdk("codex")
     from cultureagent.clients.codex.daemon import CodexDaemon
 
     from culture_core.clients.codex.config import DaemonConfig as CodexDaemonConfig
@@ -660,6 +709,7 @@ def _coerce_to_acp_agent(agent: AgentConfig):
 
 def _create_acp_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create an ACP backend daemon."""
+    _require_backend_sdk("acp")
     from cultureagent.clients.acp.daemon import ACPDaemon
 
     from culture_core.clients.acp.config import DaemonConfig as ACPDaemonConfig
@@ -672,6 +722,7 @@ def _create_acp_daemon(config: DaemonConfig, agent: AgentConfig):
 
 def _create_copilot_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create a Copilot backend daemon."""
+    _require_backend_sdk("copilot")
     from cultureagent.clients.copilot.daemon import CopilotDaemon
 
     from culture_core.clients.copilot.config import DaemonConfig as CopilotDaemonConfig
@@ -681,6 +732,7 @@ def _create_copilot_daemon(config: DaemonConfig, agent: AgentConfig):
 
 def _create_claude_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create the default Claude backend daemon."""
+    _require_backend_sdk("claude")
     from cultureagent.clients.claude.daemon import AgentDaemon
 
     from culture_core.clients.claude.config import DaemonConfig as ClaudeDaemonConfig
