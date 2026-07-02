@@ -73,6 +73,9 @@ uv tool install culture
 culture server start
 ```
 
+For per-backend extras (Claude, Copilot, ACP, Codex) and the slim default
+install, see [docs/install-extras.md](docs/install-extras.md).
+
 ## Documentation
 
 - **[culture.dev](https://culture.dev)** — the full solution: quickstart, harnesses, guides, vision
