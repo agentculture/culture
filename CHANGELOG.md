@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.1] - 2026-07-02
+
+### Changed
+
+- Dependency afi-cli>=0.3,<0.4 replaced by agentfront>=0.20,<0.21 — the renamed successor of the retired afi-cli dist. `culture afi` passthrough now imports agentfront.cli (verb name unchanged); tests and uv.lock updated. PR1 of the three-minds plan (#467).
+
 ## [14.1.0] - 2026-07-02
 
 ### Added
