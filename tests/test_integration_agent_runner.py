@@ -100,6 +100,34 @@ from culture_core.clients.claude.config import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _repair_harness_import_chain():
+    """Keep ``cultureagent.clients.<backend>.agent_runner`` attribute-resolvable.
+
+    Sibling tests purge ``cultureagent`` from ``sys.modules`` — to re-fire the
+    missing-SDK hints (``tests/test_backend_sdk_hints.py::_block``) or a slim
+    import (``tests/test_engine_slimness.py``, whose ``startswith("culture")``
+    also matches ``cultureagent``). ``monkeypatch`` restores the ``sys.modules``
+    entries but not the parent→child *attribute* links, so a restored
+    ``cultureagent.clients`` object can come back without its ``.codex`` /
+    ``.acp`` submodule attribute. The ``monkeypatch.setattr(
+    "cultureagent.clients.<backend>.agent_runner...")`` string targets in the
+    tests below resolve by pure attribute walk, so they then fail depending on
+    which xdist worker ran the purging test first (observed on PR #470's CI:
+    ``module 'cultureagent.clients' has no attribute 'codex'``).
+
+    Re-importing each patched backend's ``agent_runner`` — and rebinding it onto
+    its parent packages — re-establishes the chain before every test here, so
+    they are order-independent. copilot is stubbed (needs its SDK extra) and is
+    not string-patched in this file, so it is left alone.
+    """
+    clients = importlib.import_module("cultureagent.clients")
+    for backend in ("claude", "codex", "acp"):
+        pkg = importlib.import_module(f"cultureagent.clients.{backend}")
+        pkg.agent_runner = importlib.import_module(f"cultureagent.clients.{backend}.agent_runner")
+        setattr(clients, backend, pkg)  # backend is a variable, not a constant attr
+
+
 def _redirect_pidfile(monkeypatch, tmp_path):
     """Redirect ``culture_core.pidfile.PID_DIR`` so daemons don't write into the
     real ``~/.culture/pids`` from a unit test."""
