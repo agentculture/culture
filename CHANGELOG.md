@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.3] - 2026-07-02
+
+### Fixed
+
+- An explicitly set unknown agent backend no longer silently runs the claude daemon: _resolve_daemon_factory raises CultureError naming the valid backends (observed in production: an agent configured with a not-yet-existing backend ran as claude unnoticed). Unset/empty backend keeps the claude default; the opencode alias is unchanged (PR2b of the three-minds plan, #467).
+- `classify_daemon_exit` now treats `CultureError` as a permanent daemon failure (exit `EXIT_DAEMON_PERMANENT`/78) — an unknown backend in a supervised daemon child parks the unit instead of restart-looping every `RestartSec`, honoring the daemon exit contract (#15).
+
 ## [14.1.2] - 2026-07-02
 
 ### Added

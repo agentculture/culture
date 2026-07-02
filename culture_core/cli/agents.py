@@ -745,18 +745,43 @@ def _create_claude_daemon(config: DaemonConfig, agent: AgentConfig):
 
 
 _BACKEND_DAEMON_FACTORIES = {
+    "claude": _create_claude_daemon,
     "codex": _create_codex_daemon,
     "acp": _create_acp_daemon,
-    "opencode": _create_acp_daemon,
+    "opencode": _create_acp_daemon,  # alias for acp
     "copilot": _create_copilot_daemon,
 }
+
+
+def _resolve_daemon_factory(backend: str | None):
+    """Resolve the daemon factory for *backend*, failing loudly on unknowns.
+
+    An unset/empty backend keeps the historical claude default. An
+    explicitly set unknown value raises :class:`CultureError` naming the
+    valid backends — the old ``.get(backend, _create_claude_daemon)``
+    fallback silently ran unknown backends as claude (observed in
+    production: an agent configured with a not-yet-existing backend ran
+    as a claude agent unnoticed).
+    """
+    if not backend:
+        return _create_claude_daemon
+    factory = _BACKEND_DAEMON_FACTORIES.get(backend)
+    if factory is None:
+        valid = ", ".join(sorted(_BACKEND_DAEMON_FACTORIES))
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"unknown agent backend '{backend}' (valid backends: {valid})",
+            "fix the 'backend:' value in the agent's culture.yaml "
+            "(or omit it to default to claude)",
+        )
+    return factory
 
 
 async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
     """Run a single agent daemon in the foreground."""
     backend = getattr(agent, "agent", "claude")
 
-    factory = _BACKEND_DAEMON_FACTORIES.get(backend, _create_claude_daemon)
+    factory = _resolve_daemon_factory(backend)
     daemon = factory(config, agent)
 
     stop_event = asyncio.Event()
