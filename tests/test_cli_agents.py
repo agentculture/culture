@@ -5,7 +5,9 @@ layer; integration-territory functions (`_probe_server_connection`,
 `_start_foreground`, `_start_background`, `_run_single_agent`,
 `_run_multi_agents`) are NOT exercised here —
 `tests/test_integration_agent_runner.py` runs them against a real
-`agentirc.ircd.IRCd`.
+`agentirc.ircd.IRCd`. One carve-out: `_run_single_agent`'s
+unknown-backend guard raises before any daemon exists, so it is unit
+territory (TestResolveDaemonFactory).
 
 Mocking conventions (matches `tests/test_cli_server.py`):
 
@@ -30,7 +32,7 @@ import sys
 import pytest
 
 from culture_core.cli import agents as agent_mod
-from culture_core.cli._errors import CultureError
+from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 from culture_core.config import AgentConfig, ServerConfig, ServerConnConfig
 
 # ---------------------------------------------------------------------------
@@ -684,6 +686,131 @@ class TestBackendDaemonFactories:
         )
         result = agent_mod._coerce_to_acp_agent(acp)
         assert result is acp
+
+
+# ---------------------------------------------------------------------------
+# Backend resolution — unknown backends fail loudly
+# ---------------------------------------------------------------------------
+#
+# The old `.get(backend, _create_claude_daemon)` fallback silently ran any
+# unknown `backend:` value as a claude daemon — observed in production: an
+# agent configured with a not-yet-existing backend ran as claude unnoticed.
+
+_VALID_BACKEND_NAMES = ("acp", "claude", "codex", "copilot", "opencode")
+
+
+class _StubDaemon:
+    """Inert daemon: lets ``_run_single_agent`` complete without sockets."""
+
+    def __init__(self):
+        self.started = False
+        self.stopped = False
+
+    def set_stop_event(self, event):
+        # Pre-set so `await stop_event.wait()` returns immediately.
+        event.set()
+
+    async def start(self):
+        self.started = True
+
+    async def stop(self):
+        self.stopped = True
+
+
+@pytest.fixture
+def _restore_signal_handlers():
+    """Save/restore SIGINT+SIGTERM so `_run_single_agent`'s handler
+    registration can't leak into other tests."""
+    import signal as _signal
+
+    saved = {sig: _signal.getsignal(sig) for sig in (_signal.SIGINT, _signal.SIGTERM)}
+    yield
+    for sig, handler in saved.items():
+        _signal.signal(sig, handler)
+
+
+class TestResolveDaemonFactory:
+    def test_unknown_backend_raises_culture_error(self):
+        with pytest.raises(CultureError) as excinfo:
+            agent_mod._resolve_daemon_factory("bogus")
+        err = excinfo.value
+        assert err.code == EXIT_USER_ERROR
+        assert "bogus" in err.message
+        for name in _VALID_BACKEND_NAMES:
+            assert name in err.message
+        # The valid names are listed in sorted order.
+        positions = [err.message.index(name) for name in sorted(_VALID_BACKEND_NAMES)]
+        assert positions == sorted(positions)
+        # Actionable remediation, pointing at the config knob.
+        assert "backend" in err.remediation
+
+    @pytest.mark.parametrize("backend", [None, ""])
+    def test_unset_backend_defaults_to_claude(self, backend):
+        assert agent_mod._resolve_daemon_factory(backend) is agent_mod._create_claude_daemon
+
+    def test_explicit_claude_resolves_to_claude_factory(self):
+        assert agent_mod._resolve_daemon_factory("claude") is agent_mod._create_claude_daemon
+
+    def test_opencode_alias_resolves_to_acp_factory(self):
+        assert agent_mod._resolve_daemon_factory("opencode") is agent_mod._create_acp_daemon
+
+    @pytest.mark.parametrize(
+        ("backend", "factory_attr"),
+        [
+            ("codex", "_create_codex_daemon"),
+            ("acp", "_create_acp_daemon"),
+            ("copilot", "_create_copilot_daemon"),
+        ],
+    )
+    def test_known_backends_resolve_to_their_factory(self, backend, factory_attr):
+        assert agent_mod._resolve_daemon_factory(backend) is getattr(agent_mod, factory_attr)
+
+    def test_run_single_agent_bogus_backend_raises_before_daemon_creation(
+        self, monkeypatch, _restore_signal_handlers
+    ):
+        """Starting an agent whose backend is 'bogus' fails loudly.
+
+        The guard raises before any daemon is constructed, so no server is
+        needed (cf. the module docstring's `_run_single_agent` carve-out).
+        The claude factory is stubbed as a safety net: if resolution ever
+        regresses to the silent claude fallback, the test fails with
+        DID-NOT-RAISE instead of opening real sockets.
+        """
+        import asyncio
+
+        created = []
+
+        def _record_claude_factory(config, agent):
+            created.append(agent.nick)
+            return _StubDaemon()
+
+        monkeypatch.setattr(agent_mod, "_create_claude_daemon", _record_claude_factory)
+
+        agent = _make_agent(suffix="ada", backend="bogus")
+        cfg = _make_config(agent)
+        with pytest.raises(CultureError) as excinfo:
+            asyncio.run(agent_mod._run_single_agent(cfg, agent))
+        assert "bogus" in excinfo.value.message
+        assert created == []  # never silently fell back to a claude daemon
+
+    def test_run_single_agent_unset_backend_still_runs_claude(
+        self, monkeypatch, _restore_signal_handlers
+    ):
+        """PRESERVE: an empty backend keeps the historical claude default."""
+        import asyncio
+
+        created = []
+
+        def _record_claude_factory(config, agent):
+            created.append(agent.nick)
+            return _StubDaemon()
+
+        monkeypatch.setattr(agent_mod, "_create_claude_daemon", _record_claude_factory)
+
+        agent = _make_agent(suffix="ada", backend="")
+        cfg = _make_config(agent)
+        asyncio.run(agent_mod._run_single_agent(cfg, agent))
+        assert created == [agent.nick]
 
 
 class TestMakeBackendConfig:
