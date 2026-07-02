@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.4] - 2026-07-02
+
+### Changed
+
+- backend-parity guard narrowed to the enforced set claude/codex/colleague (existence-gated — colleague joins automatically when its client dir lands); copilot/acp are stale-exempt (installable and working, neither trigger nor demanded, pending future re-validation); CLAUDE.md/docs wording aligned (PR3a of the three-minds plan, #467).
+- Escape-hatch hardening: a `# backend-specific:` marker only opens the hatch on the *enforced* surface. Markers under a stale client dir were already ignored; markers inside a stale `_create_<backend>_daemon` block of `agents.py` are now ignored too, so they can no longer excuse a partial change to an enforced backend (Qodo review, #470).
+
+### Fixed
+
+- Test isolation: the codex/claude/acp `agent_runner` integration tests are order-independent under pytest-xdist. Sibling tests purge `cultureagent` from `sys.modules`; monkeypatch's restore left `cultureagent.clients` without its backend submodule attributes, so the `monkeypatch.setattr("cultureagent.clients.<backend>.agent_runner…")` string targets failed depending on worker scheduling (observed in CI as `module 'cultureagent.clients' has no attribute 'codex'`). An autouse fixture now re-establishes the import chain before each test.
+
 ## [14.1.3] - 2026-07-02
 
 ### Fixed
