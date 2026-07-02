@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.0.1] - 2026-07-02
+
+### Added
+
+- Phase C spec + build plan for #462 (devague /think + /spec-to-plan): guild provisioning forward (`culture guild <verb>` to guild-cli), sibling-pin drift guard, backend-SDK optional extras, culture-core reference sweep — 11 tasks across three PRs (docs/specs/2026-07-02-culture-14-1-the-mesh-grows-itself-from-culture-a.md, docs/plans/…)
+
 ## [14.0.0] - 2026-07-02
 
 ### Added
