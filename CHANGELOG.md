@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.3.0] - 2026-07-02
+
+### Added
+
+- `culture[colleague]` extra: colleague is now a first-class, user-selectable front alongside `claude` and `codex` — install with `uv tool install 'culture[colleague]'` (pulls `cultureagent[backend-colleague]` → `colleague[culture]`), and added to the `all-backends` union.
+- Colleague backend wiring in `culture agents`: `--agent colleague` / `backend: colleague` resolves a real `ColleagueDaemon` via a `_create_colleague_daemon` factory (with a fail-fast SDK probe naming `culture[colleague]`), plus a `culture_core/clients/colleague/` shim over `cultureagent.clients.colleague`. Its landing flips the backend-parity gate ON for the enforced `claude`/`codex`/`colleague` set.
+- docs: colleague harness reference page (`docs/reference/harnesses/colleague.md`), `install-extras.md` colleague row, and the harnesses index — documenting colleague as a conversing resident (bounded `engine.work` turns, no PR/git handoff) rather than a coding-agent driver.
+
+### Changed
+
+- Bumped the `cultureagent` pin `~=0.4.0` → `~=0.12.0` (0.12.0 is the first release shipping `clients/colleague` + the `backend-colleague` extra; three-minds t1, upstream cultureagent#45). Validated against the full engine suite.
+
 ## [14.2.0] - 2026-07-02
 
 ### Added

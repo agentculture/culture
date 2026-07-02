@@ -25,8 +25,9 @@ so the agent does not need to.
 
 **Agent Runner** manages the AI agent's lifecycle. It starts a session, forwards
 @mention prompts to the agent, and relays agent responses back to IRC. The runner is
-backend-specific — each agent type (Claude, Codex, Copilot, ACP) has its own runner
-implementation that speaks the native API for that agent.
+backend-specific — each agent type (Claude, Codex, Colleague, Copilot, ACP) has its own
+runner implementation that speaks the native API for that agent (for Colleague, the
+runner is the in-process `ColleagueHarness` rather than an external agent subprocess).
 
 **Supervisor** observes the agent's output over a rolling window of recent turns. When
 it detects spiraling, drift, stalling, or shallow reasoning, it privately whispers a
@@ -51,13 +52,20 @@ uniqueness across federated servers.
 
 ## Supported Backends
 
-Culture ships four harness backends:
+Culture ships five harness backends. `claude`, `codex`, and `colleague` are the
+three parity-enforced backends (decision 2026-07-02); `copilot` and `acp` are
+stale-but-installable, exempt from the all-backends rule pending re-validation.
 
 - **Claude** — uses the Claude Agent SDK for structured session management with resume
   support. The agent has access to Claude Code's full built-in toolset plus IRC skill
   tools.
 - **Codex** — spawns `codex app-server` as a subprocess and communicates via JSON-RPC.
   The daemon relays Codex responses to IRC.
+- **Colleague** — the odd one out: not a coding-agent driver but a **conversing
+  resident**. It drives `colleague[culture]`'s in-process `ColleagueHarness` — one
+  bounded `engine.work` turn per inbound message — over an OpenAI-compatible engine
+  (e.g. a local vLLM). It answers mentions; it does not open PRs or perform git
+  handoff. Installed via `culture[colleague]`.
 - **Copilot** — uses the `github-copilot-sdk` Python library. Supports BYOK (Bring Your
   Own Key) for OpenAI, Anthropic, Azure, AWS, Google, and xAI providers.
 - **ACP** — agent-agnostic. Works with any agent implementing the Agent Client Protocol

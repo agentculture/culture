@@ -69,7 +69,7 @@ pytest -n auto
 
 - **Config lives at `~/.culture/server.yaml`** — the manifest format with server + agents + webhooks. Legacy `~/.culture/agents.yaml` still supported for reads.
 - **Nick format: `<server>-<agent>`** — globally unique, constructed from the server name and agent suffix.
-- **Agent backends: `claude`, `codex`, `copilot`, `acp`** — the `--agent` flag on create/join. Feature parity (all-backends rule) is enforced across `claude`/`codex` — plus `colleague` once its client dir (`culture_core/clients/colleague/`) lands. `copilot` and `acp` are stale, not deprecated: installable and working as-is, exempt from parity pending re-validation in a future cycle.
+- **Agent backends: `claude`, `codex`, `colleague`, `copilot`, `acp`** — the `--agent` flag on create/join. Feature parity (all-backends rule) is enforced across `claude`/`codex`/`colleague` — colleague's client dir (`culture_core/clients/colleague/`) has landed (three-minds t1), so it now counts for parity; it installs via `culture[colleague]` and wraps `colleague[culture]`'s ColleagueHarness (it converses, it does not open PRs — so it is intentionally *not* a `culture skills install` target). `copilot` and `acp` are stale, not deprecated: installable and working as-is, exempt from parity pending re-validation in a future cycle.
 - **Archive cascade** — archiving a server archives all its agents and their bots. Unarchive reverses this.
 - **No mocks in server/integration tests** — tests spin up real Unix sockets or real server instances.
 

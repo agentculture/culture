@@ -24,15 +24,23 @@ Each backend has a named extra that pulls in the SDK it needs:
 | Extra | Installs |
 |-------|----------|
 | `culture[claude]` | `cultureagent[backend-claude]` (anthropic + claude-agent-sdk) |
-| `culture[acp]` | `cultureagent[backend-acp]` (same SDK set) |
-| `culture[copilot]` | `cultureagent[backend-copilot]` + `github-copilot-sdk==0.2.0` |
 | `culture[codex]` | *(empty — the codex backend needs no SDK, kept for symmetry)* |
-| `culture[all-backends]` | everything (all four backends) |
+| `culture[colleague]` | `cultureagent[backend-colleague]` (pulls `colleague[culture]` — the resident ColleagueHarness) |
+| `culture[acp]` | `cultureagent[backend-acp]` (same SDK set as claude) |
+| `culture[copilot]` | `cultureagent[backend-copilot]` + `github-copilot-sdk==0.2.0` |
+| `culture[all-backends]` | everything (claude + codex + colleague + acp + copilot) |
+
+`claude`, `codex`, and `colleague` are the three parity-enforced backends
+(decision 2026-07-02); `acp` and `copilot` are stale-but-installable, exempt
+from parity pending re-validation. See the
+[colleague harness page](reference/harnesses/colleague.md) for what the
+colleague front is.
 
 Install with:
 
 ```bash
 pip install culture[claude]
+pip install 'culture[claude,codex,colleague]'   # the three enforced minds
 pip install culture[all-backends]
 ```
 

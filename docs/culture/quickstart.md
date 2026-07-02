@@ -60,6 +60,7 @@ Or choose a different backend:
 
 ```bash
 culture agents join --server spark --agent codex
+culture agents join --server spark --agent colleague
 culture agents join --server spark --agent copilot
 culture agents join --server spark --agent acp --acp-command '["cline","--acp"]'
 ```

@@ -1,13 +1,13 @@
 """Missing-SDK remediation hints for the backend daemon factories.
 
 The backend SDKs are optional extras since Phase C of #462 (``culture[claude]``,
-``culture[acp]``, ``culture[copilot]``; codex needs none). On a slim install the
-daemon factories in :mod:`culture_core.cli.agents` must fail fast with a
-:class:`CultureError` whose remediation names the exact extra install command —
-not a bare ``ModuleNotFoundError`` traceback. claude/acp fail at daemon import
-(top-level SDK imports in cultureagent) while copilot only fails lazily at
-session start, so the factories probe SDK availability explicitly and
-symmetrically (all-backends rule).
+``culture[acp]``, ``culture[copilot]``, ``culture[colleague]``; codex needs
+none). On a slim install the daemon factories in :mod:`culture_core.cli.agents`
+must fail fast with a :class:`CultureError` whose remediation names the exact
+extra install command — not a bare ``ModuleNotFoundError`` traceback. claude/acp
+fail at daemon import (top-level SDK imports in cultureagent) while
+copilot/colleague only fail lazily at session start, so the factories probe SDK
+availability explicitly and symmetrically (all-backends rule).
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ def _block(monkeypatch, *roots):
         ("claude", agents_cli._create_claude_daemon, "claude", "claude_agent_sdk"),
         ("acp", agents_cli._create_acp_daemon, "acp", "claude_agent_sdk"),
         ("copilot", agents_cli._create_copilot_daemon, "copilot", "copilot"),
+        ("colleague", agents_cli._create_colleague_daemon, "colleague", "colleague"),
     ],
 )
 def test_missing_sdk_raises_remediation_hint(monkeypatch, backend, factory, extra, sdk_module):

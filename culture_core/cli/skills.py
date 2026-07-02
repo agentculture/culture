@@ -28,6 +28,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser("skills", help="Install IRC skills")
     skills_sub = skills_parser.add_subparsers(dest="skills_command")
     skills_install = skills_sub.add_parser("install", help="Install IRC skill for an agent")
+    # backend-specific: colleague is intentionally NOT a skills-install target.
+    # `skills install` copies the file-based culture-irc messaging skill into a
+    # coding-agent harness's skills dir (~/.claude/skills, ~/.agents/skills, …).
+    # The colleague backend is a conversing resident (colleague[culture]'s
+    # ColleagueHarness) that drives mesh I/O through agent-lifecycle's transport
+    # directly — it has no such skills dir and does not shell out to `culture
+    # channel`, so there is nothing to install. (three-minds t1)
     skills_install.add_argument(
         "target",
         choices=["claude", "codex", "copilot", "acp", "opencode", "all"],

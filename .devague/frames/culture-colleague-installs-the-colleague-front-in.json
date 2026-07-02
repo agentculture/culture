@@ -1,0 +1,269 @@
+{
+  "slug": "culture-colleague-installs-the-colleague-front-in",
+  "title": "culture[colleague] installs the colleague front in one line \u2014 colleague joins claude and codex as a first-class, user-selectable culture backend you can install, start, and run on the mesh.",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-07-02T15:50:29Z",
+  "updated": "2026-07-02T16:09:42Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "culture[colleague] installs the colleague front in one line \u2014 colleague joins claude and codex as a first-class, user-selectable culture backend you can install, start, and run on the mesh.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "On release day, 'uv tool install culture[colleague]' resolves from published PyPI packages and a colleague-backed agent joins the mesh and answers a mention \u2014 colleague is installable and runnable exactly like claude and codex, not merely declared.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "Culture operators \u2014 humans at the CLI and AI agents driving culture \u2014 who pick which mind (front) to run on the mesh. Today they can choose claude or codex; they want to choose colleague the same one-line way.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "Both a human operator and an in-mesh agent can select and run the colleague front using only documented commands \u2014 neither audience needs a step the other cannot take.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c3",
+      "kind": "after_state",
+      "text": "uv tool install 'culture[colleague]' resolves entirely from published PyPI versions, and 'culture agents create --agent colleague' (culture.yaml 'backend: colleague') starts a colleague-backed agent that joins the mesh and answers a mention \u2014 the same connect/join/respond smoke test claude and codex pass.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "Each after-state clause is executable and checked: the install resolves from PyPI, create/start joins the mesh, and the agent answers a mention \u2014 captured as a transcript before the effort is declared done.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c4",
+      "kind": "before_state",
+      "text": "Today culture ships extras claude/codex/acp/copilot/all-backends but NO colleague, so 'uv tool update culture[colleague]' fails with 'does not have an extra named colleague. Nothing to upgrade'. Underneath: pinned cultureagent 0.4.0 provides no backend-colleague extra and no clients/colleague daemon; culture_core/clients/ has no colleague/ dir; cli/agents.py _DAEMON_FACTORIES maps claude/codex/acp/opencode/copilot with no colleague factory. Colleague is the only one of the three enforced backends you cannot actually install or run.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "The before-state is evidenced in-repo/on-PyPI today: the absent colleague extra in pyproject.toml, no colleague/ under culture_core/clients/, no colleague factory in cli/agents.py, and cultureagent 0.11.0 metadata listing no backend-colleague.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "Letting users choose their fronts is the point: the 2026-07-02 decision made colleague a first-class, parity-enforced backend alongside claude/codex, but it is the one front with no install line and no runnable path \u2014 so the one-line-extras promise is broken for exactly the mind that motivated it.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "The broken-promise asymmetry is demonstrable: culture[claude] and culture[codex] resolve and run today while culture[colleague] fails to resolve \u2014 observed, not rhetorical.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "Culture-side only. The colleague adapter itself \u2014 cultureagent's clients/colleague daemon wrapping colleague[culture]'s ColleagueHarness, plus the backend-colleague extra and a cultureagent release \u2014 is a sibling-repo hand-off (cultureagent#45), not built here. No re-vendoring of colleague/cultureagent/agentfront in-tree. Not a change to copilot/acp, which stay stale-not-deprecated.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h11",
+          "text": "No PR in this effort vendors colleague/cultureagent code in-tree or changes copilot/acp behavior; the cultureagent adapter appears as an upstream issue/PR, not an in-tree patch here.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c7",
+      "kind": "success_signal",
+      "text": "On a clean venv, pip install 'culture[colleague]' resolves from published versions with no git/path deps, a colleague-backed agent passes the connect-join-respond smoke test, and backend-parity CI now enforces colleague \u2014 a PR touching only one of claude/codex/colleague fails naming the missing backends.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "The clean-venv resolve, the colleague connect-join-respond smoke test, and the parity-CI negative test are each actually executed and recorded before the effort is declared done.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "A 'colleague' extra exists in culture's pyproject [project.optional-dependencies], symmetric with the claude/codex entries (colleague = [cultureagent[backend-colleague]~=<ver>]), and colleague is added to the all-backends union. pip install 'culture[colleague]' and 'culture[claude,codex,colleague]' both resolve.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "On a clean venv, pip install 'culture[colleague]' and 'culture[claude,codex,colleague]' both resolve entirely from published package versions \u2014 no git/path deps.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "culture_core/clients/colleague/ lands (reference culture.yaml template + any culture-side surface the other clients dirs carry). This is the file whose existence flips the backend-parity gate ON for colleague \u2014 so when it lands, claude/codex/colleague must ALL be parity-complete in the same change.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "After clients/colleague/ lands, a PR touching only one of culture_core/clients/{claude,codex,colleague}/ fails backend-parity CI naming the missing backends of the enforced set.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "cli/agents.py wires colleague end-to-end: a _create_colleague_config (culture.yaml 'backend: colleague') and a _create_colleague_daemon resolving cultureagent.clients.colleague.daemon, registered in the _DAEMON_FACTORIES map so '--agent colleague' and 'backend: colleague' start a real colleague daemon instead of erroring or silently falling back.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "A colleague-backed agent (culture.yaml backend: colleague) passes the same connect-join-respond smoke test the claude/codex backends pass; an unknown/misspelled backend still fails loudly (no silent claude fallback).",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "culture bumps its 'cultureagent~=0.4.0' pin to the first cultureagent release that ships the backend-colleague extra + clients/colleague daemon. Until that release exists on PyPI, culture[colleague] cannot resolve \u2014 this is the hard upstream dependency (cultureagent#45 hand-off).",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "The cultureagent version culture pins is a real published release whose metadata lists a backend-colleague extra and whose wheel contains clients/colleague/daemon.py; the full engine suite passes against it.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q1",
+          "text": "cultureagent 0.4.0 (the current pin) ships NO backend-colleague. Does this spec (a) wait to merge until a cultureagent release with backend-colleague exists, or (b) merge culture-side wiring now against a to-be-released pin (extra red on PyPI until upstream ships)? Sequencing is a user decision.",
+          "resolved": false,
+          "blocking": false
+        },
+        {
+          "id": "q2",
+          "text": "risk: The entire deliverable is gated on a sibling release culture does not control. If cultureagent#45 stalls, culture[colleague] cannot resolve no matter what lands here \u2014 the honest ship criterion depends on an external release.",
+          "resolved": false,
+          "blocking": false
+        }
+      ],
+      "links": []
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "docs/ documents colleague as a selectable front: the install line, the culture.yaml 'backend: colleague' config, and the all-backends parity note (cli/CLAUDE.md's backend list) updated to reflect colleague as enforced.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "A human or agent can go from zero to a mesh-joined colleague agent using only the published package and the documented commands \u2014 no undocumented steps.",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c13",
+      "kind": "assumption",
+      "text": "cultureagent's clients/colleague daemon will expose the same daemon-factory contract the other backends do (a _create_*_daemon(config, agent) resolving cultureagent.clients.<backend>.daemon), so culture's wiring mirrors the existing claude/codex factories with no new harness.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c14",
+      "kind": "assumption",
+      "text": "colleague ships a [culture] extra whose ColleagueHarness adapts its bounded work loop onto the mesh over agentirc-cli \u2014 culture wraps this via cultureagent, it does not build a new harness (carried over from the three-minds frame).",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c15",
+      "kind": "decision",
+      "text": "Cross-repo hand-off convention: culture implements only its own side (extra, clients/colleague, agents.py wiring, pin bump, docs); the cultureagent adapter + backend-colleague extra + release is filed/tracked as the sibling hand-off (cultureagent#45), not patched in-tree.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c16",
+      "kind": "decision",
+      "text": "Sequencing (user decision 2026-07-02): COORDINATED CUTOVER \u2014 hold the culture-side change until a cultureagent release ships the backend-colleague extra + clients/colleague daemon (upstream #45). Then land it as ONE independently-green culture PR: bump the cultureagent pin (~=0.4.0 \u2192 the release with colleague; note the current pin is already stale vs PyPI 0.11.0), add the colleague extra + all-backends union, add culture_core/clients/colleague/ (flips the parity gate), add the agents.py _create_colleague_{config,daemon} + factory-map entry, and docs \u2014 so culture[colleague] resolves the day it merges. No red extra shipped ahead of the upstream release.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "Exact cultureagent version that first ships backend-colleague, and therefore culture's new pin (bump ~=0.4.0 to ~=0.5.0? keep the ~= minor policy?) \u2014 decide at implementation once the release exists.",
+      "kind": "unknown_nonblocking",
+      "claim_id": null
+    },
+    {
+      "id": "v2",
+      "text": "Whether culture_core/clients/colleague/ needs more than a culture.yaml template to be a complete parity-satisfying client dir (e.g. does the parity guard demand a factory/config symmetry the other dirs carry) \u2014 confirm against the guard when wiring.",
+      "kind": "unknown_nonblocking",
+      "claim_id": null
+    }
+  ]
+}

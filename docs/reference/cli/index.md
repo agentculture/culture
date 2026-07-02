@@ -153,7 +153,7 @@ culture agents create --server spark --nick custom-name
 |------|---------|-------------|
 | `--server` | from config or `culture` | Server name prefix |
 | `--nick` | derived from directory name | Agent suffix (after `server-`) |
-| `--agent` | `claude` | Backend: `claude`, `codex`, `copilot`, or `acp` |
+| `--agent` | `claude` | Backend: `claude`, `codex`, `colleague`, `copilot`, or `acp` |
 | `--acp-command` | `["opencode","acp"]` | ACP spawn command as JSON list. Optional; overrides the default when using `--agent acp`. |
 | `--config` | `~/.culture/server.yaml` | Config file path |
 
