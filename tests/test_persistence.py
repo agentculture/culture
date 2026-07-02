@@ -7,12 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
+from culture_core.cli._errors import EXIT_DAEMON_PERMANENT, EXIT_USER_ERROR, CultureError
 from culture_core.persistence import (
     _build_launchd_plist,
     _build_systemd_unit,
     _build_windows_bat,
     _run_cmd,
+    _validate_unit_identifier,
     get_platform,
     install_service,
     list_services,
@@ -153,6 +154,67 @@ def test_install_service_windows_accepts_after(tmp_path):
             after="culture-server-spark.service",
         )
     assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Unit-identifier validation (Qodo #469): a name/After= target with
+# whitespace, path separators, or control chars would emit a unit file
+# systemd refuses to load. install/uninstall reject it before writing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "culture-server-a b",  # space
+        "culture-server-a\nb",  # newline
+        "culture-server-a\tb",  # tab
+        "culture-server-a\rb",  # carriage return
+        "culture/server",  # path separator
+        "culture\\server",  # backslash
+        "",  # empty
+    ],
+)
+def test_install_service_rejects_unsafe_name(bad):
+    with pytest.raises(CultureError) as excinfo:
+        install_service(bad, ["echo", "hi"], "desc")
+    assert excinfo.value.code == EXIT_USER_ERROR
+
+
+def test_install_service_rejects_unsafe_after(tmp_path):
+    # A valid name but a malformed ordering target is still rejected — before
+    # any file is written (unit_dir stays empty).
+    unit_dir = tmp_path / "systemd" / "user"
+    with (
+        patch("culture_core.persistence.get_platform", return_value="linux"),
+        patch("culture_core.persistence._systemd_user_dir", return_value=unit_dir),
+        patch("culture_core.persistence._run_cmd"),
+        pytest.raises(CultureError),
+    ):
+        install_service(
+            "culture-agent-spark-claude",
+            ["echo", "hi"],
+            "desc",
+            after="culture-server-a b.service",
+        )
+    assert not unit_dir.exists() or not list(unit_dir.glob("*.service"))
+
+
+def test_uninstall_service_rejects_unsafe_name():
+    with pytest.raises(CultureError) as excinfo:
+        uninstall_service("bad name\n")
+    assert excinfo.value.code == EXIT_USER_ERROR
+
+
+def test_validate_unit_identifier_accepts_real_unit_names():
+    # The names/targets the provisioning verbs actually generate must pass.
+    for good in (
+        "culture-server-spark",
+        "culture-agent-spark-claude",
+        "culture-console-spark.service",
+        "culture-server-node_1.service",
+    ):
+        _validate_unit_identifier(good, kind="name")  # no raise
 
 
 def test_uninstall_service_reports_removal(tmp_path):

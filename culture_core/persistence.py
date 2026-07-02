@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -15,6 +16,35 @@ LOG_DIR = os.path.expanduser("~/.culture/logs")
 logger = logging.getLogger(__name__)
 
 DEFAULT_CMD_TIMEOUT = 30.0
+
+# A unit identifier interpolated into a generated unit file — the service
+# ``name`` and any ``After=``/``Wants=`` target — must be free of whitespace,
+# path separators, and control characters. Server names reach here from CLI
+# ``--name`` and mesh/server config, neither strictly constrained, and a name
+# carrying a space or newline would emit a unit file systemd refuses to load
+# (silently dropping the intended ordering). Restrict to the character class
+# systemd itself permits in a unit name; the ``.`` allows the ``.service``
+# suffix on ``After=`` targets.
+_UNIT_IDENT_RE = re.compile(r"^[A-Za-z0-9@:._-]+$")
+
+
+def _validate_unit_identifier(value: str, *, kind: str) -> None:
+    """Reject a service ``name`` / ordering target that isn't unit-safe.
+
+    Raises :class:`CultureError` (lazily imported so this low-level module
+    stays out of the CLI import graph, as in :func:`_build_systemd_unit`).
+    """
+    if not _UNIT_IDENT_RE.match(value):
+        from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"invalid systemd unit {kind} {value!r}: contains characters not "
+            "allowed in a unit name (whitespace, path separators, or control "
+            "characters)",
+            "use a server name of letters, digits, and '-_.@:' only (set it via "
+            "'culture server start --name <name>' or ~/.culture/server.yaml)",
+        )
 
 
 def get_platform() -> str:
@@ -222,6 +252,9 @@ def install_service(
     (launchd, Windows scheduled tasks) accept and ignore it — their
     retry loops absorb a dependency that isn't up yet.
     """
+    _validate_unit_identifier(name, kind="name")
+    if after is not None:
+        _validate_unit_identifier(after, kind="After= target")
     platform = get_platform()
     installer = _PLATFORM_INSTALLERS.get(platform)
     if installer is None:
@@ -275,6 +308,7 @@ def uninstall_service(name: str) -> bool:
     Returns True if an entry was found and removed, False if there was
     nothing to remove — callers use this for friendly no-op messages.
     """
+    _validate_unit_identifier(name, kind="name")
     uninstaller = _PLATFORM_UNINSTALLERS.get(get_platform())
     if uninstaller is None:
         return False
