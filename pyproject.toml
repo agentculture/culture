@@ -14,31 +14,33 @@ classifiers = [
     "Framework :: AsyncIO",
 ]
 dependencies = [
+    # The culture_core engine ships IN-TREE again since the 14.0.0 merge-back
+    # (issue #462) — there is no culture-core dependency anymore. The caps below
+    # are the bounds the engine is validated against; they came back with it.
     "pyyaml>=6.0",
-    # The Culture engine. culture is the thin front-door; the reusable core
-    # (cli/clients/protocol/telemetry/doctor/… — the culture_core namespace)
-    # lives in this dependency and is aliased back into the culture.* namespace
-    # by the meta-path finder in culture/__init__.py. Pinned to 0.5.x: the caps
-    # below mirror culture-core's validated bounds (see the comment on them).
-    "culture-core~=0.5.0",
     "agentirc-cli>=9.7.0,<10",
     "cultureagent~=0.4.0",
     "anthropic>=0.40",
     "claude-agent-sdk>=0.1",
     "mistune>=3.0",
     "aiohttp>=3.9",
-    # Upper bounds capped to the versions the engine is validated against (these
-    # match the caps culture-core 0.4.0 declares). Without them a fresh uv.lock
-    # would resolve to newer releases that broke the afi / agent_experience import
-    # modules, the per-test OTel InMemoryMetricReader injection (SDK 1.42), and the
-    # copilot backend (github-copilot-sdk 0.2.3+). Standalone drift-bomb fix and a
-    # precursor to the culture-core cutover — see
-    # docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md.
+    # afi-cli/agex-cli capped at the minor series culture validated against:
+    # the import modules were renamed in later 0.x releases (agex-cli's
+    # `agent_experience` -> `devex` by 0.29; afi-cli's `afi` gone by 0.8), so
+    # the engine's `from agent_experience.cli import app` / `from afi.cli import
+    # main` break on a fresh `<1.0` resolve. Bump only alongside the code that
+    # adapts to the renamed modules, and re-run the full suite.
     "agex-cli>=0.13,<0.14",
     "agtag>=0.1,<1.0",
     "afi-cli>=0.3,<0.4",
     "steward-cli>=0.16,<1.0",
     "irc-lens>=0.5.3,<1.0",
+    # OTel capped below 1.42 (the 0.6x track below 0.63b0): the metric-reader
+    # injection the telemetry test fixtures rely on (per-test set_meter_provider
+    # + InMemoryMetricReader) stops capturing under SDK 1.42, so the integration
+    # + clients metric tests go silently empty. culture validated against 1.41.x.
+    # The OTel packages are version-coupled — cap them as a set. Lift together
+    # when the engine is verified against a newer SDK.
     "opentelemetry-api>=1.25,<1.42",
     "opentelemetry-sdk>=1.25,<1.42",
     "opentelemetry-exporter-otlp-proto-grpc>=1.25,<1.42",
@@ -50,26 +52,45 @@ dependencies = [
 Homepage = "https://github.com/OriNachum/culture"
 
 [project.scripts]
-# Repointed to the engine entry point (culture-core ships the same command). The
-# in-tree culture.cli is gone; culture_core.cli:main is the identical CLI.
+# Both command names ship from this one distribution since the merge-back
+# (#462): `culture` is the primary CLI; `culture-core` is a compatibility alias
+# for standalone-era installs and generated service units. The CLI derives its
+# program name from argv[0], so help/usage text follows whichever was invoked.
 culture = "culture_core.cli:main"
+culture-core = "culture_core.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# culture ships only the front-door package: culture/__init__.py (the version
-# shim + the meta-path alias finder onto culture_core). The engine modules and
-# their bundled data (skills SKILL.md/scripts, overview/web/style.css, welcome
-# bot.yaml) ship from the culture-core dependency now — the in-tree copies and
-# their force-include manifest were removed in the cutover.
-packages = ["culture"]
+# One distribution, both packages (merge-back, #462): the culture front-door
+# (version shim + the meta-path alias finder onto culture_core) and the
+# culture_core engine itself.
+packages = ["culture", "culture_core"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Non-.py data files hatchling would otherwise skip. A missing entry is a silent
+# runtime break, not a build error — verify against a built wheel, not the sdist.
+"culture_core/skills/culture/SKILL.md" = "culture_core/skills/culture/SKILL.md"
+"culture_core/skills/communicate/SKILL.md" = "culture_core/skills/communicate/SKILL.md"
+"culture_core/skills/communicate/scripts/post-issue.sh" = "culture_core/skills/communicate/scripts/post-issue.sh"
+"culture_core/skills/communicate/scripts/post-comment.sh" = "culture_core/skills/communicate/scripts/post-comment.sh"
+"culture_core/skills/communicate/scripts/fetch-issues.sh" = "culture_core/skills/communicate/scripts/fetch-issues.sh"
+"culture_core/skills/communicate/scripts/mesh-message.sh" = "culture_core/skills/communicate/scripts/mesh-message.sh"
+"culture_core/skills/communicate/scripts/templates/skill-update-brief.md" = "culture_core/skills/communicate/scripts/templates/skill-update-brief.md"
+"culture_core/skills/communicate/scripts/templates/skill-new-brief.md" = "culture_core/skills/communicate/scripts/templates/skill-new-brief.md"
+"culture_core/overview/web/style.css" = "culture_core/overview/web/style.css"
+"culture_core/bots/system/welcome/bot.yaml" = "culture_core/bots/system/welcome/bot.yaml"
 
 [project.optional-dependencies]
-# Forward to culture-core's copilot extra so the validated github-copilot-sdk
-# pin (0.2.0 — 0.2.3+/1.0 regressed the backend) is sourced from the engine.
-copilot = ["culture-core[copilot]"]
+# Pinned to exactly the github-copilot-sdk version culture validated against.
+# This SDK regresses the copilot backend even across 0.2.x patches: 0.2.0 is
+# clean (8 copilot tests pass), but 0.2.3 fails a test and hangs in teardown,
+# and 1.0 is an outright breaking API change. Bump only alongside backend code
+# that adapts to the new release (all-backends rule), and re-run `pytest -k
+# copilot` with the extra installed.
+copilot = ["github-copilot-sdk==0.2.0"]
 
 [dependency-groups]
 dev = [
@@ -90,7 +111,9 @@ dev = [
 ]
 
 [tool.coverage.run]
-source = ["culture"]
+# Both packages: the culture front-door and the in-tree culture_core engine
+# (merge-back, #462).
+source = ["culture", "culture_core"]
 # parallel + concurrency are required for pytest-xdist (`-n auto`) to produce
 # per-worker `.coverage.*` files that `coverage combine` merges into a single
 # `.coverage`. Without these, only one worker's slice is reported and modules
@@ -99,18 +122,18 @@ source = ["culture"]
 parallel = true
 concurrency = ["thread", "multiprocessing"]
 sigterm = true
+# Emit repo-relative paths in coverage.xml so SonarCloud maps them to
+# sonar.sources (absolute/.venv paths fail to map → empty coverage).
+relative_files = true
 omit = [
     "culture/__pycache__/*",
+    "culture_core/__pycache__/*",
 ]
 
 [tool.coverage.report]
-# After the culture-core cutover (13.7.0, #454) `source = ["culture"]` measures
-# only the front-door package (culture/__init__.py + culture/__main__.py); the
-# engine moved to culture-core and is coverage-gated in culture-core's own CI.
-# The front-door is small and fully exercised (100%), so the 90 floor still holds
-# trivially. (Pre-cutover this ratchet guarded the in-tree engine to 90% — see
-# docs/coverage-baseline.md for that history.) The retained engine suite still
-# runs here as the per-pin behaviour guard; it just isn't what this floor counts.
+# Ratchet floor from the completed 60→90 sweep (docs/coverage-baseline.md),
+# guarding the in-tree engine again since the merge-back (#462). A drop below
+# 90 is a regression, not a re-baseline.
 fail_under = 90
 show_missing = true
 exclude_lines = [
@@ -125,7 +148,7 @@ exclude_lines = [
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["culture"]
+known_first_party = ["culture", "culture_core"]
 
 [tool.black]
 line-length = 100
@@ -134,3 +157,7 @@ target-version = ["py312"]
 [tool.bandit]
 exclude_dirs = ["tests", "packages"]
 skips = ["B101", "B104", "B105", "B108", "B110", "B112", "B310", "B404", "B406", "B603", "B606", "B607"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

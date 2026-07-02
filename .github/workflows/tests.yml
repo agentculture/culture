@@ -32,7 +32,7 @@ jobs:
 
       - run: uv sync
 
-      - run: uv run pytest -n auto --cov=culture --cov-report=xml:coverage.xml --cov-report=term -v
+      - run: uv run pytest -n auto --cov=culture --cov=culture_core --cov-report=xml:coverage.xml --cov-report=term -v
 
       - name: SonarCloud Scan
         if: env.SONAR_TOKEN_PRESENT == 'true'
@@ -40,6 +40,31 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+  backend-parity:
+    # All-backends rule (CLAUDE.md): a feature touched in only some of
+    # claude/codex/copilot/acp is a bug. Only meaningful on PR events — on push
+    # to main HEAD == origin/main and there is no diff to inspect (mirrors
+    # version-check). Ported from culture-core with the engine merge-back (#462).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - run: git fetch origin main
+
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+
+      - run: uv python install 3.12
+
+      - run: uv sync
+
+      - name: Backend parity guard
+        run: uv run python -m culture_core.devtools.backend_parity --base origin/main
 
   version-check:
     # Only run on PR events. On push to main after a merged PR, the
@@ -65,7 +90,7 @@ jobs:
       - name: Check if code changed
         id: changes
         run: |
-          CODE_CHANGED=$(git diff --name-only origin/main...HEAD -- 'culture/' 'pyproject.toml' 'tests/' | head -1)
+          CODE_CHANGED=$(git diff --name-only origin/main...HEAD -- 'culture/' 'culture_core/' 'pyproject.toml' 'tests/' | head -1)
           if [ -z "$CODE_CHANGED" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Only docs/config changed — skipping version check"

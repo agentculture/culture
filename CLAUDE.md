@@ -6,9 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **culture** — A mesh of IRC servers where AI agents collaborate, share knowledge, and coordinate work. Humans participate as first-class citizens. The server engine, **AgentIRC**, is a custom async Python IRCd built from scratch. Claude Agent SDK client harnesses connect agents to the mesh.
 
-As of the **culture-core cutover** (13.7.0, issue #454), culture is the thin **front-door** over the published [`culture-core`](https://github.com/agentculture/culture-core) engine: the entire engine (CLI, clients, protocol, telemetry, doctor, bots, the `agentirc` forward, …) lives in the `culture_core` import namespace and is pinned as `culture-core~=0.5.0`. `culture/__init__.py` installs a meta-path finder that aliases every `culture.<x>` import to the identical `culture_core.<x>` module object (module identity, so `culture.x is culture_core.x` — existing imports and `mock.patch("culture....")` targets resolve unchanged). The only real files under `culture/` are `__init__.py` (the version shim + alias finder) and `__main__.py` (so `python -m culture` works). The `culture` console command repoints to `culture_core.cli:main`; `culture --version` therefore reports the engine version. **Engine code and its bundled data (skills, web assets) live in culture-core — fix them there, not here.**
+As of the **merge-back** (14.0.0, issue #462), the engine lives **in-tree again**: the whole runtime (CLI, clients, protocol, telemetry, doctor, bots, the `agentirc` forward, …) is the `culture_core/` package at the repo root, absorbed verbatim from the retired standalone [`culture-core`](https://github.com/agentculture/culture-core) dist at 0.17.0. The import seam from the #454 cutover is unchanged: `culture/__init__.py` installs a meta-path finder that aliases every `culture.<x>` import to the identical `culture_core.<x>` module object (module identity, so `culture.x is culture_core.x` — existing imports and `mock.patch("culture....")` targets resolve unchanged). The only real files under `culture/` are `__init__.py` (the version shim + alias finder) and `__main__.py` (so `python -m culture` works). Both the `culture` console command and its compatibility alias `culture-core` target `culture_core.cli:main`; one distribution ships both packages, so `culture --version` reports the one version. **Engine code and its bundled data (skills, web assets) live here now — fix them in `culture_core/`, not upstream.**
 
-Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`; cutover spec/plan: `docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md`.
+Design spec: `docs/superpowers/specs/2026-03-19-agentirc-design.md`; split-era cutover spec/plan: `docs/specs/2026-06-14-culture-now-runs-on-the-published-culture-core-eng.md`; merge-back decision: issue #462.
+
+## Engine rules (do not violate)
+
+- **All-backends rule.** A feature added to one backend (`claude` / `codex` / `copilot` / `acp`) must be propagated to all of them. A feature in only one backend is a bug. CI enforces this: the `backend-parity` job runs `python -m culture_core.devtools.backend_parity --base origin/main` on every PR and fails — naming the missing backends — when a change touches `culture_core/clients/<backend>/` or a `_create_<backend>_daemon` factory in `culture_core/cli/agents.py` for fewer than all four backends (`culture_core/clients/shared/` is shared code and doesn't count). For genuinely backend-specific code, add the escape hatch on an added line: `# backend-specific: <reason>`.
+- **Preserve telemetry/identity strings.** Telemetry metric/meter/span names (`culture.*`, e.g. `culture.clients.connected`) and the `culture.yaml` config filename are **wire/identity strings, not module paths** — never sweep them to `culture_core.*`. Only Python import paths use the `culture_core` namespace. `tests/test_engine_identity.py` enforces this.
+- **Don't loosen the capped dependencies blindly.** `afi-cli<0.4`, `agex-cli<0.14`, the OpenTelemetry stack `<1.42` (`<0.63b0` for the instrumentation line), and `github-copilot-sdk==0.2.0` are pinned to the versions the engine was validated against — later releases renamed import modules (`afi`, `agent_experience`), changed the metric-reader contract the telemetry tests rely on, or regressed the copilot backend. Bump them only alongside the code that adapts to the new APIs, and re-run the full suite.
 
 ## Sibling alignment
 
@@ -22,8 +28,8 @@ When guildmaster stabilizes a convention culture should adopt (naming, signature
 ## Package Management
 
 - **External packages:** Managed in `pyproject.toml`, installed with `uv`.
-- **The engine:** lives in the sibling [`culture-core`](https://github.com/agentculture/culture-core) package (pinned `culture-core~=0.5.0`), imported as `culture_core` and aliased back into the `culture.*` namespace by the meta-path finder in `culture/__init__.py` (see Project Overview). Engine bugs and features go upstream against culture-core; culture only carries the front-door (alias bootstrap, branding/docs, deployment) plus a front-door test suite that runs against a behavior-free fake culture_core — it tests the integration seam (the alias finder, entry point, module identity) ONLY, and deliberately does NOT guard culture-core pin bumps (that safety lives in culture-core upstream CI). See docs/testing.md. Keep culture's overlapping dependency caps a subset of culture-core's validated bounds (`agex-cli<0.14`, `afi-cli<0.4`, OTel `<1.42`/`<0.63b0`, `github-copilot-sdk==0.2.0`) so a future culture-core unpin can't silently re-loosen them.
-- **Agent harness:** lives in the sibling [`cultureagent`](https://github.com/agentculture/cultureagent) package (pinned `cultureagent~=0.4.0`), depended on by culture-core. Daemon classes resolve from `cultureagent.clients.<backend>.daemon`. Bug reports and harness improvements go upstream against cultureagent.
+- **The engine:** the in-tree `culture_core/` package (merge-back, #462 — the standalone culture-core dist is retired). It keeps the `culture_core` import namespace and is aliased back into the `culture.*` namespace by the meta-path finder in `culture/__init__.py` (see Project Overview). Engine bugs and features are fixed here; the full engine test suite runs here (see docs/testing.md).
+- **Agent harness:** lives in the sibling [`cultureagent`](https://github.com/agentculture/cultureagent) package (pinned `cultureagent~=0.4.0`). Daemon classes resolve from `cultureagent.clients.<backend>.daemon`. Bug reports and harness improvements go upstream against cultureagent. `agentirc` (pinned `agentirc-cli`) is likewise a separate embedded dependency — depended on, never re-vendored.
 
 ## Citation Pattern (historical)
 
@@ -49,8 +55,7 @@ Key commands:
 - `culture agents start/stop/status` — work with both server.yaml and legacy agents.yaml
 
 Reference `culture.yaml` templates ship with the engine under
-`culture_core/clients/<backend>/` (in the installed `culture-core` package) — the
-in-tree copies moved there with the cutover.
+`culture_core/clients/<backend>/` (in-tree since the #462 merge-back).
 
 ## Documentation
 
@@ -63,7 +68,7 @@ Before the first push on a branch that adds public API surface (new exceptions, 
 - **Before branching, run `git status`.** If `CHANGELOG.md`, any `CLAUDE.md`, or other files carry pre-existing unstaged changes on `main`, decide up front whether to stash, commit separately, or hand-split. `/version-bump` inserts a new section at the top of `CHANGELOG.md` and will interleave awkwardly with an existing `[Unreleased]` block if you don't.
 - Branch out for all changes
 - **Bump the version before creating a PR** — use `/version-bump patch` (bug fix), `minor` (new feature), or `major` (breaking change). This updates `pyproject.toml` and `CHANGELOG.md` (and `uv.lock` when applicable) in one step. Forgetting will fail the version-check CI job.
-- **Pre-push review for library/protocol code.** When the diff touches shared choke points (transport, `_send_raw`-style I/O, protocol parsers, anything in `packages/` or `culture/agentirc/`), invoke a code reviewer on the staged diff before the first push — typed exceptions and new error paths routinely create caller cleanup obligations that Qodo/human reviewers otherwise surface in the first review round. Use `Agent(subagent_type="superpowers:code-reviewer", ...)` or `/review-and-fix`.
+- **Pre-push review for library/protocol code.** When the diff touches shared choke points (transport, `_send_raw`-style I/O, protocol parsers, anything in `culture_core/agentirc/` or `culture_core/protocol/`), invoke a code reviewer on the staged diff before the first push — typed exceptions and new error paths routinely create caller cleanup obligations that Qodo/human reviewers otherwise surface in the first review round. Use `Agent(subagent_type="superpowers:code-reviewer", ...)` or `/review-and-fix`.
 - Push to GitHub for agentic code review
 - Pull review comments, address feedback, push fixes
 - Reply to comments after pushing, resolve threads

@@ -1,27 +1,561 @@
-"""pytest configuration for the culture front-door integration suite.
-
-culture is the thin front-door over the culture_core engine: ``culture/__init__``
-installs a meta-path finder that aliases every ``culture.<x>`` import to the
-identical ``culture_core.<x>`` module object. To exercise the front-door (the
-alias finder, the console entry point, module identity, mock.patch targeting) in
-ISOLATION — without the real engine's behavior or bundled data — we seed a
-behavior-free fake ``culture_core`` into ``sys.modules`` before any test imports
-``culture.*``. The alias finder then resolves ``culture.<x>`` against the fake
-exactly as it would against the real engine.
-
-This is what makes culture's suite independent of culture_core: a bug in the
-real engine cannot redden these tests, because the real engine is never imported
-here. See docs/specs/2026-06-15-culture-s-test-suite-now-tests-only-the-front-door.md.
-"""
-
+# tests/conftest.py
+import asyncio
+import os
 import sys
+import types
+from pathlib import Path
+from unittest.mock import patch
 
-from tests._fake_engine import build_fake_culture_core
+# ---------------------------------------------------------------------------
+# Stub claude_agent_sdk into sys.modules at conftest collection time.
+#
+# Several test modules (`tests/harness/test_agent_runner_claude.py`,
+# `tests/test_integration_agent_runner.py`, etc.) install their own stub
+# at the top of the file with `if "claude_agent_sdk" in sys.modules:
+# return`. Under pytest-xdist, if a sibling test module imports
+# `culture_core.clients.claude.daemon` first (which transitively does
+# `from claude_agent_sdk import ...`), the real SDK lands in sys.modules
+# and the per-file stub guards skip — leaving the harness tests bound to
+# the real `ResultMessage` (which has stricter required-positional args
+# than the stub's ``session_id="sid-1", is_error=False, ...`` shape).
+#
+# Installing the stub here, before any test module imports, is the
+# only place that reliably wins the race across xdist worker orderings.
+# Tests never call the real SDK — everyone either stubs `query` /
+# `send_request` etc., or sets `skip_claude=True` on AgentDaemon — so
+# replacing the SDK module is transparent.
+# ---------------------------------------------------------------------------
 
-# Seed the fake as culture_core (and every aliased submodule) at conftest-import
-# time — pytest imports conftest before any test module, and afresh in each
-# pytest-xdist worker process, so every worker resolves culture.* to the fake.
-# Direct assignment (not setdefault) guarantees the fake wins even if something
-# pulled in the real culture_core earlier in the process.
-for _name, _module in build_fake_culture_core().items():
-    sys.modules[_name] = _module
+
+def _stub_claude_sdk_at_conftest_import():
+    if "claude_agent_sdk" in sys.modules:
+        return
+    mod = types.ModuleType("claude_agent_sdk")
+
+    class _Base:
+        pass
+
+    class AssistantMessage(_Base):
+        def __init__(self, model="stub-model", content=None):
+            self.model = model
+            self.content = content or []
+
+    class ResultMessage(_Base):
+        def __init__(self, session_id="sid-1", is_error=False, result="", usage=None):
+            self.session_id = session_id
+            self.is_error = is_error
+            self.result = result
+            self.usage = usage
+
+    class ClaudeAgentOptions(_Base):
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class _Block(_Base):
+        pass
+
+    async def query(**kwargs):
+        # Default stub: empty stream. Tests patch this with their own
+        # `_fake_query` / `_hanging_query` via monkeypatch on
+        # ``culture_core.clients.claude.agent_runner.query``.
+        if False:
+            yield  # pragma: no cover  -- marks this an async generator
+
+    mod.AssistantMessage = AssistantMessage
+    mod.ResultMessage = ResultMessage
+    mod.ClaudeAgentOptions = ClaudeAgentOptions
+    mod.TextBlock = _Block
+    mod.ThinkingBlock = _Block
+    mod.ToolUseBlock = _Block
+    mod.ToolResultBlock = _Block
+    mod.query = query
+    sys.modules["claude_agent_sdk"] = mod
+
+
+_stub_claude_sdk_at_conftest_import()
+
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig  # noqa: E402
+from agentirc.ircd import IRCd  # noqa: E402
+from opentelemetry import metrics as otel_metrics  # noqa: E402
+from opentelemetry import trace  # noqa: E402
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider  # noqa: E402
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
+from opentelemetry.sdk.resources import Resource  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
+    InMemorySpanExporter,
+)
+
+from culture_core.telemetry.metrics import reset_for_tests as _reset_metrics  # noqa: E402
+from culture_core.telemetry.tracing import reset_for_tests as _reset_telemetry  # noqa: E402
+
+# Test-only link password — not a real credential (S2068)
+TEST_LINK_PASSWORD = "testlink123"
+
+# Default total wait for recv_until / recv. Callers needing a different
+# bound should wrap their own `async with asyncio.timeout(...)` around the
+# call rather than passing a parameter (per python:S7483).
+RECV_TIMEOUT_SECONDS = 2.0
+
+_BOTS_DIR_MANAGER = "culture_core.bots.bot_manager.BOTS_DIR"
+_BOTS_DIR_CONFIG = "culture_core.bots.config.BOTS_DIR"
+_BOTS_DIR_BOT = "culture_core.bots.bot.BOTS_DIR"
+
+
+async def wait_until(
+    predicate,
+    *,
+    timeout: float = 2.5,
+    interval: float = 0.05,
+) -> bool:
+    """Poll `predicate` (sync callable, truthy = success) until it fires or
+    `timeout` elapses. Returns True on success, False on timeout — caller
+    decides whether timeout is fatal.
+
+    Defaults match the project's existing `range(50) * 0.05s` convention.
+    Prefer this over hand-rolled `for _ in range(N): if cond: break; sleep(...)`
+    loops or duplicated `_wait_for_span` helpers (closes #294).
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        if predicate():
+            return True
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(interval)
+
+
+class IRCTestClient:
+    """A minimal IRC test client over raw TCP."""
+
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        self.reader = reader
+        self.writer = writer
+        self._buffer = ""
+
+    async def send(self, text: str) -> None:
+        self.writer.write(f"{text}\r\n".encode())
+        await self.writer.drain()
+
+    async def recv(self, timeout: float = 2.0) -> str:
+        while "\r\n" not in self._buffer:
+            data = await asyncio.wait_for(self.reader.read(4096), timeout=timeout)
+            if not data:
+                raise ConnectionError("Connection closed")
+            self._buffer += data.decode()
+        line, self._buffer = self._buffer.split("\r\n", 1)
+        return line
+
+    async def recv_all(self, timeout: float = 0.5) -> list[str]:
+        lines = []
+        try:
+            while True:
+                lines.append(await self.recv(timeout=timeout))
+        except (asyncio.TimeoutError, ConnectionError):
+            pass
+        return lines
+
+    async def recv_until(self, marker: str) -> str:
+        """Read lines until one contains marker.
+
+        Bounded by `RECV_TIMEOUT_SECONDS` (module constant). For a
+        different bound, wrap the call in `async with asyncio.timeout(...)`.
+        """
+        collected = []
+        try:
+            async with asyncio.timeout(RECV_TIMEOUT_SECONDS):
+                while True:
+                    line = await self.recv()
+                    collected.append(line)
+                    if marker in line:
+                        return "\r\n".join(collected)
+        except (asyncio.TimeoutError, TimeoutError, ConnectionError):
+            pass
+        return "\r\n".join(collected)
+
+    async def count_until_idle(self, marker: str, seconds: float = 1.0) -> int:
+        """Read lines until timeout; return count of lines containing marker."""
+        count = 0
+        try:
+            while True:
+                line = await self.recv(timeout=seconds)
+                if marker in line:
+                    count += 1
+        except (asyncio.TimeoutError, ConnectionError):
+            pass
+        return count
+
+    async def close(self) -> None:
+        self.writer.close()
+        try:
+            await self.writer.wait_closed()
+        except ConnectionError:
+            pass
+
+
+@pytest_asyncio.fixture
+async def server(tmp_path):
+    # Isolate bot loading to an empty temp directory so tests
+    # never read/write the real ~/.culture/bots/ directory.
+    empty_bots = tmp_path / "_bots"
+    empty_bots.mkdir()
+    config = ServerConfig(
+        name="testserv",
+        host="127.0.0.1",
+        port=0,
+        webhook_port=0,
+        telemetry=TelemetryConfig(audit_dir=str(tmp_path / "audit")),
+    )
+    with (
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
+    ):
+        ircd = IRCd(config)
+        await ircd.start()
+        # Get actual port from OS-assigned random port
+        ircd.config.port = ircd._server.sockets[0].getsockname()[1]
+        # agentirc 9.6 ships a no-op stub BotManager; replace with culture's
+        # so tests can use register_bot / on_event / etc. Mirrors what
+        # culture_core/cli/server.py:_run_server does in production.
+        # load_system_bots() registers welcome / etc. without binding the
+        # webhook port — tests don't want the listener.
+        from culture_core.bots.bot_manager import BotManager as _CultureBotManager
+
+        ircd.bot_manager = _CultureBotManager(ircd)
+        ircd.bot_manager.load_system_bots()
+        yield ircd
+        await ircd.stop()
+
+
+@pytest_asyncio.fixture
+async def make_client(server):
+    clients = []
+
+    async def _make(nick: str | None = None, user: str | None = None) -> IRCTestClient:
+        reader, writer = await asyncio.open_connection("127.0.0.1", server.config.port)
+        client = IRCTestClient(reader, writer)
+        if nick:
+            await client.send(f"NICK {nick}")
+        if user:
+            await client.send(f"USER {user} 0 * :{user}")
+        if nick and user:
+            # Drain welcome messages
+            await client.recv_all(timeout=0.5)
+        clients.append(client)
+        return client
+
+    yield _make
+
+    for c in clients:
+        try:
+            await c.close()
+        except Exception:
+            pass
+
+
+@pytest_asyncio.fixture
+async def linked_servers(tmp_path):
+    """Two IRCd instances linked via S2S federation."""
+    link_password = TEST_LINK_PASSWORD
+    empty_bots = tmp_path / "_bots"
+    empty_bots.mkdir()
+
+    config_a = ServerConfig(
+        name="alpha",
+        host="127.0.0.1",
+        port=0,
+        webhook_port=0,
+        links=[LinkConfig(name="beta", host="127.0.0.1", port=0, password=link_password)],
+        telemetry=TelemetryConfig(audit_dir=str(tmp_path / "audit_alpha")),
+    )
+    config_b = ServerConfig(
+        name="beta",
+        host="127.0.0.1",
+        port=0,
+        webhook_port=0,
+        links=[LinkConfig(name="alpha", host="127.0.0.1", port=0, password=link_password)],
+        telemetry=TelemetryConfig(audit_dir=str(tmp_path / "audit_beta")),
+    )
+
+    server_a = IRCd(config_a)
+    server_b = IRCd(config_b)
+
+    with (
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
+    ):
+        await server_a.start()
+        await server_b.start()
+
+    server_a.config.port = server_a._server.sockets[0].getsockname()[1]
+    server_b.config.port = server_b._server.sockets[0].getsockname()[1]
+
+    # Update link configs with actual ports
+    config_a.links[0].port = server_b.config.port
+    config_b.links[0].port = server_a.config.port
+
+    # Server A connects to Server B
+    await server_a.connect_to_peer("127.0.0.1", server_b.config.port, link_password)
+    # Wait for handshake to complete
+    for _ in range(50):
+        if "beta" in server_a.links and "alpha" in server_b.links:
+            break
+        await asyncio.sleep(0.05)
+
+    yield server_a, server_b
+
+    await server_a.stop()
+    await server_b.stop()
+
+
+@pytest_asyncio.fixture
+async def make_client_a(linked_servers):
+    """Create test clients connected to server A."""
+    server_a, _ = linked_servers
+    clients = []
+
+    async def _make(nick: str | None = None, user: str | None = None) -> IRCTestClient:
+        reader, writer = await asyncio.open_connection("127.0.0.1", server_a.config.port)
+        client = IRCTestClient(reader, writer)
+        if nick:
+            await client.send(f"NICK {nick}")
+        if user:
+            await client.send(f"USER {user} 0 * :{user}")
+        if nick and user:
+            await client.recv_all(timeout=0.5)
+        clients.append(client)
+        return client
+
+    yield _make
+
+    for c in clients:
+        try:
+            await c.close()
+        except Exception:
+            pass
+
+
+@pytest_asyncio.fixture
+async def make_client_b(linked_servers):
+    """Create test clients connected to server B."""
+    _, server_b = linked_servers
+    clients = []
+
+    async def _make(nick: str | None = None, user: str | None = None) -> IRCTestClient:
+        reader, writer = await asyncio.open_connection("127.0.0.1", server_b.config.port)
+        client = IRCTestClient(reader, writer)
+        if nick:
+            await client.send(f"NICK {nick}")
+        if user:
+            await client.send(f"USER {user} 0 * :{user}")
+        if nick and user:
+            await client.recv_all(timeout=0.5)
+        clients.append(client)
+        return client
+
+    yield _make
+
+    for c in clients:
+        try:
+            await c.close()
+        except Exception:
+            pass
+
+
+@pytest_asyncio.fixture
+async def server_welcome_disabled(tmp_path):
+    """Server instance with the welcome system bot disabled via config."""
+    empty_bots = tmp_path / "_bots"
+    empty_bots.mkdir()
+    config = ServerConfig(
+        name="testserv",
+        host="127.0.0.1",
+        port=0,
+        webhook_port=0,
+        system_bots={"welcome": {"enabled": False}},
+        telemetry=TelemetryConfig(audit_dir=str(tmp_path / "audit")),
+    )
+    with (
+        patch(_BOTS_DIR_MANAGER, empty_bots),
+        patch(_BOTS_DIR_CONFIG, empty_bots),
+        patch(_BOTS_DIR_BOT, empty_bots),
+    ):
+        ircd = IRCd(config)
+        await ircd.start()
+        ircd.config.port = ircd._server.sockets[0].getsockname()[1]
+        # Same agentirc-stub-replacement as the `server` fixture above —
+        # register culture's system bots so welcome_bot tests see them.
+        from culture_core.bots.bot_manager import BotManager as _CultureBotManager
+
+        ircd.bot_manager = _CultureBotManager(ircd)
+        ircd.bot_manager.load_system_bots()
+        yield ircd
+        await ircd.stop()
+
+
+@pytest_asyncio.fixture
+async def server_with_bot(server):
+    from culture_core.bots.bot_manager import BotManager
+    from culture_core.bots.config import BotConfig
+
+    def _make(**kwargs):
+        fires = kwargs.pop("fires_event", None)
+        filt = kwargs.pop("event_filter", None)
+        cfg = BotConfig(
+            name=kwargs.pop("bot_name"),
+            owner="testserv",
+            trigger_type=kwargs.pop("trigger_type", "event"),
+            event_filter=filt,
+            channels=kwargs.pop("channels", []),
+            template=kwargs.pop("template", None),
+            fires_event=fires,
+        )
+        if server.bot_manager is None:
+            server.bot_manager = BotManager(server=server)
+        server.bot_manager.register_bot(cfg)
+        return server, cfg
+
+    yield _make
+
+
+@pytest_asyncio.fixture
+async def server_with_bots(server):
+    from culture_core.bots.bot_manager import BotManager
+    from culture_core.bots.config import BotConfig
+
+    def _make(bot_kwargs_list):
+        if server.bot_manager is None:
+            server.bot_manager = BotManager(server=server)
+        cfgs = []
+        for kwargs in bot_kwargs_list:
+            fires = kwargs.pop("fires_event", None)
+            cfg = BotConfig(
+                name=kwargs.pop("bot_name"),
+                owner="testserv",
+                trigger_type=kwargs.pop("trigger_type", "event"),
+                event_filter=kwargs.pop("event_filter", None),
+                channels=kwargs.pop("channels", []),
+                template=kwargs.pop("template", None),
+                fires_event=fires,
+            )
+            server.bot_manager.register_bot(cfg)
+            cfgs.append(cfg)
+        return server, cfgs
+
+    yield _make
+
+
+@pytest_asyncio.fixture
+async def tracing_exporter():
+    """In-memory span exporter for telemetry integration tests.
+
+    Installs a dedicated SDK TracerProvider with a SimpleSpanProcessor so
+    every finished span lands in the returned exporter synchronously. Cleans
+    up after the test so it doesn't leak into parallel workers.
+    """
+    _reset_telemetry()
+    exporter = InMemorySpanExporter()
+    provider = SdkTracerProvider(resource=Resource.create({"service.name": "test"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    try:
+        yield exporter
+    finally:
+        exporter.clear()
+        _reset_telemetry()
+
+
+@pytest_asyncio.fixture
+async def metrics_reader():
+    """In-memory metric reader for telemetry integration tests.
+
+    Installs a dedicated SDK MeterProvider with an InMemoryMetricReader so
+    tests can `reader.get_metrics_data()` to walk recorded data points.
+    Cleans up after the test so it doesn't leak into parallel workers.
+    """
+    _reset_metrics()
+    reader = InMemoryMetricReader()
+    provider = SdkMeterProvider(
+        resource=Resource.create({"service.name": "test"}),
+        metric_readers=[reader],
+    )
+    otel_metrics.set_meter_provider(provider)
+    try:
+        yield reader
+    finally:
+        _reset_metrics()
+
+
+@pytest.fixture
+def audit_dir(tmp_path):
+    """Yields a Path for tests to use as `telemetry.audit_dir`.
+
+    Tests build a ServerConfig with `telemetry=TelemetryConfig(audit_dir=str(tmp_path))`
+    and inspect file contents via `Path(audit_dir).glob("*.jsonl*")`.
+    """
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Repo-root mutation guard (closes #351)
+#
+# PR #346 found that `culture agents create` regressions could rewrite the
+# tracked `culture.yaml` at the project root because helpers default
+# `directory=os.getcwd()` in `culture_core/cli/agents.py`. Any test that
+# calls `_cmd_create` without `monkeypatch.chdir(tmpdir)` is similarly
+# leak-prone, and `git status` was the only canary.
+#
+# This guard takes a stat() snapshot of the project-root canary files
+# *before* each test and asserts they're unchanged *after*. If a future
+# test of the same shape lands, it fails immediately with a message
+# pointing at the cwd-leak class. Cost is ~1µs per test (a handful of
+# stat() calls) and zero git invocations.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_CANARY_PATHS: tuple[Path, ...] = (
+    _REPO_ROOT / "culture.yaml",
+    _REPO_ROOT / "pyproject.toml",
+    _REPO_ROOT / "CHANGELOG.md",
+)
+
+
+def _canary_snapshot() -> dict[Path, tuple[float, int] | None]:
+    """Return (mtime, size) for each canary, or None if absent."""
+    snap: dict[Path, tuple[float, int] | None] = {}
+    for p in _CANARY_PATHS:
+        try:
+            st = os.stat(p)
+            snap[p] = (st.st_mtime, st.st_size)
+        except FileNotFoundError:
+            snap[p] = None
+    return snap
+
+
+@pytest.fixture(autouse=True)
+def _repo_root_mutation_guard(request):
+    """Fail any test that mutates tracked repo-root files (closes #351).
+
+    Real writes belong in `tmp_path`. If this fires, the culprit is almost
+    certainly a `_cmd_*` helper that defaulted `directory=os.getcwd()` and
+    wasn't pinned to `tmp_path` with `monkeypatch.chdir(...)`.
+    """
+    before = _canary_snapshot()
+    yield
+    after = _canary_snapshot()
+    if before != after:
+        diff = {p: (before[p], after[p]) for p in before if before[p] != after[p]}
+        raise AssertionError(
+            f"Test {request.node.nodeid!r} mutated tracked repo-root files "
+            f"outside tmp_path. Changed: {diff}. "
+            "Pin filesystem-writing helpers to `tmp_path` via "
+            "`monkeypatch.chdir(tmp_path)`."
+        )
