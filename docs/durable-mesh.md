@@ -115,7 +115,7 @@ Wants=culture-console-<name>.service
 
 [Service]
 Type=simple
-Environment=TUNNEL_TOKEN_FILE=%h/.config/cloudflared/<name>.token
+Environment=TUNNEL_TOKEN_FILE=%h/.culture/cloudflared-<name>.token
 ExecStart=cloudflared tunnel --no-autoupdate run
 Restart=on-failure
 RestartSec=5
@@ -126,13 +126,15 @@ WantedBy=default.target
 
 The token lives in a file, never in the unit (unit files are
 world-readable metadata; `systemctl show` would leak an inline
-`Environment=TUNNEL_TOKEN=…`). Create it with owner-only permissions:
+`Environment=TUNNEL_TOKEN=…`). Keep it under `~/.culture/` (the token is
+culture's own tunnel credential, and the path is free — the unit points at
+it via `TUNNEL_TOKEN_FILE`), created with owner-only permissions:
 
 ```bash
-mkdir -p ~/.config/cloudflared
+mkdir -p ~/.culture
 umask 077
-printf '%s' '<tunnel-token>' > ~/.config/cloudflared/<name>.token
-chmod 0600 ~/.config/cloudflared/<name>.token
+printf '%s' '<tunnel-token>' > ~/.culture/cloudflared-<name>.token
+chmod 0600 ~/.culture/cloudflared-<name>.token
 
 systemctl --user daemon-reload
 systemctl --user enable --now cloudflared-<name>.service
