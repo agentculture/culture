@@ -1,7 +1,7 @@
 # Install & Extras
 
-Since the 14.0.0 merge-back (issue #462) the backend SDKs moved from base
-dependencies to **optional extras**. The default install is slim — it ships
+As part of Phase C of the merge-back (issue #462) the backend SDKs moved
+from base dependencies to **optional extras**. The default install is slim — it ships
 the full engine and CLI but **no** backend SDKs.
 
 ## Default (slim) install
@@ -59,4 +59,4 @@ SDKs so the test suite is unaffected — tests run against the real SDKs.
 |----------|---------|
 | Operator running Claude agents | `culture[claude]` or `culture[all-backends]` |
 | Mesh server only (no agents) | slim default |
-| CI / test suite | dev dependency group (`uv sync --extra dev`) |
+| CI / test suite | dev dependency group (`uv sync --all-groups`) |
