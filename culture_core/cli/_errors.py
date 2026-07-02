@@ -48,8 +48,13 @@ def classify_daemon_exit(exc: BaseException) -> int:
     (port briefly taken, peer down) and anything unknown stay
     :data:`EXIT_DAEMON_TRANSIENT` — it is safer to keep restarting crashes
     we can't positively classify.
+
+    A :class:`CultureError` is always a deliberate, structured
+    config/user/environment error carrying a remediation hint — restarting
+    never resolves it (e.g. an unknown agent ``backend:`` raised by
+    ``_resolve_daemon_factory``), so it parks the unit too.
     """
-    if isinstance(exc, _PERMANENT_DAEMON_EXC):
+    if isinstance(exc, (CultureError, *_PERMANENT_DAEMON_EXC)):
         return EXIT_DAEMON_PERMANENT
     return EXIT_DAEMON_TRANSIENT
 

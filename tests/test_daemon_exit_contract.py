@@ -31,6 +31,9 @@ from culture_core.cli import server as srv_mod
 from culture_core.cli._errors import (
     EXIT_DAEMON_PERMANENT,
     EXIT_DAEMON_TRANSIENT,
+    EXIT_ENV_ERROR,
+    EXIT_USER_ERROR,
+    CultureError,
     classify_daemon_exit,
 )
 from culture_core.pidfile import is_process_alive
@@ -49,8 +52,18 @@ class TestClassifyDaemonExit:
             TypeError("bad config type"),
             PermissionError(errno.EACCES, "permission denied"),
             FileNotFoundError(errno.ENOENT, "no such file"),
+            CultureError(EXIT_USER_ERROR, "unknown agent backend 'bogus'"),
+            CultureError(EXIT_ENV_ERROR, "missing credentials"),
         ],
-        ids=["ValueError", "KeyError", "TypeError", "PermissionError", "FileNotFoundError"],
+        ids=[
+            "ValueError",
+            "KeyError",
+            "TypeError",
+            "PermissionError",
+            "FileNotFoundError",
+            "CultureError-user",
+            "CultureError-env",
+        ],
     )
     def test_permanent_errors_exit_78(self, exc):
         assert classify_daemon_exit(exc) == EXIT_DAEMON_PERMANENT
