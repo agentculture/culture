@@ -63,10 +63,12 @@ def _has_blocked_import(tree: ast.AST) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name in _BLOCKED_SDKS:
+                root = alias.name.split(".")[0]
+                if root in _BLOCKED_SDKS:
                     return alias.name
         elif isinstance(node, ast.ImportFrom):
-            if node.module in _BLOCKED_SDKS:
+            root = (node.module or "").split(".")[0]
+            if root in _BLOCKED_SDKS:
                 return node.module
     return None
 
