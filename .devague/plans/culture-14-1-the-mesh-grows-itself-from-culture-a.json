@@ -1,0 +1,331 @@
+{
+  "slug": "culture-14-1-the-mesh-grows-itself-from-culture-a",
+  "title": "Culture 14.1: the mesh grows itself from culture \u2014 a forwarded guild verb group provisions new sibling agents end-to-end (scaffold repo, run daemon, appear in the relationship overview, exchange messages), external sibling pins are drift-guarded so they can never silently lag again, and backend SDKs are optional extras so a slim install stays slim",
+  "frame_slug": "culture-14-1-the-mesh-grows-itself-from-culture-a",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-07-02T09:32:29Z",
+  "updated": "2026-07-02T09:36:04Z",
+  "targets": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "Culture 14.1: the mesh grows itself from culture \u2014 a forwarded guild verb group provisions new sibling agents end-to-end (scaffold repo, run daemon, appear in the relationship overview, exchange messages), external sibling pins are drift-guarded so they can never silently lag again, and backend SDKs are optional extras so a slim install stays slim"
+    },
+    {
+      "id": "h8",
+      "kind": "honesty",
+      "text": "The end-to-end demo actually runs on the mesh: a sibling agent provisioned from culture (scaffold -> create -> start) shows up in the overview and exchanges a channel message \u2014 the #462 Phase C acceptance flow, scripted or transcript-evidenced"
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "Culture operators (humans and mesh agents) who provision, run, and maintain sibling agents from the culture CLI; and installers of the culture dist who want a slim footprint"
+    },
+    {
+      "id": "h9",
+      "kind": "honesty",
+      "text": "The provisioning flow is drivable non-interactively (mesh agent) as well as by a human at a terminal: no interactive prompt on the happy path; guild create stays dry-run by default with --apply for execution"
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "Provisioning exists only in guild-cli used standalone; culture's core deps hard-require claude-agent-sdk+anthropic although culture_core/ never imports either (only cultureagent does, and it already models them as backend-* extras); nothing guards the external sibling pins against silently lagging \u2014 the exact failure (culture-core~=0.5.0 vs engine 0.17.0) that motivated the #462 merge-back"
+    },
+    {
+      "id": "h10",
+      "kind": "honesty",
+      "text": "Verified 2026-07-02 in-repo: culture_core/ has zero claude_agent_sdk/anthropic imports (only tests/ do); cultureagent 0.4.x publishes backend-claude/backend-acp/backend-copilot/all-backends extras; .github/workflows has no drift guard; pyproject/uv.lock/venvs carry no culture-core dist"
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "From culture, an operator provisions a new sibling agent end-to-end \u2014 guild create scaffolds the repo from culture-agent-template, culture agents create/start runs its daemon, it appears in the relationship overview and exchanges messages \u2014 while external sibling pins are drift-guarded and backend SDK deps are optional extras"
+    },
+    {
+      "id": "h11",
+      "kind": "honesty",
+      "text": "Each of the three tracks lands as its own PR with tests and a docs/ page (provisioning flow doc, extras/install doc, drift-guard doc), and the e2e flow is reproducible from the docs alone"
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "The merge-back was justified by the capability goals it unblocks; without Phase C the single-repo consolidation delivers only half its value, and the pin-drift failure mode that motivated it can recur with the remaining siblings (agentirc-cli, cultureagent, steward-cli, guild-cli)"
+    },
+    {
+      "id": "h12",
+      "kind": "honesty",
+      "text": "The motivating failure is the benchmark: replaying the culture-core~=0.5.0-vs-0.17.0 situation through the drift guard flags it \u2014 the guard closes the exact hole that justified the merge-back"
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "No culture-side re-implementation: provisioning forwards verbatim to guild-cli (as doctor/show/overview forward to steward-cli); relationship gaps become new steward verbs, not culture code; Phase B (archiving the culture-core repo/dist) is a hand-off to culture-core#28, not work in this repo"
+    },
+    {
+      "id": "h13",
+      "kind": "honesty",
+      "text": "The culture-side diff for provisioning is confined to CLI forwarding + parser registration + pyproject pin (+ tests/docs); zero new provisioning or relationship business logic lands in culture_core"
+    },
+    {
+      "id": "c8",
+      "kind": "success_signal",
+      "text": "On a clean box a slim 'uv tool install culture' works without claude-agent-sdk; 'culture[claude]' (or chosen extra name) pulls it via cultureagent's backend extra; the forwarded guild verbs reach guild-cli's own parser (--help included); a deliberately-staled pin makes the drift guard flag it; full suite green at >=90% coverage; backend-parity job passes"
+    },
+    {
+      "id": "h14",
+      "kind": "honesty",
+      "text": "Every listed signal is mechanically checkable in CI or a scripted smoke: slim-install import smoke, extra-install backend smoke, forwarded --help snapshot, staled-pin guard test, coverage >=90, backend-parity green"
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "Pin guild-cli in pyproject (capped like the other siblings) and forward a provisioning verb group to guild.cli:main, mirroring the _maybe_forward_to_steward/_maybe_forward_to_agentirc REMAINDER-forwarding pattern so --help reaches guild's parser"
+    },
+    {
+      "id": "h1",
+      "kind": "honesty",
+      "text": "Forwarded guild verbs behave exactly as standalone guild: exit codes, --json output, dry-run-by-default on create, and --help reaching guild's own parser are all preserved through the REMAINDER forward (proven by tests like the existing steward-forward tests)"
+    },
+    {
+      "id": "h2",
+      "kind": "honesty",
+      "text": "The guild-cli pin lands with a validated cap range like the other siblings (>=0.18,<1.0) and its rationale comment, and 'culture guild' collides with no existing top-level command"
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "A drift guard covers the external sibling pins (agentirc-cli, cultureagent, steward-cli, guild-cli): it detects when a pin's allowed range lags the latest published release and surfaces it visibly, so a pin can never silently lag again"
+    },
+    {
+      "id": "h3",
+      "kind": "honesty",
+      "text": "The guard demonstrably catches the motivating failure: pointed at a deliberately staled pin (or replaying culture-core~=0.5.0 vs 0.17.0) it flags the lag; pointed at current pins it stays quiet"
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "claude-agent-sdk and anthropic leave culture's core dependencies and become an optional extra; the extras surface is symmetric across all four backends per the all-backends rule (codex needs no SDK), and running a backend whose SDK extra is missing fails with a remediation hint naming the exact install command"
+    },
+    {
+      "id": "h4",
+      "kind": "honesty",
+      "text": "A slim install (no extras) imports culture, runs the CLI, and passes the non-SDK test suite; each backend daemon start on a missing SDK fails with a remediation hint naming the exact 'pip install culture[<extra>]' command, symmetric across claude/codex/copilot/acp"
+    },
+    {
+      "id": "h5",
+      "kind": "honesty",
+      "text": "CI and the dev environment keep the SDKs via the dev dependency group (tests/conftest.py and the integration runner import claude_agent_sdk), so the full suite still runs green at >=90% coverage"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "The culture-core name survives only where intended: the compat console-script alias (if kept) and historical docs/CHANGELOG; no dependency or install-metadata reference remains (verified clean today in pyproject, uv.lock, repo venv, uv-tool venv)"
+    },
+    {
+      "id": "h6",
+      "kind": "honesty",
+      "text": "A repo-wide sweep finds culture-core only in intended places: the compat alias (per its decision), CHANGELOG history, historical specs/docs, and the Phase B hand-off references"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "summary": "PR1/t1 \u2014 pyproject extras restructure: move anthropic + claude-agent-sdk out of core deps; add extras claude=[cultureagent[backend-claude]], acp=[cultureagent[backend-acp]], keep copilot==0.2.0 pin, add all-backends meta-extra; add the SDKs to the dev dependency group so the suite keeps them; regenerate uv.lock",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "A no-extras resolve of culture contains neither claude-agent-sdk nor anthropic; culture[claude] resolves both via cultureagent[backend-claude] (verified against published cultureagent 0.4.x metadata); culture[all-backends] pulls github-copilot-sdk==0.2.0",
+        "Dev environment still provides the SDKs (tests/conftest.py imports keep working); full suite green at >=90% coverage; uv.lock staged with pyproject.toml"
+      ],
+      "deps": [],
+      "covers": [
+        "c11",
+        "c3",
+        "h5"
+      ]
+    },
+    {
+      "id": "t2",
+      "summary": "PR1/t2 \u2014 missing-SDK remediation hints: wrap the backend SDK imports in the _create_<backend>_daemon factories (culture_core/cli/agents.py) so a missing SDK fails with the exact 'pip install culture[<extra>]' command, symmetric across claude/codex/copilot/acp (codex: documented no-SDK no-op)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "With the SDK import monkeypatched away, starting each backend exits non-zero with a hint naming its extra (test per backend); backend-parity CI job passes (all four factories touched)"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "h4"
+      ]
+    },
+    {
+      "id": "t3",
+      "summary": "PR1/t3 \u2014 slim-install smoke + culture-core sweep guard: test that culture_core/ contains zero claude_agent_sdk/anthropic imports (keeps the engine slim by construction); slim-install smoke (import culture + culture --version without SDKs, e.g. a no-extras CI step or tox-like venv test); repo-wide sweep asserting culture-core appears only in intended places (compat alias, CHANGELOG/specs history, Phase B hand-off refs)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "A guard test fails if any culture_core module imports claude_agent_sdk or anthropic; a smoke proves slim install imports and runs the CLI; the sweep lists intended culture-core sites and fails on any new one"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c8",
+        "h14",
+        "c12",
+        "h6",
+        "h10"
+      ]
+    },
+    {
+      "id": "t4",
+      "summary": "PR1/t4 \u2014 install/extras doc + PR1 version bump: docs/ page for the slim-vs-extras install matrix (slim, [claude], [acp], [copilot], [all-backends]) incl. the changed default UX (claude backend now needs its extra) and remediation-hint behavior; /version-bump minor",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Doc page explains every extra, maps each backend to its install command, and states the slim default; CHANGELOG entry present; version-check CI green"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "h11"
+      ]
+    },
+    {
+      "id": "t5",
+      "summary": "PR2/t5 \u2014 pin guild-cli in pyproject: guild-cli>=0.18,<1.0 with a rationale comment like the other siblings; regenerate uv.lock",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "guild-cli resolves in a fresh install; pin carries the cap-rationale comment; uv.lock staged with pyproject.toml"
+      ],
+      "deps": [
+        "t4"
+      ],
+      "covers": [
+        "h2"
+      ]
+    },
+    {
+      "id": "t6",
+      "summary": "PR2/t6 \u2014 'culture guild' top-level forward group: new culture_core/cli/guild.py (NAME='guild', REMAINDER passthrough parser) + _maybe_forward_to_guild in culture_core/cli/__init__.py, mirroring the steward/agentirc forwards so argv reaches guild.cli:main verbatim and --help reaches guild's parser",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "culture guild --help prints guild's own parser output; culture guild create stays dry-run by default with exit code/output identical to standalone guild create; 'guild' collides with no existing top-level command (parser registration test)"
+      ],
+      "deps": [
+        "t5"
+      ],
+      "covers": [
+        "c9",
+        "c6"
+      ]
+    },
+    {
+      "id": "t7",
+      "summary": "PR2/t7 \u2014 guild-forward test suite: tests/test_guild_forward_cli.py mirroring the existing steward-forward tests \u2014 verbatim argv passthrough, exit-code propagation, --json passthrough, no argument mangling; asserts the culture-side diff is confined to forwarding + registration",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Forward tests cover help/exit-code/--json/dry-run passthrough and pass; no provisioning business logic exists in culture_core (import/AST-level check or review checklist in test docstring)"
+      ],
+      "deps": [
+        "t6"
+      ],
+      "covers": [
+        "h1",
+        "h13"
+      ]
+    },
+    {
+      "id": "t8",
+      "summary": "PR2/t8 \u2014 end-to-end provisioning doc + demo + PR2 version bump: docs/provisioning.md walking scaffold (culture guild create --apply) -> culture agents create/start -> agent appears in overview -> exchanges a channel message; scripted dry-run e2e where CI-able, transcript-evidenced full run once; non-interactive (mesh-agent) path documented; /version-bump minor",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Doc alone is sufficient to reproduce the flow; dry-run e2e scripted; one full provisioning transcript recorded (or linked); no interactive prompt on the happy path; CHANGELOG entry present"
+      ],
+      "deps": [
+        "t6"
+      ],
+      "covers": [
+        "c1",
+        "h8",
+        "c2",
+        "h9",
+        "c4",
+        "h11"
+      ]
+    },
+    {
+      "id": "t9",
+      "summary": "PR3/t9 \u2014 pin-drift checker: culture_core/devtools/pin_drift.py parses the sibling pins (agentirc-cli, cultureagent, steward-cli, guild-cli) from pyproject, queries PyPI for latest releases, and reports pins whose allowed range excludes latest; unit tests with offline fixtures incl. a replay of culture-core~=0.5.0 vs 0.17.0 (flags) and current pins (quiet)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Replayed motivating failure is flagged; current pins stay quiet; network layer injectable so tests run offline; exit codes distinguish clean/lagging/error"
+      ],
+      "deps": [],
+      "covers": [
+        "c10",
+        "h3",
+        "c5",
+        "h12"
+      ]
+    },
+    {
+      "id": "t10",
+      "summary": "PR3/t10 \u2014 weekly drift workflow: .github/workflows/pin-drift.yml scheduled cron running the checker and opening/updating a single tracking issue naming the lagging pins (report-only; no bump PRs)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Workflow runs the checker on schedule and on workflow_dispatch; creates the tracking issue when lag is found and updates (not duplicates) it on subsequent runs; does nothing when clean"
+      ],
+      "deps": [
+        "t9"
+      ],
+      "covers": [
+        "c10"
+      ]
+    },
+    {
+      "id": "t11",
+      "summary": "PR3/t11 \u2014 drift-guard doc + PR3 version bump: docs/pin-drift.md describing the guarded pins, the report-only rationale (caps encode validated breakage), and how to act on a drift issue (bump alongside adaptation code, re-run suite); /version-bump minor",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "Doc names all guarded pins and the response playbook; CHANGELOG entry present; version-check CI green"
+      ],
+      "deps": [
+        "t9"
+      ],
+      "covers": [
+        "h11"
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "r1",
+      "text": "Full guild create --apply needs gh auth + org permissions on the operator box \u2014 CI exercises dry-run only; the transcript-evidenced full run is operator-gated",
+      "kind": "unknown_nonblocking",
+      "task_id": null
+    },
+    {
+      "id": "r2",
+      "text": "Slim default changes install UX: 'uv tool install culture' no longer runs the claude backend out of the box \u2014 accepted by design, mitigated by remediation hints + install doc",
+      "kind": "unknown_nonblocking",
+      "task_id": null
+    },
+    {
+      "id": "r3",
+      "text": "PyPI rate limits / transient network on the scheduled drift job \u2014 mitigate with retries and treating network failure as 'error', never 'clean'",
+      "kind": "unknown_nonblocking",
+      "task_id": null
+    }
+  ]
+}
