@@ -286,6 +286,49 @@ def test_install_mesh_services_omits_legacy_config_path():
         assert "agents" in command and "start" in command and "--foreground" in command
 
 
+def test_install_mesh_services_orders_agent_units_after_server_unit():
+    """Bulk setup installs agent units with After=/Wants= on the server unit
+    (durable mesh); the server unit itself carries no ordering."""
+    from culture_core.cli.mesh import _install_mesh_services
+
+    mesh = MeshConfig(
+        server=MeshServerConfig(name="spark", host="127.0.0.1", port=6667),
+        agents=[MeshAgentConfig(nick="claude", workdir="/home/u/work")],
+    )
+
+    with (
+        patch("culture_core.persistence.install_service") as mock_install,
+        patch(f"{_MESH_MOD}.build_server_start_cmd", return_value=["culture", "server", "start"]),
+    ):
+        _install_mesh_services(mesh, "spark", "/usr/bin/culture", "/etc/mesh.yaml")
+
+    by_name = {call.args[0]: call.kwargs for call in mock_install.call_args_list}
+    assert by_name["culture-server-spark"].get("after") is None
+    assert by_name["culture-agent-spark-claude"].get("after") == "culture-server-spark.service"
+
+
+def test_restart_mesh_services_orders_agent_units_after_server_unit():
+    """The update/restart path regenerates units with the same ordering."""
+    from culture_core.cli.mesh import _restart_mesh_services
+
+    mesh = MeshConfig(
+        server=MeshServerConfig(name="spark", host="127.0.0.1", port=6667),
+        agents=[MeshAgentConfig(nick="claude", workdir="/home/u/work")],
+    )
+
+    with (
+        patch("culture_core.persistence.install_service") as mock_install,
+        patch("culture_core.persistence.restart_service", return_value=True),
+        patch(f"{_MESH_MOD}.build_server_start_cmd", return_value=["culture", "server", "start"]),
+        patch(f"{_MESH_MOD}._wait_for_server_port", return_value=True),
+    ):
+        _restart_mesh_services(mesh, "spark", "/usr/bin/culture", "/etc/mesh.yaml", False)
+
+    by_name = {call.args[0]: call.kwargs for call in mock_install.call_args_list}
+    assert by_name["culture-server-spark"].get("after") is None
+    assert by_name["culture-agent-spark-claude"].get("after") == "culture-server-spark.service"
+
+
 def test_restart_mesh_services_uses_plural_agents_noun():
     """Regenerated agent units (restart path) must invoke `culture agents start`.
 

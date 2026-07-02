@@ -1410,7 +1410,15 @@ def _cmd_install(args: argparse.Namespace) -> None:
     # tests/test_setup_update_cli.py::test_install_mesh_services_omits_legacy_config_path.
     agent_cmd = [*culture_cmd, "agents", "start", full_nick, "--foreground"]
     svc = f"culture-agent-{full_nick}"
-    path = install_service(svc, agent_cmd, f"culture-core agents {full_nick}")
+    # After=/Wants= the server unit so a reboot brings the mesh up
+    # server-first (durable mesh, docs/durable-mesh.md). The server name
+    # resolves from the same config the agent's nick resolves from.
+    path = install_service(
+        svc,
+        agent_cmd,
+        f"culture-core agents {full_nick}",
+        after=f"culture-server-{config.server.name}.service",
+    )
     print(f"Installed {svc} → {path}")
 
 
