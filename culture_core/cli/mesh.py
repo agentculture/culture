@@ -304,7 +304,14 @@ def _install_mesh_services(
             "--foreground",
         ]
         agent_svc = f"culture-agent-{full_nick}"
-        path = install_service(agent_svc, agent_cmd, f"culture-core agents {full_nick}")
+        # After=/Wants= the server unit so a reboot brings the mesh up
+        # server-first (durable mesh, docs/durable-mesh.md).
+        path = install_service(
+            agent_svc,
+            agent_cmd,
+            f"culture-core agents {full_nick}",
+            after=f"{svc_name}.service",
+        )
         print(f"  Installed {agent_svc} → {path}")
 
 
@@ -312,6 +319,10 @@ def _cmd_setup(args: argparse.Namespace) -> None:
     from culture_core.mesh_config import load_mesh_config
     from culture_core.persistence import list_services, uninstall_service
 
+    # Same resolution `culture server install` uses (see
+    # shared.mesh.load_mesh_or_generate) — kept inline here because the
+    # existing test contract patches this module's
+    # generate_mesh_from_agents attribute.
     try:
         mesh = load_mesh_config(args.config)
     except FileNotFoundError:
@@ -561,7 +572,12 @@ def _restart_mesh_services(
             full_nick,
             "--foreground",
         ]
-        install_service(f"culture-agent-{full_nick}", agent_cmd, f"culture-core agents {full_nick}")
+        install_service(
+            f"culture-agent-{full_nick}",
+            agent_cmd,
+            f"culture-core agents {full_nick}",
+            after=f"culture-server-{server_name}.service",
+        )
 
     server_svc = f"culture-server-{server_name}"
     server_fallback = [

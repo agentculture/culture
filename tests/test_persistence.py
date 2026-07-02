@@ -7,12 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
+from culture_core.cli._errors import EXIT_DAEMON_PERMANENT, EXIT_USER_ERROR, CultureError
 from culture_core.persistence import (
     _build_launchd_plist,
     _build_systemd_unit,
     _build_windows_bat,
     _run_cmd,
+    _validate_unit_identifier,
     get_platform,
     install_service,
     list_services,
@@ -72,6 +73,194 @@ def test_build_systemd_unit_parks_permanent_failures():
     assert "RestartSec=5" in unit
     assert f"RestartPreventExitStatus={EXIT_DAEMON_PERMANENT}" in unit
     assert "RestartPreventExitStatus=78" in unit
+
+
+def test_build_systemd_unit_with_after_ordering():
+    """An `after` unit renders as After=/Wants= lines in the [Unit] section
+    so dependent units start once the server unit is up (durable mesh)."""
+    unit = _build_systemd_unit(
+        name="culture-agent-spark-claude",
+        command=["culture", "agents", "start", "spark-claude", "--foreground"],
+        description="culture-core agents spark-claude",
+        after="culture-server-spark.service",
+    )
+    assert "After=culture-server-spark.service" in unit
+    assert "Wants=culture-server-spark.service" in unit
+    # Ordering directives belong to [Unit], before [Service] begins.
+    assert unit.index("After=") < unit.index("[Service]")
+    assert unit.index("Wants=") < unit.index("[Service]")
+
+
+def test_build_systemd_unit_without_after_has_no_ordering():
+    unit = _build_systemd_unit(
+        name="culture-server-spark",
+        command=["culture", "server", "start", "--foreground"],
+        description="culture-core server spark",
+    )
+    assert "After=" not in unit
+    assert "Wants=" not in unit
+
+
+def test_install_service_linux_threads_after_into_unit(tmp_path):
+    unit_dir = tmp_path / "systemd" / "user"
+    with (
+        patch("culture_core.persistence.get_platform", return_value="linux"),
+        patch("culture_core.persistence._systemd_user_dir", return_value=unit_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        path = install_service(
+            "culture-console-spark",
+            ["culture", "console", "serve"],
+            "culture-core console spark",
+            after="culture-server-spark.service",
+        )
+    content = path.read_text()
+    assert "After=culture-server-spark.service" in content
+    assert "Wants=culture-server-spark.service" in content
+
+
+def test_install_service_macos_accepts_after(tmp_path):
+    """launchd has no user-agent ordering primitive — `after` is accepted
+    and ignored (KeepAlive retries until the server is reachable), the same
+    graceful degradation as RestartPreventExitStatus."""
+    agent_dir = tmp_path / "LaunchAgents"
+    with (
+        patch("culture_core.persistence.get_platform", return_value="macos"),
+        patch("culture_core.persistence._launchd_dir", return_value=agent_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        path = install_service(
+            "console-spark",
+            ["culture", "console", "serve"],
+            "culture-core console spark",
+            after="culture-server-spark.service",
+        )
+    assert path.exists()
+
+
+def test_install_service_windows_accepts_after(tmp_path):
+    """Scheduled tasks run ONLOGON with no inter-task ordering — `after` is
+    accepted and ignored (the .bat retry loop absorbs a not-yet-up server)."""
+    svc_dir = tmp_path / "services"
+    with (
+        patch("culture_core.persistence.get_platform", return_value="windows"),
+        patch("culture_core.persistence._windows_service_dir", return_value=svc_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        path = install_service(
+            "console-spark",
+            ["culture", "console", "serve"],
+            "culture-core console spark",
+            after="culture-server-spark.service",
+        )
+    assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Unit-identifier validation (Qodo #469): a name/After= target with
+# whitespace, path separators, or control chars would emit a unit file
+# systemd refuses to load. install/uninstall reject it before writing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "culture-server-a b",  # space
+        "culture-server-a\nb",  # newline
+        "culture-server-a\tb",  # tab
+        "culture-server-a\rb",  # carriage return
+        "culture/server",  # path separator
+        "culture\\server",  # backslash
+        "",  # empty
+    ],
+)
+def test_install_service_rejects_unsafe_name(bad):
+    with pytest.raises(CultureError) as excinfo:
+        install_service(bad, ["echo", "hi"], "desc")
+    assert excinfo.value.code == EXIT_USER_ERROR
+
+
+def test_install_service_rejects_unsafe_after(tmp_path):
+    # A valid name but a malformed ordering target is still rejected — before
+    # any file is written (unit_dir stays empty).
+    unit_dir = tmp_path / "systemd" / "user"
+    with (
+        patch("culture_core.persistence.get_platform", return_value="linux"),
+        patch("culture_core.persistence._systemd_user_dir", return_value=unit_dir),
+        patch("culture_core.persistence._run_cmd"),
+        pytest.raises(CultureError),
+    ):
+        install_service(
+            "culture-agent-spark-claude",
+            ["echo", "hi"],
+            "desc",
+            after="culture-server-a b.service",
+        )
+    assert not unit_dir.exists() or not list(unit_dir.glob("*.service"))
+
+
+def test_uninstall_service_rejects_unsafe_name():
+    with pytest.raises(CultureError) as excinfo:
+        uninstall_service("bad name\n")
+    assert excinfo.value.code == EXIT_USER_ERROR
+
+
+def test_validate_unit_identifier_accepts_real_unit_names():
+    # The names/targets the provisioning verbs actually generate must pass.
+    for good in (
+        "culture-server-spark",
+        "culture-agent-spark-claude",
+        "culture-console-spark.service",
+        "culture-server-node_1.service",
+    ):
+        _validate_unit_identifier(good, kind="name")  # no raise
+
+
+def test_uninstall_service_reports_removal(tmp_path):
+    """uninstall_service returns True when it removed an entry, False when
+    there was nothing to remove — so CLI verbs can print a friendly no-op."""
+    unit_dir = tmp_path / "systemd" / "user"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "culture-server-spark.service").write_text("[Unit]\n")
+    with (
+        patch("culture_core.persistence.get_platform", return_value="linux"),
+        patch("culture_core.persistence._systemd_user_dir", return_value=unit_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        assert uninstall_service("culture-server-spark") is True
+        assert uninstall_service("culture-server-spark") is False
+
+
+def test_uninstall_service_reports_removal_macos(tmp_path):
+    agent_dir = tmp_path / "LaunchAgents"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "com.culture.console-spark.plist").write_text("<plist/>\n")
+    with (
+        patch("culture_core.persistence.get_platform", return_value="macos"),
+        patch("culture_core.persistence._launchd_dir", return_value=agent_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        assert uninstall_service("console-spark") is True
+        assert uninstall_service("console-spark") is False
+
+
+def test_uninstall_service_reports_removal_windows(tmp_path):
+    svc_dir = tmp_path / "services"
+    svc_dir.mkdir(parents=True)
+    (svc_dir / "console-spark.bat").write_text("@echo off\n")
+    with (
+        patch("culture_core.persistence.get_platform", return_value="windows"),
+        patch("culture_core.persistence._windows_service_dir", return_value=svc_dir),
+        patch("culture_core.persistence._run_cmd"),
+    ):
+        assert uninstall_service("console-spark") is True
+        assert uninstall_service("console-spark") is False
+
+
+def test_uninstall_service_unsupported_platform_returns_false():
+    with patch("culture_core.persistence.get_platform", return_value="aix"):
+        assert uninstall_service("x") is False
 
 
 def test_build_launchd_plist():

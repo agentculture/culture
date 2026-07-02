@@ -10,6 +10,8 @@ the lens with culture-aware ergonomics:
     culture console serve --host ...  -> pure passthrough
     culture console explain           -> irc-lens explain (passthrough)
     culture console stop [--web-port] -> stop a locally-running console
+    culture console install [--config PATH] -> auto-start service unit
+    culture console uninstall        -> remove the service unit
 
 The full design lives in
 ``docs/superpowers/specs/2026-05-05-culture-console-design.md``. The
@@ -36,6 +38,7 @@ from culture_core.cli import _passthrough
 from culture_core.cli._errors import EXIT_ENV_ERROR, EXIT_USER_ERROR, CultureError
 from culture_core.cli.shared.console_helpers import resolve_console_nick as _resolve_console_nick
 from culture_core.cli.shared.console_helpers import resolve_server as _resolve_server
+from culture_core.cli.shared.constants import DEFAULT_CONFIG
 
 NAME = "console"
 
@@ -46,8 +49,10 @@ NAME = "console"
 # request for help rather than a server name (common typo for `--help`).
 _IRC_LENS_VERBS = frozenset({"learn", "explain", "overview", "serve", "cli", "help"})
 
-# `stop` is the one culture-owned verb — handled before passthrough.
-# It shadows any culture server literally named "stop".
+# `stop`, `install`, and `uninstall` are the culture-owned verbs —
+# handled in dispatch() before passthrough (irc-lens knows nothing
+# about pidfiles or service units). They shadow any culture server
+# literally named "stop"/"install"/"uninstall".
 
 # Per-port slot keys under ~/.culture/pids/. A `culture console` on port
 # 8765 owns `console-8765.{pid,port,json}`; a side-by-side run on 8766
@@ -399,6 +404,89 @@ def _cmd_stop(args: argparse.Namespace) -> None:
     print(f"force-stopped culture console (pid {pid}, port {web_port}).", file=sys.stderr)
 
 
+# --- install / uninstall verbs (durable mesh) -------------------------------
+
+
+def _parse_install_argv(argv: list[str]) -> str | None:
+    """Extract ``--config PATH`` (or ``--config=PATH``) from an ``install``
+    argv. ``argv[0]`` is the literal ``"install"`` token. Tolerant of
+    unknown flags, mirroring :func:`_parse_stop_argv`."""
+    norm = _normalise_argv(argv[1:])
+    i = 0
+    while i < len(norm):
+        if norm[i] == "--config" and i + 1 < len(norm):
+            return norm[i + 1]
+        i += 1
+    return None
+
+
+def _console_service_identity() -> tuple[str, str]:
+    """Resolve ``(service_name, server_name)`` for the console unit.
+
+    The server name comes from the manifest at ``DEFAULT_CONFIG``
+    (``~/.culture/server.yaml``) — the same place agent units resolve
+    their server — so the console unit's name and its After=/Wants=
+    ordering always match the server unit installed on this machine.
+
+    Fails closed when the manifest is absent: provisioning must not
+    silently fall back to the default server name (``culture``) and target
+    a ``culture-console-culture`` unit ordered behind a
+    ``culture-server-culture`` unit that was never installed. This mirrors
+    ``culture server install``'s strict ``_load_mesh_for_provisioning``
+    (server.py) — both install and uninstall resolve identity here, so
+    both fail loudly rather than operate on a phantom default name.
+    """
+    from culture_core.config import load_config
+
+    if not Path(DEFAULT_CONFIG).exists():
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"no server config at {DEFAULT_CONFIG}",
+            "start a server first with 'culture server start' (it writes "
+            "~/.culture/server.yaml), then rerun this console command",
+        )
+    config = load_config(DEFAULT_CONFIG)
+    server_name = config.server.name
+    return f"culture-console-{server_name}", server_name
+
+
+def _cmd_install(args: argparse.Namespace) -> None:
+    """Install an auto-start unit running ``console serve [--config PATH]``.
+
+    Culture-side (never reaches irc-lens). Idempotent: rerunning
+    rewrites the same unit content and re-enables it. Without
+    ``--config``, ExecStart defers to irc-lens's own default config
+    path — no path pinning (same rule as agent units, PR #344).
+    """
+    from culture_core.persistence import install_service
+
+    raw = list(getattr(args, "console_args", []) or [])
+    lens_config = _parse_install_argv(raw)
+    svc, server_name = _console_service_identity()
+    command = [sys.executable, "-m", "culture_core", "console", "serve"]
+    if lens_config:
+        command += ["--config", lens_config]
+    path = install_service(
+        svc,
+        command,
+        f"culture-core console {server_name}",
+        after=f"culture-server-{server_name}.service",
+    )
+    print(f"Installed {svc} → {path}")
+
+
+def _cmd_uninstall(args: argparse.Namespace) -> None:
+    """Remove the console's service unit. Graceful no-op if not installed."""
+    from culture_core.persistence import uninstall_service
+
+    del args  # no flags today; keep the uniform handler signature
+    svc, _ = _console_service_identity()
+    if uninstall_service(svc):
+        print(f"Uninstalled {svc}")
+    else:
+        print(f"{svc} is not installed — nothing to do")
+
+
 # --- entry point ----------------------------------------------------------
 
 
@@ -590,6 +678,12 @@ def dispatch(args: argparse.Namespace) -> None:
     verb = next(iter(raw), None)
     if verb == "stop":
         _cmd_stop(args)
+        sys.exit(0)
+    if verb == "install":
+        _cmd_install(args)
+        sys.exit(0)
+    if verb == "uninstall":
+        _cmd_uninstall(args)
         sys.exit(0)
     argv, server_name = _resolve_argv(raw)
     if argv and argv[0] == "serve":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -15,6 +16,35 @@ LOG_DIR = os.path.expanduser("~/.culture/logs")
 logger = logging.getLogger(__name__)
 
 DEFAULT_CMD_TIMEOUT = 30.0
+
+# A unit identifier interpolated into a generated unit file — the service
+# ``name`` and any ``After=``/``Wants=`` target — must be free of whitespace,
+# path separators, and control characters. Server names reach here from CLI
+# ``--name`` and mesh/server config, neither strictly constrained, and a name
+# carrying a space or newline would emit a unit file systemd refuses to load
+# (silently dropping the intended ordering). Restrict to the character class
+# systemd itself permits in a unit name; the ``.`` allows the ``.service``
+# suffix on ``After=`` targets.
+_UNIT_IDENT_RE = re.compile(r"^[A-Za-z0-9@:._-]+$")
+
+
+def _validate_unit_identifier(value: str, *, kind: str) -> None:
+    """Reject a service ``name`` / ordering target that isn't unit-safe.
+
+    Raises :class:`CultureError` (lazily imported so this low-level module
+    stays out of the CLI import graph, as in :func:`_build_systemd_unit`).
+    """
+    if not _UNIT_IDENT_RE.match(value):
+        from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"invalid systemd unit {kind} {value!r}: contains characters not "
+            "allowed in a unit name (whitespace, path separators, or control "
+            "characters)",
+            "use a server name of letters, digits, and '-_.@:' only (set it via "
+            "'culture server start --name <name>' or ~/.culture/server.yaml)",
+        )
 
 
 def get_platform() -> str:
@@ -59,12 +89,19 @@ def _run_cmd(args: list[str], timeout: float = DEFAULT_CMD_TIMEOUT) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _build_systemd_unit(name: str, command: list[str], description: str) -> str:
+def _build_systemd_unit(
+    name: str, command: list[str], description: str, after: str | None = None
+) -> str:
     # Lazy import: keep this low-level module from pulling in the whole CLI
     # package (culture_core.cli.__init__ imports every command group) at load.
     from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
 
     exec_start = " ".join(shlex.quote(arg) for arg in command)
+    # After= orders this unit behind *after* (e.g. the server unit) and
+    # Wants= pulls it in, so a reboot brings the mesh up server-first.
+    # Wants (not Requires): a crashed server must not tear down agents
+    # that can outlast a brief server restart via their own reconnects.
+    ordering = f"After={after}\nWants={after}\n" if after else ""
     # RestartPreventExitStatus parks the unit in a clear failed state when
     # the daemon child signals a permanent error (exit contract, #15) —
     # transient crashes still self-heal via Restart=on-failure.
@@ -72,6 +109,7 @@ def _build_systemd_unit(name: str, command: list[str], description: str) -> str:
         f"# {name}\n"
         f"[Unit]\n"
         f"Description={description}\n"
+        f"{ordering}"
         f"\n"
         f"[Service]\n"
         f"Type=simple\n"
@@ -142,17 +180,26 @@ def _build_windows_bat(command: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _install_linux_service(name: str, command: list[str], description: str) -> Path:
+def _install_linux_service(
+    name: str, command: list[str], description: str, after: str | None = None
+) -> Path:
     unit_dir = _systemd_user_dir()
     unit_dir.mkdir(parents=True, exist_ok=True)
     path = unit_dir / f"{name}.service"
-    path.write_text(_build_systemd_unit(name, command, description))
+    path.write_text(_build_systemd_unit(name, command, description, after=after))
     _run_cmd(["systemctl", "--user", "daemon-reload"])
     _run_cmd(["systemctl", "--user", "enable", name])
     return path
 
 
-def _install_macos_service(name: str, command: list[str], description: str) -> Path:
+def _install_macos_service(
+    name: str, command: list[str], description: str, after: str | None = None
+) -> Path:
+    # launchd limitation: user LaunchAgents have no inter-agent ordering
+    # primitive, so *after* is accepted and ignored — KeepAlive retries
+    # until the server is reachable. Same graceful degradation as
+    # RestartPreventExitStatus above.
+    del after
     agent_dir = _launchd_dir()
     agent_dir.mkdir(parents=True, exist_ok=True)
     plist_name = f"com.culture.{name}"
@@ -162,7 +209,12 @@ def _install_macos_service(name: str, command: list[str], description: str) -> P
     return path
 
 
-def _install_windows_service(name: str, command: list[str], description: str) -> Path:
+def _install_windows_service(
+    name: str, command: list[str], description: str, after: str | None = None
+) -> Path:
+    # Scheduled tasks run ONLOGON with no inter-task ordering — *after* is
+    # accepted and ignored; the .bat retry loop absorbs a not-yet-up server.
+    del after
     svc_dir = _windows_service_dir()
     svc_dir.mkdir(parents=True, exist_ok=True)
     bat_path = svc_dir / f"{name}.bat"
@@ -190,37 +242,57 @@ _PLATFORM_INSTALLERS = {
 }
 
 
-def install_service(name: str, command: list[str], description: str) -> Path:
-    """Generate and install a platform-specific auto-start entry."""
+def install_service(
+    name: str, command: list[str], description: str, after: str | None = None
+) -> Path:
+    """Generate and install a platform-specific auto-start entry.
+
+    *after* names a sibling service this one should start after (systemd
+    ``After=``/``Wants=``); platforms without an ordering primitive
+    (launchd, Windows scheduled tasks) accept and ignore it — their
+    retry loops absorb a dependency that isn't up yet.
+    """
+    _validate_unit_identifier(name, kind="name")
+    if after is not None:
+        _validate_unit_identifier(after, kind="After= target")
     platform = get_platform()
     installer = _PLATFORM_INSTALLERS.get(platform)
     if installer is None:
         raise RuntimeError(f"Unsupported platform: {platform}")
-    return installer(name, command, description)
+    return installer(name, command, description, after=after)
 
 
-def _uninstall_linux_service(name: str) -> None:
+def _uninstall_linux_service(name: str) -> bool:
     _run_cmd(["systemctl", "--user", "disable", name])
     _run_cmd(["systemctl", "--user", "stop", name])
     path = _systemd_user_dir() / f"{name}.service"
-    if path.exists():
+    removed = path.exists()
+    if removed:
         path.unlink()
     _run_cmd(["systemctl", "--user", "daemon-reload"])
+    return removed
 
 
-def _uninstall_macos_service(name: str) -> None:
+def _uninstall_macos_service(name: str) -> bool:
     plist_name = f"com.culture.{name}"
     path = _launchd_dir() / f"{plist_name}.plist"
     if path.exists():
         _run_cmd(["launchctl", "unload", str(path)])
         path.unlink()
+        return True
+    return False
 
 
-def _uninstall_windows_service(name: str) -> None:
+def _uninstall_windows_service(name: str) -> bool:
+    # /Delete runs unconditionally to also reap a stray scheduled task
+    # whose .bat is already gone (partial state); the return value
+    # reports on the .bat, the artifact install_service created.
     _run_cmd(["schtasks", "/Delete", "/TN", f"culture\\{name}", "/F"])
     bat_path = _windows_service_dir() / f"{name}.bat"
-    if bat_path.exists():
+    removed = bat_path.exists()
+    if removed:
         bat_path.unlink()
+    return removed
 
 
 _PLATFORM_UNINSTALLERS = {
@@ -230,11 +302,17 @@ _PLATFORM_UNINSTALLERS = {
 }
 
 
-def uninstall_service(name: str) -> None:
-    """Remove a platform-specific auto-start entry."""
+def uninstall_service(name: str) -> bool:
+    """Remove a platform-specific auto-start entry.
+
+    Returns True if an entry was found and removed, False if there was
+    nothing to remove — callers use this for friendly no-op messages.
+    """
+    _validate_unit_identifier(name, kind="name")
     uninstaller = _PLATFORM_UNINSTALLERS.get(get_platform())
-    if uninstaller is not None:
-        uninstaller(name)
+    if uninstaller is None:
+        return False
+    return uninstaller(name)
 
 
 def _list_systemd_services() -> list[str]:

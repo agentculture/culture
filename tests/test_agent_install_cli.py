@@ -122,6 +122,23 @@ def test_install_rejects_unknown_nick(tmp_path):
     mock_install.assert_not_called()
 
 
+def test_install_orders_agent_unit_after_server_unit(tmp_path):
+    """Agent units gain After=/Wants= ordering on the server unit (durable
+    mesh): the server name resolves from the same config the agent's nick
+    resolves from."""
+    from culture_core.cli.agents import _cmd_install
+
+    server_yaml = _write_manifest(tmp_path, server_name="spark", suffixes=("claude",))
+    args = argparse.Namespace(config=str(server_yaml), nick="claude")
+
+    with patch("culture_core.persistence.install_service") as mock_install:
+        mock_install.return_value = Path("/tmp/fake.service")
+        _cmd_install(args)
+
+    _args_, kwargs = mock_install.call_args
+    assert kwargs.get("after") == "culture-server-spark.service"
+
+
 def test_uninstall_calls_uninstall_service_with_correct_name(tmp_path):
     """`culture agents uninstall <suffix>` calls uninstall_service('culture-agent-<full>')."""
     from culture_core.cli.agents import _cmd_uninstall

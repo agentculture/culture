@@ -22,6 +22,20 @@ argparse default — `~/.culture/server.yaml`, the manifest the rest of
 the CLI uses. Anything specified in that manifest (workdir, channels,
 backend) is what the daemon reads.
 
+Agent units are ordered behind the server unit:
+
+```text
+After=culture-server-<name>.service
+Wants=culture-server-<name>.service
+```
+
+The server name resolves from the same manifest as the agent's nick,
+so a reboot brings the mesh up server-first. `Wants=` (not
+`Requires=`) means a server restart does not tear agents down — they
+reconnect on their own. The sibling `culture server install` /
+`culture console install` verbs provision the units agents order
+behind; see [Durable mesh](../../durable-mesh.md).
+
 ## Recovering from stale pre-10.3.5 units
 
 Before culture 10.3.5, the unit generator pinned a legacy

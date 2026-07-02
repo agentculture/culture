@@ -108,6 +108,32 @@ culture server unarchive --name spark
 
 Clears the archived flag but does not start any services.
 
+### `culture server install`
+
+Install an auto-start unit (`culture-server-<name>.service` on Linux)
+for the server. Host, port, and `--mesh-config` in the unit's
+`ExecStart` come from the same resolution `culture mesh setup` uses:
+`~/.culture/mesh.yaml` (override with `--config`), generated from
+`~/.culture/server.yaml` when missing. Idempotent — rerunning rewrites
+the identical unit and re-enables it.
+
+```bash
+culture server install
+culture server install --config ~/.culture/mesh.yaml
+```
+
+See [Durable mesh](../../durable-mesh.md) for the full reboot-survival
+story (unit ordering, linger, the cloudflared tunnel pattern).
+
+### `culture server uninstall`
+
+Remove the server's auto-start unit. Friendly no-op (exit 0) if the
+unit isn't installed.
+
+```bash
+culture server uninstall
+```
+
 ## Agent Lifecycle
 
 ### `culture agents create`
@@ -268,9 +294,12 @@ culture agents install claude          # bare suffix — resolved against server
 
 The generated `ExecStart` is `culture agents start <full-nick>
 --foreground` with no `--config` flag — the daemon falls through to
-the manifest at `~/.culture/server.yaml`. Decoupled from `mesh.yaml`:
-use this when you manage agents directly rather than via
-`culture mesh setup`. See
+the manifest at `~/.culture/server.yaml`. On Linux the unit is ordered
+`After=`/`Wants=` the `culture-server-<name>.service` unit (server
+name resolved from the same manifest), so a reboot brings the mesh up
+server-first — see [Durable mesh](../../durable-mesh.md). Decoupled
+from `mesh.yaml`: use this when you manage agents directly rather than
+via `culture mesh setup`. See
 [Agent systemd units](./agent-systemd.html) for unit-body details and
 recovery.
 

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.2.0] - 2026-07-02
+
+### Added
+
+- culture server install/uninstall and culture console install/uninstall — CLI-provisioned auto-start units symmetric with culture agents install; agent units now order After=/Wants= the server unit; idempotent installs, friendly no-op uninstalls; docs/durable-mesh.md documents reboot survival and the cloudflared tunnel-unit pattern (PR5a of the three-minds plan, #467).
+
+### Fixed
+
+- `culture console install/uninstall` now fail closed when `~/.culture/server.yaml` is absent instead of silently provisioning under the default server name `culture` (`culture-console-culture` ordered behind a server unit that was never installed) — mirrors `culture server install`'s strict loader (Qodo review, #469).
+- `install_service`/`uninstall_service` validate the systemd unit `name` and `After=`/`Wants=` target before writing a unit file: a server name with whitespace, a newline, or a path separator (from `--name` or mesh config) would otherwise emit a unit systemd refuses to load, silently dropping the intended ordering (Qodo review, #469).
+
+### Changed
+
+- docs/durable-mesh.md: the cloudflared tunnel token moves from `~/.config/cloudflared/` to `~/.culture/cloudflared-<name>.token` (culture's own credential belongs under the `~/.culture/` carve-out; the unit points at it via `TUNNEL_TOKEN_FILE`) (Qodo review, #469).
+
 ## [14.1.4] - 2026-07-02
 
 ### Changed
