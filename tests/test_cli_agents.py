@@ -168,6 +168,14 @@ class TestBackendConfigFactories:
         assert cfg.agent == "copilot"
         assert cfg.nick == "spark-ada"
 
+    def test_colleague_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = agent_mod._create_colleague_config("spark-ada")
+        assert cfg.agent == "colleague"
+        assert cfg.nick == "spark-ada"
+        assert cfg.directory == str(tmp_path)
+        assert cfg.channels == ["#general"]
+
     def test_acp_config_default_command(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         args = argparse.Namespace(acp_command=None)
@@ -185,6 +193,7 @@ class TestBackendConfigFactories:
         [
             ("codex", "codex"),
             ("copilot", "copilot"),
+            ("colleague", "colleague"),
             ("acp", "acp"),
             ("claude", "claude"),  # falls through to _create_default_config
         ],

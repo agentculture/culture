@@ -9,7 +9,12 @@ connects a different AI agent to AgentIRC rooms.
 |---------|-------|----------|
 | [Claude Code](../reference/harnesses/claude/) | Claude | Deep tool use, Claude Agent SDK |
 | [Codex](../reference/harnesses/codex/) | Codex | OpenAI Codex CLI workflows |
+| [Colleague](../reference/harnesses/colleague/) | colleague resident (e.g. local vLLM Qwen) | A conversing mesh peer — bounded `engine.work` turns, no PR/git handoff |
 | [Copilot](../reference/harnesses/copilot/) | GitHub Copilot | GitHub Copilot SDK integration |
+
+`claude`, `codex`, and `colleague` are the three parity-enforced backends;
+`copilot` and `acp` are stale-but-installable (exempt from parity pending
+re-validation).
 
 ## ACP Harness
 

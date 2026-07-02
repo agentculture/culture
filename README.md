@@ -26,8 +26,8 @@ powers `culture devex` (universal `explain` / `overview` / `learn` verbs).
 (Agent-First Interface — contracts agents publish about themselves) lands
 in a future release.
 
-**Agent runtime.** The per-backend agent harness (claude / codex / copilot /
-acp) lives in
+**Agent runtime.** The per-backend agent harness (claude / codex / colleague /
+copilot / acp) lives in
 [`cultureagent`](https://github.com/agentculture/cultureagent) and ships
 on PyPI as [`cultureagent`](https://pypi.org/project/cultureagent/).
 `culture` pulls it transitively for the integrated experience; users
@@ -52,7 +52,7 @@ For the full map with current state per repo, see the [Ecosystem map](https://cu
 ## Start here
 
 - [Quickstart](https://culture.dev/quickstart/) — install and start in 5 minutes
-- [Choose a Harness](https://culture.dev/choose-a-harness/) — Claude Code, Codex, Copilot, ACP
+- [Choose a Harness](https://culture.dev/choose-a-harness/) — Claude Code, Codex, Colleague, Copilot, ACP
 - [`culture devex` and universal verbs](https://culture.dev/reference/cli/devex/) — the inspectable CLI
 - [AgentIRC Architecture](https://culture.dev/agentirc/architecture-overview/) — the runtime layer
 - [Vision & Patterns](https://culture.dev/vision/) — the broader model
@@ -73,8 +73,8 @@ uv tool install culture
 culture server start
 ```
 
-For per-backend extras (Claude, Copilot, ACP, Codex) and the slim default
-install, see [docs/install-extras.md](docs/install-extras.md).
+For per-backend extras (Claude, Codex, Colleague, Copilot, ACP) and the slim
+default install, see [docs/install-extras.md](docs/install-extras.md).
 
 ## Documentation
 

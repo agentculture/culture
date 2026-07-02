@@ -17,6 +17,7 @@ import yaml
 if TYPE_CHECKING:
     from culture_core.clients.acp.config import AgentConfig as ACPAgentConfig
     from culture_core.clients.codex.config import AgentConfig as CodexAgentConfig
+    from culture_core.clients.colleague.config import AgentConfig as ColleagueAgentConfig
     from culture_core.clients.copilot.config import AgentConfig as CopilotAgentConfig
 
 from culture_core.cli._errors import (
@@ -95,7 +96,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "--agent",
             {
                 "default": "claude",
-                "choices": ["claude", "codex", "copilot", "acp"],
+                "choices": ["claude", "codex", "colleague", "copilot", "acp"],
                 "help": "Agent backend",
             },
         ),
@@ -314,6 +315,18 @@ def _create_copilot_config(full_nick: str) -> CopilotAgentConfig:
     )
 
 
+def _create_colleague_config(full_nick: str) -> ColleagueAgentConfig:
+    """Build a ColleagueAgentConfig."""
+    from culture_core.clients.colleague.config import AgentConfig as ColleagueAgentConfig
+
+    return ColleagueAgentConfig(
+        nick=full_nick,
+        agent="colleague",
+        directory=os.getcwd(),
+        channels=[DEFAULT_CHANNEL],
+    )
+
+
 def _parse_acp_command(raw_command: str | None) -> list[str]:
     """Parse and validate the ACP command from CLI args."""
     import json as _json
@@ -362,6 +375,7 @@ def _create_agent_config(args: argparse.Namespace, full_nick: str) -> AgentConfi
     factories = {
         "codex": lambda: _create_codex_config(full_nick),
         "copilot": lambda: _create_copilot_config(full_nick),
+        "colleague": lambda: _create_colleague_config(full_nick),
         "acp": lambda: _create_acp_config(full_nick, args),
     }
     factory = factories.get(args.agent)
@@ -643,6 +657,10 @@ _BACKEND_SDK_PROBES = {
     "acp": ("acp", ("claude_agent_sdk", "anthropic")),
     "copilot": ("copilot", ("copilot",)),
     "codex": (None, ()),
+    # colleague wraps colleague[culture]; the ColleagueDaemon resolves the
+    # ``colleague`` package lazily (like copilot), so probe it before building
+    # to fail fast with a 'pip install culture[colleague]' hint.
+    "colleague": ("colleague", ("colleague",)),
 }
 
 
@@ -729,6 +747,19 @@ def _create_copilot_daemon(config: DaemonConfig, agent: AgentConfig):
     return CopilotDaemon(_make_backend_config(config, CopilotDaemonConfig), agent)
 
 
+def _create_colleague_daemon(config: DaemonConfig, agent: AgentConfig):
+    """Create a colleague backend daemon (ColleagueHarness wrapped by cultureagent)."""
+    # backend-specific: initial colleague backend landing — claude/codex already
+    # present, colleague joins at parity (three-minds t1, spec 2026-07-02); there
+    # is no claude/codex edit to propagate this to.
+    _require_backend_sdk("colleague")
+    from cultureagent.clients.colleague.daemon import ColleagueDaemon
+
+    from culture_core.clients.colleague.config import DaemonConfig as ColleagueDaemonConfig
+
+    return ColleagueDaemon(_make_backend_config(config, ColleagueDaemonConfig), agent)
+
+
 def _create_claude_daemon(config: DaemonConfig, agent: AgentConfig):
     """Create the default Claude backend daemon."""
     _require_backend_sdk("claude")
@@ -747,6 +778,7 @@ def _create_claude_daemon(config: DaemonConfig, agent: AgentConfig):
 _BACKEND_DAEMON_FACTORIES = {
     "claude": _create_claude_daemon,
     "codex": _create_codex_daemon,
+    "colleague": _create_colleague_daemon,
     "acp": _create_acp_daemon,
     "opencode": _create_acp_daemon,  # alias for acp
     "copilot": _create_copilot_daemon,

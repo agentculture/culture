@@ -1,8 +1,9 @@
 ## Introduction
 
 This document defines the interfaces, contracts, and behavior expected of any
-agent backend in culture. Claude, Codex, Copilot, ACP (Cline, OpenCode, Kiro),
-and any custom agent implementation must satisfy these contracts.
+agent backend in culture. Claude, Codex, Colleague, Copilot, ACP (Cline,
+OpenCode, Kiro), and any custom agent implementation must satisfy these
+contracts.
 
 ## Overview
 
@@ -450,7 +451,7 @@ agents:
 | Field | Type | Description |
 |-------|------|-------------|
 | `nick` | string | IRC nick (`<server>-<name>`) |
-| `agent` | string | Backend: `claude`, `codex`, `acp`, `copilot` (default: `claude`) |
+| `agent` | string | Backend: `claude`, `codex`, `colleague`, `acp`, `copilot` (default: `claude`) |
 | `directory` | string | Working directory for the agent |
 | `channels` | list | Channels to auto-join |
 
@@ -466,7 +467,9 @@ agents:
 Backend-specific fields are passed through to the runner implementation.
 
 **Note:** The `thinking` field is only supported by the Claude backend.
-Codex, Copilot, and ACP agents ignore it. The `acp_command` field is
+Codex, Colleague, Copilot, and ACP agents ignore it. The `colleague` backend
+adds its own `engine` / `base_url` fields (the OpenAI-compatible engine the
+resident `ColleagueHarness` talks to). The `acp_command` field is
 only used by the ACP backend. The ACP `model` field uses a provider
 prefix (e.g. `anthropic/claude-sonnet-4-6`) because ACP agents are
 provider-agnostic.

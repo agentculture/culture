@@ -8,6 +8,15 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "agent-lifecycle"
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/19/e4e84c47523620612caea5b10ca91ca8b715b105994f5f7630fa19d6b033/agent_lifecycle-0.10.0.tar.gz", hash = "sha256:a9d818dbea2a567b346265ab8dc59c90a54c8dfbc8a3935f86ef258c75003b8c", size = 266043, upload-time = "2026-07-02T06:09:16.892Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/2a/76f237b306cafdea14df9618688b7f5cf59a30c84d00bc9ad83ca5183ce5/agent_lifecycle-0.10.0-py3-none-any.whl", hash = "sha256:3c29ad6303ed51ba4b1e0e584052a86adfad3fa52bda00f0c876cf30baade36e", size = 57822, upload-time = "2026-07-02T06:09:15.689Z" },
+]
+
+[[package]]
 name = "agentfront"
 version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -474,6 +483,24 @@ wheels = [
 ]
 
 [[package]]
+name = "colleague"
+version = "1.34.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "agentfront" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/69/8e/241c1f5c19f862e769abb8e70161800d6b31f32d86f1b2da31d1a1b5d520/colleague-1.34.0.tar.gz", hash = "sha256:9dc1be2959b919566a98ceb337bf6026002b38d2483444a971aa349d423d2e8f", size = 2401531, upload-time = "2026-07-02T16:14:49.514Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/3b/2108c28df9c5718f8dd86a23fde72fd8a4062a10ef5f1056ef56bd32274a/colleague-1.34.0-py3-none-any.whl", hash = "sha256:1302de6a9a8b0a011ee8580439f12f4c0ad9bebf7494d62da2805a42b6705a94", size = 555492, upload-time = "2026-07-02T16:14:48.129Z" },
+]
+
+[package.optional-dependencies]
+culture = [
+    { name = "agent-lifecycle" },
+    { name = "agentirc-cli" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -621,7 +648,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.2.0"
+version = "14.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },
@@ -646,11 +673,14 @@ acp = [
     { name = "cultureagent", extra = ["backend-acp"] },
 ]
 all-backends = [
-    { name = "cultureagent", extra = ["backend-acp", "backend-claude", "backend-copilot"] },
+    { name = "cultureagent", extra = ["backend-acp", "backend-claude", "backend-colleague", "backend-copilot"] },
     { name = "github-copilot-sdk" },
 ]
 claude = [
     { name = "cultureagent", extra = ["backend-claude"] },
+]
+colleague = [
+    { name = "cultureagent", extra = ["backend-colleague"] },
 ]
 copilot = [
     { name = "cultureagent", extra = ["backend-copilot"] },
@@ -684,11 +714,12 @@ requires-dist = [
     { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
-    { name = "cultureagent", specifier = "~=0.4.0" },
-    { name = "cultureagent", extras = ["backend-acp"], marker = "extra == 'acp'", specifier = "~=0.4.0" },
-    { name = "cultureagent", extras = ["backend-claude"], marker = "extra == 'claude'", specifier = "~=0.4.0" },
-    { name = "cultureagent", extras = ["backend-claude", "backend-acp", "backend-copilot"], marker = "extra == 'all-backends'", specifier = "~=0.4.0" },
-    { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.4.0" },
+    { name = "cultureagent", specifier = "~=0.12.0" },
+    { name = "cultureagent", extras = ["backend-acp"], marker = "extra == 'acp'", specifier = "~=0.12.0" },
+    { name = "cultureagent", extras = ["backend-claude"], marker = "extra == 'claude'", specifier = "~=0.12.0" },
+    { name = "cultureagent", extras = ["backend-claude", "backend-acp", "backend-copilot", "backend-colleague"], marker = "extra == 'all-backends'", specifier = "~=0.12.0" },
+    { name = "cultureagent", extras = ["backend-colleague"], marker = "extra == 'colleague'", specifier = "~=0.12.0" },
+    { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.12.0" },
     { name = "github-copilot-sdk", marker = "extra == 'all-backends'", specifier = "==0.2.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
     { name = "irc-lens", specifier = ">=0.5.3,<1.0" },
@@ -701,7 +732,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "steward-cli", specifier = ">=0.16,<1.0" },
 ]
-provides-extras = ["copilot", "claude", "acp", "codex", "all-backends"]
+provides-extras = ["copilot", "claude", "acp", "codex", "colleague", "all-backends"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -725,7 +756,7 @@ dev = [
 
 [[package]]
 name = "cultureagent"
-version = "0.4.0"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agentirc-cli" },
@@ -736,9 +767,9 @@ dependencies = [
     { name = "opentelemetry-semantic-conventions" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/d9/7ec3af049794422ffa39ceb62160dc4be3090077da5848245bb878ddba65/cultureagent-0.4.0.tar.gz", hash = "sha256:e2151b6b5476d4d94ac1f773a4c9e7f2fc20032c69b4543e237c10df292c95f9", size = 315121, upload-time = "2026-05-10T06:03:47.255Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/0d/1f4d10ad022c4e4031fc78fa840601a6c82ea397fd2c621a4c1c4e8316f0/cultureagent-0.12.0.tar.gz", hash = "sha256:c0c0ad154a838fe04f0f71e1076991434dbe09cee9160efef0db6196104d76c5", size = 612293, upload-time = "2026-07-02T18:44:38.787Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/0d/0bff771dca49f43483ad13b6f465a3d96b93c3288273da1ba24312a42cfe/cultureagent-0.4.0-py3-none-any.whl", hash = "sha256:079443ec8c48cf1871dbc572851001ec7eb19c6a2b9dec10393c49d2e9cd6d29", size = 137074, upload-time = "2026-05-10T06:03:48.498Z" },
+    { url = "https://files.pythonhosted.org/packages/32/b1/fccc0b5b27e93f529e75d51213f1afae13aa325ea3a373fd7a6c0555ec08/cultureagent-0.12.0-py3-none-any.whl", hash = "sha256:2dc7653cd355cfc4dfb6790c8bae1dc6d1671e454e2418c84902dc2a40eb4a25", size = 203708, upload-time = "2026-07-02T18:44:37.486Z" },
 ]
 
 [package.optional-dependencies]
@@ -747,8 +778,12 @@ backend-acp = [
     { name = "claude-agent-sdk" },
 ]
 backend-claude = [
+    { name = "agent-lifecycle" },
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
+]
+backend-colleague = [
+    { name = "colleague", extra = ["culture"] },
 ]
 backend-copilot = [
     { name = "github-copilot-sdk" },

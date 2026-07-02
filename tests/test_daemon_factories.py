@@ -100,3 +100,19 @@ def test_acp_daemon_factory_resolves_via_cultureagent(minimal_daemon_config, min
 
     daemon = _create_acp_daemon(minimal_daemon_config, minimal_agent_config)
     assert isinstance(daemon, ACPDaemon)
+
+
+def test_colleague_daemon_factory_resolves_via_cultureagent(
+    minimal_daemon_config, minimal_agent_config
+):
+    """``_create_colleague_daemon`` instantiates the colleague ColleagueDaemon
+    from cultureagent and returns an instance of that class. Skipped unless the
+    ``colleague`` package (``culture[colleague]`` extra) is installed — the
+    factory probes for it first and fails fast otherwise."""
+    pytest.importorskip("colleague")
+    from cultureagent.clients.colleague.daemon import ColleagueDaemon
+
+    from culture_core.cli.agents import _create_colleague_daemon
+
+    daemon = _create_colleague_daemon(minimal_daemon_config, minimal_agent_config)
+    assert isinstance(daemon, ColleagueDaemon)
