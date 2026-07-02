@@ -12,8 +12,8 @@ def test_culture_afi_version_runs():
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    # afi --version prints "afi X.Y.Z"
-    assert result.stdout.strip().startswith("afi ")
+    # agentfront --version prints "agentfront X.Y.Z"
+    assert result.stdout.strip().startswith("agentfront ")
 
 
 def test_culture_afi_explain_runs():
@@ -39,7 +39,7 @@ def test_culture_afi_learn_runs():
 
 
 def test_culture_afi_overview_runs():
-    # afi-cli 0.3+ exposes `overview`; our pin guarantees it.
+    # agentfront 0.20+ exposes `overview`; our pin guarantees it.
     result = subprocess.run(
         [sys.executable, "-m", "culture_core", "afi", "overview"],
         capture_output=True,

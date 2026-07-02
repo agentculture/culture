@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.1.0"
+version = "14.1.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "Apache-2.0"
@@ -22,15 +22,17 @@ dependencies = [
     "cultureagent~=0.4.0",
     "mistune>=3.0",
     "aiohttp>=3.9",
-    # afi-cli/agex-cli capped at the minor series culture validated against:
+    # agex-cli capped at the minor series culture validated against:
     # the import modules were renamed in later 0.x releases (agex-cli's
-    # `agent_experience` -> `devex` by 0.29; afi-cli's `afi` gone by 0.8), so
-    # the engine's `from agent_experience.cli import app` / `from afi.cli import
-    # main` break on a fresh `<1.0` resolve. Bump only alongside the code that
-    # adapts to the renamed modules, and re-run the full suite.
+    # `agent_experience` -> `devex` by 0.29), so the engine's
+    # `from agent_experience.cli import app` breaks on a fresh `<1.0` resolve.
+    # Bump only alongside the code that adapts to the renamed modules, and
+    # re-run the full suite.
+    # agentfront is afi-cli's renamed successor; cap at the validated minor
+    # per this repo's pin philosophy.
     "agex-cli>=0.13,<0.14",
     "agtag>=0.1,<1.0",
-    "afi-cli>=0.3,<0.4",
+    "agentfront>=0.20,<0.21",
     "steward-cli>=0.16,<1.0",
     "irc-lens>=0.5.3,<1.0",
     # OTel capped below 1.42 (the 0.6x track below 0.63b0): the metric-reader
