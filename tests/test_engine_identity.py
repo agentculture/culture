@@ -33,7 +33,12 @@ _SKIP_PARTS = frozenset({"__pycache__", ".venv", ".git", "node_modules", ".colle
 #   meta-path finder in ``culture/__init__.py`` maps onto ``culture_core.*``.
 #   Those dotted ``culture.<x>`` references are the feature under test there,
 #   not stale engine module refs.
-_SKIP_NAMES = frozenset({"test_engine_identity.py", "test_frontdoor_cutover.py"})
+# - the slimness suite: it imports the ``culture`` front door under an SDK
+#   blocker and asserts ``culture.__version__`` resolves — the alias namespace
+#   is again the feature under test.
+_SKIP_NAMES = frozenset(
+    {"test_engine_identity.py", "test_frontdoor_cutover.py", "test_engine_slimness.py"}
+)
 
 
 def _scan_py_files():
