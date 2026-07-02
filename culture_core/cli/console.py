@@ -427,10 +427,25 @@ def _console_service_identity() -> tuple[str, str]:
     (``~/.culture/server.yaml``) — the same place agent units resolve
     their server — so the console unit's name and its After=/Wants=
     ordering always match the server unit installed on this machine.
-    """
-    from culture_core.config import load_config_or_default
 
-    config = load_config_or_default(DEFAULT_CONFIG)
+    Fails closed when the manifest is absent: provisioning must not
+    silently fall back to the default server name (``culture``) and target
+    a ``culture-console-culture`` unit ordered behind a
+    ``culture-server-culture`` unit that was never installed. This mirrors
+    ``culture server install``'s strict ``_load_mesh_for_provisioning``
+    (server.py) — both install and uninstall resolve identity here, so
+    both fail loudly rather than operate on a phantom default name.
+    """
+    from culture_core.config import load_config
+
+    if not Path(DEFAULT_CONFIG).exists():
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"no server config at {DEFAULT_CONFIG}",
+            "start a server first with 'culture server start' (it writes "
+            "~/.culture/server.yaml), then rerun this console command",
+        )
+    config = load_config(DEFAULT_CONFIG)
     server_name = config.server.name
     return f"culture-console-{server_name}", server_name
 

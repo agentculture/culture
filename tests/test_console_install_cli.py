@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from culture_core.cli import console
+from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 
 
 def _server_yaml(tmp_path, name="spark"):
@@ -171,3 +172,33 @@ class TestConsoleUninstall:
         ):
             console.dispatch(_args(["uninstall"]))
         mock_lens.assert_not_called()
+
+
+class TestConsoleProvisioningFailsClosedWithoutManifest:
+    """Qodo #469: with no ~/.culture/server.yaml, provisioning must fail loudly
+    rather than silently default to the `culture` server name and target a
+    `culture-console-culture` unit ordered behind a server that was never
+    installed. Mirrors `culture server install`'s strict loader."""
+
+    def test_install_without_manifest_raises_user_error(self, tmp_path):
+        missing = tmp_path / "absent" / "server.yaml"
+        with (
+            patch.object(console, "DEFAULT_CONFIG", str(missing)),
+            patch("culture_core.persistence.install_service") as mock_install,
+            pytest.raises(CultureError) as excinfo,
+        ):
+            console.dispatch(_args(["install"]))
+        assert excinfo.value.code == EXIT_USER_ERROR
+        assert str(missing) in excinfo.value.message
+        mock_install.assert_not_called()
+
+    def test_uninstall_without_manifest_raises_user_error(self, tmp_path):
+        missing = tmp_path / "absent" / "server.yaml"
+        with (
+            patch.object(console, "DEFAULT_CONFIG", str(missing)),
+            patch("culture_core.persistence.uninstall_service") as mock_un,
+            pytest.raises(CultureError) as excinfo,
+        ):
+            console.dispatch(_args(["uninstall"]))
+        assert excinfo.value.code == EXIT_USER_ERROR
+        mock_un.assert_not_called()
