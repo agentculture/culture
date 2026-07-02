@@ -103,16 +103,37 @@ def test_acp_daemon_factory_resolves_via_cultureagent(minimal_daemon_config, min
 
 
 def test_colleague_daemon_factory_resolves_via_cultureagent(
-    minimal_daemon_config, minimal_agent_config
+    minimal_daemon_config, minimal_agent_config, monkeypatch
 ):
     """``_create_colleague_daemon`` instantiates the colleague ColleagueDaemon
-    from cultureagent and returns an instance of that class. Skipped unless the
-    ``colleague`` package (``culture[colleague]`` extra) is installed — the
-    factory probes for it first and fails fast otherwise."""
-    pytest.importorskip("colleague")
+    from cultureagent and returns an instance of that class.
+
+    ``cultureagent.clients.colleague.daemon`` imports the heavyweight
+    ``colleague`` runtime lazily, so ``ColleagueDaemon`` imports and constructs
+    without ``colleague[culture]`` installed — only the factory's fail-fast SDK
+    probe blocks it. We bypass the probe (it is covered independently in
+    ``test_backend_sdk_hints``) so the real resolve-and-construct path is
+    exercised in CI without the GPU-class dep."""
     from cultureagent.clients.colleague.daemon import ColleagueDaemon
 
-    from culture_core.cli.agents import _create_colleague_daemon
+    from culture_core.cli import agents as agents_cli
 
-    daemon = _create_colleague_daemon(minimal_daemon_config, minimal_agent_config)
+    monkeypatch.setattr(agents_cli, "_require_backend_sdk", lambda backend: None)
+
+    daemon = agents_cli._create_colleague_daemon(minimal_daemon_config, minimal_agent_config)
     assert isinstance(daemon, ColleagueDaemon)
+
+
+def test_colleague_config_and_constants_shims_reexport():
+    """The culture-side ``colleague`` shims re-export their cultureagent
+    counterparts (same pattern as claude/codex). Importing them exercises the
+    thin shim modules directly — no ``colleague`` runtime required."""
+    from culture_core.clients.colleague import config as colleague_config
+    from culture_core.clients.colleague import constants as colleague_constants
+
+    # config shim: the daemon/agent config surface the factory relies on.
+    assert colleague_config.DaemonConfig is not None
+    assert colleague_config.AgentConfig is not None
+    # constants shim: backend timeout constants.
+    assert isinstance(colleague_constants.DEFAULT_TURN_TIMEOUT_SECONDS, (int, float))
+    assert isinstance(colleague_constants.INNER_ENGINE_TIMEOUT_SECONDS, (int, float))
