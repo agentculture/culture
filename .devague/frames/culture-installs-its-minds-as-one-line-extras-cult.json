@@ -1,0 +1,375 @@
+{
+  "slug": "culture-installs-its-minds-as-one-line-extras-cult",
+  "title": "Culture installs its minds as one-line extras \u2014 culture[claude,codex,colleague] \u2014 presents one clear agentfront-derived interface to agents and humans alike, and answers both locally and at chat.agentculture.org.",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-07-02T11:49:52Z",
+  "updated": "2026-07-02T13:41:00Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "Culture installs its minds as one-line extras \u2014 culture[claude,codex,colleague] \u2014 presents one clear agentfront-derived interface to agents and humans alike, and answers both locally and at chat.agentculture.org.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "Every headline is demonstrable on release: the extras line installs from PyPI, one agentfront App registry backs the CLI/MCP/HTTP surfaces, and chat.agentculture.org answers after an unattended reboot",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "Mesh operators (humans at the CLI) and AI agents (in-mesh and driving the culture CLI) \u2014 both install, learn, and drive culture through the same surfaces",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "Both audiences are served by the same artifacts: a human can install and run from the docs alone; an agent can drive the same flows via the learn/explain affordances \u2014 no human-only steps",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "Today: extras are culture[claude/acp/codex/copilot] \u2014 no colleague backend anywhere (engine factories: claude, codex, acp+opencode, copilot); culture pins the retired afi-cli>=0.3,<0.4 and imports 'from afi.cli import main' (agentfront is afi-cli's renamed successor, now an importable runtime); chat.agentculture.org returns Cloudflare 1033 because the IRCd is down, the console has no systemd unit (was nohup), and the token-run tunnel died at reboot",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "The before-state is evidenced, not asserted: the extras list and afi-cli pin are in pyproject.toml, the afi.cli import is in culture_core/cli/afi.py, and the down IRCd/console/1033 were observed on-host at spec time (2026-07-02)",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "uv tool install 'culture[claude,codex,colleague]' yields working backends in one line; the colleague coder-agent harness is a first-class culture backend; culture's agent-first surfaces ride the agentfront package (afi-cli imports gone); chat.agentculture.org serves the console again and survives reboots via systemd units",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h11",
+          "text": "Every after-state clause maps to a requirement carrying its own confirmed honesty condition (c6, c7, c8, c9, c18) \u2014 nothing in the after-state is uncovered",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "Accessibility is the product: one obvious install line, one interface registry that cannot drift between CLI/MCP/HTTP, and a remote console that is actually up \u2014 for agents and humans equally",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "The accessibility claim is testable: a fresh agent or human goes from zero to a mesh-joined backend using only published packages and documented commands",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c6",
+      "kind": "requirement",
+      "text": "A 'colleague' extra exists: culture[colleague] installs whatever the colleague backend needs, symmetric with the existing per-backend extras (pip already supports the comma union culture[claude,codex,colleague])",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "On a clean venv, pip install 'culture[colleague]' resolves entirely from published package versions (no git/path deps)",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c7",
+      "kind": "requirement",
+      "text": "A colleague backend is wired end-to-end: culture.yaml 'backend: colleague', a _create_colleague_daemon factory, and daemon resolution \u2014 implemented where the other backends live (cultureagent.clients.<backend>.daemon), with culture-side wiring here and a hand-off brief/issue on the sibling repo",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "A colleague-backed agent passes the same connect-join-respond smoke test the other backends pass",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "Culture migrates afi-cli -> agentfront: the pyproject pin afi-cli>=0.3,<0.4 is replaced by agentfront, culture_core/cli/afi.py's 'from afi.cli import main' import is updated, and the passthrough verb keeps working",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "The full engine test suite passes with afi-cli absent from the venv and agentfront installed; culture afi passthrough verbs (explain/overview/learn) still work",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "chat.agentculture.org is restored and durable: IRCd + console + cloudflared tunnel each run under a systemd unit that survives reboot, and the 1033 is gone",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "Reboot test: systemctl reboot, wait, then chat.agentculture.org loads the console with no manual bring-up",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "The all-backends parity rule and its CI job are updated to whatever the new supported backend set is \u2014 colleague counts as a backend for parity",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "A test PR touching only one backend directory fails backend-parity CI naming the missing backends of the NEW set",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c11",
+      "kind": "decision",
+      "text": "Cross-repo changes follow the standing hand-off convention: culture implements its own side; gaps in colleague, cultureagent, or agentfront are filed as issues on those repos, not patched in-tree here",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c12",
+      "kind": "boundary",
+      "text": "Not a console/web rewrite: irc-lens remains the chat console; agentfront's HTTP/MCP surfaces present culture-the-tool, not the chat UI. And no re-vendoring: colleague, cultureagent, and agentfront stay external deps \u2014 cite issues upstream, don't absorb code",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "No PR in this effort vendors colleague/cultureagent/agentfront code in-tree or modifies irc-lens; upstream gaps appear as filed issues instead",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c13",
+      "kind": "success_signal",
+      "text": "On a clean machine: uv tool install 'culture[claude,codex,colleague]' succeeds and culture agents create/start with backend: colleague joins the mesh and answers a mention \u2014 the same smoke test the existing backends pass",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h14",
+          "text": "The clean-install + colleague-answers-a-mention smoke test is actually executed and its transcript recorded before the effort is declared done",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c14",
+      "kind": "success_signal",
+      "text": "After a host reboot with zero manual steps, chat.agentculture.org serves the console behind Cloudflare Access \u2014 no error 1033; and the backend-parity CI job names colleague in its enforced set",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h15",
+          "text": "The unattended-reboot test and the parity-CI negative test are both executed and recorded before the effort is declared done",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c15",
+      "kind": "assumption",
+      "text": "colleague's resident mode is the integration point: colleague ships a [culture] extra whose ColleagueHarness adapts the bounded work loop onto agent-lifecycle's Harness Protocol over the agentirc-cli wire \u2014 the culture backend wraps this, it does not build a new harness",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c16",
+      "kind": "assumption",
+      "text": "agentfront 0.20.0 (on PyPI) keeps a main(argv)->int-compatible entry at agentfront.cli:main, so culture's passthrough adapter carries over with an import rename (afi.cli -> agentfront.cli)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c17",
+      "kind": "requirement",
+      "text": "Copilot and acp are deprecated: parity CI + all-backends rule narrow to claude/codex/colleague, docs and extras mark the two as deprecated, and the release is a MAJOR version bump; actual removal timeline is parked",
+      "origin": "llm",
+      "status": "rejected",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "On the release: pip install culture[copilot] still works but warns/documents deprecation; backend-parity CI enforces exactly claude/codex/colleague; CHANGELOG carries a major-version breaking entry",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c18",
+      "kind": "requirement",
+      "text": "Culture's own interface is agentfront-derived: one App registry declares culture's docs and tools once, and the CLI, MCP server, and HTTP surfaces are derived from it (the surfaces cannot drift apart); the existing culture CLI command names keep working",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "agentfront's own rubric gate (agentfront cli doctor) passes on culture's CLI surface, and the existing CLI test suite passes unchanged (command names and behavior preserved)",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q1",
+          "text": "risk: Full registry adoption touches all of culture_core/cli/ (9 command groups); riding it alongside the backend-set change makes one large release \u2014 mitigation: stage as separate PRs under one spec",
+          "resolved": false,
+          "blocking": false
+        }
+      ],
+      "links": []
+    },
+    {
+      "id": "c19",
+      "kind": "decision",
+      "text": "The colleague adapter is cultureagent's clients/colleague backend wrapping colleague[culture]; culture's extra becomes colleague = [cultureagent[backend-colleague]]; hand-off issue filed on cultureagent",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c20",
+      "kind": "decision",
+      "text": "Staging (user decision): one converged spec, several PRs in dependency order \u2014 agentfront migration; colleague backend + extras; parity narrowing + copilot/acp deprecation (major bump); App-registry adoption; ops/systemd durability. Each PR independently green. This resolves the hard question on c18.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c21",
+      "kind": "requirement",
+      "text": "The ENTIRE mesh survives host restarts (user requirement 2026-07-02): not just IRCd/console/tunnel \u2014 every registered agent (spark-agentirc, spark-colleague, future registrations) runs under an enabled systemd user unit with linger, and rejoins the mesh after an unattended reboot",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h16",
+          "text": "After the unattended reboot test, culture agents status shows every registered agent running and joined, with zero manual steps",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c22",
+      "kind": "requirement",
+      "text": "Durable-mesh provisioning is a CLI-supported product capability, not hand-ops (user steer 2026-07-02): culture agents install exists today; server, console, and tunnel provisioning must be equally supported so others \u2014 or a machine move \u2014 reach a reboot-surviving mesh from documented commands alone. This is part of the offering that is culture",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h17",
+          "text": "On a fresh machine or after a machine move, the documented culture CLI flow alone \u2014 no hand-written unit files \u2014 yields the reboot-surviving mesh; spark's hand-written server/console/tunnel units get replaced by CLI-provisioned ones as the verification",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c23",
+      "kind": "requirement",
+      "text": "Copilot and acp are NOT deprecated (user decision 2026-07-02, supersedes the earlier deprecation choice): they go STALE \u2014 kept installable and working as-is, exempt from the three-backend parity obligation, marked stale in docs \u2014 and will be validated and re-added to the supported set in the future. No removal, no breaking change, no major bump on their account",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h18",
+          "text": "pip install culture[copilot] / culture[acp] still resolve and those backends still start; docs mark both stale with the future re-validation path; backend-parity CI enforces claude/codex/colleague and does not fire on copilot/acp-only changes",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "Exact agentfront version policy for the new dep (cap at <0.21 like afi-cli was capped, or float >=0.20) \u2014 decide at implementation with the suite green",
+      "kind": "unknown_nonblocking",
+      "claim_id": null
+    },
+    {
+      "id": "v2",
+      "text": "Whether the 'culture afi' verb renames to 'culture agentfront' with a deprecated alias, or keeps its name over the new package",
+      "kind": "unknown_nonblocking",
+      "claim_id": null
+    },
+    {
+      "id": "v3",
+      "text": "Whether copilot/acp deprecation (if chosen) is a major-version event and what the removal timeline is \u2014 depends on the backend-set answer",
+      "kind": "unknown_nonblocking",
+      "claim_id": null
+    }
+  ]
+}

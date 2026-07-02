@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.1.2] - 2026-07-02
+
+### Added
+
+- spec+plan: three-backend future (claude/codex/colleague), agentfront App-registry surfaces, CLI-provisioned durable mesh — docs/specs/ and docs/plans/ 2026-07-02-culture-installs-its-minds-as-one-line-extras-cult.md (devague frame + 14-task plan in 3 waves)
+
 ## [14.1.1] - 2026-07-02
 
 ### Changed
