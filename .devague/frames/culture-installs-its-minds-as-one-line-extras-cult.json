@@ -4,7 +4,7 @@
   "schema_version": 1,
   "status": "exported",
   "created": "2026-07-02T11:49:52Z",
-  "updated": "2026-07-02T11:58:27Z",
+  "updated": "2026-07-02T12:24:16Z",
   "claims": [
     {
       "id": "c1",
@@ -300,6 +300,38 @@
       "origin": "user",
       "status": "confirmed",
       "honesty_conditions": [],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c21",
+      "kind": "requirement",
+      "text": "The ENTIRE mesh survives host restarts (user requirement 2026-07-02): not just IRCd/console/tunnel \u2014 every registered agent (spark-agentirc, spark-colleague, future registrations) runs under an enabled systemd user unit with linger, and rejoins the mesh after an unattended reboot",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h16",
+          "text": "After the unattended reboot test, culture agents status shows every registered agent running and joined, with zero manual steps",
+          "status": "confirmed"
+        }
+      ],
+      "hard_questions": [],
+      "links": []
+    },
+    {
+      "id": "c22",
+      "kind": "requirement",
+      "text": "Durable-mesh provisioning is a CLI-supported product capability, not hand-ops (user steer 2026-07-02): culture agents install exists today; server, console, and tunnel provisioning must be equally supported so others \u2014 or a machine move \u2014 reach a reboot-surviving mesh from documented commands alone. This is part of the offering that is culture",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h17",
+          "text": "On a fresh machine or after a machine move, the documented culture CLI flow alone \u2014 no hand-written unit files \u2014 yields the reboot-surviving mesh; spark's hand-written server/console/tunnel units get replaced by CLI-provisioned ones as the verification",
+          "status": "confirmed"
+        }
+      ],
       "hard_questions": [],
       "links": []
     }
