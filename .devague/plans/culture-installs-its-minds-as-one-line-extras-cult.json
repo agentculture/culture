@@ -219,9 +219,7 @@
         "Install resolves entirely from published package versions (no git/path deps)",
         "Colleague agent passes the same connect-join-respond smoke the other backends pass; transcript recorded before declaring done"
       ],
-      "deps": [
-        "t3"
-      ],
+      "deps": [],
       "covers": [
         "c13",
         "h1",
