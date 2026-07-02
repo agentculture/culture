@@ -1,6 +1,6 @@
 """Tests for culture_core.cli.afi + culture_core.cli.devex — passthrough wrappers.
 
-Both modules wrap an external CLI (afi-cli / agex-cli) in the
+Both modules wrap an external CLI (agentfront / agex-cli) in the
 `culture_core.cli._passthrough` plumbing. The shared plumbing itself is
 covered by `tests/test_cli_passthrough.py`; this file exercises the
 two thin adapters' `dispatch`, `_entry`, and `register` surfaces.
@@ -50,14 +50,14 @@ def test_afi_dispatch_handles_missing_afi_args(monkeypatch):
 
 
 def test_afi_entry_exits_when_afi_not_installed(monkeypatch):
-    """`_entry` exits with rc 2 when `afi.cli` import fails."""
+    """`_entry` exits with rc 2 when `agentfront.cli` import fails."""
     real_import = (
         __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
     )
 
     def _blocked(name, *a, **kw):
-        if name == "afi.cli":
-            raise ImportError("afi-cli not installed in this env")
+        if name == "agentfront.cli" or name == "agentfront":
+            raise ImportError("agentfront not installed in this env")
         return real_import(name, *a, **kw)
 
     monkeypatch.setattr("builtins.__import__", _blocked)
