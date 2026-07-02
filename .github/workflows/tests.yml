@@ -42,8 +42,10 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
 
   backend-parity:
-    # All-backends rule (CLAUDE.md): a feature touched in only some of
-    # claude/codex/copilot/acp is a bug. Only meaningful on PR events — on push
+    # All-backends rule (CLAUDE.md): a feature touched in only some of the
+    # enforced backends (claude/codex — plus colleague once its client dir
+    # lands) is a bug. copilot/acp are stale, not deprecated: exempt from
+    # parity pending re-validation. Only meaningful on PR events — on push
     # to main HEAD == origin/main and there is no diff to inspect (mirrors
     # version-check). Ported from culture-core with the engine merge-back (#462).
     if: github.event_name == 'pull_request'

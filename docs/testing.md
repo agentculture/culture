@@ -46,6 +46,10 @@ anymore.
   the `CULTURE_YAML` constant.
 - `tests/test_backend_parity.py` + the `backend-parity` CI job — the
   all-backends rule (`python -m culture_core.devtools.backend_parity`).
+  Enforced backends: `claude`/`codex`, plus `colleague` once its client dir
+  lands (existence-gated). `copilot`/`acp` are stale-exempt — installable and
+  working as-is, neither triggering nor demanded by parity, pending
+  re-validation in a future cycle.
 
 ## History
 

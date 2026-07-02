@@ -1,9 +1,17 @@
-"""CI guard enforcing the all-backends rule (claude/codex/copilot/acp parity).
+"""CI guard enforcing the all-backends rule over the supported backend set.
 
-A feature added to one agent backend must be propagated to all of them — a
-feature in only one backend is a bug (see CLAUDE.md, and culture-core#9 for
-the bug class this guards against: ``attention_overrides`` landed for some
-backends while ``_create_claude_daemon`` alone kept crashing).
+A feature added to one enforced agent backend must be propagated to all of
+them — a feature in only one backend is a bug (see CLAUDE.md, and
+culture-core#9 for the bug class this guards against: ``attention_overrides``
+landed for some backends while ``_create_claude_daemon`` alone kept crashing).
+
+The supported (parity-enforced) set is **claude/codex/colleague** (decision
+2026-07-02). ``copilot`` and ``acp`` are **stale, not deprecated**: they stay
+installable and working as-is, with no warnings and no removal, but are fully
+exempt from parity — they neither trigger the guard nor are demanded by it —
+pending re-validation in a future cycle. ``colleague`` is enforced only once
+its client dir (``culture_core/clients/colleague/``) lands (see
+:func:`enforced_backends`).
 
 The guard inspects a PR's touched surface between two git refs:
 
@@ -13,9 +21,9 @@ The guard inspects a PR's touched surface between two git refs:
   ``_create_<backend>_daemon`` factory is extracted at base and head (via
   ``ast``) and compared, so only factory-body changes count as backend touches.
 
-It fails when a change touches at least one backend but fewer than all four,
-naming the missing backends explicitly. Genuinely backend-specific code can
-carry a justification marker on an added line::
+It fails when a change touches at least one enforced backend but fewer than
+all of them, naming the missing backends explicitly. Genuinely
+backend-specific code can carry a justification marker on an added line::
 
     # backend-specific: <reason>
 
@@ -37,10 +45,17 @@ import argparse
 import ast
 import re
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-BACKENDS = ("claude", "codex", "copilot", "acp")
+# Supported backend set (decision 2026-07-02): parity is enforced across
+# claude/codex/colleague. copilot and acp are STALE, not deprecated — kept
+# installable and working as-is, exempt from parity (neither trigger nor
+# required), to be re-validated in a future cycle. colleague is gated on its
+# client dir landing (see enforced_backends()).
+TARGET_BACKENDS = ("claude", "codex", "colleague")
+STALE_BACKENDS = ("copilot", "acp")
 
 CLIENTS_PREFIX = "culture_core/clients/"
 AGENTS_CLI_PATH = "culture_core/cli/agents.py"
@@ -49,7 +64,7 @@ AGENTS_CLI_PATH = "culture_core/cli/agents.py"
 #: backend-specific code. Must appear on an *added* line of the diff.
 ESCAPE_HATCH_MARKER = "# backend-specific:"
 
-_FACTORY_NAME_RE = re.compile(r"^_create_(claude|codex|copilot|acp)_daemon$")
+_FACTORY_NAME_RE = re.compile(r"^_create_([a-z0-9_]+)_daemon$")
 
 
 @dataclass(frozen=True)
@@ -63,17 +78,33 @@ class ParityResult:
     message: str
 
 
-def touched_backends(changed_paths: list[str]) -> set[str]:
-    """Map changed file paths to the backends they touch.
+def enforced_backends(cwd: str | Path | None = None) -> tuple[str, ...]:
+    """The parity-enforced backend set for the repo rooted at *cwd*.
+
+    Existence-gated: a target backend is enforced only when its client
+    directory (``culture_core/clients/<backend>/``) exists. Today that yields
+    ``("claude", "codex")``; ``colleague`` joins automatically — with no
+    guard change — once ``culture_core/clients/colleague/`` lands. Stale
+    backends (copilot/acp) are never enforced.
+    """
+    root = Path(cwd) if cwd is not None else Path(".")
+    return tuple(b for b in TARGET_BACKENDS if (root / CLIENTS_PREFIX / b).is_dir())
+
+
+def touched_backends(
+    changed_paths: list[str], backends: Sequence[str] = TARGET_BACKENDS
+) -> set[str]:
+    """Map changed file paths to the enforced backends they touch.
 
     Paths under ``culture_core/clients/<backend>/`` count as a touch of that
-    backend. ``culture_core/clients/shared/`` is shared code — deliberately
-    NOT a single-backend touch.
+    backend, for backends in *backends* only — stale backends (copilot/acp)
+    never trigger. ``culture_core/clients/shared/`` is shared code —
+    deliberately NOT a single-backend touch.
     """
     touched: set[str] = set()
     for path in changed_paths:
         normalized = path.replace("\\", "/")
-        for backend in BACKENDS:
+        for backend in backends:
             if normalized.startswith(f"{CLIENTS_PREFIX}{backend}/"):
                 touched.add(backend)
     return touched
@@ -119,17 +150,23 @@ def _factory_sources(source: str | None) -> dict[str, str]:
     return factories
 
 
-def factory_backends_changed(base_source: str | None, head_source: str | None) -> set[str]:
+def factory_backends_changed(
+    base_source: str | None,
+    head_source: str | None,
+    backends: Sequence[str] = TARGET_BACKENDS,
+) -> set[str]:
     """Diff the daemon factories between two versions of ``cli/agents.py``.
 
-    Compares each ``_create_<backend>_daemon`` function's normalized body
-    (docstrings/comments/formatting excluded); a backend whose factory was
-    added, removed, or behaviorally edited counts as touched.
+    Compares each enforced backend's ``_create_<backend>_daemon`` function's
+    normalized body (docstrings/comments/formatting excluded); a backend whose
+    factory was added, removed, or behaviorally edited counts as touched.
+    Stale backends' factories (``_create_copilot_daemon`` /
+    ``_create_acp_daemon``) are ignored.
     """
     base_factories = _factory_sources(base_source)
     head_factories = _factory_sources(head_source)
     changed: set[str] = set()
-    for backend in BACKENDS:
+    for backend in backends:
         if base_factories.get(backend) != head_factories.get(backend):
             changed.add(backend)
     return changed
@@ -185,17 +222,22 @@ def escape_hatch_justifications(diff_text: str) -> list[str]:
     return justifications
 
 
-def evaluate_parity(touched: set[str], justifications: list[str]) -> ParityResult:
+def evaluate_parity(
+    touched: set[str],
+    justifications: list[str],
+    backends: Sequence[str] = TARGET_BACKENDS,
+) -> ParityResult:
     """Apply the all-backends rule to a set of touched backends.
 
-    Fails iff at least one but fewer than all four backends were touched and
-    no escape-hatch justification is present. The failure message names the
-    missing backends explicitly; a pass via escape hatch surfaces the
-    justifications.
+    Fails iff at least one but fewer than all *enforced* backends were touched
+    and no escape-hatch justification is present. The failure message names
+    the missing backends explicitly; a pass via escape hatch surfaces the
+    justifications. Stale backends (copilot/acp) never appear in *backends*.
     """
-    touched_ordered = tuple(b for b in BACKENDS if b in touched)
-    missing = tuple(b for b in BACKENDS if b not in touched)
-    partial = 0 < len(touched_ordered) < len(BACKENDS)
+    backends = tuple(backends)
+    touched_ordered = tuple(b for b in backends if b in touched)
+    missing = tuple(b for b in backends if b not in touched)
+    partial = 0 < len(touched_ordered) < len(backends)
     passed = not partial or bool(justifications)
 
     lines: list[str] = []
@@ -203,7 +245,9 @@ def evaluate_parity(touched: set[str], justifications: list[str]) -> ParityResul
         lines.append("Backend parity guard: PASS — no backend-specific surface touched.")
     elif not partial:
         lines.append(
-            "Backend parity guard: PASS — all backends touched: " + ", ".join(BACKENDS) + "."
+            "Backend parity guard: PASS — all enforced backends touched: "
+            + ", ".join(backends)
+            + "."
         )
     elif justifications:
         lines.append("Backend parity guard: PASS — backend-specific escape hatch honored.")
@@ -213,13 +257,14 @@ def evaluate_parity(touched: set[str], justifications: list[str]) -> ParityResul
         lines.extend(f"  - {reason}" for reason in justifications)
     else:
         lines.append(
-            "Backend parity guard: FAIL — feature-shaped change does not reach all backends."
+            "Backend parity guard: FAIL — feature-shaped change does not reach "
+            "all enforced backends."
         )
         lines.append("Touched backends: " + ", ".join(touched_ordered))
         lines.append("Missing backends: " + ", ".join(missing))
         lines.append(
-            "The all-backends rule (CLAUDE.md): a feature added to one backend "
-            "(claude/codex/copilot/acp) must be propagated to all of them."
+            "The all-backends rule (CLAUDE.md): a feature added to one enforced "
+            "backend (" + "/".join(backends) + ") must be propagated to all of them."
         )
         lines.append(
             "Propagate the change to the missing backends, or mark genuinely "
@@ -262,9 +307,18 @@ def _show_file(ref: str, path: str, cwd: str | Path | None) -> str | None:
     return _git(["show", f"{ref}:{path}"], cwd=cwd, check=False)
 
 
-def _guarded_diff(base_ref: str, head_ref: str, cwd: str | Path | None) -> str:
-    """Unified diff limited to the guarded surface (backend dirs + agents.py)."""
-    pathspecs = [f"{CLIENTS_PREFIX}{backend}" for backend in BACKENDS] + [AGENTS_CLI_PATH]
+def _guarded_diff(
+    base_ref: str,
+    head_ref: str,
+    cwd: str | Path | None,
+    backends: Sequence[str],
+) -> str:
+    """Unified diff limited to the guarded surface (enforced dirs + agents.py).
+
+    Stale backends' dirs are excluded so a marker added there cannot open the
+    escape hatch for an unrelated partial change to an enforced backend.
+    """
+    pathspecs = [f"{CLIENTS_PREFIX}{backend}" for backend in backends] + [AGENTS_CLI_PATH]
     out = _git(["diff", f"{base_ref}...{head_ref}", "--", *pathspecs], cwd=cwd)
     return out or ""
 
@@ -293,31 +347,34 @@ def check_parity(
 ) -> ParityResult:
     """Run the full parity check between two git refs.
 
-    Combines path-based backend detection, factory-body diffing for
-    ``culture_core/cli/agents.py``, and the escape-hatch scan, then evaluates
-    the all-backends rule. Refs are validated before touching git — see
-    :func:`_validate_ref`.
+    Computes the enforced backend set from the checkout at *cwd* (see
+    :func:`enforced_backends`), then combines path-based backend detection,
+    factory-body diffing for ``culture_core/cli/agents.py``, and the
+    escape-hatch scan, and evaluates the all-backends rule. Refs are validated
+    before touching git — see :func:`_validate_ref`.
     """
     base_ref = _validate_ref(base_ref)
     head_ref = _validate_ref(head_ref)
+    backends = enforced_backends(cwd)
     changed = _changed_paths(base_ref, head_ref, cwd)
-    touched = touched_backends(changed)
+    touched = touched_backends(changed, backends)
 
     if AGENTS_CLI_PATH in changed:
         base_source = _show_file(base_ref, AGENTS_CLI_PATH, cwd)
         head_source = _show_file(head_ref, AGENTS_CLI_PATH, cwd)
-        touched |= factory_backends_changed(base_source, head_source)
+        touched |= factory_backends_changed(base_source, head_source, backends)
 
-    justifications = escape_hatch_justifications(_guarded_diff(base_ref, head_ref, cwd))
-    return evaluate_parity(touched, justifications)
+    justifications = escape_hatch_justifications(_guarded_diff(base_ref, head_ref, cwd, backends))
+    return evaluate_parity(touched, justifications, backends)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: print the guard's verdict and exit 0 (pass) / 1 (fail)."""
     parser = argparse.ArgumentParser(
         prog="backend-parity",
-        description="Enforce the all-backends rule (claude/codex/copilot/acp parity) "
-        "over a git ref range.",
+        description="Enforce the all-backends rule over a git ref range "
+        "(enforced backends: claude/codex/colleague, existence-gated; "
+        "copilot/acp are stale-exempt pending re-validation).",
     )
     parser.add_argument("--base", required=True, help="Base ref (e.g. origin/main)")
     parser.add_argument("--head", default="HEAD", help="Head ref (default: HEAD)")
