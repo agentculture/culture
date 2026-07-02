@@ -93,7 +93,13 @@ claude = ["cultureagent[backend-claude]~=0.4.0"]
 acp = ["cultureagent[backend-acp]~=0.4.0"]
 # The codex backend needs no SDK — kept for all-backends symmetry.
 codex = []
-all-backends = ["culture[claude,acp,codex,copilot]"]
+# Concrete union of the per-backend extras (codex contributes nothing) — a
+# self-referential culture[...] entry would emit circular Requires-Dist
+# metadata some resolvers mishandle.
+all-backends = [
+    "cultureagent[backend-claude,backend-acp,backend-copilot]~=0.4.0",
+    "github-copilot-sdk==0.2.0",
+]
 
 [dependency-groups]
 dev = [

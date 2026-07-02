@@ -84,13 +84,15 @@ def test_no_sdk_imports_in_culture_core():
     failures: list[str] = []
     for py_file in py_files:
         try:
-            source = py_file.read_text()
+            source = py_file.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(py_file))
-            blocked = _has_blocked_import(tree)
-            if blocked is not None:
-                failures.append(f"{py_file.relative_to(_REPO_ROOT)} imports {blocked!r}")
-        except SyntaxError:
-            pass  # Skip unparseable files (should not exist).
+        except SyntaxError as exc:
+            # An unparseable engine file must fail the guard, not bypass it.
+            failures.append(f"{py_file.relative_to(_REPO_ROOT)} failed to parse: {exc}")
+            continue
+        blocked = _has_blocked_import(tree)
+        if blocked is not None:
+            failures.append(f"{py_file.relative_to(_REPO_ROOT)} imports {blocked!r}")
 
     assert not failures, "Blocked SDK imports found in culture_core/:\n" + "\n".join(failures)
 

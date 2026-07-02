@@ -666,11 +666,10 @@ def _require_backend_sdk(backend: str) -> None:
             raise CultureError(
                 code=EXIT_ENV_ERROR,
                 message=(
-                    f"the {backend} backend needs the '{extra}' extra "
-                    f"(missing module: {module})"
+                    f"the {backend} backend needs the '{extra}' extra (missing module: {module})"
                 ),
                 remediation=(
-                    f"pip install 'culture[{extra}]'  " f"(or: uv tool install 'culture[{extra}]')"
+                    f"pip install 'culture[{extra}]' (or: uv tool install 'culture[{extra}]')"
                 ),
             )
 
