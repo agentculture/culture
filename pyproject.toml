@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.3.0"
+version = "14.3.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "Apache-2.0"
@@ -18,7 +18,10 @@ dependencies = [
     # (issue #462) — there is no culture-core dependency anymore. The caps below
     # are the bounds the engine is validated against; they came back with it.
     "pyyaml>=6.0",
-    "agentirc-cli>=9.7.0,<10",
+    # Floor at 9.11: the agent-accessibility release (CLI client verbs, public
+    # reconnecting transport) the mesh's agentic access relies on — see
+    # docs/specs/2026-07-03-the-spark-culture-mesh-is-always-on-under-cli-prov.md (c12).
+    "agentirc-cli>=9.11.0,<10",
     # Bumped 0.4->0.12 for the colleague backend: cultureagent 0.12.0 is the
     # first release shipping clients/colleague (the ColleagueDaemon wrapping
     # colleague[culture]'s ColleagueHarness) and the backend-colleague extra
@@ -39,7 +42,10 @@ dependencies = [
     "agtag>=0.1,<1.0",
     "agentfront>=0.20,<0.21",
     "steward-cli>=0.16,<1.0",
-    "irc-lens>=0.5.3,<1.0",
+    # Floor at 0.9.1: image/audio media (upload, capability URLs, mic) landed in
+    # 0.8.0, agentfront adoption + fixes in 0.9.1 — the console the mesh serves
+    # must have both (same spec, c12). irc-lens >=0.9.1 needs Python >=3.12.
+    "irc-lens>=0.9.1,<1.0",
     # OTel capped below 1.42 (the 0.6x track below 0.63b0): the metric-reader
     # injection the telemetry test fixtures rely on (per-test set_meter_provider
     # + InMemoryMetricReader) stops capturing under SDK 1.42, so the integration

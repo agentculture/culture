@@ -25,9 +25,14 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/95/8fd2a19d2b92fe1500bb28587af722d28638f95e70a0d8ac191cd45b2a72/agentfront-0.20.0-py3-none-any.whl", hash = "sha256:1c6b20006e3aad858ed6cb4ef6c3f7181c2b27c54e82eb269f31658707bdfd98", size = 140246, upload-time = "2026-07-02T06:04:57.696Z" },
 ]
 
+[package.optional-dependencies]
+mcp = [
+    { name = "mcp" },
+]
+
 [[package]]
 name = "agentirc-cli"
-version = "9.8.1"
+version = "9.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -38,9 +43,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/14/86/4e8cb944ede7ad9ce90fd67519528705bf4d8419845595c9588be3318010/agentirc_cli-9.8.1.tar.gz", hash = "sha256:c5b4c6019ca35acdc680f8876d33b2f8a72c23806860a9df40c130364f54b4d6", size = 416128, upload-time = "2026-06-12T19:29:41.409Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/c5/86516359c3339bc2110384a1bfed7684d142da107bc28f448de0c64647ca/agentirc_cli-9.11.0.tar.gz", hash = "sha256:f1b7ff73df56157189206bfc4703558c61575ae5904d6feee9284c30ba2bd373", size = 555315, upload-time = "2026-07-03T06:06:01.605Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/4d/da39dac001cade39b1e0b66eba4b3d9e6ecbb1d4773c55e65ea10fbb528b/agentirc_cli-9.8.1-py3-none-any.whl", hash = "sha256:3baf18ed22ee9101375ef9c336186d826b070d708bbe24f4d9b4bcf6d895f29a", size = 133621, upload-time = "2026-06-12T19:29:42.874Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/b4/d6692a43b119c2ac9f79c3132d0efd41e1656ecbfebb1fde0b74b079e525/agentirc_cli-9.11.0-py3-none-any.whl", hash = "sha256:082759baeef6c52eaca9b57350bcea423fb5ff9f6565d72b3a27935075661a91", size = 171805, upload-time = "2026-07-03T06:06:00.206Z" },
 ]
 
 [[package]]
@@ -648,7 +653,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.3.0"
+version = "14.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },
@@ -710,7 +715,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agentfront", specifier = ">=0.20,<0.21" },
-    { name = "agentirc-cli", specifier = ">=9.7.0,<10" },
+    { name = "agentirc-cli", specifier = ">=9.11.0,<10" },
     { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
@@ -722,7 +727,7 @@ requires-dist = [
     { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.12.0" },
     { name = "github-copilot-sdk", marker = "extra == 'all-backends'", specifier = "==0.2.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
-    { name = "irc-lens", specifier = ">=0.5.3,<1.0" },
+    { name = "irc-lens", specifier = ">=0.9.1,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
     { name = "opentelemetry-api", specifier = ">=1.25,<1.42" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.25,<1.42" },
@@ -1141,17 +1146,18 @@ wheels = [
 
 [[package]]
 name = "irc-lens"
-version = "0.5.3"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "agentfront", extra = ["mcp"] },
     { name = "aiohttp" },
     { name = "jinja2" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/18/8a/98adace59f94400f93205e83cb6deb88e5136a64d36a867ac3e2276c2357/irc_lens-0.5.3.tar.gz", hash = "sha256:3bfb14e1e452d2c348a3ecb130ff9341439055b9aeb7c98356ebcfa278761b2a", size = 384678, upload-time = "2026-05-09T16:49:53.167Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/d8/60be53923531a7fbbf2d70eab2d57ac7afc57fdfa64869a29ceec0f50dad/irc_lens-0.9.1.tar.gz", hash = "sha256:fa87eabefcb3c3984705b8bd3fa5618bed38d1ff8b321f48e815b305f7eca3b6", size = 582584, upload-time = "2026-07-03T07:03:20.429Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/ea/8b7e8cddbc5e77ce0393f3ecdbc899551cab4cb74709491f4e914cde5690/irc_lens-0.5.3-py3-none-any.whl", hash = "sha256:de3e11cd32cd21a76b71724aeac30d503a1dabdb50a0faee4d80f5d11d3eae9d", size = 165544, upload-time = "2026-05-09T16:49:54.7Z" },
+    { url = "https://files.pythonhosted.org/packages/45/bb/55d7d16f47d7f7410080c58691c267495c950b2959e0d9892b7eb11cee31/irc_lens-0.9.1-py3-none-any.whl", hash = "sha256:167052ece05ca4af1603b6b2ef2ba86d9e375e2309d4ed5e64bd8088e2290ed6", size = 228840, upload-time = "2026-07-03T07:03:19.114Z" },
 ]
 
 [[package]]
@@ -1374,7 +1380,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.26.0"
+version = "1.28.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1392,9 +1398,9 @@ dependencies = [
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/6d/62e76bbb8144d6ed86e202b5edd8a4cb631e7c8130f3f4893c3f90262b10/mcp-1.26.0.tar.gz", hash = "sha256:db6e2ef491eecc1a0d93711a76f28dec2e05999f93afd48795da1c1137142c66", size = 608005, upload-time = "2026-01-24T19:40:32.468Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/77/9450b8f251a13affb6281997d0523c4615f8a8b35d0b21ff30db3a5aac9d/mcp-1.28.1.tar.gz", hash = "sha256:d51e36a5f5644faea4f85ea649bfffa6bc6c26770d42798ad6a3de3d2ba69683", size = 638501, upload-time = "2026-06-26T12:57:29.093Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/d9/eaa1f80170d2b7c5ba23f3b59f766f3a0bb41155fbc32a69adfa1adaaef9/mcp-1.26.0-py3-none-any.whl", hash = "sha256:904a21c33c25aa98ddbeb47273033c435e595bbacfdb177f4bd87f6dceebe1ca", size = 233615, upload-time = "2026-01-24T19:40:30.652Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/5e/d118fce19f87a2e7d8101c35c8ae0ec289098a4df0ff244cec23e415aca0/mcp-1.28.1-py3-none-any.whl", hash = "sha256:2726bca5e7193f61c5dde8b12500a6de2d9acf6d1a1c0be9e8c2e706437991df", size = 222620, upload-time = "2026-06-26T12:57:27.218Z" },
 ]
 
 [[package]]

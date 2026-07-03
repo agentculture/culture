@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.3.1] - 2026-07-03
+
+### Added
+
+- Spec + plan: always-on CLI-provisioned mesh with fail-fast units and provenance-guarded installs (devague frame, docs/specs + docs/plans 2026-07-03); remaining engine fixes (expanduser, exit-78, provenance guard) land in follow-up PRs
+
+### Changed
+
+- Dependency floors raised and enforced: `agentirc-cli>=9.11.0,<10` (agent-accessibility) and `irc-lens>=0.9.1,<1.0` (image/audio media + agentfront) in `pyproject.toml` and `uv.lock` (plan t4)
+- spark-culture mesh presence (culture.yaml) switches to the colleague backend (vllm-openai engine on the local Qwen3.6-27B), per operator decision 2026-07-03
+
 ## [14.3.0] - 2026-07-02
 
 ### Added
