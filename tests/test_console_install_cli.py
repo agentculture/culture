@@ -116,6 +116,9 @@ class TestConsoleInstall:
         server_yaml = _server_yaml(tmp_path, name="spark")
         unit_dir = tmp_path / "systemd" / "user"
 
+        # The suite runs under a repo .venv interpreter, which the provisioning
+        # guard flags as fragile; --allow-dev-interpreter is the documented
+        # override. Idempotency is orthogonal to the guard.
         for _ in range(2):
             with (
                 patch.object(console, "DEFAULT_CONFIG", str(server_yaml)),
@@ -124,7 +127,7 @@ class TestConsoleInstall:
                 patch("culture_core.persistence._run_cmd"),
                 pytest.raises(SystemExit) as excinfo,
             ):
-                console.dispatch(_args(["install"]))
+                console.dispatch(_args(["install", "--allow-dev-interpreter"]))
             assert excinfo.value.code == 0
 
         units = list(unit_dir.glob("*.service"))

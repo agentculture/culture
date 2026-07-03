@@ -22,6 +22,13 @@ argparse default — `~/.culture/server.yaml`, the manifest the rest of
 the CLI uses. Anything specified in that manifest (workdir, channels,
 backend) is what the daemon reads.
 
+The `<python>` (`/usr/bin/culture` above) is the interpreter that ran
+the install — `sys.executable`. `culture agents install` refuses to bake
+a fragile dev-worktree/repo virtualenv interpreter into the unit (it
+would crash-loop when the checkout is removed); pass
+`--allow-dev-interpreter` to override. See
+[the interpreter provenance guard](../../durable-mesh.md#interpreter-provenance-guard).
+
 Agent units are ordered behind the server unit:
 
 ```text

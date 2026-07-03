@@ -97,6 +97,49 @@ Units restart on failure (`Restart=on-failure`, `RestartSec=5`) and
 park on permanent errors (`RestartPreventExitStatus=78` — the daemon
 exit contract) instead of crash-looping.
 
+## Interpreter provenance guard
+
+A generated unit's ExecStart bakes in the interpreter that installed it
+(`<python>` in the table above — `sys.executable`). If that interpreter
+lives in a **dev-worktree or repo virtualenv**, removing the checkout
+leaves the unit pointing at a dead path and the service crash-loops.
+This is exactly the 2026-07-03 outage: `culture server install` was run
+from a dev worktree venv (`culture-worktrees/agent-t13/.venv`), the
+worktree was later removed, and `culture-server-spark` crash-looped
+11,235 times.
+
+`culture server install`, `culture console install`, and
+`culture agents install` therefore **refuse** to bake a fragile
+interpreter into a unit. The interpreter path is classified by a small
+pure function (`classify_interpreter` in `culture_core/persistence.py`):
+
+| Classification | Example | Verdict |
+|----------------|---------|---------|
+| uv tool venv | `~/.local/share/uv/tools/culture/bin/python` (or under `$UV_TOOL_DIR`) | durable — accepted |
+| pipx venv | `~/.local/share/pipx/venvs/culture/bin/python` (or under `$PIPX_HOME/venvs`) | durable — accepted |
+| system interpreter | `/usr/bin/python3`, Homebrew, pyenv versions, a bare `python` on PATH | durable — accepted |
+| project/worktree venv | any path with a `.venv` or `venv` component (repo checkout or git worktree) | **fragile — refused** |
+
+When the interpreter is fragile, install fails with exit 1, naming the
+exact path, and points you at the fix: reinstall culture as a tool
+(`uv tool install culture` or `pipx install culture`) and rerun from the
+installed tool, which bakes a durable tool-venv interpreter.
+
+The heuristic is name-based, so a durable-but-conventionally-named
+deployment venv (e.g. `/opt/app/venv`) is a false positive. The escape
+hatch is an explicit override flag on all three verbs:
+
+```bash
+culture server install --allow-dev-interpreter
+culture console install --allow-dev-interpreter
+culture agents install <nick> --allow-dev-interpreter
+```
+
+With the flag, install proceeds but prints a loud warning naming the
+baked path — you own the durability risk. Bulk `culture mesh setup` does
+not currently run this guard; provisioning a durable node should use the
+per-verb installs (or run mesh setup from an installed tool).
+
 ## Fronting the console: the cloudflared tunnel unit pattern
 
 A public console (e.g. `chat.agentculture.org`) typically sits behind a
