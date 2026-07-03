@@ -193,6 +193,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=os.path.expanduser("~/.culture/mesh.yaml"),
         help=_MESH_CONFIG_HELP,
     )
+    srv_install.add_argument(
+        "--allow-dev-interpreter",
+        action="store_true",
+        help=(
+            "Bake a dev/worktree-virtualenv interpreter into the unit anyway. "
+            "By default install refuses a fragile (.venv/venv) interpreter that "
+            "would crash-loop the service if the checkout is removed."
+        ),
+    )
 
     srv_uninstall = server_sub.add_parser(
         "uninstall", help="Remove the server's auto-start service unit"
@@ -793,7 +802,12 @@ def _server_install(args: argparse.Namespace) -> None:
     culture_cmd = [sys.executable, "-m", "culture_core"]
     server_cmd = build_server_start_cmd(mesh, culture_cmd, args.config)
     svc = f"culture-server-{server_name}"
-    path = install_service(svc, server_cmd, f"culture-core server {server_name}")
+    path = install_service(
+        svc,
+        server_cmd,
+        f"culture-core server {server_name}",
+        allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+    )
     print(f"Installed {svc} → {path}")
 
 

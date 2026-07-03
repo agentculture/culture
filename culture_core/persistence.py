@@ -8,6 +8,7 @@ import re
 import shlex
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
@@ -45,6 +46,174 @@ def _validate_unit_identifier(value: str, *, kind: str) -> None:
             "use a server name of letters, digits, and '-_.@:' only (set it via "
             "'culture server start --name <name>' or ~/.culture/server.yaml)",
         )
+
+
+# ---------------------------------------------------------------------------
+# Interpreter provenance guard (2026-07-03 outage, always-on-mesh plan t3)
+# ---------------------------------------------------------------------------
+#
+# A generated unit's ExecStart bakes in ``sys.executable``. If that interpreter
+# lives in a *dev worktree / repo* virtualenv, removing the checkout leaves the
+# unit pointing at a dead path and the service crash-loops (the 2026-07-03
+# outage: 11,235 restarts). The guard classifies the interpreter and refuses to
+# bake a fragile one unless the operator explicitly overrides.
+
+# Conventional directory names for a *project-local* virtualenv — the fragile
+# case. ``python -m venv .venv`` / ``uv venv`` create these inside a repo
+# checkout or a git worktree; they vanish when the checkout does.
+_PROJECT_VENV_DIRS = frozenset({".venv", "venv"})
+
+
+class InterpreterClass(Enum):
+    """How durable is a Python interpreter path baked into a service unit?
+
+    Three of the four classes are *durable* (safe to bake); only
+    :attr:`DEV_VENV` is *fragile* and triggers the provisioning guard.
+    """
+
+    #: Under a uv tools directory (``$UV_TOOL_DIR`` or ``.../uv/tools/<tool>/``).
+    #: uv owns the venv; it survives repo/worktree churn. Durable.
+    UV_TOOL = "uv-tool"
+    #: Under a pipx venvs directory (``$PIPX_HOME/venvs`` or ``.../pipx/venvs/``).
+    #: pipx owns the venv. Durable.
+    PIPX = "pipx"
+    #: A global/system interpreter not inside any project virtualenv
+    #: (``/usr/bin/python3``, Homebrew, pyenv versions, a bare ``python`` on
+    #: PATH, …). Not tied to a checkout. Durable.
+    SYSTEM = "system"
+    #: Inside a project-local virtualenv — a path component named ``.venv`` or
+    #: ``venv`` (a repo checkout or a git worktree). FRAGILE: removing the
+    #: checkout orphans the unit's ExecStart. This is the class the guard flags.
+    DEV_VENV = "dev-venv"
+
+
+def _path_parts(path: str) -> list[str]:
+    """Split a path into components on either separator, dropping ``.``.
+
+    Works for POSIX and Windows-style paths alike (units are per-platform, and
+    a classifier that only understood the host separator couldn't be tested
+    against the other platform's paths). Case is preserved.
+    """
+    return [p for p in re.split(r"[\\/]+", path) if p and p != "."]
+
+
+def _has_adjacent(parts: list[str], first: str, second: str) -> bool:
+    """True iff ``parts`` contains ``first`` immediately followed by ``second``."""
+    return any(a == first and b == second for a, b in zip(parts, parts[1:]))
+
+
+def _is_within(parts: list[str], prefix: list[str]) -> bool:
+    """True iff the component list ``parts`` is under the directory ``prefix``."""
+    return bool(prefix) and parts[: len(prefix)] == prefix
+
+
+def classify_interpreter(
+    interpreter: str, *, env: "dict[str, str] | None" = None
+) -> InterpreterClass:
+    """Classify an interpreter path by how durable it is to bake into a unit.
+
+    Pure function — the classification depends only on ``interpreter`` and the
+    optional ``env`` hint (never on the ambient process environment), so the
+    heuristic is exhaustively unit-testable. ``env`` may carry ``UV_TOOL_DIR``
+    and/or ``PIPX_HOME`` to recognize non-default tool locations; when omitted,
+    classification is purely path-based.
+
+    Classification rule (checked in order):
+
+    1. **uv tool** (:attr:`InterpreterClass.UV_TOOL`, durable) — the path is
+       under ``env['UV_TOOL_DIR']``, or contains an adjacent ``uv``/``tools``
+       pair (the default ``~/.local/share/uv/tools/<tool>/bin/python`` layout).
+    2. **pipx** (:attr:`InterpreterClass.PIPX`, durable) — the path is under
+       ``env['PIPX_HOME']/venvs``, or contains an adjacent ``pipx``/``venvs``
+       pair (``~/.local/share/pipx/venvs/<pkg>/bin/python``).
+    3. **dev venv** (:attr:`InterpreterClass.DEV_VENV`, FRAGILE) — a path
+       component is exactly ``.venv`` or ``venv`` (a repo checkout or git
+       worktree virtualenv). This is the outage class.
+    4. **system** (:attr:`InterpreterClass.SYSTEM`, durable) — anything else.
+
+    The uv/pipx checks run before the ``.venv``/``venv`` check so a
+    tool-manager location (whose venv dir is named after the tool, not
+    ``.venv``) is never mistaken for a project venv.
+
+    Known limitation: a durable-but-conventionally-named deployment venv (e.g.
+    ``/opt/app/venv``) is flagged as fragile. That false positive is the
+    accepted risk of a name-based heuristic; the ``--allow-dev-interpreter``
+    override on the install verbs is the escape hatch.
+    """
+    env = env or {}
+    parts = _path_parts(interpreter or "")
+
+    uv_tool_dir = env.get("UV_TOOL_DIR")
+    if uv_tool_dir and _is_within(parts, _path_parts(uv_tool_dir)):
+        return InterpreterClass.UV_TOOL
+    if _has_adjacent(parts, "uv", "tools"):
+        return InterpreterClass.UV_TOOL
+
+    pipx_home = env.get("PIPX_HOME")
+    if pipx_home and _is_within(parts, [*_path_parts(pipx_home), "venvs"]):
+        return InterpreterClass.PIPX
+    if _has_adjacent(parts, "pipx", "venvs"):
+        return InterpreterClass.PIPX
+
+    if any(p in _PROJECT_VENV_DIRS for p in parts):
+        return InterpreterClass.DEV_VENV
+
+    return InterpreterClass.SYSTEM
+
+
+def _enforce_durable_interpreter(
+    command: list[str], *, allow_dev_interpreter: bool, env: "dict[str, str] | None" = None
+) -> None:
+    """Guard a provisioning command against baking a fragile interpreter.
+
+    ``command[0]`` is the interpreter that will land in the unit's ExecStart.
+    When it classifies as :attr:`InterpreterClass.DEV_VENV`:
+
+    * ``allow_dev_interpreter=False`` -> raise :class:`CultureError` (exit 1),
+      naming the exact path, before anything is written;
+    * ``allow_dev_interpreter=True``  -> log + print a loud warning naming the
+      path and proceed (the operator owns the durability risk).
+
+    For any *durable* class this is a pure no-op — the unit is byte-identical to
+    what today's code would write.
+    """
+    if not command:
+        return
+    interpreter = command[0]
+    if classify_interpreter(interpreter, env=env) is not InterpreterClass.DEV_VENV:
+        return
+
+    if allow_dev_interpreter:
+        logger.warning(
+            "Baking a dev-virtualenv interpreter into a service unit: %s "
+            "(--allow-dev-interpreter given; proceeding). If this venv is "
+            "removed the unit's ExecStart dies and the service crash-loops.",
+            interpreter,
+        )
+        print(
+            "WARNING: baking a dev-virtualenv interpreter into the service "
+            f"unit: {interpreter}\n"
+            "         (--allow-dev-interpreter given; proceeding). If this "
+            "venv is removed the ExecStart path dies and the service will "
+            "crash-loop.",
+            file=sys.stderr,
+        )
+        return
+
+    # Lazy import — keep this low-level module out of the CLI import graph.
+    from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+    raise CultureError(
+        EXIT_USER_ERROR,
+        f"refusing to bake a fragile interpreter into the service unit: "
+        f"{interpreter} lives inside a project/worktree virtualenv "
+        f"(.venv/venv), not an installed tool. If that checkout is removed the "
+        f"unit's ExecStart points at a dead path and the service crash-loops "
+        f"(the 2026-07-03 outage was exactly this).",
+        "install culture as a tool ('uv tool install culture' or "
+        "'pipx install culture') and rerun from the installed tool, or pass "
+        "--allow-dev-interpreter to bake this path anyway (you own the risk).",
+    )
 
 
 def get_platform() -> str:
@@ -243,7 +412,12 @@ _PLATFORM_INSTALLERS = {
 
 
 def install_service(
-    name: str, command: list[str], description: str, after: str | None = None
+    name: str,
+    command: list[str],
+    description: str,
+    after: str | None = None,
+    *,
+    allow_dev_interpreter: bool | None = None,
 ) -> Path:
     """Generate and install a platform-specific auto-start entry.
 
@@ -251,10 +425,29 @@ def install_service(
     ``After=``/``Wants=``); platforms without an ordering primitive
     (launchd, Windows scheduled tasks) accept and ignore it — their
     retry loops absorb a dependency that isn't up yet.
+
+    *allow_dev_interpreter* engages the interpreter-provenance guard on
+    ``command[0]`` (the interpreter baked into ExecStart):
+
+    * ``None`` (default) — guard **not** applied. Preserves the behavior of
+      callers that predate the guard (e.g. bulk ``mesh setup``); the unit is
+      byte-identical to before.
+    * ``False`` — enforce: raise :class:`CultureError` if the interpreter is a
+      fragile dev/worktree virtualenv, before anything is written.
+    * ``True`` — allow: warn loudly (naming the path) and proceed even for a
+      fragile interpreter.
+
+    The user-facing install verbs (``culture server/console/agents install``)
+    pass ``False`` normally and ``True`` when ``--allow-dev-interpreter`` is
+    given, so all three share this one guard.
     """
     _validate_unit_identifier(name, kind="name")
     if after is not None:
         _validate_unit_identifier(after, kind="After= target")
+    if allow_dev_interpreter is not None:
+        _enforce_durable_interpreter(
+            command, allow_dev_interpreter=allow_dev_interpreter, env=dict(os.environ)
+        )
     platform = get_platform()
     installer = _PLATFORM_INSTALLERS.get(platform)
     if installer is None:
