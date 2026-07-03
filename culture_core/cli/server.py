@@ -39,6 +39,8 @@ import socket
 import sys
 import time
 
+import yaml
+
 from culture_core.cli._errors import (
     EXIT_DAEMON_PERMANENT,
     EXIT_USER_ERROR,
@@ -510,10 +512,53 @@ def _check_already_running(pid_name: str, name: str) -> None:
         )
 
 
+def _mesh_config_error_line(exc: BaseException) -> str:
+    """Collapse an exception's message to one line for the stderr error line.
+
+    ``yaml.YAMLError`` messages span several lines (context, problem,
+    marker); ``FileNotFoundError``/``TypeError`` are already one line. Only
+    the first line is kept so the top-level ``error: ...`` output (see
+    ``culture_core.cli._output.emit_error``) stays a single actionable
+    line instead of leaking a multi-line parser dump to stderr.
+    """
+    text = str(exc).strip()
+    return text.splitlines()[0] if text else exc.__class__.__name__
+
+
 def _resolve_server_links(args: argparse.Namespace) -> list:
-    """Resolve link configs from CLI args or mesh config."""
+    """Resolve link configs from CLI args or mesh config.
+
+    A ``--mesh-config`` path that's missing, unreadable, or malformed is a
+    permanent configuration error, not a transient runtime failure — no
+    amount of restarting will fix a bad file. Raised here as
+    ``CultureError(EXIT_DAEMON_PERMANENT)`` (sysexits EX_CONFIG) so it
+    reaches the top-level handler in ``culture_core.cli.main`` and exits 78
+    for BOTH invocation modes: ``--foreground`` (what systemd's
+    ``Type=simple`` ExecStart actually runs) and the fork/daemonize path
+    (this resolution happens in the parent, before ``os.fork()``). Before
+    this, any exception here fell through ``main()``'s generic
+    ``except Exception`` and exited 1 — indistinguishable from a transient
+    failure, so ``RestartPreventExitStatus=78`` never engaged and systemd
+    crash-looped the unit (the 2026-07-03 outage, #15/#473).
+    """
     if getattr(args, "mesh_config", None):
-        return resolve_links_from_mesh(args.mesh_config)
+        try:
+            return resolve_links_from_mesh(args.mesh_config)
+        except (
+            FileNotFoundError,
+            PermissionError,
+            IsADirectoryError,
+            yaml.YAMLError,
+            TypeError,
+            ValueError,
+            KeyError,
+        ) as exc:
+            raise CultureError(
+                EXIT_DAEMON_PERMANENT,
+                f"invalid mesh config '{args.mesh_config}': {_mesh_config_error_line(exc)}",
+                "fix or regenerate the file ('culture mesh setup'), or start "
+                "with --link instead of --mesh-config",
+            ) from exc
     return args.link
 
 
