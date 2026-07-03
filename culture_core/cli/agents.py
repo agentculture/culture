@@ -225,6 +225,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     install_parser.add_argument("nick", help=_NICK_HELP)
     install_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
+    install_parser.add_argument(
+        "--allow-dev-interpreter",
+        action="store_true",
+        help=(
+            "Bake a dev/worktree-virtualenv interpreter into the unit anyway. "
+            "By default install refuses a fragile (.venv/venv) interpreter that "
+            "would crash-loop the service if the checkout is removed."
+        ),
+    )
 
     # -- uninstall ------------------------------------------------------------
     uninstall_parser = agent_sub.add_parser(
@@ -1450,6 +1459,7 @@ def _cmd_install(args: argparse.Namespace) -> None:
         agent_cmd,
         f"culture-core agents {full_nick}",
         after=f"culture-server-{config.server.name}.service",
+        allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
     )
     print(f"Installed {svc} → {path}")
 

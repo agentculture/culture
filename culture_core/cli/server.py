@@ -39,6 +39,8 @@ import socket
 import sys
 import time
 
+import yaml
+
 from culture_core.cli._errors import (
     EXIT_DAEMON_PERMANENT,
     EXIT_USER_ERROR,
@@ -192,6 +194,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--config",
         default=os.path.expanduser("~/.culture/mesh.yaml"),
         help=_MESH_CONFIG_HELP,
+    )
+    srv_install.add_argument(
+        "--allow-dev-interpreter",
+        action="store_true",
+        help=(
+            "Bake a dev/worktree-virtualenv interpreter into the unit anyway. "
+            "By default install refuses a fragile (.venv/venv) interpreter that "
+            "would crash-loop the service if the checkout is removed."
+        ),
     )
 
     srv_uninstall = server_sub.add_parser(
@@ -501,10 +512,65 @@ def _check_already_running(pid_name: str, name: str) -> None:
         )
 
 
+def _mesh_config_error_line(exc: BaseException) -> str:
+    """Collapse an exception's message to one line for the stderr error line.
+
+    ``yaml.YAMLError`` messages span several lines (context, problem,
+    marker); ``FileNotFoundError``/``TypeError`` are already one line. Only
+    the first line is kept so the top-level ``error: ...`` output (see
+    ``culture_core.cli._output.emit_error``) stays a single actionable
+    line instead of leaking a multi-line parser dump to stderr.
+    """
+    text = str(exc).strip()
+    return text.splitlines()[0] if text else exc.__class__.__name__
+
+
 def _resolve_server_links(args: argparse.Namespace) -> list:
-    """Resolve link configs from CLI args or mesh config."""
+    """Resolve link configs from CLI args or mesh config.
+
+    A ``--mesh-config`` path that's missing, unreadable, or malformed is a
+    permanent configuration error, not a transient runtime failure — no
+    amount of restarting will fix a bad file. Raised here as
+    ``CultureError(EXIT_DAEMON_PERMANENT)`` (sysexits EX_CONFIG) so it
+    reaches the top-level handler in ``culture_core.cli.main`` and exits 78
+    for BOTH invocation modes: ``--foreground`` (what systemd's
+    ``Type=simple`` ExecStart actually runs) and the fork/daemonize path
+    (this resolution happens in the parent, before ``os.fork()``). Before
+    this, any exception here fell through ``main()``'s generic
+    ``except Exception`` and exited 1 — indistinguishable from a transient
+    failure, so ``RestartPreventExitStatus=78`` never engaged and systemd
+    crash-looped the unit (the 2026-07-03 outage, #15/#473).
+    """
     if getattr(args, "mesh_config", None):
-        return resolve_links_from_mesh(args.mesh_config)
+        try:
+            return resolve_links_from_mesh(args.mesh_config)
+        except (
+            # Broad OSError is safe at this scoped boundary: this call chain
+            # (resolve_links_from_mesh -> load_mesh_config) only opens and
+            # YAML-parses the mesh file and builds dataclasses — no
+            # network/keyring/subprocess I/O lives on this path — so every
+            # OSError raised here is a config-file access error (missing,
+            # permission denied, a parent segment that's a file
+            # (NotADirectoryError), ELOOP, ENAMETOOLONG, ...), never a
+            # transient runtime one. A narrower tuple previously missed
+            # NotADirectoryError, letting it fall through main()'s generic
+            # except Exception and exit 1 instead of 78 (Qodo #4).
+            OSError,
+            # yaml.YAMLError and TypeError/ValueError/KeyError are
+            # schema-construction errors (malformed YAML, bad MeshLinkConfig
+            # fields). UnicodeDecodeError is already covered here too, since
+            # it subclasses ValueError.
+            yaml.YAMLError,
+            TypeError,
+            ValueError,
+            KeyError,
+        ) as exc:
+            raise CultureError(
+                EXIT_DAEMON_PERMANENT,
+                f"invalid mesh config '{args.mesh_config}': {_mesh_config_error_line(exc)}",
+                "fix or regenerate the file ('culture mesh setup'), or start "
+                "with --link instead of --mesh-config",
+            ) from exc
     return args.link
 
 
@@ -793,7 +859,12 @@ def _server_install(args: argparse.Namespace) -> None:
     culture_cmd = [sys.executable, "-m", "culture_core"]
     server_cmd = build_server_start_cmd(mesh, culture_cmd, args.config)
     svc = f"culture-server-{server_name}"
-    path = install_service(svc, server_cmd, f"culture-core server {server_name}")
+    path = install_service(
+        svc,
+        server_cmd,
+        f"culture-core server {server_name}",
+        allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+    )
     print(f"Installed {svc} → {path}")
 
 

@@ -420,6 +420,18 @@ def _parse_install_argv(argv: list[str]) -> str | None:
     return None
 
 
+def _install_allows_dev_interpreter(argv: list[str]) -> bool:
+    """True iff the ``install`` argv carries ``--allow-dev-interpreter``.
+
+    The console verb captures every token in ``console_args`` (irc-lens
+    passthrough), so the durability-guard override is detected here rather than
+    via argparse. ``argv[0]`` is the literal ``"install"`` token. The flag is
+    consumed here and never forwarded into ExecStart (``_cmd_install`` builds
+    the command explicitly).
+    """
+    return "--allow-dev-interpreter" in _normalise_argv(argv[1:])
+
+
 def _console_service_identity() -> tuple[str, str]:
     """Resolve ``(service_name, server_name)`` for the console unit.
 
@@ -462,6 +474,7 @@ def _cmd_install(args: argparse.Namespace) -> None:
 
     raw = list(getattr(args, "console_args", []) or [])
     lens_config = _parse_install_argv(raw)
+    allow_dev = _install_allows_dev_interpreter(raw)
     svc, server_name = _console_service_identity()
     command = [sys.executable, "-m", "culture_core", "console", "serve"]
     if lens_config:
@@ -471,6 +484,7 @@ def _cmd_install(args: argparse.Namespace) -> None:
         command,
         f"culture-core console {server_name}",
         after=f"culture-server-{server_name}.service",
+        allow_dev_interpreter=allow_dev,
     )
     print(f"Installed {svc} → {path}")
 

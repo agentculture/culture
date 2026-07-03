@@ -27,6 +27,7 @@ import time
 import pytest
 
 from culture_core.cli import agents as agents_mod
+from culture_core.cli import main as cli_main
 from culture_core.cli import server as srv_mod
 from culture_core.cli._errors import (
     EXIT_DAEMON_PERMANENT,
@@ -36,7 +37,7 @@ from culture_core.cli._errors import (
     CultureError,
     classify_daemon_exit,
 )
-from culture_core.pidfile import is_process_alive
+from culture_core.pidfile import is_process_alive, write_pid
 
 # ---------------------------------------------------------------------------
 # classify_daemon_exit
@@ -86,6 +87,179 @@ class TestClassifyDaemonExit:
         """78 is sysexits EX_CONFIG; transient reuses the generic error code."""
         assert EXIT_DAEMON_PERMANENT == 78
         assert EXIT_DAEMON_TRANSIENT == 1
+
+
+# ---------------------------------------------------------------------------
+# _resolve_server_links — mesh-config resolution boundary (2026-07-03 outage)
+#
+# ``--mesh-config`` resolution runs in the CLI process BEFORE any fork, for
+# both ``--foreground`` (what systemd's ``Type=simple`` ExecStart actually
+# runs) and the background/daemonize path (the fork happens after this
+# call). Before this fix, a missing/malformed mesh config raised a bare
+# FileNotFoundError/yaml error that fell through ``main()``'s generic
+# ``except Exception`` and exited 1 — indistinguishable from a transient
+# crash, so ``RestartPreventExitStatus=EXIT_DAEMON_PERMANENT`` never
+# engaged and systemd crash-looped the unit 11,235 times.
+# ---------------------------------------------------------------------------
+
+
+def _mesh_args(mesh_config: str) -> argparse.Namespace:
+    return argparse.Namespace(mesh_config=mesh_config, link=[])
+
+
+class TestResolveServerLinksConfigExitContract:
+    def test_missing_mesh_config_raises_permanent(self, tmp_path):
+        missing = tmp_path / "nope.yaml"
+        with pytest.raises(CultureError) as exc:
+            srv_mod._resolve_server_links(_mesh_args(str(missing)))
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        assert str(missing) in exc.value.message
+        assert "\n" not in exc.value.message  # one-line, actionable
+        assert exc.value.remediation
+
+    def test_malformed_yaml_raises_permanent(self, tmp_path):
+        bad = tmp_path / "mesh.yaml"
+        bad.write_text("server: {name: foo\n  bad indent: [1,2\n")
+        with pytest.raises(CultureError) as exc:
+            srv_mod._resolve_server_links(_mesh_args(str(bad)))
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        assert "\n" not in exc.value.message
+
+    def test_invalid_schema_raises_permanent(self, tmp_path):
+        """A link entry with an unknown field is a schema error (surfaces
+        as TypeError from MeshLinkConfig(**lc)), not a transient one."""
+        bad = tmp_path / "mesh.yaml"
+        bad.write_text(
+            "server:\n"
+            "  name: spark\n"
+            "  links:\n"
+            "    - name: thor\n"
+            "      host: thor.example.com\n"
+            "      port: 6667\n"
+            "      bogus_key: yes\n"
+        )
+        with pytest.raises(CultureError) as exc:
+            srv_mod._resolve_server_links(_mesh_args(str(bad)))
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        assert "\n" not in exc.value.message
+
+    def test_no_mesh_config_bypasses_the_boundary(self):
+        """No ``--mesh-config``: CLI ``--link`` args pass straight through,
+        never touching the try/except that classifies config errors."""
+        link = object()
+        result = srv_mod._resolve_server_links(argparse.Namespace(mesh_config=None, link=[link]))
+        assert result == [link]
+
+    def test_parent_segment_is_a_file_raises_permanent(self, tmp_path):
+        """Qodo #4: a --mesh-config path whose parent segment is itself a
+        regular file (e.g. --mesh-config /some/file/mesh.yaml) makes the
+        plain ``open()`` inside ``load_mesh_config`` raise
+        ``NotADirectoryError`` — a different ``OSError`` subtype than
+        ``FileNotFoundError``/``PermissionError``/``IsADirectoryError``, but
+        just as permanent: no restart fixes a path shaped like this.
+        The narrow tuple missed it, so it fell through to ``main()``'s
+        generic ``except Exception`` and exited 1 instead of 78."""
+        parent = tmp_path / "parent"
+        parent.write_text("i am a file, not a directory")
+        bad = parent / "mesh.yaml"
+        with pytest.raises(CultureError) as exc:
+            srv_mod._resolve_server_links(_mesh_args(str(bad)))
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        assert str(bad) in exc.value.message
+        assert "\n" not in exc.value.message
+        assert exc.value.remediation
+
+
+# ---------------------------------------------------------------------------
+# `culture server start` end-to-end through ``culture_core.cli.main`` — the
+# actual command systemd's ExecStart runs. Regression coverage for the
+# 2026-07-03 outage at the level an operator/service-manager observes it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def isolated_cli_state(monkeypatch, tmp_path):
+    """Keep these CLI-level tests off the real ``~/.culture`` tree."""
+    monkeypatch.setattr(srv_mod, "DEFAULT_CONFIG", str(tmp_path / "no-server.yaml"))
+    monkeypatch.setattr("culture_core.pidfile.PID_DIR", str(tmp_path / "pids"))
+    return tmp_path
+
+
+class TestServerStartCliExitsOnBadMeshConfig:
+    def test_missing_mesh_config_exits_78_foreground(self, isolated_cli_state, monkeypatch, capsys):
+        missing = isolated_cli_state / "nope.yaml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "culture",
+                "server",
+                "start",
+                "--name",
+                "t2clifg",
+                "--mesh-config",
+                str(missing),
+                "--foreground",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        err = capsys.readouterr().err
+        assert "error:" in err
+        assert str(missing) in err
+
+    def test_missing_mesh_config_exits_78_background(self, isolated_cli_state, monkeypatch, capsys):
+        """Background (fork) mode: resolution happens in the parent before
+        ``os.fork()``, so the CLI process itself exits 78 — no daemon
+        child, no pidfile, nothing left running."""
+        missing = isolated_cli_state / "nope.yaml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["culture", "server", "start", "--name", "t2clibg", "--mesh-config", str(missing)],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+
+    def test_mesh_config_parent_not_a_directory_exits_78(
+        self, isolated_cli_state, monkeypatch, capsys
+    ):
+        """Qodo #4 at the CLI level: a parent path segment that's a regular
+        file (NotADirectoryError from open()) must trip the same exit-78
+        boundary as a missing file, not fall through to exit 1."""
+        parent = isolated_cli_state / "parent"
+        parent.write_text("i am a file, not a directory")
+        bad = parent / "mesh.yaml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["culture", "server", "start", "--name", "t2clinotdir", "--mesh-config", str(bad)],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        err = capsys.readouterr().err
+        assert "error:" in err
+        assert str(bad) in err
+
+
+class TestServerStartAlreadyRunningStaysTransient:
+    """Boundary check (requirement 3): an already-running server is a
+    transient/user condition that resolves itself once the running
+    instance stops — it must NOT exit 78, or the unit would park
+    permanently on a condition restart (of the CLI invocation) fixes."""
+
+    def test_already_running_exits_1_not_78(self, isolated_cli_state, monkeypatch, capsys):
+        name = "t2clirunning"
+        write_pid(f"server-{name}", os.getpid())  # our own test process: genuinely alive
+        monkeypatch.setattr(sys, "argv", ["culture", "server", "start", "--name", name])
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == EXIT_USER_ERROR
+        assert exc.value.code != EXIT_DAEMON_PERMANENT
+        assert "already running" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

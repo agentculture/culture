@@ -62,6 +62,7 @@ DEFAULT_MESH_PATH = os.path.expanduser("~/.culture/mesh.yaml")
 
 def load_mesh_config(path: str | Path = DEFAULT_MESH_PATH) -> MeshConfig:
     """Load mesh config from a YAML file."""
+    path = os.path.expanduser(path)
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
 
@@ -120,7 +121,7 @@ def merge_links(target: MeshConfig, source_links: list[MeshLinkConfig]) -> None:
 
 def save_mesh_config(config: MeshConfig, path: str | Path = DEFAULT_MESH_PATH) -> None:
     """Serialize mesh config to YAML and write atomically."""
-    path = Path(path)
+    path = Path(os.path.expanduser(path))
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = asdict(config)

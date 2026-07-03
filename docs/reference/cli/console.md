@@ -149,8 +149,15 @@ local console process for the requested port.
 ```bash
 culture console install                                   # ExecStart defers to irc-lens's default config
 culture console install --config ~/.config/irc-lens/config.yaml
+culture console install --allow-dev-interpreter            # override the interpreter provenance guard
 culture console uninstall
 ```
+
+`<python>` in the ExecStart is the interpreter that ran the install
+(`sys.executable`); `culture console install` refuses to bake a fragile
+dev-worktree/repo virtualenv interpreter into the unit unless
+`--allow-dev-interpreter` is passed — see [the interpreter provenance
+guard](../../durable-mesh.md#interpreter-provenance-guard).
 
 Installs `culture-console-<name>.service` (Linux systemd user unit;
 launchd/scheduled-task on macOS/Windows) running `<python> -m

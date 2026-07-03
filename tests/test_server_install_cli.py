@@ -119,7 +119,10 @@ def test_install_twice_is_idempotent(tmp_path):
 
     mesh_yaml = _write_mesh(tmp_path, name="spark")
     unit_dir = tmp_path / "systemd" / "user"
-    args = argparse.Namespace(config=str(mesh_yaml))
+    # The test suite itself runs under a repo .venv interpreter, which the
+    # provisioning guard flags as fragile; --allow-dev-interpreter is the
+    # documented override. Idempotency is orthogonal to the guard.
+    args = argparse.Namespace(config=str(mesh_yaml), allow_dev_interpreter=True)
 
     with (
         patch("culture_core.persistence.get_platform", return_value="linux"),
