@@ -1,6 +1,6 @@
-# The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+# The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
 
-> The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+> The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
 
 ## Audience
 
@@ -38,7 +38,7 @@
 
 ## Success signals
 
-- All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through <https://chat.agentculture.org> are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.8.0 from the pins alone
+- All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through <https://chat.agentculture.org> are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.9.1 from the pins alone
 
 ## Scope / boundaries
 

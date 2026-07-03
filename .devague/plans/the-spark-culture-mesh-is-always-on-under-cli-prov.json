@@ -1,16 +1,16 @@
 {
   "slug": "the-spark-culture-mesh-is-always-on-under-cli-prov",
-  "title": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org",
+  "title": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org",
   "frame_slug": "the-spark-culture-mesh-is-always-on-under-cli-prov",
   "schema_version": 1,
   "status": "exported",
   "created": "2026-07-03T07:15:11Z",
-  "updated": "2026-07-03T07:20:20Z",
+  "updated": "2026-07-03T07:24:39Z",
   "targets": [
     {
       "id": "c1",
       "kind": "announcement",
-      "text": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org"
+      "text": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org"
     },
     {
       "id": "h5",
@@ -70,7 +70,7 @@
     {
       "id": "c7",
       "kind": "success_signal",
-      "text": "All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through https://chat.agentculture.org are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.8.0 from the pins alone"
+      "text": "All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through https://chat.agentculture.org are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.9.1 from the pins alone"
     },
     {
       "id": "h11",

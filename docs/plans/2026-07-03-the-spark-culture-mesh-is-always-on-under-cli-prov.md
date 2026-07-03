@@ -1,8 +1,8 @@
-# Build Plan — The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+# Build Plan — The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
 
 slug: `the-spark-culture-mesh-is-always-on-under-cli-prov` · status: `exported` · from frame: `the-spark-culture-mesh-is-always-on-under-cli-prov`
 
-> The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+> The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.9.1 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
 
 ## Tasks
 

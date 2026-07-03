@@ -8,10 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- Spec: always-on CLI-provisioned mesh with fail-fast units, provenance-guarded installs, and pinned agentirc-cli 9.11 / irc-lens 0.9.1 media floors (devague frame, docs/specs/2026-07-03)
+- Spec + plan: always-on CLI-provisioned mesh with fail-fast units and provenance-guarded installs (devague frame, docs/specs + docs/plans 2026-07-03); remaining engine fixes (expanduser, exit-78, provenance guard) land in follow-up PRs
 
 ### Changed
 
+- Dependency floors raised and enforced: `agentirc-cli>=9.11.0,<10` (agent-accessibility) and `irc-lens>=0.9.1,<1.0` (image/audio media + agentfront) in `pyproject.toml` and `uv.lock` (plan t4)
 - spark-culture mesh presence (culture.yaml) switches to the colleague backend (vllm-openai engine on the local Qwen3.6-27B), per operator decision 2026-07-03
 
 ## [14.3.0] - 2026-07-02
