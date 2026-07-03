@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.4.0] - 2026-07-03
+
+### Added
+
+- `--allow-dev-interpreter` flag on `culture server install` / `console install` / `agents install`, backed by a provenance guard that refuses (or, with the flag, warns) rather than baking a fragile dev/worktree `.venv` interpreter into a systemd/launchd unit.
+- `scripts/always-on-probe.sh` — a repeatable deployment probe: the five CLI-provisioned units + tunnel active, a bad `--mesh-config` exits 78, console 200 via a CF Access service token, and byte-identical image/audio round-trips through the public capability URL.
+
+### Changed
+
+- `culture server start` now exits 78 (EX_CONFIG) on a missing/unreadable/invalid `--mesh-config`, so systemd's `RestartPreventExitStatus=78` parks the unit instead of restart-looping; transient runtime failures (refused peer link, busy port) still exit non-78.
+- `load_mesh_config` / `save_mesh_config` expand a leading `~`, so a unit whose ExecStart passes a literal `~/.culture/mesh.yaml` starts correctly.
+
+### Fixed
+
+- The 2026-07-03 spark outage class: a server unit generated from a dev-worktree venv with a literal `~/.culture/mesh.yaml` path exited 1 on the config error and crash-looped (11,235 restarts over ~15h). The loader now expands `~`, config errors exit 78 to park the unit, and install refuses to bake a fragile interpreter path.
+
 ## [14.3.1] - 2026-07-03
 
 ### Added
