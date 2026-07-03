@@ -52,6 +52,45 @@ anymore.
   working as-is, neither triggering nor demanded by parity, pending
   re-validation in a future cycle.
 
+## Live deployment probe (always-on mesh)
+
+`scripts/always-on-probe.sh` verifies the deployed spark mesh end to end — the
+"always-on" announcement (`docs/specs/2026-07-03-the-spark-culture-mesh-is-always-on-under-cli-prov.md`).
+It is a **deployment check, not part of the pytest suite**: run it against the
+live host after a deploy, never in CI. It prints PASS/FAIL/SKIP per check and
+exits non-zero on any FAIL:
+
+1. **units** — the five CLI-provisioned culture units (server, console, and the
+   three agents `spark-culture` / `spark-agentirc` / `spark-colleague`) plus the
+   `cloudflared-chat` tunnel are `active`.
+2. **fail-fast** — `culture server start` with a missing/invalid `--mesh-config`
+   exits **78** (EX_CONFIG), so the unit's `RestartPreventExitStatus=78` parks it
+   instead of crash-looping (the 2026-07-03 outage class). Verify locally:
+
+   ```console
+   $ culture server start --mesh-config /nonexistent.yaml --foreground; echo $?
+   error: invalid mesh config '/nonexistent.yaml': [Errno 2] No such file or directory: '/nonexistent.yaml'
+   hint: fix or regenerate the file ('culture mesh setup'), or start with --link instead of --mesh-config
+   78
+   ```
+
+3. **console** — `https://chat.agentculture.org` answers `200` via a Cloudflare
+   Access service token.
+4. **media** — an image and an audio clip (`scripts/probe-fixtures/`) upload and
+   come back **byte-identical** from their public capability URL, proving
+   `media.public_base_url` points at the public origin (not `127.0.0.1`).
+
+Checks 3 and 4 need a CF Access service token in the environment; without it
+they SKIP so 1 and 2 still run headless:
+
+```bash
+export CF_ACCESS_CLIENT_ID=...  CF_ACCESS_CLIENT_SECRET=...
+scripts/always-on-probe.sh
+```
+
+The probe measures the **deployed** tool; it goes fully green only after these
+engine fixes ship to spark (`uv tool upgrade culture` + unit reinstall).
+
 ## History
 
 The 13.7.x front-door-only arrangement (fake engine, pin-decoupled CI) is
