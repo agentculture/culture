@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.3.1] - 2026-07-03
+
+### Added
+
+- Spec: always-on CLI-provisioned mesh with fail-fast units, provenance-guarded installs, and pinned agentirc-cli 9.11 / irc-lens 0.9.1 media floors (devague frame, docs/specs/2026-07-03)
+
+### Changed
+
+- spark-culture mesh presence (culture.yaml) switches to the colleague backend (vllm-openai engine on the local Qwen3.6-27B), per operator decision 2026-07-03
+
 ## [14.3.0] - 2026-07-02
 
 ### Added

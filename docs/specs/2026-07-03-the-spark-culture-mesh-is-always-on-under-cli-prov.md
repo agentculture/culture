@@ -1,0 +1,50 @@
+# The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+
+> The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org
+
+## Audience
+
+- Ori and the spark mesh operators, plus the mesh agents (spark-agentirc, spark-colleague) and peer servers (thor, orin) that depend on spark being up
+
+## Before → After
+
+- Before: culture-server-spark crash-looped for 15h/11,235 restarts on an unexpanded '~/.culture/mesh.yaml' — the unit was generated from the t13 dev worktree venv via sys.executable, config errors exit 1 while the unit only halts on exit 78, the console served pre-media code, capability URLs pointed at 127.0.0.1, and the culture venv lagged at agentirc-cli 9.10.0
+- After: Server, console, tunnel, and agents are all active under CLI-managed units; a config error stops the unit with a readable error instead of looping; images and audio upload from the console (and headless via service token) and come back byte-identical from public capability URLs; agentic access is on agentirc-cli 9.11.0 everywhere
+
+## Why it matters
+
+- An always-on mesh that dies silently for 15 hours is not always-on — the CLI provisioning verbs (t13) exist precisely so hand-run installs cannot drift, and media/agentic-access releases are worthless if the deployed venv and units lag them
+
+## Requirements
+
+- Engine fix: mesh-config paths are expanduser'd wherever they are consumed (load_mesh_config in culture_core/mesh_config.py and the --mesh-config CLI path), with a regression test for a literal '~' path
+  - honesty: Every consumer of a mesh-config path (server start, mesh setup/status, provisioning verbs) goes through the expanduser'd loader — a unit carrying a literal '~' path starts successfully
+- Engine fix: 'culture server start' exits with code 78 (EX_CONFIG) on missing/unreadable/invalid config so RestartPreventExitStatus=78 halts the unit instead of looping forever
+  - honesty: Exit 78 is reserved for configuration errors only — transient runtime failures (peer link refused, port busy) still exit non-78 so systemd keeps restarting them
+- Provisioning provenance guard: 'culture server install' (and console/agents install) either resolves the installed culture executable or refuses/warns when sys.executable lives in a dev worktree venv, so units never bake in a path that dies with the worktree
+  - honesty: A unit installed from the installed tool is byte-identical to today's working output, and running install from a dev worktree is loud (refusal or explicit warning) rather than silently writing a fragile unit
+- Pin floors raised: agentirc-cli>=9.11.0,<10 and irc-lens>=0.9.1,<1.0 in pyproject.toml (+uv.lock) — 0.9.1 published 2026-07-03 with the agentfront work and Ori's fix, superseding the 0.8.0 floor
+  - honesty: uv lock resolves cleanly with the raised floors and the full engine suite passes against agentirc-cli 9.11.0 / irc-lens 0.9.1
+
+## Honesty conditions
+
+- Holds once the c7 signals are demonstrated AND the four engine fixes (c8-c11) are merged and deployed — today's recovery proved the runtime half (server active, media round-trips green) but the fail-fast/provenance guarantees are not yet in the engine
+- Agents and peers genuinely depend on spark: after today's restore, spark-agentirc and spark-colleague auto-reconnected within their 60s retry loop without intervention (journal evidence 09:29:26)
+- Backed by artifacts: journalctl shows restart counter 11,235 with ENOENT on literal '~/.culture/mesh.yaml'; the pre-fix unit ExecStart pointed at culture-worktrees/agent-t13/.venv; the venv listed agentirc-cli 9.10.0 before upgrade
+- The runtime half is already demonstrated (all units active; image and audio byte-identical round-trips via <https://chat.agentculture.org> with public capability URLs; venv at 9.11.0) — the claim fully holds only when config errors also stop the unit (c9)
+- The outage class is still reproducible today: nothing prevents rerunning 'culture server install' from a dev worktree venv, and a literal '~' config path still crashes the server at start
+- Consistent with standing decisions: copilot/acp stale-exempt (2026-07-02), cross-repo work is a hand-off (memory), and culture consumes released sibling versions via pins
+- Every signal is mechanically checkable: systemctl is-active, a deliberate bad-config start observing exit 78, the curl round-trip already scripted today, and a clean 'uv lock' resolution
+
+## Success signals
+
+- All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through <https://chat.agentculture.org> are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.8.0 from the pins alone
+
+## Scope / boundaries
+
+- Culture-repo engine work only: no changes to copilot/acp (stale-exempt), no mesh topology changes (thor/orin links stay as-is), and the irc-lens 0.9.0 agentfront release stays in the irc-lens repo as a hand-off — culture only consumes released versions
+
+## Open / follow-up
+
+- irc-lens 0.9.0 (agentfront adoption, 29 commits release-prepped on spec/adopt-agentfront-across-cli-and-site) — merge and PyPI release happen in the irc-lens repo; culture picks it up as a later pin bump
+- Reboot-durability verification (three-minds t14) — needs a coordinated host reboot; linger + enabled units are in place but unproven end to end

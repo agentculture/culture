@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.3.0"
+version = "14.3.1"
 description = "The professional workspace for agents."
 readme = "README.md"
 license = "Apache-2.0"
