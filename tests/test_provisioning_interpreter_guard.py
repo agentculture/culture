@@ -39,6 +39,13 @@ SYSTEM_BARE = "culture"
 REPO_VENV = "/home/spark/git/culture/.venv/bin/python"
 WORKTREE_VENV = "/home/spark/git/culture-worktrees/agent-t13/.venv/bin/python"
 VENV_NODOT = "/home/x/project/venv/bin/python"
+# A project/worktree venv nested under a tree that *also* satisfies the uv or
+# pipx adjacency heuristic (Qodo #5): the parent checkout happens to live
+# under a directory named "uv/tools" (or "pipx/venvs"), but the interpreter
+# itself is still a fragile `.venv` inside that checkout, not a tool-managed
+# venv. Fragility must win.
+UV_TOOLS_NESTED_VENV = "/home/me/repos/uv/tools/culture/.venv/bin/python"
+PIPX_VENVS_NESTED_VENV = "/home/me/repos/pipx/venvs/culture/.venv/bin/python"
 
 
 # --------------------------------------------------------------------------
@@ -59,10 +66,21 @@ VENV_NODOT = "/home/x/project/venv/bin/python"
         (REPO_VENV, InterpreterClass.DEV_VENV),
         (WORKTREE_VENV, InterpreterClass.DEV_VENV),
         (VENV_NODOT, InterpreterClass.DEV_VENV),
+        (UV_TOOLS_NESTED_VENV, InterpreterClass.DEV_VENV),
+        (PIPX_VENVS_NESTED_VENV, InterpreterClass.DEV_VENV),
     ],
 )
 def test_classify_matrix(path, expected):
     assert classify_interpreter(path) is expected
+
+
+def test_classify_no_regression_adjacent_without_venv_component_stays_durable():
+    """Qodo #5 no-regression: the real uv-tool / pipx layouts have NO
+    .venv/venv path component (the venv dir is named after the tool, e.g.
+    'culture', not '.venv'), so moving the DEV_VENV check ahead of the
+    adjacency heuristics must not affect them."""
+    assert classify_interpreter(UV_TOOL) is InterpreterClass.UV_TOOL
+    assert classify_interpreter(PIPX) is InterpreterClass.PIPX
 
 
 def test_classify_is_pure_no_env_read():
