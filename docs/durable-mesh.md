@@ -38,9 +38,10 @@ Config resolution:
   `install`/`uninstall` are culture-side verbs, intercepted before
   anything reaches irc-lens (which knows nothing about service units).
   `--config` here is the **irc-lens** config path baked into ExecStart;
-  without it, the unit defers to irc-lens's own default
-  (`~/.config/irc-lens/config.yaml`), which `console serve`
-  auto-initializes on first run. The `<name>` in the unit name is the
+  without it, the unit defers to irc-lens's own default config
+  location, which `console serve` auto-initializes on first run — an
+  irc-lens dependency default, not a culture per-user config. The
+  `<name>` in the unit name is the
   server name from `~/.culture/server.yaml` — the same place agent
   units resolve their server.
 - **Agents** — see [Agent systemd units](reference/cli/agent-systemd.md).
@@ -236,8 +237,8 @@ entirely irc-lens's config surface, consumed here purely through the
 tunnel (previous section), its media config needs one more setting:
 
 ```yaml
-# ~/.config/irc-lens/config.yaml (or the path passed to
-# `culture console install --config`)
+# irc-lens console config (path from `culture console install --config`,
+# or irc-lens's own default config location)
 media:
   enabled: true
   public_base_url: "https://chat.agentculture.org"
