@@ -26,6 +26,34 @@ CULTURE_BIN="${CULTURE_BIN:-culture}"
 SYSTEMCTL="${CULTURE_SYSTEMCTL:-systemctl --user}"
 FIXTURES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/probe-fixtures"
 
+# Preflight: fail fast with a clear message if a core external command is
+# missing, instead of letting checks 1-4 fail confusingly deep in the script.
+# jq is intentionally excluded here — it's only needed for the media
+# round-trip (check 4), which already guards on `command -v jq` right where
+# it's used, so units/fail-fast never depend on it.
+preflight() {
+    local missing=() c systemctl_cmd="${SYSTEMCTL%% *}"
+    for c in "$systemctl_cmd" timeout curl cmp; do
+        command -v "$c" >/dev/null 2>&1 || missing+=("$c")
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "always-on-probe.sh: missing required command(s): ${missing[*]} -- install them and retry." >&2
+        exit 127
+    fi
+}
+preflight
+
+# Tempfiles created by this script (currently: roundtrip()'s download target)
+# are tracked here and swept on any exit path (normal, early return, signal).
+TMPFILES=()
+cleanup() {
+    local f
+    for f in "${TMPFILES[@]}"; do
+        rm -f "$f"
+    done
+}
+trap cleanup EXIT
+
 # The five CLI-provisioned culture units (server + console + three agents).
 CULTURE_UNITS=(
     culture-server-spark.service
@@ -87,6 +115,7 @@ roundtrip() { # $1 fixture, $2 label
         *) no "$label capability url is not public: $url"; return ;;
     esac
     out=$(mktemp)
+    TMPFILES+=("$out")
     curl -sS -m 30 "$url" -o "$out" 2>/dev/null   # capability URL is auth-exempt by design
     if cmp -s "$fx" "$out"; then ok "$label round-trip byte-identical ($url)"; else no "$label round-trip differs from source"; fi
     rm -f "$out"
