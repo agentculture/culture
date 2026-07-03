@@ -150,6 +150,25 @@ class TestResolveServerLinksConfigExitContract:
         result = srv_mod._resolve_server_links(argparse.Namespace(mesh_config=None, link=[link]))
         assert result == [link]
 
+    def test_parent_segment_is_a_file_raises_permanent(self, tmp_path):
+        """Qodo #4: a --mesh-config path whose parent segment is itself a
+        regular file (e.g. --mesh-config /some/file/mesh.yaml) makes the
+        plain ``open()`` inside ``load_mesh_config`` raise
+        ``NotADirectoryError`` — a different ``OSError`` subtype than
+        ``FileNotFoundError``/``PermissionError``/``IsADirectoryError``, but
+        just as permanent: no restart fixes a path shaped like this.
+        The narrow tuple missed it, so it fell through to ``main()``'s
+        generic ``except Exception`` and exited 1 instead of 78."""
+        parent = tmp_path / "parent"
+        parent.write_text("i am a file, not a directory")
+        bad = parent / "mesh.yaml"
+        with pytest.raises(CultureError) as exc:
+            srv_mod._resolve_server_links(_mesh_args(str(bad)))
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        assert str(bad) in exc.value.message
+        assert "\n" not in exc.value.message
+        assert exc.value.remediation
+
 
 # ---------------------------------------------------------------------------
 # `culture server start` end-to-end through ``culture_core.cli.main`` — the
@@ -203,6 +222,27 @@ class TestServerStartCliExitsOnBadMeshConfig:
         with pytest.raises(SystemExit) as exc:
             cli_main()
         assert exc.value.code == EXIT_DAEMON_PERMANENT
+
+    def test_mesh_config_parent_not_a_directory_exits_78(
+        self, isolated_cli_state, monkeypatch, capsys
+    ):
+        """Qodo #4 at the CLI level: a parent path segment that's a regular
+        file (NotADirectoryError from open()) must trip the same exit-78
+        boundary as a missing file, not fall through to exit 1."""
+        parent = isolated_cli_state / "parent"
+        parent.write_text("i am a file, not a directory")
+        bad = parent / "mesh.yaml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["culture", "server", "start", "--name", "t2clinotdir", "--mesh-config", str(bad)],
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == EXIT_DAEMON_PERMANENT
+        err = capsys.readouterr().err
+        assert "error:" in err
+        assert str(bad) in err
 
 
 class TestServerStartAlreadyRunningStaysTransient:
