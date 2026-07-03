@@ -545,9 +545,21 @@ def _resolve_server_links(args: argparse.Namespace) -> list:
         try:
             return resolve_links_from_mesh(args.mesh_config)
         except (
-            FileNotFoundError,
-            PermissionError,
-            IsADirectoryError,
+            # Broad OSError is safe at this scoped boundary: this call chain
+            # (resolve_links_from_mesh -> load_mesh_config) only opens and
+            # YAML-parses the mesh file and builds dataclasses — no
+            # network/keyring/subprocess I/O lives on this path — so every
+            # OSError raised here is a config-file access error (missing,
+            # permission denied, a parent segment that's a file
+            # (NotADirectoryError), ELOOP, ENAMETOOLONG, ...), never a
+            # transient runtime one. A narrower tuple previously missed
+            # NotADirectoryError, letting it fall through main()'s generic
+            # except Exception and exit 1 instead of 78 (Qodo #4).
+            OSError,
+            # yaml.YAMLError and TypeError/ValueError/KeyError are
+            # schema-construction errors (malformed YAML, bad MeshLinkConfig
+            # fields). UnicodeDecodeError is already covered here too, since
+            # it subclasses ValueError.
             yaml.YAMLError,
             TypeError,
             ValueError,
