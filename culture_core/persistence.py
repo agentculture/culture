@@ -121,19 +121,29 @@ def classify_interpreter(
     Classification rule (checked in order):
 
     1. **uv tool** (:attr:`InterpreterClass.UV_TOOL`, durable) — the path is
-       under ``env['UV_TOOL_DIR']``, or contains an adjacent ``uv``/``tools``
-       pair (the default ``~/.local/share/uv/tools/<tool>/bin/python`` layout).
+       under ``env['UV_TOOL_DIR']`` (explicit operator signal).
     2. **pipx** (:attr:`InterpreterClass.PIPX`, durable) — the path is under
-       ``env['PIPX_HOME']/venvs``, or contains an adjacent ``pipx``/``venvs``
-       pair (``~/.local/share/pipx/venvs/<pkg>/bin/python``).
+       ``env['PIPX_HOME']/venvs`` (explicit operator signal).
     3. **dev venv** (:attr:`InterpreterClass.DEV_VENV`, FRAGILE) — a path
        component is exactly ``.venv`` or ``venv`` (a repo checkout or git
        worktree virtualenv). This is the outage class.
-    4. **system** (:attr:`InterpreterClass.SYSTEM`, durable) — anything else.
+    4. **uv tool** (:attr:`InterpreterClass.UV_TOOL`, durable) — contains an
+       adjacent ``uv``/``tools`` pair (the default
+       ``~/.local/share/uv/tools/<tool>/bin/python`` layout).
+    5. **pipx** (:attr:`InterpreterClass.PIPX`, durable) — contains an
+       adjacent ``pipx``/``venvs`` pair
+       (``~/.local/share/pipx/venvs/<pkg>/bin/python``).
+    6. **system** (:attr:`InterpreterClass.SYSTEM`, durable) — anything else.
 
-    The uv/pipx checks run before the ``.venv``/``venv`` check so a
-    tool-manager location (whose venv dir is named after the tool, not
-    ``.venv``) is never mistaken for a project venv.
+    Only the explicit ENV-PREFIX checks (steps 1-2) run before the
+    ``.venv``/``venv`` check. The uv/pipx *adjacency* heuristics (steps 4-5)
+    are weaker signals than an explicit path component named ``.venv``/
+    ``venv``, so fragility wins: a project/worktree venv nested under a tree
+    that happens to look like ``uv/tools/...`` or ``pipx/venvs/...`` (e.g.
+    ``~/repos/uv/tools/culture/.venv/bin/python``) is still a fragile dev venv,
+    not a tool-managed one. The real uv-tool/pipx layouts have no ``.venv``/
+    ``venv`` component (the venv dir is named after the tool, not ``.venv``),
+    so they are unaffected and still resolve via steps 4-5.
 
     Known limitation: a durable-but-conventionally-named deployment venv (e.g.
     ``/opt/app/venv``) is flagged as fragile. That false positive is the
@@ -146,17 +156,19 @@ def classify_interpreter(
     uv_tool_dir = env.get("UV_TOOL_DIR")
     if uv_tool_dir and _is_within(parts, _path_parts(uv_tool_dir)):
         return InterpreterClass.UV_TOOL
-    if _has_adjacent(parts, "uv", "tools"):
-        return InterpreterClass.UV_TOOL
 
     pipx_home = env.get("PIPX_HOME")
     if pipx_home and _is_within(parts, [*_path_parts(pipx_home), "venvs"]):
         return InterpreterClass.PIPX
-    if _has_adjacent(parts, "pipx", "venvs"):
-        return InterpreterClass.PIPX
 
     if any(p in _PROJECT_VENV_DIRS for p in parts):
         return InterpreterClass.DEV_VENV
+
+    if _has_adjacent(parts, "uv", "tools"):
+        return InterpreterClass.UV_TOOL
+
+    if _has_adjacent(parts, "pipx", "venvs"):
+        return InterpreterClass.PIPX
 
     return InterpreterClass.SYSTEM
 
