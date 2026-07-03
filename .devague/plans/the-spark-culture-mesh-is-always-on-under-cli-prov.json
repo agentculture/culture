@@ -1,0 +1,265 @@
+{
+  "slug": "the-spark-culture-mesh-is-always-on-under-cli-prov",
+  "title": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org",
+  "frame_slug": "the-spark-culture-mesh-is-always-on-under-cli-prov",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-07-03T07:15:11Z",
+  "updated": "2026-07-03T07:20:20Z",
+  "targets": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "The spark culture mesh is always-on under CLI-provisioned units that fail fast on config errors instead of silently looping, with agentirc 9.11 agentic access and irc-lens 0.8 image/audio media guaranteed by pins and verified end to end through chat.agentculture.org"
+    },
+    {
+      "id": "h5",
+      "kind": "honesty",
+      "text": "Holds once the c7 signals are demonstrated AND the four engine fixes (c8-c11) are merged and deployed \u2014 today's recovery proved the runtime half (server active, media round-trips green) but the fail-fast/provenance guarantees are not yet in the engine"
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "Ori and the spark mesh operators, plus the mesh agents (spark-agentirc, spark-colleague) and peer servers (thor, orin) that depend on spark being up"
+    },
+    {
+      "id": "h6",
+      "kind": "honesty",
+      "text": "Agents and peers genuinely depend on spark: after today's restore, spark-agentirc and spark-colleague auto-reconnected within their 60s retry loop without intervention (journal evidence 09:29:26)"
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "culture-server-spark crash-looped for 15h/11,235 restarts on an unexpanded '~/.culture/mesh.yaml' \u2014 the unit was generated from the t13 dev worktree venv via sys.executable, config errors exit 1 while the unit only halts on exit 78, the console served pre-media code, capability URLs pointed at 127.0.0.1, and the culture venv lagged at agentirc-cli 9.10.0"
+    },
+    {
+      "id": "h7",
+      "kind": "honesty",
+      "text": "Backed by artifacts: journalctl shows restart counter 11,235 with ENOENT on literal '~/.culture/mesh.yaml'; the pre-fix unit ExecStart pointed at culture-worktrees/agent-t13/.venv; the venv listed agentirc-cli 9.10.0 before upgrade"
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "Server, console, tunnel, and agents are all active under CLI-managed units; a config error stops the unit with a readable error instead of looping; images and audio upload from the console (and headless via service token) and come back byte-identical from public capability URLs; agentic access is on agentirc-cli 9.11.0 everywhere"
+    },
+    {
+      "id": "h8",
+      "kind": "honesty",
+      "text": "The runtime half is already demonstrated (all units active; image and audio byte-identical round-trips via https://chat.agentculture.org with public capability URLs; venv at 9.11.0) \u2014 the claim fully holds only when config errors also stop the unit (c9)"
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "An always-on mesh that dies silently for 15 hours is not always-on \u2014 the CLI provisioning verbs (t13) exist precisely so hand-run installs cannot drift, and media/agentic-access releases are worthless if the deployed venv and units lag them"
+    },
+    {
+      "id": "h9",
+      "kind": "honesty",
+      "text": "The outage class is still reproducible today: nothing prevents rerunning 'culture server install' from a dev worktree venv, and a literal '~' config path still crashes the server at start"
+    },
+    {
+      "id": "c6",
+      "kind": "boundary",
+      "text": "Culture-repo engine work only: no changes to copilot/acp (stale-exempt), no mesh topology changes (thor/orin links stay as-is), and the irc-lens 0.9.0 agentfront release stays in the irc-lens repo as a hand-off \u2014 culture only consumes released versions"
+    },
+    {
+      "id": "h10",
+      "kind": "honesty",
+      "text": "Consistent with standing decisions: copilot/acp stale-exempt (2026-07-02), cross-repo work is a hand-off (memory), and culture consumes released sibling versions via pins"
+    },
+    {
+      "id": "c7",
+      "kind": "success_signal",
+      "text": "All culture units report active (never 'activating auto-restart'); a deliberate bad mesh-config makes the unit stop with exit 78 and a readable error; image and audio round-trips through https://chat.agentculture.org are byte-identical with public capability URLs; the culture venv resolves agentirc-cli>=9.11.0 and irc-lens>=0.8.0 from the pins alone"
+    },
+    {
+      "id": "h11",
+      "kind": "honesty",
+      "text": "Every signal is mechanically checkable: systemctl is-active, a deliberate bad-config start observing exit 78, the curl round-trip already scripted today, and a clean 'uv lock' resolution"
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "Engine fix: mesh-config paths are expanduser'd wherever they are consumed (load_mesh_config in culture_core/mesh_config.py and the --mesh-config CLI path), with a regression test for a literal '~' path"
+    },
+    {
+      "id": "h1",
+      "kind": "honesty",
+      "text": "Every consumer of a mesh-config path (server start, mesh setup/status, provisioning verbs) goes through the expanduser'd loader \u2014 a unit carrying a literal '~' path starts successfully"
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "Engine fix: 'culture server start' exits with code 78 (EX_CONFIG) on missing/unreadable/invalid config so RestartPreventExitStatus=78 halts the unit instead of looping forever"
+    },
+    {
+      "id": "h2",
+      "kind": "honesty",
+      "text": "Exit 78 is reserved for configuration errors only \u2014 transient runtime failures (peer link refused, port busy) still exit non-78 so systemd keeps restarting them"
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "Provisioning provenance guard: 'culture server install' (and console/agents install) either resolves the installed culture executable or refuses/warns when sys.executable lives in a dev worktree venv, so units never bake in a path that dies with the worktree"
+    },
+    {
+      "id": "h3",
+      "kind": "honesty",
+      "text": "A unit installed from the installed tool is byte-identical to today's working output, and running install from a dev worktree is loud (refusal or explicit warning) rather than silently writing a fragile unit"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "Pin floors raised: agentirc-cli>=9.11.0,<10 and irc-lens>=0.9.1,<1.0 in pyproject.toml (+uv.lock) \u2014 0.9.1 published 2026-07-03 with the agentfront work and Ori's fix, superseding the 0.8.0 floor"
+    },
+    {
+      "id": "h12",
+      "kind": "honesty",
+      "text": "uv lock resolves cleanly with the raised floors and the full engine suite passes against agentirc-cli 9.11.0 / irc-lens 0.9.1"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "summary": "Expanduser every mesh-config consumer (culture_core/mesh_config.py load/save + CLI --mesh-config/--config paths)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "load_mesh_config('~/.culture/mesh.yaml') with a literal tilde resolves against HOME and loads (regression test monkeypatching HOME)",
+        "an ExecStart-style invocation 'server start --mesh-config <literal-tilde-path>' starts: test drives the CLI arg path through the expanding loader",
+        "audit test: no CLI consumer opens a mesh-config path without expansion (server start/install/uninstall, mesh setup/status/join)"
+      ],
+      "deps": [],
+      "covers": [
+        "c8",
+        "h1",
+        "h9"
+      ]
+    },
+    {
+      "id": "t2",
+      "summary": "Exit 78 (EX_CONFIG) from 'culture server start' on missing/unreadable/invalid config",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "missing mesh-config path exits 78 with a one-line actionable error (test asserts code and message)",
+        "malformed YAML / invalid schema exits 78 (test)",
+        "transient runtime failures keep restart semantics: a refused peer link or busy port does NOT exit 78 (test)"
+      ],
+      "deps": [],
+      "covers": [
+        "c9",
+        "h2",
+        "c4",
+        "h8"
+      ]
+    },
+    {
+      "id": "t3",
+      "summary": "Provenance guard on provisioning verbs: server/console/agents install detect a non-tool (dev worktree) interpreter",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "unit generated from the installed tool is byte-identical to current output (golden test)",
+        "install with sys.executable outside a recognized tool venv (uv tools dir / pipx) warns loudly naming the baked path, or refuses without an explicit override flag (test both branches)",
+        "the guard's heuristic is unit-tested against: uv tool venv, repo .venv, worktree .venv, system python"
+      ],
+      "deps": [],
+      "covers": [
+        "c10",
+        "h3",
+        "c5",
+        "h9"
+      ]
+    },
+    {
+      "id": "t4",
+      "summary": "Raise pin floors: agentirc-cli>=9.11.0,<10 and irc-lens>=0.9.1,<1.0 (+uv.lock)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "uv lock resolves cleanly with the new floors (lockfile committed)",
+        "full engine suite green via /run-tests against agentirc-cli 9.11.0 / irc-lens 0.9.1"
+      ],
+      "deps": [],
+      "covers": [
+        "c12",
+        "h12"
+      ]
+    },
+    {
+      "id": "t5",
+      "summary": "Docs: durable-mesh.md gains the fail-fast contract, provenance guard, media console config, and the 2026-07-03 outage postmortem",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "docs/durable-mesh.md documents exit-78 semantics (RestartPreventExitStatus contract), the provenance guard behavior + override, and media.public_base_url as a required console setting",
+        "postmortem section records the 2026-07-03 outage chain (worktree venv + literal tilde + exit-1 loop) with the journal evidence",
+        "scope note states copilot/acp untouched and sibling releases consumed via pins only; markdownlint clean"
+      ],
+      "deps": [
+        "t1",
+        "t2",
+        "t3"
+      ],
+      "covers": [
+        "c3",
+        "h7",
+        "c6",
+        "h10"
+      ]
+    },
+    {
+      "id": "t6",
+      "summary": "End-to-end always-on probe: scripted verification of the announcement on the deployed spark mesh",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "a repeatable probe (script under scripts/ or documented one-liner set in docs/testing.md) checks: five units active, agents connected (agentirc/colleague/culture), console 200 via CF Access service token",
+        "deliberate bad mesh-config start observes exit 78 and a stopped (not restarting) unit",
+        "image and audio round-trips through https://chat.agentculture.org are byte-identical with public capability URLs",
+        "probe recorded green on spark after the fixes deploy (uv tool upgrade + unit reinstall)"
+      ],
+      "deps": [
+        "t1",
+        "t2",
+        "t3",
+        "t4"
+      ],
+      "covers": [
+        "c1",
+        "h5",
+        "c2",
+        "h6",
+        "c7",
+        "h11"
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "r1",
+      "text": "Reboot proof (three-minds t14) still requires a coordinated host reboot \u2014 linger + enablement verified 2026-07-03, full boot-order proof parked",
+      "kind": "follow_up",
+      "task_id": null
+    },
+    {
+      "id": "r2",
+      "text": "Worktree/dev-venv detection heuristic (t3) may false-positive legitimate setups \u2014 must ship with an explicit override flag and a tested heuristic matrix",
+      "kind": "unknown_nonblocking",
+      "task_id": null
+    },
+    {
+      "id": "r3",
+      "text": "If implementation fans out to the colleague workforce, dispatch drives serially \u2014 3-way GPU contention on the local vLLM produced timeouts and malformed tool calls (2026-07-02 lesson)",
+      "kind": "follow_up",
+      "task_id": null
+    },
+    {
+      "id": "r4",
+      "text": "culture_core/clients/colleague/ ships no reference culture.yaml template while claude/codex do \u2014 parity/template gap spotted 2026-07-03, likely its own small PR",
+      "kind": "follow_up",
+      "task_id": null
+    }
+  ]
+}
