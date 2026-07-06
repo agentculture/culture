@@ -63,6 +63,25 @@ class WebhookConfig:
 
 
 @dataclass
+class PresenceConfig:
+    """Mesh-wide presence policy from the ``presence`` section of server.yaml.
+
+    ``heartbeat_interval_seconds`` is how often a busy resident refreshes its
+    PRESENCE signal; ``stale_after_seconds`` (stale-T) is how long the server
+    waits without a heartbeat before flagging a busy resident presumed-hung.
+    ``stale_after_seconds`` must be strictly greater than
+    ``heartbeat_interval_seconds`` so a live resident heartbeating on schedule
+    is never flagged between beats. The defaults (30/90) are open tuning
+    values (plan risk r1) — expect them to move once the mesh gathers real
+    heartbeat data. See protocol/extensions/presence.md and
+    docs/resident-presence.md.
+    """
+
+    heartbeat_interval_seconds: int = 30
+    stale_after_seconds: int = 90
+
+
+@dataclass
 class AgentConfig:
     """Per-agent settings loaded from culture.yaml."""
 
@@ -82,6 +101,13 @@ class AgentConfig:
     # them so a wedged stream cannot block _run_loop indefinitely.
     # Default lives in culture/_constants.py for cross-backend reuse.
     turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS
+    # Tokens per UTC day this agent is expected to stay under. WARN-ONLY:
+    # a breach only sets a warning flag in the resource view — nothing in
+    # v1 enforces, blocks, or defers work on it (docs/resident-presence.md).
+    # None disables budget warnings entirely.
+    token_budget: int | None = None
+    # Percent of token_budget at which the resource view starts warning.
+    token_budget_warn_pct: int = 80
     extras: dict = field(default_factory=dict)
     # Per-agent attention overrides, merged shallowly over daemon defaults by the
     # backend daemons (cultureagent's resolve_attention_config). Falsy => inherit
@@ -113,6 +139,7 @@ class ServerConfig:
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
     webhooks: WebhookConfig = field(default_factory=WebhookConfig)
     telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
+    presence: PresenceConfig = field(default_factory=PresenceConfig)
     buffer_size: int = 500
     poll_interval: int = 60
     sleep_start: str = "23:00"
@@ -142,6 +169,79 @@ _KNOWN_AGENT_FIELDS = {f.name for f in AgentConfig.__dataclass_fields__.values()
 }
 
 
+def _new_config_error(message: str, remediation: str) -> Exception:
+    """Build a :class:`CultureError` for an invalid config value.
+
+    Imported lazily: ``culture_core.cli`` imports this module at load time,
+    so a module-level import here would be circular.
+    """
+    from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+    return CultureError(EXIT_USER_ERROR, message, remediation)
+
+
+def _is_plain_int(value: object) -> bool:
+    """True only for real ints (bool is an int subclass — reject it)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_agent_budget(agent: AgentConfig, source: str) -> None:
+    """Validate the warn-only token-budget fields parsed from culture.yaml."""
+    budget = agent.token_budget
+    if budget is not None and not (_is_plain_int(budget) and budget >= 1):
+        raise _new_config_error(
+            f"Invalid token_budget in {source}: {budget!r} — "
+            "must be a positive integer (tokens per UTC day)",
+            "edit culture.yaml and set token_budget to an integer >= 1, "
+            "or remove the key to disable budget warnings",
+        )
+    pct = agent.token_budget_warn_pct
+    if not (_is_plain_int(pct) and 1 <= pct <= 100):
+        raise _new_config_error(
+            f"Invalid token_budget_warn_pct in {source}: {pct!r} — "
+            "must be an integer between 1 and 100",
+            "edit culture.yaml and set token_budget_warn_pct to a percent "
+            "in 1..100 (default 80)",
+        )
+
+
+def _parse_presence_section(raw: dict, source: str) -> PresenceConfig:
+    """Parse and validate the optional ``presence`` section of server.yaml."""
+    section = raw.get("presence") or {}
+    if not isinstance(section, dict):
+        raise _new_config_error(
+            f"Invalid presence section in {source}: {section!r} — must be a mapping",
+            "edit server.yaml: presence takes nested keys "
+            "heartbeat_interval_seconds and stale_after_seconds",
+        )
+    try:
+        presence = PresenceConfig(**section)
+    except TypeError:
+        known = ", ".join(f.name for f in PresenceConfig.__dataclass_fields__.values())
+        raise _new_config_error(
+            f"Unknown key in presence section of {source}: "
+            f"{sorted(section)!r} — known keys are {known}",
+            "edit server.yaml and remove or rename the unknown presence key",
+        ) from None
+    for key in ("heartbeat_interval_seconds", "stale_after_seconds"):
+        value = getattr(presence, key)
+        if not (_is_plain_int(value) and value >= 1):
+            raise _new_config_error(
+                f"Invalid presence.{key} in {source}: {value!r} — "
+                "must be a positive integer (seconds)",
+                f"edit server.yaml and set presence.{key} to an integer >= 1",
+            )
+    if presence.stale_after_seconds <= presence.heartbeat_interval_seconds:
+        raise _new_config_error(
+            f"Invalid presence.stale_after_seconds in {source}: "
+            f"{presence.stale_after_seconds} — must be strictly greater than "
+            f"heartbeat_interval_seconds ({presence.heartbeat_interval_seconds})",
+            "edit server.yaml so stale_after_seconds > heartbeat_interval_seconds — "
+            "otherwise a live resident would be flagged stale between heartbeats",
+        )
+    return presence
+
+
 def _parse_agent_entry(raw: dict, directory: str) -> AgentConfig:
     """Parse a single agent entry from culture.yaml."""
     raw = dict(raw)
@@ -162,6 +262,7 @@ def _parse_agent_entry(raw: dict, directory: str) -> AgentConfig:
         extras=extras,
         directory=directory,
     )
+    _validate_agent_budget(agent, str(Path(directory) / CULTURE_YAML))
     return agent
 
 
@@ -228,6 +329,7 @@ def load_server_config(path: str | Path) -> ServerConfig:
     supervisor = SupervisorConfig(**raw.get("supervisor", {}))
     webhooks = WebhookConfig(**raw.get("webhooks", {}))
     telemetry = TelemetryConfig(**raw.get("telemetry", {}))
+    presence = _parse_presence_section(raw, str(path))
 
     manifest = raw.get("agents") or {}
     if not isinstance(manifest, dict):
@@ -238,6 +340,7 @@ def load_server_config(path: str | Path) -> ServerConfig:
         supervisor=supervisor,
         webhooks=webhooks,
         telemetry=telemetry,
+        presence=presence,
         buffer_size=raw.get("buffer_size", 500),
         poll_interval=raw.get("poll_interval", 60),
         sleep_start=raw.get("sleep_start", "23:00"),
@@ -268,6 +371,9 @@ def _warn_manifest_entry_once(server_name: str, suffix: str, message: str, *args
 
 def resolve_agents(config: ServerConfig) -> None:
     """Resolve agent configs from manifest paths."""
+    # Lazy: culture_core.cli imports this module at load time.
+    from culture_core.cli._errors import CultureError
+
     config.agents = []
     server_name = config.server.name
 
@@ -286,7 +392,7 @@ def resolve_agents(config: ServerConfig) -> None:
                 suffix,
             )
             continue
-        except ValueError as e:
+        except (ValueError, CultureError) as e:
             _warn_manifest_entry_once(
                 server_name,
                 suffix,
@@ -492,6 +598,10 @@ def _agent_to_yaml_dict(agent: AgentConfig) -> dict:
         data["archived"] = agent.archived
         data["archived_at"] = agent.archived_at
         data["archived_reason"] = agent.archived_reason
+    if agent.token_budget is not None:
+        data["token_budget"] = agent.token_budget
+    if agent.token_budget_warn_pct != defaults.token_budget_warn_pct:
+        data["token_budget_warn_pct"] = agent.token_budget_warn_pct
     data.update(agent.extras)
     # Round-trip the typed attention field back to the author-facing ``attention:``
     # key (written after extras so the typed field stays authoritative). Without
@@ -584,6 +694,7 @@ def save_server_config(path: str | Path, config: ServerConfig) -> None:
         "supervisor": asdict(config.supervisor),
         "webhooks": asdict(config.webhooks),
         "telemetry": asdict(config.telemetry),
+        "presence": asdict(config.presence),
         "buffer_size": config.buffer_size,
         "poll_interval": config.poll_interval,
         "sleep_start": config.sleep_start,
