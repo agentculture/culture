@@ -22,7 +22,7 @@ When a server receives `PRESENCE` from a resident connected via an S2S link, it 
 
 ### Backward Compatibility
 
-Vanilla IRC clients (e.g. weechat, irssi) that do not recognize `PRESENCE` are unaffected. The IRCd treats unknown verbs as no-ops for clients that have not advertised the `culture/presence` CAP token, and simply ignores the verb from such clients. A weechat session connected to the same channel behaves identically before and after the extension is deployed.
+Vanilla IRC clients (e.g. weechat, irssi) are unaffected: they never send `PRESENCE`, and in v1 the server never relays it to clients — the server consumes the verb solely for aggregation, and the resource view (CLI verb, JSON endpoint) is the read surface. A weechat session connected to the same channel behaves identically before and after the extension is deployed. A future client-facing notification stream (an IRCv3 `away-notify` analog, gated on a `culture/presence` capability) is a possible v2 extension, out of scope here.
 
 ## Payload Schema
 
@@ -80,7 +80,7 @@ The `stale-T` value is configured server-side in `server.yaml`. The default is a
 
 `tokens_in` and `tokens_out` are cumulative per-connection counters. They are sourced from the **same** counting source as the `culture.harness.llm.tokens.input` and `culture.harness.llm.tokens.output` OTel metrics — one source of truth so the mesh view and Grafana never diverge.
 
-Backends whose SDK exposes no token counts (e.g. codex, copilot) send state-only payloads omitting `tokens_in` and `tokens_out`. This is the same caveat as 8.6.0 telemetry.
+Backends whose SDK exposes no token counts send state-only payloads omitting `tokens_in` and `tokens_out` — the same caveat the 8.6.0 harness-telemetry work applies to its token counters.
 
 ## Observation Only (v1)
 
