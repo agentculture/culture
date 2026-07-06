@@ -93,3 +93,106 @@ v1 never enforces: no code path declines, defers, or blocks work based on
 presence state or token spend. No admission control, no budget blocking, no
 deferred wakes. Enforcement is the explicit v2 leg — see
 [protocol/extensions/presence.md](../protocol/extensions/presence.md).
+
+## CLI
+
+`culture residents` is the front-door read surface for the resource view.
+It queries the connected culture server (from `--config`, default
+`~/.culture/server.yaml`) for the presence aggregation and joins the
+culture-side budget fields from the local agent manifest.
+
+### Human table (default)
+
+```console
+$ culture residents
+NICK          SERVER  STATE     SINCE                 TASK            TOKENS (IN/OUT)  BUDGET %  FLAGS
+spark-claude  spark   thinking  2026-07-07T11:00:00Z  review PR #471  900/100          100%      BUDGET
+thor-codex    thor    idle      2026-07-07T09:12:00Z  -               -                -         -
+```
+
+Columns: Nick, Server, State, Since, Task, Tokens (in/out), Budget %,
+Flags. Rows are sorted by nick. Any field the server or the resident did
+not report renders as `-`, so state-only backends (no token counters)
+stay readable. The Flags column shows `HUNG?` for a resident the
+stale-busy watchdog flagged presumed-hung, and `BUDGET` for a resident at
+or past its warn threshold (comma-joined when both apply).
+
+### `--json`
+
+`culture residents --json` prints exactly `json.dumps` of the canonical
+serializer payload (see [JSON schema](#json-schema)) on stdout — the same
+serializer the resource-view HTTP endpoint (plan task t7) emits, so the
+two surfaces never drift.
+
+### Exit behavior
+
+| Situation | Table mode | `--json` | Exit |
+|-----------|-----------|----------|------|
+| Server reachable, presence supported | table (or `No residents connected.`) | full payload, `"supported": true` | 0 |
+| Server reachable, **no PRESENCE support** | notice: `server does not support PRESENCE — needs agentirc release per agentirc#53, then culture floor bump` | `{"supported": false, ..., "residents": []}` | 0 |
+| Server unreachable | `error:` + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
+
+A presence-less server is a **known mesh state, not an error**: the
+agentirc IRCd does not implement the PRESENCE query surface yet (plan
+risks r3/r4 — pending the t3 hand-off brief, agentirc#53, then a culture
+floor bump). The transport lives behind a single seam function in
+`culture_core/resource_view.py` and is the only code that changes when
+agentirc answers the brief. No failure mode prints a traceback.
+
+## JSON schema
+
+The payload of `culture residents --json` — and, byte-for-byte, of the
+upcoming resource-view endpoint (t7) and the irc-lens residents page (t8)
+— is produced by the one canonical serializer,
+`culture_core.resource_view.serialize_residents`:
+
+```json
+{
+  "supported": true,
+  "generated_at": "2026-07-07T12:00:00Z",
+  "residents": [
+    {
+      "nick": "spark-claude",
+      "server": "spark",
+      "state": "thinking",
+      "since": "2026-07-07T11:00:00Z",
+      "task": "review PR #471",
+      "tokens_in": 900,
+      "tokens_out": 100,
+      "presumed_hung": false,
+      "last_refresh": "2026-07-07T11:59:30Z",
+      "token_budget": 1000,
+      "budget_used_pct": 100.0,
+      "budget_warning": true
+    }
+  ]
+}
+```
+
+Top-level fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | `false` while the connected server has no PRESENCE query surface (pending agentirc#53); `residents` is then always `[]`. |
+| `generated_at` | string | ISO-8601 UTC timestamp (`...Z`) of when the payload was built. |
+| `residents` | array | One record per resident, **sorted by `nick`**, keys always present and in the fixed order below. |
+
+Per-resident fields — the first nine mirror the server aggregation record
+(see [protocol/extensions/presence.md](../protocol/extensions/presence.md));
+the last three are culture-side derived fields joined from the local
+manifest:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nick` | string | Resident nick (`<server>-<agent>`). |
+| `server` | string or null | Server of origin (S2S residents carry their home server). |
+| `state` | string or null | One of the six activity states: `idle`, `listening`, `thinking`, `working`, `draining`, `offline`. |
+| `since` | string or null | ISO-8601 UTC timestamp the resident entered this state. |
+| `task` | string or null | Short current-task hint (max 128 chars on the wire). |
+| `tokens_in` | integer or null | Cumulative input tokens this connection; null for state-only backends. |
+| `tokens_out` | integer or null | Cumulative output tokens this connection; null for state-only backends. |
+| `presumed_hung` | boolean | Set by the server's stale-busy watchdog: busy but silent past stale-T. |
+| `last_refresh` | string or null | ISO-8601 UTC timestamp of the resident's last PRESENCE report. |
+| `token_budget` | integer or null | The agent's configured `token_budget` (culture.yaml), when the nick matches a registered agent; null when no budget is configured. |
+| `budget_used_pct` | number or null | Spend as a percent of `token_budget`, one decimal; null when no budget is configured **or** the resident reported no token counters (spend unknowable — never a false alarm). |
+| `budget_warning` | boolean or null | `true` once `budget_used_pct` reaches `token_budget_warn_pct` (inclusive); `false` below it; null whenever `budget_used_pct` is null. **Warn-only** — nothing acts on it in v1. |

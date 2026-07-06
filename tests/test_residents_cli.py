@@ -1,0 +1,466 @@
+"""Tests for the `culture residents` CLI verb and the shared resource-view seam.
+
+Covers (task t5 of the resident-presence plan):
+
+* ``serialize_residents`` — THE canonical JSON payload shared with the
+  upcoming HTTP endpoint (t7): deterministic key order, residents sorted
+  by nick, budget derivation edge cases, state-only residents.
+* the human table renderer — flags column (HUNG? / BUDGET), dashes for
+  missing fields.
+* graceful degrade against a REAL running server (repo rule: no mocks
+  for the server) — today's agentirc has no PRESENCE query surface
+  (plan risks r3/r4, pending agentirc#53), so the CLI must report
+  ``supported: false`` and exit 0.
+* unreachable server — actionable CultureError-style failure, nonzero
+  exit, no traceback.
+* the anticipated wire contract, exercised against a real scripted TCP
+  server speaking the PRESENCELIST / PRESENCEEND shape the agentirc#53
+  brief proposes — this is the seam t7 builds on.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import socket
+
+import pytest
+
+from culture_core.cli.residents import dispatch, render_table
+from culture_core.config import AgentConfig, ServerConfig, ServerConnConfig
+from culture_core.resource_view import (
+    PresenceUnsupportedError,
+    Resident,
+    _resident_from_wire,
+    apply_budgets,
+    fetch_residents_async,
+    serialize_residents,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _fixed_now():
+    from datetime import datetime, timezone
+
+    return datetime(2026, 7, 7, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _resident(nick: str, **kwargs) -> Resident:
+    return Resident(nick=nick, **kwargs)
+
+
+def _make_args(config: str, json_mode: bool = False) -> argparse.Namespace:
+    return argparse.Namespace(command="residents", config=config, json=json_mode)
+
+
+def _run_dispatch(args: argparse.Namespace) -> int:
+    """Run dispatch, normalising SystemExit to an exit code."""
+    try:
+        dispatch(args)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    return 0
+
+
+def _write_server_yaml(tmp_path, port: int, agents_yaml: str = "") -> str:
+    cfg = tmp_path / "server.yaml"
+    cfg.write_text(
+        "server:\n" "  name: testserv\n" "  host: 127.0.0.1\n" f"  port: {port}\n" + agents_yaml
+    )
+    return str(cfg)
+
+
+def _free_port() -> int:
+    """Grab a port nothing is listening on (bind, read, close)."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+# ---------------------------------------------------------------------------
+# serialize_residents — the canonical payload (shared with t7)
+# ---------------------------------------------------------------------------
+
+
+class TestSerializeResidents:
+    def test_sorted_by_nick_and_deterministic(self):
+        residents = [
+            _resident("spark-zeta", state="idle"),
+            _resident("spark-alpha", state="working"),
+            _resident("spark-mid", state="thinking"),
+        ]
+        payload_a = serialize_residents(residents, True, now=_fixed_now())
+        payload_b = serialize_residents(list(reversed(residents)), True, now=_fixed_now())
+        # Byte-for-byte deterministic regardless of input order.
+        assert json.dumps(payload_a) == json.dumps(payload_b)
+        nicks = [r["nick"] for r in payload_a["residents"]]
+        assert nicks == sorted(nicks) == ["spark-alpha", "spark-mid", "spark-zeta"]
+
+    def test_top_level_shape(self):
+        payload = serialize_residents([], False, now=_fixed_now())
+        assert payload["supported"] is False
+        assert payload["residents"] == []
+        assert payload["generated_at"] == "2026-07-07T12:00:00Z"
+        assert list(payload) == ["supported", "generated_at", "residents"]
+
+    def test_resident_key_order_is_documented_schema(self):
+        payload = serialize_residents([_resident("spark-a")], True, now=_fixed_now())
+        assert list(payload["residents"][0]) == [
+            "nick",
+            "server",
+            "state",
+            "since",
+            "task",
+            "tokens_in",
+            "tokens_out",
+            "presumed_hung",
+            "last_refresh",
+            "token_budget",
+            "budget_used_pct",
+            "budget_warning",
+        ]
+
+    def test_state_only_resident_serialises_with_nones(self):
+        """A state-only backend (no token counters) still yields every key."""
+        payload = serialize_residents(
+            [_resident("spark-a", state="listening", since="2026-07-07T11:00:00Z")],
+            True,
+            now=_fixed_now(),
+        )
+        rec = payload["residents"][0]
+        assert rec["state"] == "listening"
+        assert rec["tokens_in"] is None
+        assert rec["tokens_out"] is None
+        assert rec["token_budget"] is None
+        assert rec["budget_used_pct"] is None
+        assert rec["budget_warning"] is None
+        assert rec["presumed_hung"] is False
+
+    def test_supported_flag_is_normalised_to_bool(self):
+        payload = serialize_residents([], 1, now=_fixed_now())
+        assert payload["supported"] is True
+
+    def test_generated_at_defaults_to_utc_now(self):
+        payload = serialize_residents([], True)
+        assert payload["generated_at"].endswith("Z")
+
+
+# ---------------------------------------------------------------------------
+# Budget derivation — joining AgentConfig budgets onto fetched residents
+# ---------------------------------------------------------------------------
+
+
+def _agent(nick: str, budget: int | None = None, warn_pct: int = 80) -> AgentConfig:
+    agent = AgentConfig(
+        suffix=nick.split("-", 1)[1] if "-" in nick else nick,
+        token_budget=budget,
+        token_budget_warn_pct=warn_pct,
+    )
+    agent.nick = nick
+    return agent
+
+
+class TestBudgetDerivation:
+    def test_budget_set_below_threshold(self):
+        resident = _resident("spark-a", tokens_in=300, tokens_out=400)
+        apply_budgets([resident], [_agent("spark-a", budget=1000, warn_pct=80)])
+        assert resident.token_budget == 1000
+        assert resident.budget_used_pct == 70.0
+        assert resident.budget_warning is False
+
+    def test_budget_warn_threshold_crossing_is_inclusive(self):
+        resident = _resident("spark-a", tokens_in=400, tokens_out=400)
+        apply_budgets([resident], [_agent("spark-a", budget=1000, warn_pct=80)])
+        assert resident.budget_used_pct == 80.0
+        assert resident.budget_warning is True
+
+    def test_budget_unset_leaves_derived_fields_none(self):
+        resident = _resident("spark-a", tokens_in=999999, tokens_out=999999)
+        apply_budgets([resident], [_agent("spark-a", budget=None)])
+        assert resident.token_budget is None
+        assert resident.budget_used_pct is None
+        assert resident.budget_warning is None
+
+    def test_unregistered_nick_gets_no_budget(self):
+        resident = _resident("other-b", tokens_in=10, tokens_out=10)
+        apply_budgets([resident], [_agent("spark-a", budget=100)])
+        assert resident.token_budget is None
+        assert resident.budget_warning is None
+
+    def test_state_only_resident_keeps_budget_but_unknown_spend(self):
+        """Budget is configured but the backend sends no counters: spend is
+        unknowable, so used-pct and warning stay None (never a false alarm)."""
+        resident = _resident("spark-a", state="thinking")
+        apply_budgets([resident], [_agent("spark-a", budget=1000)])
+        assert resident.token_budget == 1000
+        assert resident.budget_used_pct is None
+        assert resident.budget_warning is None
+
+    def test_single_sided_counters_count_the_present_side(self):
+        resident = _resident("spark-a", tokens_in=500, tokens_out=None)
+        apply_budgets([resident], [_agent("spark-a", budget=1000, warn_pct=50)])
+        assert resident.budget_used_pct == 50.0
+        assert resident.budget_warning is True
+
+    def test_over_budget_pct_exceeds_100(self):
+        resident = _resident("spark-a", tokens_in=1500, tokens_out=0)
+        apply_budgets([resident], [_agent("spark-a", budget=1000)])
+        assert resident.budget_used_pct == 150.0
+        assert resident.budget_warning is True
+
+
+class TestWireParsing:
+    def test_bool_token_counters_are_rejected(self):
+        """JSON `true` is not a token count — bools must not sneak in as ints."""
+        resident = _resident_from_wire({"nick": "spark-a", "tokens_in": True, "tokens_out": False})
+        assert resident.tokens_in is None
+        assert resident.tokens_out is None
+
+    def test_non_dict_and_missing_fields_default(self):
+        resident = _resident_from_wire({"nick": "spark-a"})
+        assert resident.nick == "spark-a"
+        assert resident.state is None
+        assert resident.presumed_hung is False
+
+    def test_presumed_hung_truthiness(self):
+        assert _resident_from_wire({"nick": "a", "presumed_hung": True}).presumed_hung is True
+        assert _resident_from_wire({"nick": "a", "presumed_hung": None}).presumed_hung is False
+
+
+# ---------------------------------------------------------------------------
+# Human table renderer
+# ---------------------------------------------------------------------------
+
+
+class TestRenderTable:
+    def test_flags_column_hung_and_budget(self):
+        rows = render_table(
+            [
+                _resident("spark-hung", state="working", presumed_hung=True),
+                _resident(
+                    "spark-hot",
+                    state="thinking",
+                    tokens_in=900,
+                    tokens_out=100,
+                    token_budget=1000,
+                    budget_used_pct=100.0,
+                    budget_warning=True,
+                ),
+                _resident("spark-ok", state="idle"),
+            ]
+        )
+        lines = rows.splitlines()
+        hung_line = next(ln for ln in lines if "spark-hung" in ln)
+        hot_line = next(ln for ln in lines if "spark-hot" in ln)
+        ok_line = next(ln for ln in lines if "spark-ok" in ln)
+        assert "HUNG?" in hung_line
+        assert "BUDGET" in hot_line
+        assert "HUNG?" not in hot_line
+        assert "HUNG?" not in ok_line and "BUDGET" not in ok_line
+
+    def test_both_flags_together(self):
+        rows = render_table(
+            [
+                _resident(
+                    "spark-bad",
+                    presumed_hung=True,
+                    budget_warning=True,
+                    token_budget=10,
+                    budget_used_pct=200.0,
+                )
+            ]
+        )
+        line = next(ln for ln in rows.splitlines() if "spark-bad" in ln)
+        assert "HUNG?,BUDGET" in line
+
+    def test_missing_fields_render_as_dashes(self):
+        rows = render_table([_resident("spark-bare")])
+        line = next(ln for ln in rows.splitlines() if "spark-bare" in ln)
+        # state, since, task, tokens, budget-pct, flags all dashed
+        assert line.split()[1:] == ["-", "-", "-", "-", "-", "-", "-"]
+
+    def test_tokens_column_formats_in_out(self):
+        rows = render_table([_resident("spark-a", tokens_in=1200, tokens_out=34)])
+        line = next(ln for ln in rows.splitlines() if "spark-a" in ln)
+        assert "1200/34" in line
+
+    def test_single_sided_tokens(self):
+        rows = render_table([_resident("spark-a", tokens_in=7)])
+        line = next(ln for ln in rows.splitlines() if "spark-a" in ln)
+        assert "7/-" in line
+
+    def test_header_names_all_columns(self):
+        header = render_table([_resident("spark-a")]).splitlines()[0]
+        for col in ("NICK", "SERVER", "STATE", "SINCE", "TASK", "TOKENS", "BUDGET", "FLAGS"):
+            assert col in header
+
+    def test_rows_sorted_by_nick(self):
+        rows = render_table([_resident("spark-z"), _resident("spark-a")])
+        lines = rows.splitlines()
+        assert lines.index(next(ln for ln in lines if "spark-a" in ln)) < lines.index(
+            next(ln for ln in lines if "spark-z" in ln)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Graceful degrade against a REAL server (no PRESENCE surface today)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_raises_unsupported_against_real_server(server):
+    """agentirc replies 421 to PRESENCE today (pending agentirc#53)."""
+    config = ServerConfig(
+        server=ServerConnConfig(name="testserv", host="127.0.0.1", port=server.config.port)
+    )
+    with pytest.raises(PresenceUnsupportedError):
+        await fetch_residents_async(config)
+
+
+@pytest.mark.asyncio
+async def test_cli_json_degrades_to_supported_false(server, tmp_path, capsys, monkeypatch):
+    """`culture residents --json` against a presence-less server: exit 0,
+    {"supported": false, "residents": []}."""
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    cfg = _write_server_yaml(tmp_path, server.config.port)
+    # dispatch runs asyncio.run internally — hop to a thread since this
+    # test already runs inside an event loop.
+    code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=True))
+    assert code == 0
+    out = capsys.readouterr().out.strip()
+    payload = json.loads(out)
+    assert payload["supported"] is False
+    assert payload["residents"] == []
+    # Exactly the shared serializer's shape, byte-for-byte.
+    assert list(payload) == ["supported", "generated_at", "residents"]
+
+
+@pytest.mark.asyncio
+async def test_cli_table_degrades_with_notice(server, tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    cfg = _write_server_yaml(tmp_path, server.config.port)
+    code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=False))
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "does not support PRESENCE" in out
+    assert "agentirc#53" in out
+
+
+# ---------------------------------------------------------------------------
+# Unreachable server — actionable error, nonzero exit, no traceback
+# ---------------------------------------------------------------------------
+
+
+def test_cli_unreachable_server_errors_actionably(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    cfg = _write_server_yaml(tmp_path, _free_port())
+    code = _run_dispatch(_make_args(cfg, json_mode=False))
+    assert code != 0
+    captured = capsys.readouterr()
+    assert "error:" in captured.err
+    assert "cannot connect" in captured.err
+    assert "hint:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_cli_unreachable_server_json_error_contract(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    cfg = _write_server_yaml(tmp_path, _free_port())
+    code = _run_dispatch(_make_args(cfg, json_mode=True))
+    assert code != 0
+    captured = capsys.readouterr()
+    err_payload = json.loads(captured.err.strip())
+    assert set(err_payload) == {"code", "message", "remediation"}
+    assert "cannot connect" in err_payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# Anticipated wire contract (the seam t7 builds on) — real scripted TCP server
+# ---------------------------------------------------------------------------
+
+
+async def _scripted_presence_server(records: list[dict]) -> tuple[asyncio.AbstractServer, int]:
+    """A real TCP listener speaking the anticipated PRESENCE query wire form.
+
+    Registers any client (001 on NICK) and answers PRESENCE LIST with one
+    PRESENCELIST line per record, then PRESENCEEND. This is the wire shape
+    proposed to agentirc in the t3 hand-off brief (agentirc#53); the seam
+    function is the only culture-side code that touches it.
+    """
+
+    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        buffer = ""
+        try:
+            while True:
+                data = await reader.read(4096)
+                if not data:
+                    return
+                buffer += data.decode()
+                while "\r\n" in buffer:
+                    line, buffer = buffer.split("\r\n", 1)
+                    if line.startswith("NICK "):
+                        nick = line.split(" ", 1)[1]
+                        writer.write(f":scripted 001 {nick} :Welcome\r\n".encode())
+                        await writer.drain()
+                    elif line.startswith("PRESENCE LIST"):
+                        for rec in records:
+                            writer.write(f"PRESENCELIST :{json.dumps(rec)}\r\n".encode())
+                        writer.write(b"PRESENCEEND :End of presence list\r\n")
+                        await writer.drain()
+                    elif line.startswith("QUIT"):
+                        writer.close()
+                        return
+        except (ConnectionError, OSError):
+            return
+
+    srv = await asyncio.start_server(_handle, "127.0.0.1", 0)
+    port = srv.sockets[0].getsockname()[1]
+    return srv, port
+
+
+@pytest.mark.asyncio
+async def test_fetch_parses_anticipated_wire_and_joins_budgets():
+    records = [
+        {
+            "nick": "spark-claude",
+            "server": "spark",
+            "state": "thinking",
+            "since": "2026-07-07T11:00:00Z",
+            "task": "review PR #471",
+            "tokens_in": 900,
+            "tokens_out": 100,
+            "presumed_hung": False,
+            "last_refresh": "2026-07-07T11:59:30Z",
+        },
+        {"nick": "thor-codex", "server": "thor", "state": "idle"},
+    ]
+    srv, port = await _scripted_presence_server(records)
+    try:
+        config = ServerConfig(
+            server=ServerConnConfig(name="scripted", host="127.0.0.1", port=port),
+            agents=[_agent("spark-claude", budget=1000, warn_pct=80)],
+        )
+        residents = await fetch_residents_async(config)
+    finally:
+        srv.close()
+        await srv.wait_closed()
+
+    assert [r.nick for r in sorted(residents, key=lambda r: r.nick)] == [
+        "spark-claude",
+        "thor-codex",
+    ]
+    claude = next(r for r in residents if r.nick == "spark-claude")
+    assert claude.state == "thinking"
+    assert claude.task == "review PR #471"
+    assert claude.tokens_in == 900
+    assert claude.token_budget == 1000
+    assert claude.budget_used_pct == 100.0
+    assert claude.budget_warning is True
+    codex = next(r for r in residents if r.nick == "thor-codex")
+    assert codex.state == "idle"
+    assert codex.tokens_in is None
+    assert codex.budget_warning is None
