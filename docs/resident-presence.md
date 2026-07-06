@@ -121,8 +121,8 @@ or past its warn threshold (comma-joined when both apply).
 
 `culture residents --json` prints exactly `json.dumps` of the canonical
 serializer payload (see [JSON schema](#json-schema)) on stdout — the same
-serializer the resource-view HTTP endpoint (plan task t7) emits, so the
-two surfaces never drift.
+serializer the `/residents.json` endpoint (see [Endpoint](#endpoint))
+emits, so the two surfaces never drift.
 
 ### Exit behavior
 
@@ -139,11 +139,52 @@ floor bump). The transport lives behind a single seam function in
 `culture_core/resource_view.py` and is the only code that changes when
 agentirc answers the brief. No failure mode prints a traceback.
 
+## Endpoint
+
+`GET /residents.json` is the HTTP front door of the resource view, served
+by the overview web server — start it with `culture mesh overview --serve`.
+The endpoint shares the dashboard's port and bind: loopback only
+(`127.0.0.1`, the URL is printed at startup), same process, no extra flag.
+It is read-only with no side effects: each request queries the connected
+culture server through the same `culture_core.resource_view` seam the CLI
+uses.
+
+The payload is **byte-compatible with `culture residents --json`**: both
+surfaces emit exactly `json.dumps` of the one canonical serializer,
+`culture_core.resource_view.serialize_residents` (see
+[JSON schema](#json-schema)), so the CLI and the endpoint can never drift.
+
+### Response cases
+
+| Situation | Status | Body |
+|-----------|--------|------|
+| Server reachable, presence supported | `200` | canonical payload, `"supported": true` |
+| Server reachable, **no PRESENCE support** | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (pending agentirc#53) |
+| Culture server unreachable | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
+
+`Content-Type` is `application/json` in all three cases. No case ever
+surfaces an unhandled traceback or a bare 500 — the unreachable-server
+`503` carries the same structured `{code, message, remediation}` error
+contract as the CLI's `--json` mode, which is what lets the downstream
+irc-lens residents page (task t8) degrade to an "IRCd down" notice
+instead of a 500.
+
+### Auth story
+
+The endpoint itself carries no authentication because it is never
+reachable off-box: the overview server binds to loopback only (the same
+`127.0.0.1`-only rule as the HTML dashboard — see
+`culture_core/overview/renderer_web.py`). The irc-lens console at
+chat.agentculture.org consumes it **server-side** (the console process
+fetches from localhost and renders the page); operator-facing access
+control stays where it already lives, at the console layer behind
+Cloudflare Access. Nothing in this endpoint adds a second auth surface.
+
 ## JSON schema
 
 The payload of `culture residents --json` — and, byte-for-byte, of the
-upcoming resource-view endpoint (t7) and the irc-lens residents page (t8)
-— is produced by the one canonical serializer,
+`/residents.json` endpoint (see [Endpoint](#endpoint)) and the irc-lens
+residents page (t8) — is produced by the one canonical serializer,
 `culture_core.resource_view.serialize_residents`:
 
 ```json
