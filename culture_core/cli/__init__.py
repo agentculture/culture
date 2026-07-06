@@ -10,6 +10,7 @@ Commands are organized into noun-based groups:
     culture skills   {install}
     culture devex    {...developer-experience passthrough (powered by agex-cli)...}
     culture afi      {...agent-first interface passthrough (powered by agentfront)...}
+    culture residents  live resource view: per-resident presence state + token spend
 
 Universal verbs (available at the root):
     culture explain [topic]    full description of topic (default: culture)
@@ -36,13 +37,27 @@ from culture_core.cli import (
     doctor,
     introspect,
     mesh,
+    residents,
     server,
     skills,
 )
 from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 from culture_core.cli._output import emit_error
 
-GROUPS = [agents, server, mesh, channel, bot, skills, devex, afi, console, introspect, doctor]
+GROUPS = [
+    agents,
+    server,
+    mesh,
+    channel,
+    bot,
+    skills,
+    devex,
+    afi,
+    console,
+    introspect,
+    doctor,
+    residents,
+]
 
 
 def _names_of(group) -> set[str]:
@@ -164,7 +179,7 @@ def _maybe_forward_to_steward(argv: list[str]) -> int | None:
 
 # Command groups that read the server config; the first-run notice below
 # only applies to them (introspection/passthrough verbs work configless).
-_CONFIG_CONSUMING_GROUPS = {"agents", "server", "channel", "bot", "mesh", "skills"}
+_CONFIG_CONSUMING_GROUPS = {"agents", "server", "channel", "bot", "mesh", "skills", "residents"}
 
 
 def _notice_first_run(args: argparse.Namespace) -> None:
