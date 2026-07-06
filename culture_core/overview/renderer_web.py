@@ -1,19 +1,28 @@
-"""Render mesh overview as HTML and serve via HTTP."""
+"""Render mesh overview as HTML and serve via HTTP.
+
+Besides the HTML dashboard, the server exposes the resource view as
+``GET /residents.json`` (docs/resident-presence.md, plan task t7) —
+byte-compatible with ``culture residents --json`` via the one canonical
+serializer in :mod:`culture_core.resource_view`.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import atexit
+import json
 import os
 import re
 import signal
 import threading
 import time
+from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 import mistune
 
+from culture_core.config import ServerConfig, ServerConnConfig
 from culture_core.pidfile import (
     is_process_alive,
     read_pid,
@@ -22,6 +31,12 @@ from culture_core.pidfile import (
     remove_port,
     write_pid,
     write_port,
+)
+from culture_core.resource_view import (
+    PresenceUnsupportedError,
+    Resident,
+    fetch_residents_async,
+    serialize_residents,
 )
 
 from .collector import collect_mesh_state
@@ -173,8 +188,15 @@ class _OverviewHandler(SimpleHTTPRequestHandler):
     message_limit: int = 4
     refresh_interval: int = 5
     manifest_agents: list | None = None
+    # Deterministic-time seam for the /residents.json payload, mirroring
+    # serialize_residents(now=...): production leaves it None (current UTC
+    # time); tests pin it to a fixed instant for byte-exact assertions.
+    residents_now: datetime | None = None
 
     def do_GET(self):
+        if self.path.split("?", 1)[0] == "/residents.json":
+            self._serve_residents()
+            return
         mesh = asyncio.run(
             collect_mesh_state(
                 host=self.irc_host,
@@ -194,6 +216,61 @@ class _OverviewHandler(SimpleHTTPRequestHandler):
         content = html.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _fetch_residents(self) -> list[Resident]:
+        """Seam: query the bound culture server for the presence aggregation.
+
+        Tests override this to inject fixtures; production queries the same
+        server the overview renders, joining budgets from the same manifest.
+        """
+        config = ServerConfig(
+            server=ServerConnConfig(name=self.server_name, host=self.irc_host, port=self.irc_port),
+            agents=list(self.manifest_agents or []),
+        )
+        return asyncio.run(fetch_residents_async(config))
+
+    def _serve_residents(self) -> None:
+        """GET /residents.json — the resource view (plan task t7).
+
+        Read-only, no side effects, and byte-compatible with
+        ``culture residents --json``: both emit exactly ``json.dumps`` of
+        :func:`culture_core.resource_view.serialize_residents`. Three
+        response cases, never an unhandled traceback (the irc-lens console
+        consumes this and must never see a bare 500):
+
+        * presence supported          -> 200, canonical payload;
+        * no PRESENCE surface         -> 200, ``supported: false`` payload
+          (a presence-less mesh is a known state, not an error — pending
+          agentirc#53);
+        * culture server unreachable  -> 503, ``{code, message, remediation}``.
+        """
+        try:
+            try:
+                residents = self._fetch_residents()
+                supported = True
+            except PresenceUnsupportedError:
+                residents, supported = [], False
+        except OSError:
+            # Covers ConnectionRefusedError, ConnectionError, TimeoutError —
+            # all OSError subclasses. Same voice as the residents CLI error.
+            self._send_json(
+                503,
+                {
+                    "code": 503,
+                    "message": "cannot connect to IRC server. Is the server running?",
+                    "remediation": "start it with: culture server start",
+                },
+            )
+            return
+        self._send_json(200, serialize_residents(residents, supported, now=self.residents_now))
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        content = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
