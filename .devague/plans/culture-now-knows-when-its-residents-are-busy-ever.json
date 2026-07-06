@@ -1,0 +1,335 @@
+{
+  "slug": "culture-now-knows-when-its-residents-are-busy-ever",
+  "title": "Culture now knows when its residents are busy: every agent (claude, codex, colleague, ...) publishes a live busy/idle activity signal to the mesh, and the server aggregates it into a resource view \u2014 active residents, token spend \u2014 that operators and balancing policies can act on.",
+  "frame_slug": "culture-now-knows-when-its-residents-are-busy-ever",
+  "schema_version": 1,
+  "status": "exported",
+  "created": "2026-07-06T21:51:38Z",
+  "updated": "2026-07-06T21:55:49Z",
+  "targets": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "Culture now knows when its residents are busy: every agent (claude, codex, colleague, ...) publishes a live busy/idle activity signal to the mesh, and the server aggregates it into a resource view \u2014 active residents, token spend \u2014 that operators and balancing policies can act on."
+    },
+    {
+      "id": "h8",
+      "kind": "honesty",
+      "text": "demonstrated on the live spark mesh: an operator watches a resident flip busy when handed work and back to idle when done, in real time"
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "mesh operators (Ori) and the culture server/supervisor; secondarily the resident agents themselves, which can adapt behavior to mesh load"
+    },
+    {
+      "id": "h9",
+      "kind": "honesty",
+      "text": "the resource view is consumable both by a human at the CLI (readable table) and programmatically (--json) by server-side policies"
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "busy-state is invisible in-band today: token usage exists only as OTel counters (culture.harness.llm.tokens.*) scraped into Prometheus, the AgentIRC IRCd implements no AWAY/presence verb, and 'culture agents status' only knows process/unit-level up/down \u2014 nothing in the mesh knows whether a resident is mid-task"
+    },
+    {
+      "id": "h10",
+      "kind": "honesty",
+      "text": "verified against the codebase 2026-07-07: no AWAY verb in the agentirc IRCd, no in-band busy signal anywhere, token counters exist only as OTel exhaust (culture.harness.llm.tokens.*)"
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "the mesh sees, per resident, a live activity state (busy/idle at minimum) plus resource counters (token spend), aggregated server-side into a resource view the operator and balancing policies can act on"
+    },
+    {
+      "id": "h11",
+      "kind": "honesty",
+      "text": "with two residents connected and exactly one mid-task, the view shows exactly one busy \u2014 live query, not a cached snapshot"
+    },
+    {
+      "id": "c5",
+      "kind": "why_it_matters",
+      "text": "resource balance: the operator/mesh can maintain and rebalance \u2014 how many residents are active at once, token budget consumption \u2014 instead of flying blind on an always-on mesh"
+    },
+    {
+      "id": "h12",
+      "kind": "honesty",
+      "text": "at least one concrete balancing decision (e.g. 'two residents busy \u2014 defer waking a third') is possible from shipped data alone, no Grafana required"
+    },
+    {
+      "id": "c6",
+      "kind": "requirement",
+      "text": "every enforced backend (claude, codex, colleague) publishes the same busy/idle activity signal \u2014 all-backends rule; copilot/acp stay parity-exempt"
+    },
+    {
+      "id": "h1",
+      "kind": "honesty",
+      "text": "the backend-parity CI job passes: the emitter lands in shared harness code or in all three enforced backends in the same change \u2014 a busy signal from only one backend is a bug, not a feature"
+    },
+    {
+      "id": "c7",
+      "kind": "requirement",
+      "text": "the server aggregates per-resident activity + token spend into a queryable resource view exposed via a CLI verb"
+    },
+    {
+      "id": "h2",
+      "kind": "honesty",
+      "text": "the resource-view command returns every registered resident with state + spend from live mesh data (not stale logs), including residents connected from OTHER servers in the mesh, and works with only 'uv tool install culture'"
+    },
+    {
+      "id": "c8",
+      "kind": "success_signal",
+      "text": "one command answers 'who is busy right now, and what has each resident spent' with live mesh data \u2014 verified against a resident known to be mid-task"
+    },
+    {
+      "id": "h13",
+      "kind": "honesty",
+      "text": "the command is demonstrated against the live spark mesh (spark-agentirc, spark-colleague) and the busy resident it reports is genuinely mid-task"
+    },
+    {
+      "id": "c9",
+      "kind": "boundary",
+      "text": "observation and reporting are the core; no existing IRC command is redefined (protocol extensions use new verbs)"
+    },
+    {
+      "id": "h14",
+      "kind": "honesty",
+      "text": "diff review confirms no RFC 2812 command semantics changed; a vanilla weechat session against the upgraded server behaves identically"
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "presence travels as a new protocol extension verb (e.g. PRESENCE) with a structured payload {state, since, current-task hint, token counters}, documented in protocol/extensions/; vanilla IRC clients simply ignore it"
+    },
+    {
+      "id": "h3",
+      "kind": "honesty",
+      "text": "the verb is genuinely new (no RFC 2812 command redefined), a weechat client connected to the same channel is unaffected, and telemetry/identity strings stay culture.* per the engine rules"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "activity state is richer than binary: idle | listening | thinking (LLM call in flight) | working (tool execution) | draining | offline \u2014 each state maps to an observable harness boundary the backends already cross (harness.llm.call span, tool exec)"
+    },
+    {
+      "id": "h4",
+      "kind": "honesty",
+      "text": "every state transition is driven by an observable code boundary (connect, message handled, LLM call open/close, tool exec, shutdown) \u2014 never by the model self-reporting 'I think I'm busy'"
+    },
+    {
+      "id": "c13",
+      "kind": "requirement",
+      "text": "stale-busy watchdog: a resident that last reported busy but misses heartbeats for a configurable T is flagged presumed-hung in the resource view \u2014 catching crashed/wedged agents without their cooperation (ties into the always-on/doctor work)"
+    },
+    {
+      "id": "h5",
+      "kind": "honesty",
+      "text": "a kill -9'd resident that last reported busy is flagged presumed-hung within T without any cooperation from the dead process, and a slow-but-alive resident heartbeating through a long LLM call is NOT falsely flagged"
+    },
+    {
+      "id": "c14",
+      "kind": "requirement",
+      "text": "token budgets become first-class config: a per-agent budget (culture.yaml) the resource view tracks spend against, with warn thresholds surfaced to the operator before the budget is blown"
+    },
+    {
+      "id": "h6",
+      "kind": "honesty",
+      "text": "a budget breach produces a visible operator signal before enforcement is even considered, and spend accounting has defined window/reset semantics that survive an agent restart"
+    },
+    {
+      "id": "c18",
+      "kind": "boundary",
+      "text": "v1 observes and reports only: the server does not act on the signals \u2014 no deferred wakes, no admission control, no budget blocking. Budgets are warn-only. Enforcement is the explicit v2 leg."
+    },
+    {
+      "id": "h16",
+      "kind": "honesty",
+      "text": "verifiable in the v1 diff: no code path exists where the server declines, defers, or blocks work based on presence or spend \u2014 a budget breach emits a warning signal only, and mesh behavior with the feature enabled is otherwise identical to today"
+    },
+    {
+      "id": "c21",
+      "kind": "requirement",
+      "text": "the irc-lens console reflects the new view: an operator can open a dedicated page at chat.agentculture.org showing the live resource view \u2014 per-resident activity state, token spend, budget status \u2014 without touching the CLI"
+    },
+    {
+      "id": "h15",
+      "kind": "honesty",
+      "text": "the page renders from the same server-side aggregation the CLI verb reads (one source of truth, no second counting path), sits behind CF Access like the rest of the console, and degrades gracefully to an 'IRCd down' notice instead of a 500 when 6667 is unreachable"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "summary": "PRESENCE protocol extension spec: write protocol/extensions/presence.md defining the new verb \u2014 structured payload (six-state enum idle|listening|thinking|working|draining|offline, since, current-task hint, token counters), heartbeat/refresh cadence, stale-T semantics, S2S propagation notes, and explicit backward-compat statement",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "doc defines the full payload schema and maps EACH of the six states to the observable harness boundary that drives it (connect, message handle, LLM call open/close, tool exec, shutdown)",
+        "doc explicitly states no RFC 2812 command is redefined and that vanilla clients ignoring the verb see identical behavior; all wire/identity strings stay culture.*"
+      ],
+      "deps": [],
+      "covers": [
+        "c9",
+        "c11",
+        "c12",
+        "h3"
+      ]
+    },
+    {
+      "id": "t2",
+      "summary": "Engine config schema for budgets + presence policy: per-agent token_budget with warn thresholds in culture.yaml schema; mesh-wide presence settings (stale_after, heartbeat interval) in server.yaml \u2014 warn-only semantics, with defined spend window/reset behavior",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "config round-trips: parse, validate, defaults; budget/presence keys documented in docs/; invalid values produce actionable CultureError, not tracebacks",
+        "spend window/reset semantics are explicitly documented (chosen in-task, e.g. per-UTC-day) and the accounting model survives agent restart; breach computation yields a warn flag in the resource-view data model, never an enforcement action"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c14",
+        "h6"
+      ]
+    },
+    {
+      "id": "t3",
+      "summary": "Hand-off brief to agentirc: IRCd-side PRESENCE verb handling, per-client presence state, S2S propagation so cross-server residents appear, and the stale-busy watchdog (presumed-hung flag after stale-T without heartbeat)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "brief posted to agentculture/agentirc via the communicate skill, carrying the t1 wire contract and watchdog acceptance tests: a kill -9'd busy resident is flagged within T with zero cooperation; a slow-but-alive resident heartbeating through a long LLM call is NOT flagged",
+        "brief names the query surface contract the culture front door will read (per-resident state, since, spend, hung-flag, server-of-origin)"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c13",
+        "h5"
+      ]
+    },
+    {
+      "id": "t4",
+      "summary": "Hand-off brief to cultureagent: busy-signal emitter in the SHARED harness transport, hooked at observable boundaries only, heartbeating through long LLM calls, token counts sourced from the same registry as the culture.harness.llm.tokens.* OTel counters (state-only where the SDK exposes none)",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "brief posted to agentculture/cultureagent with the state-transition table; requires the emitter in shared code so claude/codex/colleague all emit identically and backend-parity CI stays green \u2014 no per-backend forks",
+        "brief requires transitions driven only by code boundaries (never model self-report) and one counting source shared with existing OTel token counters"
+      ],
+      "deps": [
+        "t1"
+      ],
+      "covers": [
+        "c6",
+        "h1",
+        "h4"
+      ]
+    },
+    {
+      "id": "t5",
+      "summary": "culture residents CLI verb: front-door command reading the live server aggregation \u2014 human table + --json, showing per-resident state, since, token spend, budget %, presumed-hung flag, server of origin",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "against a live server with two residents (one mid-task) the command shows exactly one busy, from a live query; includes residents connected via S2S from other servers",
+        "--json output validates against a documented schema consumable by server-side policies; bare 'uv tool install culture' suffices; unreachable server yields actionable nonzero exit, not a traceback"
+      ],
+      "deps": [
+        "t1",
+        "t3"
+      ],
+      "covers": [
+        "c2",
+        "c7",
+        "h2",
+        "h9"
+      ]
+    },
+    {
+      "id": "t6",
+      "summary": "Live-mesh verification + observe-only audit: after sibling releases land and version floors bump, run the honesty battery on the spark mesh and record a verification log",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "verification log records: a resident flipping busy->idle live; two-residents-one-busy showing exactly one busy; a balancing decision made from shipped data alone; the success-signal command demo against spark-agentirc/spark-colleague; the before-state evidence (no AWAY, no in-band signal, OTel-only counters as of 2026-07-07)",
+        "weechat regression session shows identical vanilla-client behavior; diff audit confirms no RFC 2812 command redefined and no code path where the server declines/defers/blocks work on presence or spend \u2014 budget breach warns only"
+      ],
+      "deps": [
+        "t2",
+        "t4",
+        "t5",
+        "t7",
+        "t8"
+      ],
+      "covers": [
+        "c1",
+        "h8",
+        "c3",
+        "h10",
+        "c4",
+        "h11",
+        "c5",
+        "h12",
+        "c8",
+        "h13",
+        "h14",
+        "c18",
+        "h16"
+      ]
+    },
+    {
+      "id": "t7",
+      "summary": "Resource-view data endpoint for irc-lens: expose the same aggregation the CLI reads as a documented JSON endpoint on the culture side, sharing one serializer with 'culture residents --json' so there is exactly one source of truth",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "endpoint payload is byte-compatible with the CLI --json schema (shared serializer, verified by a test that diffs the two); endpoint contract + auth story documented in docs/ for the irc-lens consumer"
+      ],
+      "deps": [
+        "t5"
+      ],
+      "covers": [
+        "c21"
+      ]
+    },
+    {
+      "id": "t8",
+      "summary": "Hand-off brief to irc-lens: a dedicated residents page at chat.agentculture.org rendering the endpoint data \u2014 per-resident state, spend, budget status \u2014 behind CF Access like the rest of the console, degrading to an 'IRCd down' notice instead of a 500 when 6667 is unreachable",
+      "origin": "llm",
+      "status": "confirmed",
+      "acceptance_criteria": [
+        "brief posted to the irc-lens repo with the t7 endpoint contract, the CF Access requirement, and the graceful-degrade requirement (explicitly citing the known console-500-when-6667-down failure mode)"
+      ],
+      "deps": [
+        "t7"
+      ],
+      "covers": [
+        "c21",
+        "h15"
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "r1",
+      "text": "heartbeat transport + interval: piggyback on existing IRC traffic vs dedicated periodic PRESENCE refresh, and the default stale-T \u2014 decided in t1/t3 design",
+      "kind": "unknown_nonblocking",
+      "task_id": "t1"
+    },
+    {
+      "id": "r2",
+      "text": "budget spend window/reset semantics (per-session vs per-day vs cumulative) and where the counter persists \u2014 decided in t2",
+      "kind": "unknown_nonblocking",
+      "task_id": "t2"
+    },
+    {
+      "id": "r3",
+      "text": "where the aggregation query surface physically lives (inside the agentirc IRCd process vs the culture console seam) shapes t5/t6 plumbing \u2014 settled when the t3 brief is answered",
+      "kind": "unknown_nonblocking",
+      "task_id": "t3"
+    }
+  ]
+}

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.4.1] - 2026-07-07
+
+### Added
+
+- Converged devague spec + build plan for resident presence and the mesh resource view: every enforced backend publishes a six-state activity signal over a new PRESENCE protocol extension verb; the server aggregates per-resident state + token spend into a resource view surfaced by a culture residents CLI verb, a JSON endpoint, and an irc-lens console page. Observe-only v1 (budgets warn-only; enforcement is the parked v2 leg). 8 tasks over 6 waves with hand-off briefs to agentirc, cultureagent, and irc-lens (docs/specs/, docs/plans/, .devague/ frame state).
+
 ## [14.4.0] - 2026-07-03
 
 ### Added
