@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.5.0] - 2026-07-07
+
+### Added
+
+- Resident presence + mesh resource view, observe-only v1 (spec docs/specs/2026-07-06-culture-now-knows-when-its-residents-are-busy-ever.md): PRESENCE protocol extension page (publish verb + anticipated query surface, protocol/extensions/presence.md); per-agent token_budget / token_budget_warn_pct (warn-only, degrade-on-invalid) in culture.yaml and a presence policy block (heartbeat_interval_seconds, stale_after_seconds) in server.yaml; culture residents CLI verb (live table + --json) with graceful supported:false degrade until the agentirc floor bump (agentirc#53); GET /residents.json on the overview web server (now ThreadingHTTPServer), byte-compatible with the CLI via one canonical serializer (culture_core/resource_view.py); docs/resident-presence.md reference. Hand-off briefs: agentirc#53 (IRCd verb + aggregation + watchdog), cultureagent#47 (shared-harness emitter), irc-lens#53 (residents console page). Live-mesh verification (plan t6) deferred pending sibling releases + floor bumps.
+
 ## [14.4.1] - 2026-07-07
 
 ### Added
