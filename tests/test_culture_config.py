@@ -650,39 +650,61 @@ def test_load_culture_yaml_token_budget_defaults_when_absent(tmp_path):
 
 
 @pytest.mark.parametrize("bad", [0, -1, "many", 1.5, True])
-def test_load_culture_yaml_token_budget_invalid(tmp_path, bad):
-    """Non-positive / non-int token_budget raises an actionable CultureError."""
+def test_load_culture_yaml_token_budget_invalid_warns_and_degrades(tmp_path, bad, caplog):
+    """Budget fields are warn-only observability config: an invalid
+    token_budget logs a warning (naming the file, key, value, and valid
+    range) and is reset to the default (None) — the agent still loads."""
+    import logging
+
     import yaml
 
-    from culture_core.cli._errors import CultureError
     from culture_core.config import load_culture_yaml
 
     culture_yaml = tmp_path / "culture.yaml"
     culture_yaml.write_text(
         yaml.dump({"suffix": "myagent", "backend": "claude", "token_budget": bad})
     )
-    with pytest.raises(CultureError, match=r"token_budget.*positive integer"):
-        load_culture_yaml(str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        agents = load_culture_yaml(str(tmp_path))
+
+    assert len(agents) == 1
+    assert agents[0].suffix == "myagent"
+    assert agents[0].token_budget is None
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(
+        "token_budget" in m and "culture.yaml" in m and "positive integer" in m for m in messages
+    )
 
 
 @pytest.mark.parametrize("bad", [0, -5, 101, "80", 2.5, True])
-def test_load_culture_yaml_token_budget_warn_pct_invalid(tmp_path, bad):
-    """token_budget_warn_pct outside 1..100 (or non-int) raises CultureError."""
+def test_load_culture_yaml_token_budget_warn_pct_invalid_warns_and_degrades(tmp_path, bad, caplog):
+    """token_budget_warn_pct outside 1..100 (or non-int) logs a warning and
+    falls back to the default (80) — never a raise, the agent still loads."""
+    import logging
+
     import yaml
 
-    from culture_core.cli._errors import CultureError
     from culture_core.config import load_culture_yaml
 
     culture_yaml = tmp_path / "culture.yaml"
     culture_yaml.write_text(
         yaml.dump({"suffix": "myagent", "backend": "claude", "token_budget_warn_pct": bad})
     )
-    with pytest.raises(CultureError, match=r"token_budget_warn_pct.*between 1 and 100"):
-        load_culture_yaml(str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        agents = load_culture_yaml(str(tmp_path))
+
+    assert len(agents) == 1
+    assert agents[0].token_budget_warn_pct == 80
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(
+        "token_budget_warn_pct" in m and "culture.yaml" in m and "between 1 and 100" in m
+        for m in messages
+    )
 
 
-def test_resolve_agents_invalid_token_budget_warns_and_skips(tmp_path, caplog):
-    """A manifest entry with an invalid budget warns and is skipped, not fatal."""
+def test_resolve_agents_invalid_token_budget_warns_and_loads(tmp_path, caplog):
+    """A manifest entry with an invalid budget degrades (budget ignored) but
+    the agent still loads — a budget typo must never drop an agent."""
     import logging
 
     from culture_core.config import (
@@ -704,7 +726,10 @@ def test_resolve_agents_invalid_token_budget_warns_and_skips(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="culture"):
         resolve_agents(config)
 
-    assert config.agents == []
+    assert len(config.agents) == 1
+    agent = config.get_agent("spark-culture")
+    assert agent is not None
+    assert agent.token_budget is None
     messages = [r.getMessage() for r in caplog.records]
     assert any("token_budget" in m for m in messages)
 
@@ -814,6 +839,45 @@ def test_load_server_config_presence_unknown_key(tmp_path):
 
     server_yaml = tmp_path / "server.yaml"
     server_yaml.write_text("presence:\n  heartbeat_seconds: 30\n")
+    with pytest.raises(CultureError, match=r"presence"):
+        load_server_config(str(server_yaml))
+
+
+@pytest.mark.parametrize("bad", [False, [], 0])
+def test_load_server_config_presence_falsy_non_mapping_rejected(tmp_path, bad):
+    """presence: false / [] / 0 must raise the must-be-a-mapping CultureError,
+    not silently coerce to the defaults like the old `or {}` did."""
+    import yaml
+
+    from culture_core.cli._errors import CultureError
+    from culture_core.config import load_server_config
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text(yaml.dump({"presence": bad}))
+    with pytest.raises(CultureError, match=r"must be a mapping"):
+        load_server_config(str(server_yaml))
+
+
+def test_load_server_config_presence_null_section_gets_defaults(tmp_path):
+    """An explicit empty `presence:` key (YAML null) means 'use defaults'."""
+    from culture_core.config import load_server_config
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text("server:\n  name: spark\npresence:\n")
+    config = load_server_config(str(server_yaml))
+    assert config.presence.heartbeat_interval_seconds == 30
+    assert config.presence.stale_after_seconds == 90
+
+
+def test_load_server_config_presence_mixed_key_types_structured_error(tmp_path):
+    """An unquoted numeric YAML key in the presence section must surface the
+    structured unknown-key CultureError — not a TypeError from sorting
+    mixed-type keys while building the error message."""
+    from culture_core.cli._errors import CultureError
+    from culture_core.config import load_server_config
+
+    server_yaml = tmp_path / "server.yaml"
+    server_yaml.write_text("presence:\n  30: 5\n  stale_after_seconds: 60\n")
     with pytest.raises(CultureError, match=r"presence"):
         load_server_config(str(server_yaml))
 

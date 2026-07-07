@@ -47,6 +47,24 @@ from culture_core.protocol.message import Message
 # imports the residents CLI module, which imports this module — circular.
 _DEFAULT_CONFIG = "~/.culture/server.yaml"
 
+# Shared error strings for the "culture server unreachable" failure mode.
+# The residents CLI and the /residents.json endpoint must speak with one
+# voice — same message, same remediation — so both import these instead of
+# carrying their own copies.
+UNREACHABLE_MESSAGE = "cannot connect to IRC server. Is the server running?"
+UNREACHABLE_REMEDIATION = "start it with: culture server start"
+
+
+def to_json(payload: dict) -> str:
+    """THE single canonical ``json.dumps`` site for the resource view.
+
+    Both front doors — ``culture residents --json`` and the
+    ``/residents.json`` endpoint — emit exactly this function over
+    :func:`serialize_residents` output, so byte-compatibility is enforced
+    by construction, not by convention.
+    """
+    return json.dumps(payload)
+
 
 class PresenceUnsupportedError(Exception):
     """The server is reachable but has no PRESENCE query surface.
@@ -119,9 +137,12 @@ def serialize_residents(
     one serializer, one schema.
 
     ``now`` exists for deterministic tests; production callers omit it and
-    get the current UTC time.
+    get the current UTC time. A naive ``now`` is interpreted as UTC — never
+    as host-local time (which is what a bare ``astimezone`` would do).
     """
     stamp = now if now is not None else datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
     generated_at = (
         stamp.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     )
@@ -180,17 +201,26 @@ def apply_budgets(residents: Iterable[Resident], agents: Iterable[AgentConfig]) 
 
     Warn-only by design: nothing anywhere acts on these flags in v1
     (docs/resident-presence.md).
+
+    Budgets that are not a real int >= 1 are skipped entirely (all derived
+    fields stay ``None``): the legacy agents.yaml loader constructs
+    ``AgentConfig`` directly and bypasses the culture.yaml budget
+    sanitizing, so ``token_budget: 0`` (or a bool, or a negative) can reach
+    this join — it must never reach the division below.
     """
     by_nick = {agent.nick: agent for agent in agents if agent.nick}
     for resident in residents:
         agent = by_nick.get(resident.nick)
-        if agent is None or agent.token_budget is None:
+        if agent is None:
             continue
-        resident.token_budget = agent.token_budget
+        budget = agent.token_budget
+        if not isinstance(budget, int) or isinstance(budget, bool) or budget < 1:
+            continue  # unset, or an unsanitized value — see docstring
+        resident.token_budget = budget
         if resident.tokens_in is None and resident.tokens_out is None:
             continue  # state-only backend: budget known, spend unknowable
         spend = (resident.tokens_in or 0) + (resident.tokens_out or 0)
-        resident.budget_used_pct = round(spend * 100.0 / agent.token_budget, 1)
+        resident.budget_used_pct = round(spend * 100.0 / budget, 1)
         resident.budget_warning = resident.budget_used_pct >= agent.token_budget_warn_pct
 
 
@@ -207,8 +237,13 @@ async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
     * a server without the surface replies ``421 <nick> PRESENCE :Unknown
       command`` (today's agentirc), raised here as
       :class:`PresenceUnsupportedError`. A server that stays silent on the
-      probe or drops the connection mid-query is treated the same way —
-      reachable, but no presence support.
+      probe or drops the connection **before any record arrives** is
+      treated the same way — reachable, but no presence support;
+    * a timeout or connection close **mid-stream** — after ``PRESENCELIST``
+      records were already received — raises ``ConnectionError`` instead:
+      that server clearly speaks the surface but stalled, and classifying
+      it unsupported would report a healthy ``supported: false`` while
+      silently discarding the residents already received.
 
     Connection-level failures (refused, DNS, registration timeout) raise
     ``OSError`` / ``ConnectionError`` as with every other observer query.
@@ -223,8 +258,14 @@ async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
             try:
                 data = await asyncio.wait_for(reader.read(4096), timeout=RECV_TIMEOUT)
             except asyncio.TimeoutError:
+                if records:
+                    raise ConnectionError(
+                        f"presence stream stalled after {len(records)} record(s)"
+                    ) from None
                 raise PresenceUnsupportedError("server did not answer the PRESENCE query") from None
             if not data:
+                if records:
+                    raise ConnectionError(f"presence stream stalled after {len(records)} record(s)")
                 raise PresenceUnsupportedError(
                     "server closed the connection during the PRESENCE query"
                 )
@@ -289,15 +330,29 @@ async def fetch_residents_async(
     return residents
 
 
+def fetch_residents_for(config: ServerConfig, *, parent_nick: str | None = None) -> list[Resident]:
+    """Sync wrapper over :func:`fetch_residents_async` for a loaded config.
+
+    Runs the query on a fresh event loop — the CLI's calling convention.
+    Every exception escaping this function is a *connection* problem (or
+    :class:`PresenceUnsupportedError`), never a config-file one, which is
+    what lets the residents CLI keep its config and connection failure
+    domains separate. Callers already inside an event loop (the t7
+    endpoint) use :func:`fetch_residents_async` directly.
+    """
+    return asyncio.run(fetch_residents_async(config, parent_nick=parent_nick))
+
+
 def fetch_residents(config_path: str | Path | None = None) -> list[Resident]:
-    """Sync front-door wrapper around :func:`fetch_residents_async`.
+    """Compat wrapper: load the server config, then :func:`fetch_residents_for`.
 
     Loads the server config (default ``~/.culture/server.yaml``) and runs
-    the query on a fresh event loop — the CLI's calling convention. Callers
-    already inside an event loop (the t7 endpoint) use
-    :func:`fetch_residents_async` directly.
+    the query. Note the mixed failure surface: config-file I/O errors
+    (``OSError``) and connection errors both escape from here — callers
+    that need to tell them apart (the residents CLI) load the config
+    themselves and call :func:`fetch_residents_for`.
     """
     path = Path(os.path.expanduser(str(config_path or _DEFAULT_CONFIG)))
     config = load_config_or_default(path)
     parent = os.environ.get("CULTURE_NICK", "").strip() or None
-    return asyncio.run(fetch_residents_async(config, parent_nick=parent))
+    return fetch_residents_for(config, parent_nick=parent)

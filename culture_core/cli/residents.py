@@ -16,17 +16,22 @@ style, no traceback).
 from __future__ import annotations
 
 import argparse
-import json
+import os
 import sys
+from pathlib import Path
 
 from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 from culture_core.cli._output import emit_error
 from culture_core.cli.shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
+from culture_core.config import load_config_or_default
 from culture_core.resource_view import (
+    UNREACHABLE_MESSAGE,
+    UNREACHABLE_REMEDIATION,
     PresenceUnsupportedError,
     Resident,
-    fetch_residents,
+    fetch_residents_for,
     serialize_residents,
+    to_json,
 )
 
 NAME = "residents"
@@ -120,28 +125,49 @@ def render_table(residents: list[Resident]) -> str:
 
 def dispatch(args: argparse.Namespace) -> None:
     json_mode = bool(getattr(args, "json", False))
+
+    # Config loading is its own failure domain: an unreadable server.yaml
+    # must surface as a config error, never be swallowed by the connection
+    # handling below and misreported as "cannot connect to IRC server".
+    config_path = Path(os.path.expanduser(str(args.config)))
     try:
-        try:
-            residents = fetch_residents(args.config)
-            supported = True
-        except PresenceUnsupportedError:
-            residents, supported = [], False
+        config = load_config_or_default(config_path)
+    except CultureError as err:
+        # Config validation (e.g. a bad presence section) — emit through
+        # the verb's json-aware path so --json consumers always get the
+        # {code, message, remediation} contract.
+        emit_error(err, json_mode=json_mode)
+        sys.exit(err.code)
     except OSError as exc:
-        # Covers ConnectionRefusedError, the observer's registration
-        # ConnectionError, and TimeoutError — all OSError subclasses.
         err = CultureError(
             EXIT_USER_ERROR,
-            "cannot connect to IRC server. Is the server running?",
-            "start it with: culture server start",
+            f"cannot read server config at {config_path}: {exc}",
+            "check the file exists and is readable, or pass --config",
         )
         err.__cause__ = exc
         emit_error(err, json_mode=json_mode)
         sys.exit(err.code)
 
+    parent_nick = os.environ.get("CULTURE_NICK", "").strip() or None
+    try:
+        try:
+            residents = fetch_residents_for(config, parent_nick=parent_nick)
+            supported = True
+        except PresenceUnsupportedError:
+            residents, supported = [], False
+    except OSError as exc:
+        # Covers ConnectionRefusedError, the observer's registration
+        # ConnectionError, TimeoutError, and the mid-stream stall
+        # ConnectionError — all OSError subclasses.
+        err = CultureError(EXIT_USER_ERROR, UNREACHABLE_MESSAGE, UNREACHABLE_REMEDIATION)
+        err.__cause__ = exc
+        emit_error(err, json_mode=json_mode)
+        sys.exit(err.code)
+
     if json_mode:
-        # Exactly the shared serializer's payload — the t7 endpoint emits
-        # the same json.dumps(serialize_residents(...)) bytes.
-        print(json.dumps(serialize_residents(residents, supported)))
+        # Exactly the shared serializer AND the shared dumps site — the t7
+        # endpoint emits the same to_json(serialize_residents(...)) bytes.
+        print(to_json(serialize_residents(residents, supported)))
         return
 
     if not supported:

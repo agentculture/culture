@@ -7,11 +7,13 @@ byte-compatibility: the endpoint body must be exactly ``json.dumps`` of
 one schema, verified here by diffing the endpoint bytes against a direct
 serializer call over the same fixtures.
 
-Response contract (feeds the irc-lens t8 brief — no 500s, ever):
+Response contract (feeds the irc-lens t8 brief — no bare 500s, ever):
 
 * presence supported          -> 200, canonical payload
 * no PRESENCE surface         -> 200, ``supported: false`` payload
 * culture server unreachable  -> 503, ``{code, message, remediation}``
+* anything unexpected         -> 500, ``{code, message, remediation}``
+  (defensive: still structured JSON, never a traceback page)
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import threading
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 
 import pytest
 
@@ -31,6 +33,7 @@ from culture_core.resource_view import (
     PresenceUnsupportedError,
     Resident,
     serialize_residents,
+    to_json,
 )
 
 FIXED_NOW = datetime(2026, 7, 7, 12, 0, 0, tzinfo=timezone.utc)
@@ -84,11 +87,13 @@ def overview_server():
     residents fetch seam.
 
     ``_start(fetch=...)`` binds the handler exactly like ``serve_web`` does
-    (via ``_make_overview_handler``), overrides the ``_fetch_residents``
-    seam when a ``fetch`` callable is given, pins the deterministic-time
-    seam to ``FIXED_NOW``, and returns the listening port.
+    (via ``_make_overview_handler`` on a ``ThreadingHTTPServer`` — the same
+    server class production uses since the F8 fix), overrides the
+    ``_fetch_residents`` seam when a ``fetch`` callable is given, pins the
+    deterministic-time seam to ``FIXED_NOW``, and returns the listening
+    port.
     """
-    running: list[tuple[HTTPServer, threading.Thread]] = []
+    running: list[tuple[ThreadingHTTPServer, threading.Thread]] = []
 
     def _start(fetch=None, irc_port: int = 6667):
         handler_cls = _make_overview_handler(
@@ -103,7 +108,7 @@ def overview_server():
         if fetch is not None:
             handler_cls._fetch_residents = lambda self: fetch()
         handler_cls.residents_now = FIXED_NOW
-        httpd = HTTPServer(("127.0.0.1", 0), handler_cls)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         running.append((httpd, thread))
@@ -133,12 +138,14 @@ def test_supported_returns_200_application_json(overview_server):
 
 
 def test_byte_compatible_with_canonical_serializer(overview_server):
-    """THE t7 acceptance criterion: endpoint body == json.dumps of the one
-    canonical serializer over the same fixtures — the CLI --json emits the
-    same call, so the two surfaces can never drift."""
+    """THE t7 acceptance criterion: endpoint body == ``to_json`` (the one
+    canonical dumps site in culture_core.resource_view) of the one canonical
+    serializer over the same fixtures — the CLI --json emits the literal
+    same ``to_json(serialize_residents(...))`` call, so the two surfaces can
+    never drift (test_residents_cli.py asserts the CLI side)."""
     port = overview_server(fetch=_fixture_residents)
     _status, _headers, body = _get(port)
-    expected = json.dumps(serialize_residents(_fixture_residents(), True, now=FIXED_NOW))
+    expected = to_json(serialize_residents(_fixture_residents(), True, now=FIXED_NOW))
     assert body == expected.encode()
 
 
@@ -207,6 +214,71 @@ def test_real_fetch_seam_unreachable_end_to_end(overview_server):
     assert headers["Content-Type"] == "application/json"
     err = json.loads(body)
     assert set(err) == {"code", "message", "remediation"}
+
+
+# ---------------------------------------------------------------------------
+# Unexpected exception: structured 500, never a bare traceback page
+# ---------------------------------------------------------------------------
+
+
+def test_unexpected_exception_returns_structured_500(overview_server):
+    """Anything unexpected escaping the fetch seam (the F3 class of bug,
+    defensively) must yield the structured {code, message, remediation}
+    JSON 500 — the irc-lens console must never see a traceback page."""
+
+    def _raise_unexpected():
+        raise ZeroDivisionError("division by zero")
+
+    port = overview_server(fetch=_raise_unexpected)
+    status, headers, body = _get(port)
+    assert status == 500
+    assert headers["Content-Type"] == "application/json"
+    err = json.loads(body)
+    assert set(err) == {"code", "message", "remediation"}
+    assert err["code"] == 500
+    assert err["remediation"]
+    assert b"Traceback" not in body
+
+
+# ---------------------------------------------------------------------------
+# Threading: a slow /residents.json fetch must not stall other requests
+# ---------------------------------------------------------------------------
+
+
+def test_slow_fetch_does_not_stall_other_requests(overview_server):
+    """The overview server is a ThreadingHTTPServer (F8): each residents
+    request runs a fresh IRC connect+register that can take seconds, and on
+    the old single-threaded HTTPServer one slow fetch blocked every other
+    page load. Prove a second request completes while the first is stuck."""
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[int] = []
+
+    def _fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            started.set()
+            release.wait(timeout=10)
+        return _fixture_residents()
+
+    port = overview_server(fetch=_fetch)
+    slow_result: dict = {}
+    slow_thread = threading.Thread(
+        target=lambda: slow_result.update(status=_get(port)[0]), daemon=True
+    )
+    slow_thread.start()
+    try:
+        assert started.wait(timeout=5), "first request never reached the fetch seam"
+        # While the first request is blocked inside its fetch, a second
+        # request must still be served (would hang until timeout on a
+        # single-threaded server).
+        status, _headers, _body = _get(port)
+        assert status == 200
+        assert "status" not in slow_result, "slow request finished too early"
+    finally:
+        release.set()
+        slow_thread.join(timeout=10)
+    assert slow_result.get("status") == 200
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ from culture_core.resource_view import (
     apply_budgets,
     fetch_residents_async,
     serialize_residents,
+    to_json,
 )
 
 # ---------------------------------------------------------------------------
@@ -148,6 +149,14 @@ class TestSerializeResidents:
         payload = serialize_residents([], True)
         assert payload["generated_at"].endswith("Z")
 
+    def test_naive_now_is_interpreted_as_utc(self):
+        """A naive ``now`` means UTC by contract — it must never be shifted
+        through the host's local timezone by ``astimezone``."""
+        from datetime import datetime
+
+        payload = serialize_residents([], True, now=datetime(2026, 7, 7, 12, 0, 0))
+        assert payload["generated_at"] == "2026-07-07T12:00:00Z"
+
 
 # ---------------------------------------------------------------------------
 # Budget derivation — joining AgentConfig budgets onto fetched residents
@@ -211,6 +220,18 @@ class TestBudgetDerivation:
         apply_budgets([resident], [_agent("spark-a", budget=1000)])
         assert resident.budget_used_pct == 150.0
         assert resident.budget_warning is True
+
+    @pytest.mark.parametrize("bad", [0, True, -5])
+    def test_unsanitized_budget_never_divides(self, bad):
+        """The legacy agents.yaml loader constructs AgentConfig directly and
+        bypasses budget sanitizing, so token_budget 0 / True / negatives can
+        reach the join — it must skip them (all derived fields stay None),
+        never raise ZeroDivisionError or divide by a bool."""
+        resident = _resident("spark-a", tokens_in=100, tokens_out=50)
+        apply_budgets([resident], [_agent("spark-a", budget=bad)])
+        assert resident.token_budget is None
+        assert resident.budget_used_pct is None
+        assert resident.budget_warning is None
 
 
 class TestWireParsing:
@@ -337,6 +358,13 @@ async def test_cli_json_degrades_to_supported_false(server, tmp_path, capsys, mo
     assert payload["residents"] == []
     # Exactly the shared serializer's shape, byte-for-byte.
     assert list(payload) == ["supported", "generated_at", "residents"]
+    # And literally the shared dumps site: re-serializing through the one
+    # canonical to_json(serialize_residents(...)) reproduces the CLI bytes
+    # exactly (the endpoint asserts the same in test_residents_endpoint.py).
+    from datetime import datetime
+
+    stamp = datetime.fromisoformat(payload["generated_at"].replace("Z", "+00:00"))
+    assert out == to_json(serialize_residents([], False, now=stamp))
 
 
 @pytest.mark.asyncio
@@ -376,6 +404,54 @@ def test_cli_unreachable_server_json_error_contract(tmp_path, capsys, monkeypatc
     err_payload = json.loads(captured.err.strip())
     assert set(err_payload) == {"code", "message", "remediation"}
     assert "cannot connect" in err_payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# Config errors are config errors — never misreported as "server down"
+# ---------------------------------------------------------------------------
+
+
+def test_cli_unreadable_config_reports_config_error_not_server_down(tmp_path, capsys, monkeypatch):
+    """A config path that cannot be read (here: a directory) is a config
+    error — it must not be swallowed by the connection handling and
+    misreported as 'cannot connect to IRC server'."""
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    bad_config = tmp_path / "server.yaml"
+    bad_config.mkdir()  # open() raises IsADirectoryError (an OSError)
+    code = _run_dispatch(_make_args(str(bad_config), json_mode=False))
+    assert code != 0
+    captured = capsys.readouterr()
+    assert "cannot read server config" in captured.err
+    assert str(bad_config) in captured.err
+    assert "hint:" in captured.err
+    assert "cannot connect" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_cli_unreadable_config_json_error_contract(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    bad_config = tmp_path / "server.yaml"
+    bad_config.mkdir()
+    code = _run_dispatch(_make_args(str(bad_config), json_mode=True))
+    assert code != 0
+    err_payload = json.loads(capsys.readouterr().err.strip())
+    assert set(err_payload) == {"code", "message", "remediation"}
+    assert "cannot read server config" in err_payload["message"]
+    assert "cannot connect" not in err_payload["message"]
+
+
+def test_cli_config_validation_error_honors_json_contract(tmp_path, capsys, monkeypatch):
+    """A CultureError from config validation (bad presence section) must be
+    emitted through the verb's --json error format — previously it bypassed
+    the json-aware emit path entirely."""
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    cfg = tmp_path / "server.yaml"
+    cfg.write_text("server:\n  name: testserv\npresence: false\n")
+    code = _run_dispatch(_make_args(str(cfg), json_mode=True))
+    assert code != 0
+    err_payload = json.loads(capsys.readouterr().err.strip())
+    assert set(err_payload) == {"code", "message", "remediation"}
+    assert "presence" in err_payload["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -464,3 +540,99 @@ async def test_fetch_parses_anticipated_wire_and_joins_budgets():
     assert codex.state == "idle"
     assert codex.tokens_in is None
     assert codex.budget_warning is None
+
+
+# ---------------------------------------------------------------------------
+# Mid-stream stall/drop is a connection error, NOT "unsupported" — a server
+# that already streamed PRESENCELIST records clearly speaks the surface;
+# reporting it as a healthy supported:false would discard real residents.
+# ---------------------------------------------------------------------------
+
+
+async def _stalling_presence_server(
+    records: list[dict], *, close_after: bool
+) -> tuple[asyncio.AbstractServer, int]:
+    """A scripted server that streams records but never sends PRESENCEEND.
+
+    With ``close_after=True`` it drops the connection right after the last
+    record; with ``close_after=False`` it goes silent (the client's recv
+    timeout fires).
+    """
+
+    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        buffer = ""
+        try:
+            while True:
+                data = await reader.read(4096)
+                if not data:
+                    return
+                buffer += data.decode()
+                while "\r\n" in buffer:
+                    line, buffer = buffer.split("\r\n", 1)
+                    if line.startswith("NICK "):
+                        nick = line.split(" ", 1)[1]
+                        writer.write(f":scripted 001 {nick} :Welcome\r\n".encode())
+                        await writer.drain()
+                    elif line.startswith("PRESENCE LIST"):
+                        for rec in records:
+                            writer.write(f"PRESENCELIST :{json.dumps(rec)}\r\n".encode())
+                        await writer.drain()
+                        if close_after:
+                            return
+                        # else: go silent — never send PRESENCEEND
+        except (ConnectionError, OSError):
+            return
+        finally:
+            # Always close the server-side transport, or Server.wait_closed()
+            # in the test teardown waits forever for the connection to detach.
+            writer.close()
+
+    srv = await asyncio.start_server(_handle, "127.0.0.1", 0)
+    port = srv.sockets[0].getsockname()[1]
+    return srv, port
+
+
+@pytest.mark.asyncio
+async def test_mid_stream_close_is_connection_error_not_unsupported():
+    srv, port = await _stalling_presence_server([{"nick": "spark-a"}], close_after=True)
+    try:
+        config = ServerConfig(server=ServerConnConfig(name="scripted", host="127.0.0.1", port=port))
+        with pytest.raises(ConnectionError, match=r"stalled after 1 record"):
+            await fetch_residents_async(config)
+    finally:
+        srv.close()
+        await srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_mid_stream_silence_is_connection_error_not_unsupported(monkeypatch):
+    monkeypatch.setattr("culture_core.resource_view.RECV_TIMEOUT", 0.3)
+    srv, port = await _stalling_presence_server([{"nick": "spark-a"}], close_after=False)
+    try:
+        config = ServerConfig(server=ServerConnConfig(name="scripted", host="127.0.0.1", port=port))
+        with pytest.raises(ConnectionError, match=r"stalled after 1 record"):
+            await fetch_residents_async(config)
+    finally:
+        srv.close()
+        await srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_cli_reports_stalled_stream_as_error_not_supported_false(
+    tmp_path, capsys, monkeypatch
+):
+    """CLI path: a stalled stream exits nonzero through the connection-error
+    branch — never exit 0 with a healthy-looking supported:false."""
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    monkeypatch.setattr("culture_core.resource_view.RECV_TIMEOUT", 0.3)
+    srv, port = await _stalling_presence_server([{"nick": "spark-a"}], close_after=False)
+    try:
+        cfg = _write_server_yaml(tmp_path, port)
+        code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=False))
+    finally:
+        srv.close()
+        await srv.wait_closed()
+    assert code != 0
+    captured = capsys.readouterr()
+    assert "cannot connect" in captured.err
+    assert "supported" not in captured.out
