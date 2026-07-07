@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - Resident presence + mesh resource view, observe-only v1 (spec docs/specs/2026-07-06-culture-now-knows-when-its-residents-are-busy-ever.md): PRESENCE protocol extension page (publish verb + query surface, protocol/extensions/presence.md); per-agent token_budget / token_budget_warn_pct (warn-only, degrade-on-invalid) in culture.yaml and a presence policy block (heartbeat_interval_seconds, stale_after_seconds) in server.yaml; culture residents CLI verb (live table + --json) with graceful supported:false degrade against a pre-9.12 server; GET /residents.json on the overview web server (now ThreadingHTTPServer), byte-compatible with the CLI via one canonical serializer (culture_core/resource_view.py); docs/resident-presence.md reference. Hand-off briefs: agentirc#53 (IRCd verb + aggregation + watchdog), cultureagent#47 (shared-harness emitter), irc-lens#53 (residents console page).
+- Live-mesh verification log for plan task t6 (docs/verification/2026-07-07-resident-presence-t6.md): before-state degrade capture, busy->idle flip, one-busy-of-three snapshot, balancing decision from shipped data alone, live /residents.json, vanilla-client zero-relay regression, observe-only diff audit — run on the upgraded spark mesh (agentirc 9.12.0 IRCd + cultureagent 0.13.0 emitters).
 
 ### Changed
 
