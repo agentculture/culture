@@ -151,6 +151,11 @@ def _iter_data_points(metrics_reader, metric_name):
     metric trees the reader has captured. Flattening this once here keeps
     the polling helpers readable."""
     data = metrics_reader.get_metrics_data()
+    if data is None:
+        # OTel <1.42's InMemoryMetricReader returns None (not an empty
+        # MetricsData) while its provider has no data points yet — keep
+        # polling instead of crashing on the first pre-recording poll.
+        return
     for rm in data.resource_metrics:
         for sm in rm.scope_metrics:
             for metric in sm.metrics:
@@ -182,8 +187,49 @@ async def _wait_for_outcome_metric(metrics_reader, outcome, timeout=10.0):
                     return dp
                 await asyncio.sleep(0.1)
     except TimeoutError:
+        _dump_reader_contents(metrics_reader)
         _dump_pending_task_stacks(outcome)
         raise
+
+
+def _dump_reader_contents(metrics_reader):
+    """Print every data point the in-memory reader holds to stderr.
+
+    Discriminates the two failure modes an expired outcome poll can have:
+    an EMPTY dump means the harness registry bound its instruments to some
+    other MeterProvider (binding/pollution); data points with unexpected
+    attributes mean the turn recorded through a different code path.
+    """
+    from cultureagent.clients.shared import telemetry as _ht
+    from opentelemetry import metrics as otel_metrics
+
+    print("\n--- reader contents at poll expiry ---", file=sys.stderr)
+    print(f"this reader: {id(metrics_reader):#x}", file=sys.stderr)
+    print(f"global provider: {otel_metrics.get_meter_provider()!r}", file=sys.stderr)
+    reg = _ht._registry
+    print(
+        f"harness registry: {id(reg):#x} initialized_for={_ht._initialized_for!r}", file=sys.stderr
+    )
+    try:
+        readers = reg.llm_calls._measurement_consumer._sdk_config.metric_readers
+        print(
+            f"llm_calls routes to readers: {[hex(id(r)) for r in readers]}",
+            file=sys.stderr,
+        )
+    except AttributeError as exc:
+        print(f"llm_calls reader introspection failed: {exc}", file=sys.stderr)
+    data = metrics_reader.get_metrics_data()
+    count = 0
+    for rm in data.resource_metrics if data else []:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                for dp in getattr(metric.data, "data_points", []):
+                    count += 1
+                    print(
+                        f"  {metric.name} attrs={dict(dp.attributes)} value={getattr(dp, 'value', None)}",
+                        file=sys.stderr,
+                    )
+    print(f"--- {count} data point(s) total ---", file=sys.stderr)
 
 
 def _dump_pending_task_stacks(outcome):
