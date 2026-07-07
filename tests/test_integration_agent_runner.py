@@ -172,12 +172,36 @@ async def _wait_for_outcome_metric(metrics_reader, outcome, timeout=10.0):
     with the given ``outcome`` attribute. Returns the data point.
     Replaces fixed sleeps; ``record_llm_call`` fires after each turn but
     ordering vs. the test's next line isn't guaranteed."""
-    async with asyncio.timeout(timeout):
-        while True:
-            dp = _find_data_point(metrics_reader, "culture.harness.llm.calls", {"outcome": outcome})
-            if dp is not None:
-                return dp
-            await asyncio.sleep(0.1)
+    try:
+        async with asyncio.timeout(timeout):
+            while True:
+                dp = _find_data_point(
+                    metrics_reader, "culture.harness.llm.calls", {"outcome": outcome}
+                )
+                if dp is not None:
+                    return dp
+                await asyncio.sleep(0.1)
+    except TimeoutError:
+        _dump_pending_task_stacks(outcome)
+        raise
+
+
+def _dump_pending_task_stacks(outcome):
+    """Print every live asyncio task and its stack to stderr on poll expiry.
+
+    The poll expiring means the daemon-side turn never reached
+    ``record_llm_call`` — the stacks show where it actually sits (a wedged
+    await is otherwise invisible in CI, where the failure has not been
+    reproducible locally). Diagnostic only; the TimeoutError still raises.
+    """
+    import traceback
+
+    print(f"\n--- outcome={outcome!r} metric never arrived; live task stacks ---", file=sys.stderr)
+    for task in asyncio.all_tasks():
+        print(f"\n[task] {task.get_name()} done={task.done()} {task.get_coro()!r}", file=sys.stderr)
+        for frame in task.get_stack(limit=12):
+            traceback.print_stack(frame, limit=1, file=sys.stderr)
+    print("--- end task stacks ---", file=sys.stderr)
 
 
 def _build_daemon(server, agent_dir, sock_dir, nick="testserv-bot", turn_timeout=0.2):
