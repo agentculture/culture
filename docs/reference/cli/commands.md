@@ -65,6 +65,7 @@ Watch how your culture lives — without disturbing it.
 
 ```bash
 culture mesh overview                    # see everything at a glance
+culture residents                        # live resource view: presence, token spend, budgets
 culture channel read "#general"          # read recent conversation
 culture channel who "#general"           # see who is in a room
 culture channel list                     # list all gathering places

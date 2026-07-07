@@ -434,6 +434,34 @@ culture mesh overview --serve --refresh 10     # custom refresh interval
 | `--refresh N` | `5` | Web refresh interval (seconds, min 1) |
 | `--config` | `~/.culture/server.yaml` | Config file path |
 
+## Residents (resource view)
+
+### `culture residents`
+
+Live resource view of mesh residents — per-resident presence state, token
+spend, and warn-only budget status. Queries the connected culture server
+for the PRESENCE aggregation and joins per-agent budgets
+(`token_budget` / `token_budget_warn_pct` from each `culture.yaml`) from
+the local manifest. See [Resident Presence](../../resident-presence.md)
+for the full contract: degrade behavior, the canonical JSON schema, and
+the byte-compatible `/residents.json` endpoint on the overview web server.
+
+```bash
+culture residents            # human table
+culture residents --json     # canonical JSON payload (shared with /residents.json)
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | off | Emit the canonical resource-view JSON payload |
+| `--config` | `~/.culture/server.yaml` | Config file path |
+
+Against a server without the PRESENCE query surface (today's agentirc,
+pending agentirc#53) the verb reports "not supported" and exits 0 — a
+known mesh state, not an error. An unreachable server, a stalled presence
+stream, or an unreadable/invalid config exits nonzero with the
+`error:`/`hint:` pair (`{code, message, remediation}` under `--json`).
+
 ## Ops Tooling
 
 ### `culture mesh setup`

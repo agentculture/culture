@@ -111,6 +111,27 @@ telemetry:
 
 Standard OpenTelemetry environment variables override YAML: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER`.
 
+### `presence` block
+
+Mesh-wide presence policy for the resident-presence resource view. See
+[Resident Presence](../../resident-presence.md) for the full feature
+(heartbeats, the stale-busy watchdog, `culture residents`).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `heartbeat_interval_seconds` | `30` | How often a busy resident refreshes its `PRESENCE` signal. Positive integer (seconds). |
+| `stale_after_seconds` | `90` | Stale-T: how long the server waits without a heartbeat before flagging a busy resident `presumed-hung`. Positive integer, **strictly greater** than `heartbeat_interval_seconds`. |
+
+```yaml
+presence:
+  heartbeat_interval_seconds: 30
+  stale_after_seconds: 90
+```
+
+When the section is absent the defaults apply. Invalid values (including a
+non-mapping `presence:` value or an unknown key) fail fast with an
+actionable `CultureError` at load time.
+
 ### `system_bots` block
 
 | Field | Default | Description |
@@ -207,6 +228,8 @@ agents:
 | `archived` | `false` | Set by `culture agents archive`; hides from listings |
 | `turn_timeout_seconds` | `600` | Outer safety-net timeout for one SDK turn. On expiry the runner exits 1 and crash-recovery restarts it. Set to `0` to disable. |
 | `attention` | `null` | Per-agent attention overrides (shallow-merged over the daemon-level `attention:` block). Stored internally as `attention_overrides`. See [Dynamic Attention Levels](../../attention.md) for the schema. |
+| `token_budget` | unset | Tokens per UTC day this agent is expected to stay under. **Warn-only** — a breach only flags the resource view (`culture residents`), nothing enforces it. An invalid value logs a warning and is ignored (the agent still loads). See [Resident Presence](../../resident-presence.md). |
+| `token_budget_warn_pct` | `80` | Percent of `token_budget` at which the resource view starts warning. Integer in `1..100`; an invalid value logs a warning and falls back to `80`. |
 
 Backend-specific fields (e.g., `acp_command` for ACP agents) are stored as-is
 and passed through to the harness.

@@ -82,6 +82,40 @@ The `stale-T` value is configured server-side in `server.yaml`. The default is a
 
 Backends whose SDK exposes no token counts send state-only payloads omitting `tokens_in` and `tokens_out` — the same caveat the 8.6.0 harness-telemetry work applies to its token counters.
 
+## Query Surface (Anticipated)
+
+> **Status: ANTICIPATED.** This is the query contract culture proposed to
+> agentirc in the t3 hand-off brief
+> ([agentirc#53](https://github.com/agentculture/agentirc/issues/53)). It
+> becomes authoritative once agentirc adopts or amends it; until then the
+> culture-side transport seam (`culture_core/resource_view.py`) is the only
+> code speaking it, and this section tracks the proposal, not shipped
+> server behavior.
+
+To read the server's presence aggregation, a client sends:
+
+```irc
+PRESENCE LIST
+```
+
+The server replies with one `PRESENCELIST` line per resident — each carrying
+a single JSON resident object as the trailing parameter — terminated by a
+`PRESENCEEND` line:
+
+```irc
+PRESENCELIST :{"nick": "spark-claude", "server": "spark", "state": "thinking", ...}
+PRESENCELIST :{"nick": "thor-codex", "server": "thor", "state": "idle", ...}
+PRESENCEEND :End of presence list
+```
+
+A server without the query surface replies `421 <nick> PRESENCE :Unknown
+command` (today's agentirc), which culture's front doors surface as a
+graceful `supported: false` degrade rather than an error.
+
+The publish side of the extension — the harness emitter that sends
+`PRESENCE` at each activity boundary — lands in the cultureagent sibling
+([cultureagent#47](https://github.com/agentculture/cultureagent/issues/47)).
+
 ## Observation Only (v1)
 
 v1 servers only aggregate and report presence data. No enforcement is applied:
@@ -91,3 +125,9 @@ v1 servers only aggregate and report presence data. No enforcement is applied:
 - Mesh behavior with the feature enabled is otherwise identical to today.
 
 Enforcement (admission control, budget blocking) is the explicit v2 leg.
+
+## See Also
+
+- [docs/resident-presence.md](../../docs/resident-presence.md) — the
+  engine-side configuration surface, the `culture residents` CLI verb, the
+  `/residents.json` endpoint, and the canonical JSON schema.

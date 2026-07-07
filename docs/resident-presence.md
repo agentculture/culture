@@ -34,12 +34,15 @@ token_budget_warn_pct: 75
 Both keys are typed fields of the agent schema (not backend extras), and both
 round-trip through `culture agents` rewrites (archive, rename, …).
 
-Validation is strict and actionable: a non-positive or non-integer
-`token_budget`, or a `token_budget_warn_pct` outside `1..100`, raises a
-`CultureError` naming the offending key and the valid range — never a raw
-traceback. During manifest resolution a broken agent entry is skipped with a
-warning (like any other broken `culture.yaml`), so one misconfigured agent
-never takes the server down.
+Validation is **warn-and-degrade** — the budget keys are warn-only
+observability config, so an invalid value never stops an agent from loading.
+A non-positive or non-integer `token_budget`, or a `token_budget_warn_pct`
+outside `1..100`, logs a warning naming the file, the offending key and
+value, and the valid range, then falls back to the default: `token_budget`
+is unset (budget warnings disabled for that agent) and
+`token_budget_warn_pct` reverts to `80`. The agent loads and runs normally;
+only its budget warnings are affected. A typo in a budget key can never
+drop an agent from the manifest or abort a `culture doctor` run.
 
 ### Mesh-wide presence policy (server.yaml)
 
@@ -65,22 +68,33 @@ presence:
 When the section is absent, the defaults above apply. The defaults are open
 tuning values (plan risk r1) — expect them to move once the mesh gathers real
 heartbeat data. Invalid values (non-positive, non-integer, stale-T not
-strictly greater than the heartbeat interval, or an unknown key in the
-section) raise an actionable `CultureError` at load time.
+strictly greater than the heartbeat interval, a non-mapping `presence:`
+value, or an unknown key in the section) raise an actionable `CultureError`
+at load time — mesh policy fails fast by design, unlike the warn-only
+per-agent budget keys above.
 
 ### Spend window and reset semantics
 
-Token spend accounts **per UTC day**: each resident's spend tally resets at
-00:00 UTC.
+**Today (shipped):** `budget_used_pct` derives from the resident's
+**per-connection cumulative** `tokens_in` / `tokens_out` counters — the
+budget join divides the connection's cumulative spend by `token_budget`
+directly. The tally therefore resets whenever the resident reconnects: an
+agent restart (or a network blip that re-establishes the connection) starts
+a fresh counter, and the used-percentage starts over from zero. Treat
+`token_budget` as "tokens per UTC day" when configuring it, but read the
+shipped percentage as *spend this connection*.
 
-The day's tally is accumulated **server-side** from the cumulative
-`tokens_in` / `tokens_out` counters carried by successive `PRESENCE` reports.
-The counters are cumulative per connection, so the server takes the delta
-between consecutive reports and adds it to the resident's running total for
-the current UTC day. Because the accumulated total lives on the server — not
-in the agent process — the tally **survives an agent restart within the
-day**: a fresh connection simply starts a new cumulative counter baseline,
-and its deltas keep adding to the same daily total.
+**Target (future — lands with the server-side aggregation, agentirc#53):**
+token spend will account **per UTC day**, each resident's tally resetting at
+00:00 UTC. The day's tally will be accumulated **server-side** from the
+cumulative counters carried by successive `PRESENCE` reports: the server
+will take the delta between consecutive reports and add it to the
+resident's running total for the current UTC day. Because that accumulated
+total will live on the server — not in the agent process — the tally will
+**survive an agent restart within the day**: a fresh connection starts a
+new cumulative counter baseline, and its deltas keep adding to the same
+daily total. Until that lands, the previous paragraph is the honest
+contract.
 
 ### Warn-only, never enforced
 
@@ -130,12 +144,32 @@ emits, so the two surfaces never drift.
 |-----------|-----------|----------|------|
 | Server reachable, presence supported | table (or `No residents connected.`) | full payload, `"supported": true` | 0 |
 | Server reachable, **no PRESENCE support** | notice: `server does not support PRESENCE — needs agentirc release per agentirc#53, then culture floor bump` | `{"supported": false, ..., "residents": []}` | 0 |
-| Server unreachable | `error:` + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
+| Server unreachable (or presence stream stalled mid-stream) | `error:` + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
+| Server config unreadable or invalid | `error: cannot read server config at <path>` (or the validation error) + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
 
 A presence-less server is a **known mesh state, not an error**: the
 agentirc IRCd does not implement the PRESENCE query surface yet (plan
 risks r3/r4 — pending the t3 hand-off brief, agentirc#53, then a culture
-floor bump). The transport lives behind a single seam function in
+floor bump). The transport seam raises
+`culture_core.resource_view.PresenceUnsupportedError` when the server
+answers the probe with `421` — or stays silent / closes the connection
+**before any record arrives** — and both front doors (the CLI and the
+endpoint) catch exactly that class to degrade to `supported: false`.
+
+A stream that stalls or drops **mid-stream** — after `PRESENCELIST`
+records were already received — is *not* unsupported: that server clearly
+speaks the surface but stalled, so the seam raises a `ConnectionError`
+(`presence stream stalled after N record(s)`) and the front doors report
+it like an unreachable server (nonzero exit / HTTP 503) instead of a
+healthy-looking `supported: false` that would silently discard the
+residents already received.
+
+An unreadable `server.yaml` (permissions, a directory in place of the
+file) or one that fails validation is reported as a **config** error —
+never misreported as "cannot connect to IRC server" — honoring the
+`--json` error contract in both cases.
+
+The transport lives behind a single seam function in
 `culture_core/resource_view.py` and is the only code that changes when
 agentirc answers the brief. No failure mode prints a traceback.
 
@@ -159,15 +193,21 @@ surfaces emit exactly `json.dumps` of the one canonical serializer,
 | Situation | Status | Body |
 |-----------|--------|------|
 | Server reachable, presence supported | `200` | canonical payload, `"supported": true` |
-| Server reachable, **no PRESENCE support** | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (pending agentirc#53) |
-| Culture server unreachable | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
+| Server reachable, **no PRESENCE support** (`PresenceUnsupportedError` from the seam) | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (pending agentirc#53) |
+| Culture server unreachable (or presence stream stalled mid-stream) | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
+| Unexpected internal error | `500` | `{"code": 500, "message": ..., "remediation": ...}` — defensive last resort, still structured JSON |
 
-`Content-Type` is `application/json` in all three cases. No case ever
-surfaces an unhandled traceback or a bare 500 — the unreachable-server
-`503` carries the same structured `{code, message, remediation}` error
-contract as the CLI's `--json` mode, which is what lets the downstream
-irc-lens residents page (task t8) degrade to an "IRCd down" notice
-instead of a 500.
+`Content-Type` is `application/json` in all four cases. No case ever
+surfaces an unhandled traceback or an unstructured 500 — the
+unreachable-server `503` carries the same structured
+`{code, message, remediation}` error contract as the CLI's `--json` mode,
+which is what lets the downstream irc-lens residents page (task t8)
+degrade to an "IRCd down" notice instead of a 500.
+
+The overview web server handles requests on daemon threads
+(`ThreadingHTTPServer`), so a slow residents fetch — each request runs a
+fresh IRC connect+register — never stalls the HTML dashboard page loads
+served from the same process.
 
 ### Auth story
 

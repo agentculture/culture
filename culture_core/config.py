@@ -186,28 +186,52 @@ def _is_plain_int(value: object) -> bool:
 
 
 def _validate_agent_budget(agent: AgentConfig, source: str) -> None:
-    """Validate the warn-only token-budget fields parsed from culture.yaml."""
+    """Sanitize the warn-only token-budget fields parsed from culture.yaml.
+
+    Budget fields are warn-only observability config
+    (docs/resident-presence.md): an invalid value must never stop an agent
+    from loading. Raising here would drop the agent from the manifest in
+    :func:`resolve_agents` and escape the doctor's per-entry catch tuples
+    (``culture_core/doctor/checks.py`` / ``discovery.py``), aborting a whole
+    doctor run over a budget typo. Instead: warn — naming the file, the
+    offending key/value, and the valid range — and reset the field to its
+    default, so only the budget warnings degrade, never the agent.
+    """
+    defaults = AgentConfig()
     budget = agent.token_budget
     if budget is not None and not (_is_plain_int(budget) and budget >= 1):
-        raise _new_config_error(
-            f"Invalid token_budget in {source}: {budget!r} — "
-            "must be a positive integer (tokens per UTC day)",
-            "edit culture.yaml and set token_budget to an integer >= 1, "
-            "or remove the key to disable budget warnings",
+        logger.warning(
+            "Invalid token_budget in %s: %r — must be a positive integer "
+            "(tokens per UTC day); ignoring it (budget warnings disabled "
+            "for this agent)",
+            source,
+            budget,
         )
+        agent.token_budget = defaults.token_budget
     pct = agent.token_budget_warn_pct
     if not (_is_plain_int(pct) and 1 <= pct <= 100):
-        raise _new_config_error(
-            f"Invalid token_budget_warn_pct in {source}: {pct!r} — "
-            "must be an integer between 1 and 100",
-            "edit culture.yaml and set token_budget_warn_pct to a percent "
-            "in 1..100 (default 80)",
+        logger.warning(
+            "Invalid token_budget_warn_pct in %s: %r — must be an integer "
+            "between 1 and 100; using the default (%d)",
+            source,
+            pct,
+            defaults.token_budget_warn_pct,
         )
+        agent.token_budget_warn_pct = defaults.token_budget_warn_pct
 
 
 def _parse_presence_section(raw: dict, source: str) -> PresenceConfig:
-    """Parse and validate the optional ``presence`` section of server.yaml."""
-    section = raw.get("presence") or {}
+    """Parse and validate the optional ``presence`` section of server.yaml.
+
+    Mesh policy fails fast by design: unlike the warn-only agent budget
+    fields, an invalid presence section raises a :class:`CultureError`.
+    Only a missing key (or an explicit YAML null) means "use defaults" —
+    a falsy non-mapping (``presence: false`` / ``[]`` / ``0``) is rejected
+    like any other non-mapping instead of silently coercing to defaults.
+    """
+    section = raw.get("presence")
+    if section is None:
+        return PresenceConfig()
     if not isinstance(section, dict):
         raise _new_config_error(
             f"Invalid presence section in {source}: {section!r} — must be a mapping",
@@ -218,9 +242,12 @@ def _parse_presence_section(raw: dict, source: str) -> PresenceConfig:
         presence = PresenceConfig(**section)
     except TypeError:
         known = ", ".join(f.name for f in PresenceConfig.__dataclass_fields__.values())
+        # map(str, ...): YAML permits non-string keys (an unquoted `30:`
+        # parses as an int) and sorting mixed-type keys raises TypeError —
+        # stringify first so the structured error always builds.
         raise _new_config_error(
             f"Unknown key in presence section of {source}: "
-            f"{sorted(section)!r} — known keys are {known}",
+            f"{sorted(map(str, section))!r} — known keys are {known}",
             "edit server.yaml and remove or rename the unknown presence key",
         ) from None
     for key in ("heartbeat_interval_seconds", "stale_after_seconds"):
