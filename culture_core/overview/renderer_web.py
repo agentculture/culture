@@ -1,4 +1,10 @@
-"""Render mesh overview as HTML and serve via HTTP."""
+"""Render mesh overview as HTML and serve via HTTP.
+
+Besides the HTML dashboard, the server exposes the resource view as
+``GET /residents.json`` (docs/resident-presence.md, plan task t7) —
+byte-compatible with ``culture residents --json`` via the one canonical
+serializer in :mod:`culture_core.resource_view`.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +15,13 @@ import re
 import signal
 import threading
 import time
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from datetime import datetime
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import mistune
 
+from culture_core.config import ServerConfig, ServerConnConfig
 from culture_core.pidfile import (
     is_process_alive,
     read_pid,
@@ -22,6 +30,15 @@ from culture_core.pidfile import (
     remove_port,
     write_pid,
     write_port,
+)
+from culture_core.resource_view import (
+    UNREACHABLE_MESSAGE,
+    UNREACHABLE_REMEDIATION,
+    PresenceUnsupportedError,
+    Resident,
+    fetch_residents_async,
+    serialize_residents,
+    to_json,
 )
 
 from .collector import collect_mesh_state
@@ -173,8 +190,15 @@ class _OverviewHandler(SimpleHTTPRequestHandler):
     message_limit: int = 4
     refresh_interval: int = 5
     manifest_agents: list | None = None
+    # Deterministic-time seam for the /residents.json payload, mirroring
+    # serialize_residents(now=...): production leaves it None (current UTC
+    # time); tests pin it to a fixed instant for byte-exact assertions.
+    residents_now: datetime | None = None
 
     def do_GET(self):
+        if self.path.split("?", 1)[0] == "/residents.json":
+            self._serve_residents()
+            return
         mesh = asyncio.run(
             collect_mesh_state(
                 host=self.irc_host,
@@ -194,6 +218,80 @@ class _OverviewHandler(SimpleHTTPRequestHandler):
         content = html.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _fetch_residents(self) -> list[Resident]:
+        """Seam: query the bound culture server for the presence aggregation.
+
+        Tests override this to inject fixtures; production queries the same
+        server the overview renders, joining budgets from the same manifest.
+        """
+        config = ServerConfig(
+            server=ServerConnConfig(name=self.server_name, host=self.irc_host, port=self.irc_port),
+            agents=list(self.manifest_agents or []),
+        )
+        return asyncio.run(fetch_residents_async(config))
+
+    def _serve_residents(self) -> None:
+        """GET /residents.json — the resource view (plan task t7).
+
+        Read-only, no side effects, and byte-compatible with
+        ``culture residents --json``: both emit exactly
+        :func:`culture_core.resource_view.to_json` of
+        :func:`culture_core.resource_view.serialize_residents`. Four
+        response cases, never an unhandled traceback (the irc-lens console
+        consumes this and must never see a bare 500):
+
+        * presence supported          -> 200, canonical payload;
+        * no PRESENCE surface         -> 200, ``supported: false`` payload
+          (a presence-less mesh is a known state, not an error — pending
+          agentirc#53);
+        * culture server unreachable  -> 503, ``{code, message, remediation}``;
+        * anything unexpected         -> 500, ``{code, message, remediation}``
+          (defensive last resort — still structured JSON).
+        """
+        try:
+            try:
+                residents = self._fetch_residents()
+                supported = True
+            except PresenceUnsupportedError:
+                residents, supported = [], False
+        except OSError:
+            # Covers ConnectionRefusedError, ConnectionError (including the
+            # mid-stream presence stall), TimeoutError — all OSError
+            # subclasses. Same voice as the residents CLI error.
+            self._send_json(
+                503,
+                {
+                    "code": 503,
+                    "message": UNREACHABLE_MESSAGE,
+                    "remediation": UNREACHABLE_REMEDIATION,
+                },
+            )
+            return
+        except Exception as exc:
+            # Defensive catch-all: whatever escapes the fetch seam, the
+            # irc-lens console gets structured JSON — never a traceback
+            # page or the default HTML 500.
+            self._send_json(
+                500,
+                {
+                    "code": 500,
+                    "message": f"internal error building the resource view: {exc}",
+                    "remediation": "check the overview server logs and report a culture bug",
+                },
+            )
+            return
+        self._send_json(200, serialize_residents(residents, supported, now=self.residents_now))
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        # to_json is the ONE canonical dumps site for the resource view —
+        # the 200 payload here is byte-identical to `culture residents --json`.
+        content = to_json(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -275,7 +373,14 @@ def serve_web(
     # Bound to loopback only — see `_LOOPBACK_HOSTS` / `_dashboard_url`: this is
     # the one and only reason the dashboard may be served over plain HTTP.
     bind_host = "127.0.0.1"
-    httpd = HTTPServer((bind_host, serve_port), handler_cls)
+    # Threading server: every /residents.json request runs a fresh IRC
+    # connect+register (seconds; worst-case the observer's RECV_TIMEOUT),
+    # which on a single-threaded HTTPServer stalled every overview page
+    # load behind it. Daemon threads so in-flight requests never block
+    # shutdown (the SIGTERM handler's httpd.shutdown() and the finally
+    # below behave exactly as before).
+    httpd = ThreadingHTTPServer((bind_host, serve_port), handler_cls)
+    httpd.daemon_threads = True
     actual_port = httpd.server_address[1]
 
     write_pid(pid_name, os.getpid())

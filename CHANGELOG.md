@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.5.0] - 2026-07-07
+
+### Added
+
+- Resident presence + mesh resource view, observe-only v1 (spec docs/specs/2026-07-06-culture-now-knows-when-its-residents-are-busy-ever.md): PRESENCE protocol extension page (publish verb + query surface, protocol/extensions/presence.md); per-agent token_budget / token_budget_warn_pct (warn-only, degrade-on-invalid) in culture.yaml and a presence policy block (heartbeat_interval_seconds, stale_after_seconds) in server.yaml; culture residents CLI verb (live table + --json) with graceful supported:false degrade against a pre-9.12 server; GET /residents.json on the overview web server (now ThreadingHTTPServer), byte-compatible with the CLI via one canonical serializer (culture_core/resource_view.py); docs/resident-presence.md reference. Hand-off briefs: agentirc#53 (IRCd verb + aggregation + watchdog), cultureagent#47 (shared-harness emitter), irc-lens#53 (residents console page).
+- Live-mesh verification log for plan task t6 (docs/verification/2026-07-07-resident-presence-t6.md): before-state degrade capture, busy->idle flip, one-busy-of-three snapshot, balancing decision from shipped data alone, live /residents.json, vanilla-client zero-relay regression, observe-only diff audit — run on the upgraded spark mesh (agentirc 9.12.0 IRCd + cultureagent 0.13.0 emitters).
+
+### Changed
+
+- Dependency floors raised for the presence legs both siblings shipped: `agentirc-cli>=9.12.0,<10` (PRESENCE verb, aggregation, S2S, stale-busy watchdog, PRESENCE LIST query surface — adopted culture's proposed wire shape verbatim, agentirc#53) and `cultureagent~=0.13.0` (shared-harness PRESENCE emitter, heartbeat, one token-counting source — cultureagent#47), in `pyproject.toml` (base + all backend extras) and `uv.lock`.
+- protocol/extensions/presence.md: query surface Anticipated -> Adopted (agentirc-cli 9.12.0 row semantics inlined); activity-state refinements from the shipped emitter (`listening` scoped to agent-work dispatch — edge-triggered emission, no per-PING amplification; `working` defined but not yet emitted by any backend); stale-busy watchdog semantics as shipped (read-time computation, clean-FIN deaths read as `offline`, offline rows retained); r1 heartbeat/stale-T defaults resolved (30s/90s, one server.yaml section drives both daemons).
+
+### Fixed
+
+- PRESENCE reply framing is now byte-level: a multi-byte UTF-8 character split across TCP reads no longer corrupts resident/task fields (each complete CRLF line decodes on its own; Qodo review).
+- `apply_budgets` sanitizes `token_budget_warn_pct` (plain int 1..100, else the field default) so a directly-constructed AgentConfig can never produce a misleading budget_warning flag, and `_load_legacy_config` now runs the same warn-and-degrade budget sanitizing as the culture.yaml path (Qodo review).
+- `culture_core/cli/residents.py` exports only NAME/register/dispatch again (`render_table` -> private `_render_table`), per the command-group API convention.
+- SonarCloud: `_new_config_error` carries a precise `CultureError` return type (S112 x4) and the PRESENCE reply parsing is split into per-line handlers under the cognitive-complexity ceiling (S3776).
+
 ## [14.4.1] - 2026-07-07
 
 ### Added

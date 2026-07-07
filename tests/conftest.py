@@ -76,6 +76,22 @@ def _stub_claude_sdk_at_conftest_import():
 _stub_claude_sdk_at_conftest_import()
 
 
+# Materialize the full cultureagent daemon import tree ONCE, before any test
+# runs. tests/test_backend_sdk_hints.py's _block() purges every cultureagent
+# module from sys.modules and re-imports the chain under a meta-path finder
+# that blocks the backend SDKs. Any THIRD-PARTY module whose very first
+# import happens inside that window (it is neither purged nor tracked by
+# monkeypatch) caches its no-SDK degraded state for the rest of the worker
+# session — observed as daemon harness metrics becoming invisible to a
+# freshly installed test MeterProvider (order-dependent: CI seating hit
+# test_codex_agent_runner_records_timeout_outcome; the local replay hit the
+# claude success/error tests). Importing the full tree here guarantees every
+# transitive third-party import happens un-blocked, so the SDK-hint tests
+# can only ever create a throwaway second generation of pure cultureagent
+# modules.
+import cultureagent.clients.claude.daemon  # noqa: E402, F401
+import cultureagent.clients.codex.daemon  # noqa: E402, F401
+import cultureagent.clients.shared.base_daemon  # noqa: E402, F401
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from agentirc.config import LinkConfig, ServerConfig, TelemetryConfig  # noqa: E402

@@ -17,6 +17,7 @@ cli/
 ├── console.py           # culture console — irc-lens passthrough (reactive web console)
 ├── channel.py           # culture channel {list,read,message,who,join,part,ask,...}
 ├── bot.py               # culture bot {create,start,stop,list,inspect,archive,...}
+├── residents.py         # culture residents — live resource view (presence, token spend, budgets)
 ├── skills.py            # culture skills {install}
 └── shared/
     ├── constants.py     # Paths (DEFAULT_CONFIG, LOG_DIR), help strings

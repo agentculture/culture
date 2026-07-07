@@ -32,7 +32,7 @@ mcp = [
 
 [[package]]
 name = "agentirc-cli"
-version = "9.11.0"
+version = "9.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -43,9 +43,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9f/c5/86516359c3339bc2110384a1bfed7684d142da107bc28f448de0c64647ca/agentirc_cli-9.11.0.tar.gz", hash = "sha256:f1b7ff73df56157189206bfc4703558c61575ae5904d6feee9284c30ba2bd373", size = 555315, upload-time = "2026-07-03T06:06:01.605Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/49/e37176340115e3faffb6ad6686621933e4d483c05fe9cd773c1d28f562c5/agentirc_cli-9.12.0.tar.gz", hash = "sha256:8cb3d5e612dec68832cd7a9134bc7e4d0f95d6d21e59562814a07681148ae90f", size = 603040, upload-time = "2026-07-07T06:14:07.594Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/b4/d6692a43b119c2ac9f79c3132d0efd41e1656ecbfebb1fde0b74b079e525/agentirc_cli-9.11.0-py3-none-any.whl", hash = "sha256:082759baeef6c52eaca9b57350bcea423fb5ff9f6565d72b3a27935075661a91", size = 171805, upload-time = "2026-07-03T06:06:00.206Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/da/c38c40f9e9d19458cf3af8e35d2e017b448a10fcbeae8f9a6f47bfa5816b/agentirc_cli-9.12.0-py3-none-any.whl", hash = "sha256:2edab20b9be738cb02786ed8824d7acee7c79eefc8967fa5cdf10e8641d4b919", size = 181860, upload-time = "2026-07-07T06:14:06.039Z" },
 ]
 
 [[package]]
@@ -653,7 +653,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.4.1"
+version = "14.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },
@@ -715,16 +715,16 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agentfront", specifier = ">=0.20,<0.21" },
-    { name = "agentirc-cli", specifier = ">=9.11.0,<10" },
+    { name = "agentirc-cli", specifier = ">=9.12.0,<10" },
     { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
-    { name = "cultureagent", specifier = "~=0.12.0" },
-    { name = "cultureagent", extras = ["backend-acp"], marker = "extra == 'acp'", specifier = "~=0.12.0" },
-    { name = "cultureagent", extras = ["backend-claude"], marker = "extra == 'claude'", specifier = "~=0.12.0" },
-    { name = "cultureagent", extras = ["backend-claude", "backend-acp", "backend-copilot", "backend-colleague"], marker = "extra == 'all-backends'", specifier = "~=0.12.0" },
-    { name = "cultureagent", extras = ["backend-colleague"], marker = "extra == 'colleague'", specifier = "~=0.12.0" },
-    { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.12.0" },
+    { name = "cultureagent", specifier = "~=0.13.0" },
+    { name = "cultureagent", extras = ["backend-acp"], marker = "extra == 'acp'", specifier = "~=0.13.0" },
+    { name = "cultureagent", extras = ["backend-claude"], marker = "extra == 'claude'", specifier = "~=0.13.0" },
+    { name = "cultureagent", extras = ["backend-claude", "backend-acp", "backend-copilot", "backend-colleague"], marker = "extra == 'all-backends'", specifier = "~=0.13.0" },
+    { name = "cultureagent", extras = ["backend-colleague"], marker = "extra == 'colleague'", specifier = "~=0.13.0" },
+    { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.13.0" },
     { name = "github-copilot-sdk", marker = "extra == 'all-backends'", specifier = "==0.2.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
     { name = "irc-lens", specifier = ">=0.9.1,<1.0" },
@@ -761,7 +761,7 @@ dev = [
 
 [[package]]
 name = "cultureagent"
-version = "0.12.0"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agentirc-cli" },
@@ -772,9 +772,9 @@ dependencies = [
     { name = "opentelemetry-semantic-conventions" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/0d/1f4d10ad022c4e4031fc78fa840601a6c82ea397fd2c621a4c1c4e8316f0/cultureagent-0.12.0.tar.gz", hash = "sha256:c0c0ad154a838fe04f0f71e1076991434dbe09cee9160efef0db6196104d76c5", size = 612293, upload-time = "2026-07-02T18:44:38.787Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/29/2b5f8ef32912a2df594b3d6c6827140ed9b8c75510a1efcabc615b24cd4f/cultureagent-0.13.0.tar.gz", hash = "sha256:44e2ff3f83f48f2ac82dc665f88290a4580a57a2766a28f2be377a9cd5f63821", size = 649398, upload-time = "2026-07-07T04:51:44.681Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/b1/fccc0b5b27e93f529e75d51213f1afae13aa325ea3a373fd7a6c0555ec08/cultureagent-0.12.0-py3-none-any.whl", hash = "sha256:2dc7653cd355cfc4dfb6790c8bae1dc6d1671e454e2418c84902dc2a40eb4a25", size = 203708, upload-time = "2026-07-02T18:44:37.486Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/ab/cb3dd698945988fd2ea22cdb3f09e4f31712cf67aaef17775f74b8164a75/cultureagent-0.13.0-py3-none-any.whl", hash = "sha256:792c3fe6ed343fc5cfca16a9c3cd611ea68652464ccc6e7ce7342f21bb656609", size = 212302, upload-time = "2026-07-07T04:51:43.158Z" },
 ]
 
 [package.optional-dependencies]
