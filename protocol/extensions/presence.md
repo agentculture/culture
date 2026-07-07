@@ -47,17 +47,19 @@ The `state` field is one of six values. Each state maps to an observable harness
 | State | Harness Boundary |
 |-------|-----------------|
 | `idle` | Connected, no work in flight |
-| `listening` | Inbound message being handled — the `harness.irc.message.handle` span is open |
+| `listening` | Agent-work dispatch opened — a mention/DM past the pause/runner gates, or a poll dispatch |
 | `thinking` | LLM call in flight — the `harness.llm.call` span is open |
-| `working` | Tool execution in flight |
+| `working` | Tool execution in flight — **defined but not yet emitted** (see below) |
 | `draining` | Graceful shutdown started, finishing current work |
 | `offline` | Disconnected or `QUIT` sent |
 
 ### Transition Rules
 
-- Transitions are emitted at the **observable code boundary** that drives them: connect, message handled, LLM call open/close, tool exec, shutdown.
+- Transitions are emitted at the **observable code boundary** that drives them: connect, work dispatch, LLM call open/close, tool exec, shutdown.
+- Emission is **edge-triggered** — a `PRESENCE` line is sent on state *change*, and the heartbeat covers freshness in between. This is why `listening` is scoped to agent-work dispatch rather than literally every `harness.irc.message.handle` span: the literal reading would emit two lines per inbound protocol line (PING, numerics) — ~2x amplification on busy channels for microsecond flaps (cultureagent 0.13.0 refinement, cultureagent#47).
+- `working` is part of the contract, but as of cultureagent 0.13.0 no backend has an observable tool-execution boundary, so no emitter sends it yet (tracked upstream in cultureagent).
 - A resident never self-reports its state; the harness emits `PRESENCE` at each boundary crossing.
-- `offline` is implicit: the server transitions a resident to `offline` on disconnect or `QUIT`, without requiring a final `PRESENCE` from the client.
+- `offline` is implicit: the server transitions a resident to `offline` on disconnect or `QUIT`, without requiring a final `PRESENCE` from the client. The row is **retained** (keyed by nick, overwritten on reconnect, cleared on server restart), so "X went offline recently" stays visible in the aggregate.
 
 ## Heartbeat and Refresh Semantics
 
@@ -65,32 +67,31 @@ A resident sends `PRESENCE` periodically while in a busy state (`listening`, `th
 
 ### Refresh Interval
 
-The heartbeat interval is configurable server-side in `server.yaml`. The default value is an open tuning question (plan risk r1).
+The heartbeat interval is configurable server-side in the `presence:` section of `server.yaml` — `heartbeat_interval_seconds`, default **30** (plan risk r1, resolved: agentirc 9.12.0 adopted culture's shipped defaults verbatim, so one YAML section drives both daemons).
 
 ### Stale-Busy Watchdog
 
-A resident that last reported a busy state but misses heartbeats for a configurable stale threshold (`stale-T`) is flagged `presumed-hung` in the resource view. This catches crashed or wedged agents without their cooperation.
+A resident that last reported a busy state but misses heartbeats for a configurable stale threshold (`stale-T`) is flagged `presumed-hung` in the resource view. This catches crashed or wedged agents without their cooperation. `presumed_hung` is computed at read time: `true` iff the state is busy (`listening`, `thinking`, `working`, `draining`) **and** `now - last_refresh > stale_after` (strict); `idle` and `offline` never flag.
 
-- A `kill -9`'d resident that last reported busy is flagged `presumed-hung` within `stale-T` with zero cooperation from the dead process.
+- A busy resident that goes silent **without disconnecting** (network partition, stalled process, lost FIN) is flagged `presumed-hung` within `stale-T` with zero cooperation from the dead process. A death whose socket still closes cleanly (e.g. a `kill -9` where the kernel sends a TCP FIN) reads as `offline` instead — the retained row still shows it left.
 - A slow-but-alive resident heartbeating through a long LLM call is **not** falsely flagged.
 
-The `stale-T` value is configured server-side in `server.yaml`. The default is an open tuning question (plan risk r1).
+The `stale-T` value is `stale_after_seconds` in the same `presence:` section, default **90**. Both culture and agentirc fail fast on load if `stale_after_seconds <= heartbeat_interval_seconds` — otherwise a live resident would be flagged stale between heartbeats.
 
 ## Token Counters
 
 `tokens_in` and `tokens_out` are cumulative per-connection counters. They are sourced from the **same** counting source as the `culture.harness.llm.tokens.input` and `culture.harness.llm.tokens.output` OTel metrics — one source of truth so the mesh view and Grafana never diverge.
 
-Backends whose SDK exposes no token counts send state-only payloads omitting `tokens_in` and `tokens_out` — the same caveat the 8.6.0 harness-telemetry work applies to its token counters.
+Backends whose SDK exposes no token counts send state-only payloads omitting `tokens_in` and `tokens_out` — the same caveat the 8.6.0 harness-telemetry work applies to its token counters. As of cultureagent 0.13.0 that means `copilot`, `acp`, and `colleague` are state-only; `claude` and `codex` report counters.
 
-## Query Surface (Anticipated)
+## Query Surface (Adopted)
 
-> **Status: ANTICIPATED.** This is the query contract culture proposed to
-> agentirc in the t3 hand-off brief
-> ([agentirc#53](https://github.com/agentculture/agentirc/issues/53)). It
-> becomes authoritative once agentirc adopts or amends it; until then the
-> culture-side transport seam (`culture_core/resource_view.py`) is the only
-> code speaking it, and this section tracks the proposal, not shipped
-> server behavior.
+> **Status: ADOPTED.** Culture proposed this contract in the t3 hand-off
+> brief and agentirc adopted it **verbatim** in agentirc-cli 9.12.0
+> ([agentirc#53](https://github.com/agentculture/agentirc/issues/53)). The
+> culture-side transport seam (`culture_core/resource_view.py`) and the
+> agentirc server implementation speak the same shape; this section is now
+> shipped server behavior.
 
 To read the server's presence aggregation, a client sends:
 
@@ -108,13 +109,27 @@ PRESENCELIST :{"nick": "thor-codex", "server": "thor", "state": "idle", ...}
 PRESENCEEND :End of presence list
 ```
 
-A server without the query surface replies `421 <nick> PRESENCE :Unknown
-command` (today's agentirc), which culture's front doors surface as a
-graceful `supported: false` degrade rather than an error.
+Adopted row semantics (agentirc 9.12.0): rows are nick-sorted; an empty
+registry answers just the terminator; every row carries all nine keys
+(`nick`, `server`, `state`, `since`, `task`, `tokens_in`, `tokens_out`,
+`presumed_hung`, `last_refresh`) with `null` — never omitted — for unknown
+`task`/`tokens_*`; `since` round-trips as published; `last_refresh` is
+server-stamped ISO-8601 UTC with a `Z` suffix at second precision.
+
+A server without the query surface (agentirc-cli < 9.12.0) replies
+`421 <nick> PRESENCE :Unknown command` via the stock unknown-verb path,
+which culture's front doors surface as a graceful `supported: false`
+degrade rather than an error.
+
+Mixed-version mesh caveat: a pre-9.12 peer tolerates the federated
+`presence.update` S2S event without error, but renders it as a `#system`
+PRIVMSG until upgraded — bump linked servers together when bumping the
+floor.
 
 The publish side of the extension — the harness emitter that sends
-`PRESENCE` at each activity boundary — lands in the cultureagent sibling
-([cultureagent#47](https://github.com/agentculture/cultureagent/issues/47)).
+`PRESENCE` at each activity boundary — shipped in cultureagent 0.13.0
+([cultureagent#47](https://github.com/agentculture/cultureagent/issues/47)),
+wired once in the shared transport layer so all backends emit identically.
 
 ## Observation Only (v1)
 

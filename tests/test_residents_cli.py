@@ -7,15 +7,18 @@ Covers (task t5 of the resident-presence plan):
   by nick, budget derivation edge cases, state-only residents.
 * the human table renderer — flags column (HUNG? / BUDGET), dashes for
   missing fields.
-* graceful degrade against a REAL running server (repo rule: no mocks
-  for the server) — today's agentirc has no PRESENCE query surface
-  (plan risks r3/r4, pending agentirc#53), so the CLI must report
-  ``supported: false`` and exit 0.
+* the supported path against a REAL running server (repo rule: no mocks
+  for the server) — agentirc >= 9.12.0 answers the PRESENCE query, so the
+  CLI reports ``supported: true`` (and an empty registry: no resident has
+  published presence).
+* graceful degrade against a pre-9.12 server (scripted 421 replier): the
+  CLI must report ``supported: false`` and exit 0.
 * unreachable server — actionable CultureError-style failure, nonzero
   exit, no traceback.
-* the anticipated wire contract, exercised against a real scripted TCP
-  server speaking the PRESENCELIST / PRESENCEEND shape the agentirc#53
-  brief proposes — this is the seam t7 builds on.
+* the adopted wire contract (agentirc-cli 9.12.0 implements the shape
+  proposed in the agentirc#53 brief verbatim), exercised against a real
+  scripted TCP server speaking PRESENCELIST / PRESENCEEND — this is the
+  seam t7 builds on.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ import socket
 
 import pytest
 
-from culture_core.cli.residents import dispatch, render_table
+from culture_core.cli.residents import _render_table, dispatch
 from culture_core.config import AgentConfig, ServerConfig, ServerConnConfig
 from culture_core.resource_view import (
     PresenceUnsupportedError,
@@ -223,15 +226,30 @@ class TestBudgetDerivation:
 
     @pytest.mark.parametrize("bad", [0, True, -5])
     def test_unsanitized_budget_never_divides(self, bad):
-        """The legacy agents.yaml loader constructs AgentConfig directly and
-        bypasses budget sanitizing, so token_budget 0 / True / negatives can
-        reach the join — it must skip them (all derived fields stay None),
-        never raise ZeroDivisionError or divide by a bool."""
+        """AgentConfig objects can be constructed directly, bypassing config
+        sanitizing, so token_budget 0 / True / negatives can reach the join
+        — it must skip them (all derived fields stay None), never raise
+        ZeroDivisionError or divide by a bool."""
         resident = _resident("spark-a", tokens_in=100, tokens_out=50)
         apply_budgets([resident], [_agent("spark-a", budget=bad)])
         assert resident.token_budget is None
         assert resident.budget_used_pct is None
         assert resident.budget_warning is None
+
+    @pytest.mark.parametrize("bad", [0, -1, 101, 200, True, False])
+    def test_unsanitized_warn_pct_falls_back_to_default(self, bad):
+        """An out-of-range/bool warn-pct on a directly-constructed AgentConfig
+        must fall back to the field default (80), never produce a misleading
+        budget_warning flag (e.g. warn_pct=True would warn at 0.1% spend)."""
+        over_default = _resident("spark-a", tokens_in=850, tokens_out=0)
+        apply_budgets([over_default], [_agent("spark-a", budget=1000, warn_pct=bad)])
+        assert over_default.budget_used_pct == 85.0
+        assert over_default.budget_warning is True  # 85 >= default 80
+
+        under_default = _resident("spark-a", tokens_in=700, tokens_out=0)
+        apply_budgets([under_default], [_agent("spark-a", budget=1000, warn_pct=bad)])
+        assert under_default.budget_used_pct == 70.0
+        assert under_default.budget_warning is False  # 70 < default 80
 
 
 class TestWireParsing:
@@ -259,7 +277,7 @@ class TestWireParsing:
 
 class TestRenderTable:
     def test_flags_column_hung_and_budget(self):
-        rows = render_table(
+        rows = _render_table(
             [
                 _resident("spark-hung", state="working", presumed_hung=True),
                 _resident(
@@ -284,7 +302,7 @@ class TestRenderTable:
         assert "HUNG?" not in ok_line and "BUDGET" not in ok_line
 
     def test_both_flags_together(self):
-        rows = render_table(
+        rows = _render_table(
             [
                 _resident(
                     "spark-bad",
@@ -299,28 +317,28 @@ class TestRenderTable:
         assert "HUNG?,BUDGET" in line
 
     def test_missing_fields_render_as_dashes(self):
-        rows = render_table([_resident("spark-bare")])
+        rows = _render_table([_resident("spark-bare")])
         line = next(ln for ln in rows.splitlines() if "spark-bare" in ln)
         # state, since, task, tokens, budget-pct, flags all dashed
         assert line.split()[1:] == ["-", "-", "-", "-", "-", "-", "-"]
 
     def test_tokens_column_formats_in_out(self):
-        rows = render_table([_resident("spark-a", tokens_in=1200, tokens_out=34)])
+        rows = _render_table([_resident("spark-a", tokens_in=1200, tokens_out=34)])
         line = next(ln for ln in rows.splitlines() if "spark-a" in ln)
         assert "1200/34" in line
 
     def test_single_sided_tokens(self):
-        rows = render_table([_resident("spark-a", tokens_in=7)])
+        rows = _render_table([_resident("spark-a", tokens_in=7)])
         line = next(ln for ln in rows.splitlines() if "spark-a" in ln)
         assert "7/-" in line
 
     def test_header_names_all_columns(self):
-        header = render_table([_resident("spark-a")]).splitlines()[0]
+        header = _render_table([_resident("spark-a")]).splitlines()[0]
         for col in ("NICK", "SERVER", "STATE", "SINCE", "TASK", "TOKENS", "BUDGET", "FLAGS"):
             assert col in header
 
     def test_rows_sorted_by_nick(self):
-        rows = render_table([_resident("spark-z"), _resident("spark-a")])
+        rows = _render_table([_resident("spark-z"), _resident("spark-a")])
         lines = rows.splitlines()
         assert lines.index(next(ln for ln in lines if "spark-a" in ln)) < lines.index(
             next(ln for ln in lines if "spark-z" in ln)
@@ -328,24 +346,28 @@ class TestRenderTable:
 
 
 # ---------------------------------------------------------------------------
-# Graceful degrade against a REAL server (no PRESENCE surface today)
+# Supported path against a REAL server (agentirc >= 9.12.0 answers the query)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_fetch_raises_unsupported_against_real_server(server):
-    """agentirc replies 421 to PRESENCE today (pending agentirc#53)."""
+async def test_fetch_succeeds_against_real_server(server):
+    """agentirc >= 9.12.0 answers PRESENCE LIST (agentirc#53). No resident
+    has published presence here — including the query observer itself, which
+    never sends PRESENCE — so the registry is empty, not an error."""
     config = ServerConfig(
         server=ServerConnConfig(name="testserv", host="127.0.0.1", port=server.config.port)
     )
-    with pytest.raises(PresenceUnsupportedError):
-        await fetch_residents_async(config)
+    residents = await fetch_residents_async(config)
+    assert residents == []
 
 
 @pytest.mark.asyncio
-async def test_cli_json_degrades_to_supported_false(server, tmp_path, capsys, monkeypatch):
-    """`culture residents --json` against a presence-less server: exit 0,
-    {"supported": false, "residents": []}."""
+async def test_cli_json_reports_supported_true_against_real_server(
+    server, tmp_path, capsys, monkeypatch
+):
+    """`culture residents --json` against a real 9.12+ server: exit 0,
+    {"supported": true, "residents": []} (empty presence registry)."""
     monkeypatch.delenv("CULTURE_NICK", raising=False)
     cfg = _write_server_yaml(tmp_path, server.config.port)
     # dispatch runs asyncio.run internally — hop to a thread since this
@@ -354,7 +376,7 @@ async def test_cli_json_degrades_to_supported_false(server, tmp_path, capsys, mo
     assert code == 0
     out = capsys.readouterr().out.strip()
     payload = json.loads(out)
-    assert payload["supported"] is False
+    assert payload["supported"] is True
     assert payload["residents"] == []
     # Exactly the shared serializer's shape, byte-for-byte.
     assert list(payload) == ["supported", "generated_at", "residents"]
@@ -364,14 +386,87 @@ async def test_cli_json_degrades_to_supported_false(server, tmp_path, capsys, mo
     from datetime import datetime
 
     stamp = datetime.fromisoformat(payload["generated_at"].replace("Z", "+00:00"))
-    assert out == to_json(serialize_residents([], False, now=stamp))
+    assert out == to_json(serialize_residents([], True, now=stamp))
+
+
+# ---------------------------------------------------------------------------
+# Graceful degrade against a pre-9.12 server (stock 421 unknown-command path)
+# ---------------------------------------------------------------------------
+
+
+async def _scripted_421_server() -> tuple[asyncio.AbstractServer, int]:
+    """A real TCP listener speaking the pre-9.12 answer: 421 to PRESENCE."""
+
+    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        buffer = ""
+        nick = "*"
+        try:
+            while True:
+                data = await reader.read(4096)
+                if not data:
+                    return
+                buffer += data.decode()
+                while "\r\n" in buffer:
+                    line, buffer = buffer.split("\r\n", 1)
+                    if line.startswith("NICK "):
+                        nick = line.split(" ", 1)[1]
+                        writer.write(f":scripted 001 {nick} :Welcome\r\n".encode())
+                        await writer.drain()
+                    elif line.startswith("PRESENCE"):
+                        writer.write(f":scripted 421 {nick} PRESENCE :Unknown command\r\n".encode())
+                        await writer.drain()
+                    elif line.startswith("QUIT"):
+                        writer.close()
+                        return
+        except (ConnectionError, OSError):
+            return
+
+    srv = await asyncio.start_server(_handle, "127.0.0.1", 0)
+    port = srv.sockets[0].getsockname()[1]
+    return srv, port
 
 
 @pytest.mark.asyncio
-async def test_cli_table_degrades_with_notice(server, tmp_path, capsys, monkeypatch):
+async def test_fetch_raises_unsupported_against_pre912_server():
+    """A pre-9.12 server replies 421 to PRESENCE — surface as unsupported."""
+    srv, port = await _scripted_421_server()
+    try:
+        config = ServerConfig(server=ServerConnConfig(name="scripted", host="127.0.0.1", port=port))
+        with pytest.raises(PresenceUnsupportedError):
+            await fetch_residents_async(config)
+    finally:
+        srv.close()
+        await srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_cli_json_degrades_to_supported_false(tmp_path, capsys, monkeypatch):
+    """`culture residents --json` against a presence-less server: exit 0,
+    {"supported": false, "residents": []}."""
     monkeypatch.delenv("CULTURE_NICK", raising=False)
-    cfg = _write_server_yaml(tmp_path, server.config.port)
-    code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=False))
+    srv, port = await _scripted_421_server()
+    try:
+        cfg = _write_server_yaml(tmp_path, port)
+        code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=True))
+    finally:
+        srv.close()
+        await srv.wait_closed()
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["supported"] is False
+    assert payload["residents"] == []
+
+
+@pytest.mark.asyncio
+async def test_cli_table_degrades_with_notice(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CULTURE_NICK", raising=False)
+    srv, port = await _scripted_421_server()
+    try:
+        cfg = _write_server_yaml(tmp_path, port)
+        code = await asyncio.to_thread(_run_dispatch, _make_args(cfg, json_mode=False))
+    finally:
+        srv.close()
+        await srv.wait_closed()
     assert code == 0
     out = capsys.readouterr().out
     assert "does not support PRESENCE" in out
@@ -455,17 +550,18 @@ def test_cli_config_validation_error_honors_json_contract(tmp_path, capsys, monk
 
 
 # ---------------------------------------------------------------------------
-# Anticipated wire contract (the seam t7 builds on) — real scripted TCP server
+# Adopted wire contract (the seam t7 builds on) — real scripted TCP server
 # ---------------------------------------------------------------------------
 
 
 async def _scripted_presence_server(records: list[dict]) -> tuple[asyncio.AbstractServer, int]:
-    """A real TCP listener speaking the anticipated PRESENCE query wire form.
+    """A real TCP listener speaking the PRESENCE query wire form.
 
     Registers any client (001 on NICK) and answers PRESENCE LIST with one
-    PRESENCELIST line per record, then PRESENCEEND. This is the wire shape
-    proposed to agentirc in the t3 hand-off brief (agentirc#53); the seam
-    function is the only culture-side code that touches it.
+    PRESENCELIST line per record, then PRESENCEEND — the shape proposed in
+    the t3 hand-off brief and adopted verbatim by agentirc-cli 9.12.0
+    (agentirc#53). Payloads are raw UTF-8 JSON per the wire contract
+    (``ensure_ascii=False``), matching what the real server emits.
     """
 
     async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -484,7 +580,8 @@ async def _scripted_presence_server(records: list[dict]) -> tuple[asyncio.Abstra
                         await writer.drain()
                     elif line.startswith("PRESENCE LIST"):
                         for rec in records:
-                            writer.write(f"PRESENCELIST :{json.dumps(rec)}\r\n".encode())
+                            payload = json.dumps(rec, ensure_ascii=False)
+                            writer.write(f"PRESENCELIST :{payload}\r\n".encode())
                         writer.write(b"PRESENCEEND :End of presence list\r\n")
                         await writer.drain()
                     elif line.startswith("QUIT"):
@@ -540,6 +637,44 @@ async def test_fetch_parses_anticipated_wire_and_joins_budgets():
     assert codex.state == "idle"
     assert codex.tokens_in is None
     assert codex.budget_warning is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_preserves_non_ascii_payload():
+    """The payload contract is UTF-8 JSON — task text with real multi-byte
+    characters must round-trip the wire uncorrupted."""
+    task_text = "café ☕ — résumé"
+    srv, port = await _scripted_presence_server(
+        [{"nick": "spark-a", "state": "working", "task": task_text}]
+    )
+    try:
+        config = ServerConfig(server=ServerConnConfig(name="scripted", host="127.0.0.1", port=port))
+        residents = await fetch_residents_async(config)
+    finally:
+        srv.close()
+        await srv.wait_closed()
+    assert residents[0].task == task_text
+
+
+@pytest.mark.asyncio
+async def test_utf8_char_split_across_reads_survives():
+    """A multi-byte UTF-8 character split across TCP read boundaries must
+    never be corrupted: framing is byte-level, decoding per complete line
+    (the old per-chunk ``decode(errors="replace")`` mangled the char)."""
+    from culture_core.resource_view import _drain_presence_buffer
+
+    payload = json.dumps({"nick": "spark-a", "task": "café"}, ensure_ascii=False).encode()
+    wire = b"PRESENCELIST :" + payload + b"\r\nPRESENCEEND :End of presence list\r\n"
+    cut = wire.index(b"\xc3") + 1  # mid-character: between the two bytes of 'é'
+    records: list[dict] = []
+
+    done, remainder = await _drain_presence_buffer(wire[:cut], records, writer=None)
+    assert done is False and records == []  # no complete line yet
+
+    done, remainder = await _drain_presence_buffer(remainder + wire[cut:], records, writer=None)
+    assert done is True
+    assert remainder == b""
+    assert records == [{"nick": "spark-a", "task": "café"}]
 
 
 # ---------------------------------------------------------------------------

@@ -6,11 +6,11 @@ the server-side presence aggregation through the shared seam in
 ``--json``, as exactly the canonical ``serialize_residents`` payload the
 t7 HTTP endpoint shares byte-for-byte.
 
-Degrade contract (plan risks r3/r4): today's agentirc has no PRESENCE
-query surface (pending agentirc#53), so against a live server this verb
-reports "not supported" and exits 0 — that is a known mesh state, not an
-error. Only an unreachable server is an error (nonzero, CultureError
-style, no traceback).
+Degrade contract (plan risks r3/r4): the PRESENCE query surface shipped
+in agentirc-cli 9.12.0 (agentirc#53). Against a server still running an
+older agentirc this verb reports "not supported" and exits 0 — that is a
+known mesh state, not an error. Only an unreachable server is an error
+(nonzero, CultureError style, no traceback).
 """
 
 from __future__ import annotations
@@ -39,8 +39,8 @@ NAME = "residents"
 _MISSING = "-"
 
 _UNSUPPORTED_NOTICE = (
-    "server does not support PRESENCE — needs agentirc release per "
-    "agentirc#53, then culture floor bump"
+    "server does not support PRESENCE — upgrade the mesh server to "
+    "agentirc-cli >= 9.12.0 and restart it (agentirc#53)"
 )
 
 
@@ -106,7 +106,7 @@ def _row(resident: Resident) -> tuple[str, ...]:
     )
 
 
-def render_table(residents: list[Resident]) -> str:
+def _render_table(residents: list[Resident]) -> str:
     """Render the human table — readable even for state-only residents.
 
     Rows are sorted by nick (same order as the JSON payload); every missing
@@ -178,4 +178,4 @@ def dispatch(args: argparse.Namespace) -> None:
         print("No residents connected.")
         return
 
-    print(render_table(residents))
+    print(_render_table(residents))

@@ -456,8 +456,8 @@ culture residents --json     # canonical JSON payload (shared with /residents.js
 | `--json` | off | Emit the canonical resource-view JSON payload |
 | `--config` | `~/.culture/server.yaml` | Config file path |
 
-Against a server without the PRESENCE query surface (today's agentirc,
-pending agentirc#53) the verb reports "not supported" and exits 0 — a
+Against a server without the PRESENCE query surface (agentirc-cli
+< 9.12.0, agentirc#53) the verb reports "not supported" and exits 0 — a
 known mesh state, not an error. An unreachable server, a stalled presence
 stream, or an unreadable/invalid config exits nonzero with the
 `error:`/`hint:` pair (`{code, message, remediation}` under `--json`).

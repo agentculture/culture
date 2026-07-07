@@ -8,23 +8,17 @@ front doors consume it and MUST stay byte-compatible:
 * the upcoming resource-view HTTP endpoint for irc-lens (plan task t7),
   which reuses :func:`serialize_residents` for its payload.
 
-Transport status (plan risks r3/r4)
------------------------------------
+Transport status (plan risks r3/r4 — RESOLVED)
+----------------------------------------------
 
-The agentirc IRCd does **not** implement the PRESENCE query surface yet —
-the server-side aggregation is the subject of the t3 hand-off brief
-(agentirc#53). Until that lands and culture's agentirc floor is bumped,
-every real server answers the query probe with ``421 Unknown command``,
-which this module surfaces as :class:`PresenceUnsupportedError` so the
-front doors can degrade gracefully (``supported: false``) instead of
-failing.
-
-The transport is deliberately isolated in ONE seam function,
-:func:`_query_presence_wire`, speaking the *anticipated* wire shape
-(``PRESENCE LIST`` -> ``PRESENCELIST :<json>`` lines -> ``PRESENCEEND``).
-When agentirc answers the brief, only that function changes; the
-:class:`Resident` model, the budget join, and the canonical serializer
-stay put.
+agentirc adopted culture's proposed wire shape **verbatim** in
+agentirc-cli 9.12.0 (agentirc#53): ``PRESENCE LIST`` ->
+``PRESENCELIST :<json>`` lines -> ``PRESENCEEND``, with a pre-9.12
+server answering the probe ``421 Unknown command``. The transport stays
+isolated in ONE seam function, :func:`_query_presence_wire`; a ``421``
+still surfaces as :class:`PresenceUnsupportedError` so the front doors
+degrade gracefully (``supported: false``) against a not-yet-upgraded
+server instead of failing.
 """
 
 from __future__ import annotations
@@ -54,6 +48,10 @@ _DEFAULT_CONFIG = "~/.culture/server.yaml"
 UNREACHABLE_MESSAGE = "cannot connect to IRC server. Is the server running?"
 UNREACHABLE_REMEDIATION = "start it with: culture server start"
 
+# The AgentConfig field default, referenced (not copied) so the two can
+# never drift; apply_budgets falls back to it for unsanitized warn-pcts.
+_DEFAULT_WARN_PCT: int = AgentConfig.__dataclass_fields__["token_budget_warn_pct"].default
+
 
 def to_json(payload: dict) -> str:
     """THE single canonical ``json.dumps`` site for the resource view.
@@ -69,10 +67,10 @@ def to_json(payload: dict) -> str:
 class PresenceUnsupportedError(Exception):
     """The server is reachable but has no PRESENCE query surface.
 
-    Raised while the aggregation side of the PRESENCE extension is pending
-    in agentirc (agentirc#53). Front doors catch this and degrade to a
+    Raised when the server predates the PRESENCE aggregation (agentirc-cli
+    < 9.12.0, agentirc#53). Front doors catch this and degrade to a
     ``supported: false`` resource view with exit/status success — a mesh
-    without presence support is a known state, not an error.
+    on a not-yet-upgraded server is a known state, not an error.
     """
 
 
@@ -203,10 +201,11 @@ def apply_budgets(residents: Iterable[Resident], agents: Iterable[AgentConfig]) 
     (docs/resident-presence.md).
 
     Budgets that are not a real int >= 1 are skipped entirely (all derived
-    fields stay ``None``): the legacy agents.yaml loader constructs
-    ``AgentConfig`` directly and bypasses the culture.yaml budget
-    sanitizing, so ``token_budget: 0`` (or a bool, or a negative) can reach
-    this join — it must never reach the division below.
+    fields stay ``None``), and a warn-pct outside 1..100 (or a bool) falls
+    back to the field default: config loading sanitizes both fields, but
+    ``AgentConfig`` objects can also be constructed directly (tests, future
+    callers), and an unsanitized value must never reach the division or
+    produce a misleading ``budget_warning`` flag.
     """
     by_nick = {agent.nick: agent for agent in agents if agent.nick}
     for resident in residents:
@@ -221,24 +220,27 @@ def apply_budgets(residents: Iterable[Resident], agents: Iterable[AgentConfig]) 
             continue  # state-only backend: budget known, spend unknowable
         spend = (resident.tokens_in or 0) + (resident.tokens_out or 0)
         resident.budget_used_pct = round(spend * 100.0 / budget, 1)
-        resident.budget_warning = resident.budget_used_pct >= agent.token_budget_warn_pct
+        warn_pct = agent.token_budget_warn_pct
+        if not isinstance(warn_pct, int) or isinstance(warn_pct, bool) or not 1 <= warn_pct <= 100:
+            warn_pct = _DEFAULT_WARN_PCT  # see docstring
+        resident.budget_warning = resident.budget_used_pct >= warn_pct
 
 
 async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
     """THE transport seam — query the server for the presence aggregation.
 
-    Anticipated wire contract (proposed to agentirc in the t3 brief,
-    agentirc#53 — subject to change when the brief is answered; ONLY this
-    function should need to change):
+    Wire contract (proposed in the t3 brief, adopted verbatim by agentirc
+    in agentirc-cli 9.12.0 — agentirc#53):
 
     * client sends ``PRESENCE LIST`` after registering;
     * server replies with one ``PRESENCELIST :<json resident object>`` line
-      per resident, terminated by ``PRESENCEEND``;
-    * a server without the surface replies ``421 <nick> PRESENCE :Unknown
-      command`` (today's agentirc), raised here as
-      :class:`PresenceUnsupportedError`. A server that stays silent on the
-      probe or drops the connection **before any record arrives** is
-      treated the same way — reachable, but no presence support;
+      per resident (nick-sorted, all nine keys always present), terminated
+      by ``PRESENCEEND``;
+    * a pre-9.12 server replies ``421 <nick> PRESENCE :Unknown command``,
+      raised here as :class:`PresenceUnsupportedError`. A server that stays
+      silent on the probe or drops the connection **before any record
+      arrives** is treated the same way — reachable, but no presence
+      support;
     * a timeout or connection close **mid-stream** — after ``PRESENCELIST``
       records were already received — raises ``ConnectionError`` instead:
       that server clearly speaks the surface but stalled, and classifying
@@ -253,7 +255,7 @@ async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
     try:
         writer.write(b"PRESENCE LIST\r\n")
         await writer.drain()
-        buffer = ""
+        buffer = b""
         while True:
             try:
                 data = await asyncio.wait_for(reader.read(4096), timeout=RECV_TIMEOUT)
@@ -269,7 +271,7 @@ async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
                 raise PresenceUnsupportedError(
                     "server closed the connection during the PRESENCE query"
                 )
-            buffer += data.decode(errors="replace")
+            buffer += data
             done, buffer = await _drain_presence_buffer(buffer, records, writer)
             if done:
                 return records
@@ -278,33 +280,50 @@ async def _query_presence_wire(observer: IRCObserver) -> list[dict]:
 
 
 async def _drain_presence_buffer(
-    buffer: str, records: list[dict], writer: asyncio.StreamWriter
-) -> tuple[bool, str]:
-    """Consume complete lines from *buffer*. Returns (done, remainder)."""
-    while "\r\n" in buffer:
-        line, buffer = buffer.split("\r\n", 1)
+    buffer: bytes, records: list[dict], writer: asyncio.StreamWriter
+) -> tuple[bool, bytes]:
+    """Consume complete CRLF-framed lines from *buffer*. Returns (done, remainder).
+
+    Framing happens at the **byte** level and each complete line is decoded
+    on its own: the payload contract is UTF-8 JSON, and a multi-byte
+    character split across TCP reads must never be corrupted by decoding a
+    partial chunk.
+    """
+    while b"\r\n" in buffer:
+        raw_line, buffer = buffer.split(b"\r\n", 1)
+        line = raw_line.decode(errors="replace")
         if not line.strip():
             continue
-        msg = Message.parse(line)
-        if msg.command == "PING":
-            token = msg.params[0] if msg.params else ""
-            writer.write(f"PONG :{token}\r\n".encode())
-            await writer.drain()
-            continue
-        if msg.command == "421" and "PRESENCE" in msg.params:
-            raise PresenceUnsupportedError(
-                "server replied '421 Unknown command' to the PRESENCE query"
-            )
-        if msg.command == "PRESENCEEND":
+        if await _handle_presence_line(Message.parse(line), records, writer):
             return True, buffer
-        if msg.command == "PRESENCELIST" and msg.params:
-            try:
-                parsed = json.loads(msg.params[-1])
-            except ValueError:
-                continue  # malformed record: skip, never crash the view
-            if isinstance(parsed, dict) and parsed.get("nick"):
-                records.append(parsed)
     return False, buffer
+
+
+async def _handle_presence_line(
+    msg: Message, records: list[dict], writer: asyncio.StreamWriter
+) -> bool:
+    """Handle one parsed line of the PRESENCE reply stream. True when done."""
+    if msg.command == "PING":
+        token = msg.params[0] if msg.params else ""
+        writer.write(f"PONG :{token}\r\n".encode())
+        await writer.drain()
+    elif msg.command == "421" and "PRESENCE" in msg.params:
+        raise PresenceUnsupportedError("server replied '421 Unknown command' to the PRESENCE query")
+    elif msg.command == "PRESENCEEND":
+        return True
+    elif msg.command == "PRESENCELIST" and msg.params:
+        _append_presence_record(msg.params[-1], records)
+    return False
+
+
+def _append_presence_record(payload: str, records: list[dict]) -> None:
+    """Parse one PRESENCELIST payload; skip malformed records, never crash."""
+    try:
+        parsed = json.loads(payload)
+    except ValueError:
+        return
+    if isinstance(parsed, dict) and parsed.get("nick"):
+        records.append(parsed)
 
 
 async def fetch_residents_async(

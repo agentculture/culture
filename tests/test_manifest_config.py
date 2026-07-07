@@ -504,6 +504,44 @@ def test_load_legacy_config_empty_agents(tmpdir):
     assert config.agents == []
 
 
+def test_load_legacy_config_sanitizes_budget_fields(tmpdir, caplog):
+    """_load_legacy_config runs the same warn-and-degrade budget sanitizing
+    as the culture.yaml path: invalid values warn (naming the legacy file)
+    and reset (budget -> None, warn-pct -> default), and the agent still
+    loads — a budget typo never drops it or leaks into the resource view."""
+    import logging
+
+    from culture_core.config import AgentConfig, _load_legacy_config
+
+    legacy_path = os.path.join(tmpdir, "agents.yaml")
+    with open(legacy_path, "w", encoding="utf-8") as f:
+        f.write(
+            yaml.safe_dump(
+                {
+                    "server": {"name": "spark"},
+                    "agents": [
+                        {
+                            "nick": "spark-ada",
+                            "directory": "/tmp/ada",
+                            "token_budget": 0,
+                            "token_budget_warn_pct": 200,
+                        }
+                    ],
+                }
+            )
+        )
+
+    with caplog.at_level(logging.WARNING, logger="culture"):
+        config = _load_legacy_config(legacy_path)
+
+    assert len(config.agents) == 1  # never dropped over a budget typo
+    agent = config.agents[0]
+    assert agent.token_budget is None
+    assert agent.token_budget_warn_pct == AgentConfig().token_budget_warn_pct
+    assert "token_budget" in caplog.text
+    assert str(legacy_path) in caplog.text
+
+
 def test_archive_manifest_server_with_extra_unrelated_agent_in_directory(tmpdir):
     """A culture.yaml may contain agents for multiple suffixes; archive only
     flips the ones whose suffix matches a manifest entry."""

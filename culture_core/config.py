@@ -12,11 +12,15 @@ import re
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from agentirc.config import TelemetryConfig
 
 from culture_core._constants import DEFAULT_TURN_TIMEOUT_SECONDS
+
+if TYPE_CHECKING:  # runtime import would be circular — see _new_config_error
+    from culture_core.cli._errors import CultureError
 
 logger = logging.getLogger("culture")
 
@@ -169,11 +173,12 @@ _KNOWN_AGENT_FIELDS = {f.name for f in AgentConfig.__dataclass_fields__.values()
 }
 
 
-def _new_config_error(message: str, remediation: str) -> Exception:
+def _new_config_error(message: str, remediation: str) -> CultureError:
     """Build a :class:`CultureError` for an invalid config value.
 
     Imported lazily: ``culture_core.cli`` imports this module at load time,
-    so a module-level import here would be circular.
+    so a module-level import here would be circular (the typing-only import
+    above never runs at runtime).
     """
     from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 
@@ -461,7 +466,12 @@ def _load_legacy_config(path: str | Path) -> ServerConfig:
                 known_fields[k] = v
             else:
                 extras[k] = v
-        agents.append(AgentConfig(**known_fields, extras=extras))
+        agent = AgentConfig(**known_fields, extras=extras)
+        # Same warn-and-degrade sanitizing the culture.yaml path gets in
+        # resolve_agents — a budget typo in a legacy manifest must neither
+        # drop the agent nor leak an invalid value into the resource view.
+        _validate_agent_budget(agent, str(path))
+        agents.append(agent)
 
     return ServerConfig(
         server=server,

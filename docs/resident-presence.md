@@ -10,6 +10,22 @@ stale-busy watchdog semantics, S2S propagation) is defined in
 [protocol/extensions/presence.md](../protocol/extensions/presence.md). This
 page documents the engine-side configuration surface.
 
+## Version floors
+
+The live view needs all three legs deployed (culture pins the floors as of
+14.5.0):
+
+| Component | Floor | Ships |
+|-----------|-------|-------|
+| culture | 14.5.0 | `culture residents`, `/residents.json`, config surface |
+| agentirc-cli | 9.12.0 | PRESENCE verb, aggregation, S2S, watchdog, query surface (agentirc#53) |
+| cultureagent | 0.13.0 | shared-harness emitter, heartbeat, token counters (cultureagent#47) |
+
+Against a server still on an older agentirc, both read surfaces degrade to
+`supported: false` (a known mesh state — see
+[Exit behavior](#exit-behavior)); restart the server and agents on the new
+versions to light the view up.
+
 ## Configuration
 
 ### Per-agent token budget (culture.yaml)
@@ -65,9 +81,11 @@ presence:
   stale_after_seconds: 90
 ```
 
-When the section is absent, the defaults above apply. The defaults are open
-tuning values (plan risk r1) — expect them to move once the mesh gathers real
-heartbeat data. Invalid values (non-positive, non-integer, stale-T not
+When the section is absent, the defaults above apply. agentirc 9.12.0
+adopted these defaults verbatim and reads the **same** `presence:` section
+(plan risk r1, resolved) — one YAML drives both daemons. They may still be
+retuned once the mesh gathers real heartbeat data. Invalid values
+(non-positive, non-integer, stale-T not
 strictly greater than the heartbeat interval, a non-mapping `presence:`
 value, or an unknown key in the section) raise an actionable `CultureError`
 at load time — mesh policy fails fast by design, unlike the warn-only
@@ -84,17 +102,19 @@ a fresh counter, and the used-percentage starts over from zero. Treat
 `token_budget` as "tokens per UTC day" when configuring it, but read the
 shipped percentage as *spend this connection*.
 
-**Target (future — lands with the server-side aggregation, agentirc#53):**
-token spend will account **per UTC day**, each resident's tally resetting at
-00:00 UTC. The day's tally will be accumulated **server-side** from the
-cumulative counters carried by successive `PRESENCE` reports: the server
-will take the delta between consecutive reports and add it to the
-resident's running total for the current UTC day. Because that accumulated
-total will live on the server — not in the agent process — the tally will
-**survive an agent restart within the day**: a fresh connection starts a
-new cumulative counter baseline, and its deltas keep adding to the same
-daily total. Until that lands, the previous paragraph is the honest
-contract.
+**Target (future follow-up — not in agentirc 9.12.0):** token spend will
+account **per UTC day**, each resident's tally resetting at 00:00 UTC. The
+day's tally will be accumulated **server-side** from the cumulative
+counters carried by successive `PRESENCE` reports: the server will take
+the delta between consecutive reports and add it to the resident's running
+total for the current UTC day. Because that accumulated total will live on
+the server — not in the agent process — the tally will **survive an agent
+restart within the day**: a fresh connection starts a new cumulative
+counter baseline, and its deltas keep adding to the same daily total. The
+9.12.0 aggregation shipped the cumulative-per-connection semantics above
+(rows carry what the resident publishes); the per-day tally remains an
+unscheduled follow-up, and until it lands the previous paragraph is the
+honest contract.
 
 ### Warn-only, never enforced
 
@@ -143,14 +163,15 @@ emits, so the two surfaces never drift.
 | Situation | Table mode | `--json` | Exit |
 |-----------|-----------|----------|------|
 | Server reachable, presence supported | table (or `No residents connected.`) | full payload, `"supported": true` | 0 |
-| Server reachable, **no PRESENCE support** | notice: `server does not support PRESENCE — needs agentirc release per agentirc#53, then culture floor bump` | `{"supported": false, ..., "residents": []}` | 0 |
+| Server reachable, **no PRESENCE support** | notice: `server does not support PRESENCE — upgrade the mesh server to agentirc-cli >= 9.12.0 and restart it (agentirc#53)` | `{"supported": false, ..., "residents": []}` | 0 |
 | Server unreachable (or presence stream stalled mid-stream) | `error:` + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
 | Server config unreadable or invalid | `error: cannot read server config at <path>` (or the validation error) + `hint:` on stderr | `{code, message, remediation}` on stderr | nonzero |
 
 A presence-less server is a **known mesh state, not an error**: the
-agentirc IRCd does not implement the PRESENCE query surface yet (plan
-risks r3/r4 — pending the t3 hand-off brief, agentirc#53, then a culture
-floor bump). The transport seam raises
+PRESENCE query surface shipped in agentirc-cli 9.12.0 (agentirc#53; plan
+risks r3/r4, resolved), so a server still running an older agentirc — or
+one not yet restarted onto the new version — has no surface to answer
+with. The transport seam raises
 `culture_core.resource_view.PresenceUnsupportedError` when the server
 answers the probe with `421` — or stays silent / closes the connection
 **before any record arrives** — and both front doors (the CLI and the
@@ -170,8 +191,9 @@ never misreported as "cannot connect to IRC server" — honoring the
 `--json` error contract in both cases.
 
 The transport lives behind a single seam function in
-`culture_core/resource_view.py` and is the only code that changes when
-agentirc answers the brief. No failure mode prints a traceback.
+`culture_core/resource_view.py` — the shape it speaks was adopted verbatim
+by agentirc-cli 9.12.0, and any future wire change stays confined to that
+one function. No failure mode prints a traceback.
 
 ## Endpoint
 
@@ -193,7 +215,7 @@ surfaces emit exactly `json.dumps` of the one canonical serializer,
 | Situation | Status | Body |
 |-----------|--------|------|
 | Server reachable, presence supported | `200` | canonical payload, `"supported": true` |
-| Server reachable, **no PRESENCE support** (`PresenceUnsupportedError` from the seam) | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (pending agentirc#53) |
+| Server reachable, **no PRESENCE support** (`PresenceUnsupportedError` from the seam) | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (server predates agentirc-cli 9.12.0) |
 | Culture server unreachable (or presence stream stalled mid-stream) | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
 | Unexpected internal error | `500` | `{"code": 500, "message": ..., "remediation": ...}` — defensive last resort, still structured JSON |
 
@@ -254,7 +276,7 @@ Top-level fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported` | boolean | `false` while the connected server has no PRESENCE query surface (pending agentirc#53); `residents` is then always `[]`. |
+| `supported` | boolean | `false` when the connected server has no PRESENCE query surface (agentirc-cli < 9.12.0); `residents` is then always `[]`. |
 | `generated_at` | string | ISO-8601 UTC timestamp (`...Z`) of when the payload was built. |
 | `residents` | array | One record per resident, **sorted by `nick`**, keys always present and in the fixed order below. |
 
