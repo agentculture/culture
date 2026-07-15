@@ -158,8 +158,10 @@ LLM-proposed claims there, as always.
 ## Provenance
 
 This is a **first-party** skill — its origin is `agentculture/devague`, the
-*fourth* in the outbound family after `/think`, `/spec-to-plan`, and
-`/assign-to-workforce`, covering the pre-frame exploration leg. guildmaster
-pulls it from here and broadcasts it to the AgentCulture mesh. The
+*fourth* authored in the outbound family (after `/think`, `/spec-to-plan`, and
+`/assign-to-workforce`) but the **opening leg** of the flow, covering the
+pre-frame exploration that runs before `/think`. guildmaster pulls it from here
+and broadcasts it to the AgentCulture mesh; because devague is upstream, it is
+**never re-vendored back** from guildmaster's re-broadcast copy. The
 `cite, don't import` policy still holds: downstream repos copy it, they don't
 symlink or depend on it. See `docs/skill-sources.md`.
