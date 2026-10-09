@@ -79,6 +79,8 @@
   - honesty: Choosing Guest mode with an approved email and with an unknown email produces the same screen and the same email template
 - The Terms of Service and Privacy Policy must include: (a) guests' agreement that the owner may use the data they provide; (b) guests' right to request deletion of their data; (c) an obligation to behave respectfully toward the owner, the system, the agents, and other users; (d) a ban on NSFW content; (e) that violating the terms leads to an immediate block
   - honesty: The published /terms and /privacy pages contain each of clauses (a)-(e) in plain words, and the consent checkbox links to both
+- NSFW is enforced, not just forbidden: sbx-ask declines NSFW requests and flags them to the owner, and a flagged guest can be blocked in one command
+  - honesty: An NSFW request to sbx-ask gets a refusal and produces an owner-visible flag naming the guest; one admin command blocks that guest, dropping their session within 1 minute
 
 ## Honesty conditions
 

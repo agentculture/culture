@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T16:38:03Z",
+  "updated": "2026-10-09T16:41:40Z",
   "claims": [
     {
       "id": "c1",
@@ -1259,6 +1259,25 @@
       "links": [],
       "instruction": "",
       "revisions": []
+    },
+    {
+      "id": "c59",
+      "kind": "requirement",
+      "text": "NSFW is enforced, not just forbidden: sbx-ask declines NSFW requests and flags them to the owner, and a flagged guest can be blocked in one command",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h51",
+          "text": "An NSFW request to sbx-ask gets a refusal and produces an owner-visible flag naming the guest; one admin command blocks that guest, dropping their session within 1 minute",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
     }
   ],
   "open_vagueness": [
@@ -1632,7 +1651,7 @@
       "behavior": "returns a real-mesh session only for a verified Access JWT (header or CF_Authorization cookie) whose email is on the approved list; every other request resolves to guest or anonymous",
       "source_text": "irc-lens recognizes two tiers on one site: 'approved' (Cloudflare Access JWT, email on the approved list) and 'guest' (no JWT; self-declared email + nickname, identified by IP + email); the role decides which IRCd a session connects to",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o2",
@@ -1641,7 +1660,7 @@
       "behavior": "a guest-tier session only ever connects to the sandbox IRCd host:port; it never opens a connection to the spark IRCd (:6667)",
       "source_text": "The real console stays reachable only by approved users through SSO; guest traffic never reaches culture-server-spark (:6667) or the real mesh",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o3",
@@ -1650,7 +1669,7 @@
       "behavior": "binds 127.0.0.1 only and starts with no --link and no --mesh-config",
       "source_text": "Guests never connect to the real spark IRCd: the sandbox is a separate, unlinked culture IRCd bound to 127.0.0.1 \u2014 agentirc has no join ACL, ban/invite/key modes, opers, or flood control, so confinement cannot be done inside a shared IRCd",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o4",
@@ -1659,7 +1678,7 @@
       "behavior": "status code, body, and timing are indistinguishable for approved vs unknown emails; any sign-in failure returns the single error 'Email or password is wrong'",
       "source_text": "The entry flow does not reveal membership: unknown emails, approved emails, and wrong passwords get the same window, the same single error ('Email or password is wrong'), and indistinguishable response timing; password attempts are rate-limited per IP and per email",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o5",
@@ -1668,7 +1687,7 @@
       "behavior": "sends the same template, from the same sender, for every address that chooses Guest mode, regardless of approval",
       "source_text": "Token emails go out for every address that chooses Guest mode, with identical wording and timing whether or not the address is approved, so the token step leaks no membership (c45)",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o6",
@@ -1677,7 +1696,7 @@
       "behavior": "accepts a token once, rejects it after 15 minutes, and rate-limits attempts per email and per IP",
       "source_text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance, then a one-time token emailed to that address must be entered before sandbox access; no SSO; a guest is identified by their verified email (+ IP for rate limits and bans)",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o7",
@@ -1686,7 +1705,7 @@
       "behavior": "stores only argon2id (or equivalent slow salted) hashes; a correct password without a valid Access login opens no real-mesh route",
       "source_text": "Approved users have a site password stored only as a slow salted hash (e.g. argon2id) in the front site's store; the password is a pre-check before SSO \u2014 Cloudflare Access on /login remains the real gate for the real mesh",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o8",
@@ -1695,7 +1714,7 @@
       "behavior": "respond only to a guest session holding a consent record for the current Terms + Privacy version; otherwise redirect to the consent step",
       "source_text": "Guests must accept a Terms of Service (behave, be respectful) and a Privacy Policy (owner may use data guests provide) before getting any sandbox access",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o9",
@@ -1704,7 +1723,7 @@
       "behavior": "reject cross-site requests (SameSite=Strict cookie plus Origin/CSRF-token check) with 403 and no side effect",
       "source_text": "Guest sessions are carried by a server-issued signed cookie (HttpOnly, Secure, SameSite=Strict, short expiry); every state-changing route (POST /input, uploads, consent) rejects cross-site requests via SameSite plus an Origin/CSRF-token check \u2014 for guests and approved users alike",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o10",
@@ -1713,7 +1732,7 @@
       "behavior": "when off, guest routes 404 and auth behaves exactly as today (approved allowlist, non-allowlisted 403)",
       "source_text": "Guest mode ships behind a config switch (default off); switching it off restores exactly today's behavior \u2014 approved-only access, guest routes 404 \u2014 without a redeploy of the approved path, and doubles as the kill switch during abuse",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o11",
@@ -1722,7 +1741,7 @@
       "behavior": "every chat completion request carries no tools field (or only read-only tools rooted in the sandbox knowledge dir)",
       "source_text": "The sandbox agent has no bash/shell, write, or network tools; it may use read-only tools, but only over knowledge held inside the sandbox (a curated culture docs/code copy), never the host filesystem or the real mesh",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o12",
@@ -1731,7 +1750,7 @@
       "behavior": "sends chat_template_kwargs.enable_thinking=false, a short-answer instruction, and max_tokens <= 700; admits at most ~5 active guests and reports queue position to the rest",
       "source_text": "Guest model traffic goes through the lobes gateway with thinking disabled and a short-answer instruction: cortex-spark2 today, with more models to be added (e.g. AWS gpt-6-luna) to spread load; its own gateway key, single-flight per model, capped max_tokens, per-guest (IP + email) rate limits, at most ~5 active guests with a visible queue",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o13",
@@ -1740,7 +1759,7 @@
       "behavior": "after token re-verification removes that guest's messages, uploads, and profile from the sandbox store and keeps only the deletion record",
       "source_text": "A verified guest can request deletion of the data they input: after re-verifying their email with a fresh token, their messages, uploads, and consent-linked profile are removed from the sandbox store within a stated period; the consent record of the request itself is kept as proof",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o14",
@@ -1749,7 +1768,7 @@
       "behavior": "emits no email, IP, or nick-to-person mapping, and strips PII from free text",
       "source_text": "Published guest data has user PII removed (email, IP, and anything identifying them)",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     },
     {
       "id": "o15",
@@ -1758,7 +1777,7 @@
       "behavior": "a banned email or IP is refused at entry and its active sandbox session is dropped within 1 minute",
       "source_text": "The owner can ban a guest by email and/or IP in the guest store, blocking re-entry and dropping their active sandbox session, without touching the mesh or Cloudflare",
       "origin": "llm",
-      "status": "proposed"
+      "status": "approved"
     }
   ]
 }
