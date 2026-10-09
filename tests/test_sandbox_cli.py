@@ -18,9 +18,6 @@ def test_sandbox_agent_bundle_from_via_cli(tmp_path, capsys, monkeypatch):
     cfg.write_text(f"knowledge_dir: {tmp_path / 'kb'}\n")
     argv = ["culture", "sandbox", "agent", "--config", str(cfg), "--bundle-from", str(repo)]
     monkeypatch.setattr(sys, "argv", argv)
-    try:
-        culture_main()
-    except SystemExit as exc:  # pragma: no cover - only on failure
-        pytest.fail(f"culture sandbox agent exited {exc.code}")
+    culture_main()
     assert "bundled 2 files" in capsys.readouterr().out
     assert (tmp_path / "kb" / "README.md").exists()

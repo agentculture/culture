@@ -84,13 +84,15 @@ def test_cli_install_standalone_writes_unit_without_mesh_yaml(monkeypatch, capsy
     assert captured["name"] == "culture-server-sbx"
     assert _flag(cmd, "--host") == "127.0.0.1"
     assert _flag(cmd, "--data-dir") == os.path.expanduser("~/.culture/data-sbx")
-    assert "--link" not in cmd and "--mesh-config" not in cmd
+    assert "--link" not in cmd
+    assert "--mesh-config" not in cmd
     assert "Installed culture-server-sbx" in capsys.readouterr().out
 
 
 def test_cli_install_standalone_requires_ports():
+    args = _install_args(port=None)
     with pytest.raises(CultureError, match="--port"):
-        srv_mod._server_install(_install_args(port=None))
+        srv_mod._server_install(args)
 
 
 def test_cli_parser_accepts_standalone_flags():
@@ -239,7 +241,8 @@ def test_standalone_cmd_no_persist_drops_data_dir():
     cmd = build_standalone_server_start_cmd(
         _CULTURE, name="sbx", port=6700, webhook_port=7700, data_dir=None
     )
-    assert "--no-persist" in cmd and "--data-dir" not in cmd
+    assert "--no-persist" in cmd
+    assert "--data-dir" not in cmd
 
 
 def test_cli_install_standalone_no_persist(monkeypatch):

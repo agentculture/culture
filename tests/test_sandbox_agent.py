@@ -140,7 +140,9 @@ async def _collect(client, needle, timeout=5.0):
 
 def test_request_builder_no_tools_thinking_off_short_capped():
     body = build_request("m", "sys", [], "hi", max_tokens=99999)
-    assert "tools" not in body and "tool_choice" not in body and "functions" not in body
+    assert "tools" not in body
+    assert "tool_choice" not in body
+    assert "functions" not in body
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
     assert body["max_tokens"] <= MAX_TOKENS_CAP
     assert "Answer briefly" in body["messages"][0]["content"]
@@ -159,7 +161,8 @@ async def test_every_wire_request_is_toolless(server, gateway, tmp_path, make_cl
     await _collect(g, "canned answer")
     assert gateway.requests
     for body in gateway.requests:
-        assert "tools" not in body and "tool_choice" not in body
+        assert "tools" not in body
+        assert "tool_choice" not in body
         assert body["chat_template_kwargs"]["enable_thinking"] is False
         assert body["max_tokens"] <= 700
         assert "Answer briefly" in body["messages"][0]["content"]
@@ -202,7 +205,8 @@ async def test_queue_position_for_overflow_guests(server, make_client, tmp_path,
         for g in gs:
             await g.send("PRIVMSG testserv-ask :hi")
         await asyncio.sleep(0.2)
-        assert len(agent.admitted) == 2 and len(agent.waiting) == 2
+        assert len(agent.admitted) == 2
+        assert len(agent.waiting) == 2
         q3 = await _collect(gs[2], "queue")
         q4 = await _collect(gs[3], "queue")
         assert any("#1 in the queue" in ln for ln in q3)
@@ -244,7 +248,8 @@ async def test_nsfw_declined_and_flagged(server, gateway, make_client, tmp_path,
     assert any("flagged" in ln for ln in await _collect(g, "flagged"))
     assert gateway.requests == []
     flags = [json.loads(x) for x in (tmp_path / "flags.jsonl").read_text().splitlines()]
-    assert flags[0]["nick"] == "testserv-g1" and "porn" in flags[0]["excerpt"]
+    assert flags[0]["nick"] == "testserv-g1"
+    assert "porn" in flags[0]["excerpt"]
     seen = await _collect(owner, "FLAG")
     assert any("FLAG nsfw from testserv-g1" in ln for ln in seen)
 
@@ -284,7 +289,9 @@ def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
         assert not (dest / "secrets.md").exists()
         assert (dest / "README.md").stat().st_mode & 0o222 == 0
         text = load_knowledge(dest)
-        assert "doc a" in text and "SECRET" not in text and "nope" not in text
+        assert "doc a" in text
+        assert "SECRET" not in text
+        assert "nope" not in text
     finally:
         for p in sorted(dest.rglob("*"), reverse=True):
             p.chmod(0o755)
@@ -299,7 +306,8 @@ def test_load_knowledge_ignores_symlinks_outside(tmp_path):
     outside.write_text("LEAK")
     (k / "link.md").symlink_to(outside)
     text = load_knowledge(k)
-    assert "fine" in text and "LEAK" not in text
+    assert "fine" in text
+    assert "LEAK" not in text
 
 
 # ---- models + key (criterion 4) -------------------------------------------
@@ -329,7 +337,8 @@ async def test_model_list_fallback_and_own_key(server, tmp_path, make_client, mo
 
 def test_config_from_dict_models():
     cfg = SandboxConfig.from_dict({"models": ["a", {"name": "b", "key_env": "K"}], "nick": "x-ask"})
-    assert [m.name for m in cfg.models] == ["a", "b"] and cfg.models[1].key_env == "K"
+    assert [m.name for m in cfg.models] == ["a", "b"]
+    assert cfg.models[1].key_env == "K"
 
 
 def test_resolve_key_env_then_file(tmp_path, monkeypatch):
