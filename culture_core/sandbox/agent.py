@@ -60,7 +60,7 @@ _COMMAND_RE = re.compile(
     re.I,
 )
 DECLINE_COMMAND = (
-    "I can't run commands or take actions - I only answer questions about " "culture from its docs."
+    "I can't run commands or take actions - I only answer questions about culture from its docs."
 )
 BOT_CAP = "agentirc.io/bot"  # grants EVENTSUB (agentirc protocol.BOT_CAP)
 DECLINE_NSFW = "I can't help with that. This request has been flagged to the owner."
@@ -250,6 +250,12 @@ class _Job:
     question: str
 
 
+def _append_jsonl(path: Path, rec: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as fh:
+        fh.write(json.dumps(rec) + "\n")
+
+
 class SandboxAgent:
     def __init__(self, cfg: SandboxConfig, knowledge: str | None = None) -> None:
         self.cfg = cfg
@@ -270,6 +276,7 @@ class SandboxAgent:
         self.writer: asyncio.StreamWriter | None = None
         self._tasks: set[asyncio.Task] = set()
         self.rooms: set[str] = set()  # private guest rooms joined
+        self._sweeper: asyncio.Future | None = None
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -328,10 +335,7 @@ class SandboxAgent:
             "nick": sender,
             "excerpt": excerpt,
         }
-        path = Path(self.cfg.flag_log).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as fh:
-            fh.write(json.dumps(rec) + "\n")
+        await asyncio.to_thread(_append_jsonl, Path(self.cfg.flag_log).expanduser(), rec)
         if self.cfg.owner_channel:
             await self.send(
                 f"PRIVMSG {self.cfg.owner_channel} :FLAG {reason} from {sender}: {excerpt[:150]}"
@@ -445,52 +449,60 @@ class SandboxAgent:
             await self.send("LIST")
 
     # -- IRC loop
+    async def _on_welcome(self) -> None:
+        log.info("registered as %s", self.cfg.nick)
+        owner = [self.cfg.owner_channel] if self.cfg.owner_channel else []
+        for chan in [*self.cfg.channels, *owner]:
+            await self.send(f"JOIN {chan}")
+        if self.cfg.guest_room_prefix:
+            await self.send("EVENTSUB rooms type=user.join")
+            await self.send("LIST")
+            if self._sweeper is None:
+                self._sweeper = asyncio.ensure_future(self._sweep_rooms())
+
+    async def _on_line(self, msg: str) -> None:
+        """Dispatch one IRC line (PING, welcome, LIST/EVENT rows, PRIVMSG)."""
+        if msg.startswith("PING"):
+            await self.send("PONG" + msg[4:])
+            return
+        parts = msg.split(" ", 3)
+        verb = parts[1] if len(parts) >= 2 else ""
+        if verb == "001":
+            await self._on_welcome()
+        elif verb in ("432", "433"):
+            raise RuntimeError(f"nick rejected: {msg}")
+        elif len(parts) < 4:
+            return
+        elif verb == "322":  # RPL_LIST
+            await self._on_list_row(parts[3])
+        elif verb == "EVENT":
+            # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
+            ev = parts[3].split(" ")
+            if len(ev) >= 3 and ev[0] == "user.join":
+                await self._follow(ev[1], ev[2])
+        elif verb == "PRIVMSG":
+            sender = parts[0].lstrip(":").split("!", 1)[0]
+            text = parts[3][1:] if parts[3].startswith(":") else parts[3]
+            self._spawn(self.handle(sender, parts[2], text))
+
     async def run_once(self) -> None:
         reader, self.writer = await asyncio.open_connection(self.cfg.host, self.cfg.port)
         self.rooms = set()
+        self._sweeper = None
         if self.cfg.guest_room_prefix:
             await self.send(f"CAP REQ :{BOT_CAP}")
         await self.send(f"NICK {self.cfg.nick}")
         await self.send(f"USER {self.cfg.nick} 0 * :tool-less Q&A agent (answers only)")
         if self.cfg.guest_room_prefix:
             await self.send("CAP END")
-        sweeper: asyncio.Future | None = None
         try:
             while line := await reader.readline():
-                msg = line.decode(errors="replace").rstrip("\r\n")
-                if msg.startswith("PING"):
-                    await self.send("PONG" + msg[4:])
-                    continue
-                parts = msg.split(" ", 3)
-                if len(parts) >= 2 and parts[1] == "001":
-                    log.info("registered as %s", self.cfg.nick)
-                    for chan in [
-                        *self.cfg.channels,
-                        *([self.cfg.owner_channel] if self.cfg.owner_channel else []),
-                    ]:
-                        await self.send(f"JOIN {chan}")
-                    if self.cfg.guest_room_prefix:
-                        await self.send("EVENTSUB rooms type=user.join")
-                        await self.send("LIST")
-                        if sweeper is None:
-                            sweeper = asyncio.ensure_future(self._sweep_rooms())
-                elif len(parts) >= 2 and parts[1] in ("432", "433"):
-                    raise RuntimeError(f"nick rejected: {msg}")
-                elif len(parts) == 4 and parts[1] == "322":  # RPL_LIST
-                    await self._on_list_row(parts[3])
-                elif len(parts) == 4 and parts[1] == "EVENT":
-                    # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
-                    ev = parts[3].split(" ")
-                    if len(ev) >= 3 and ev[0] == "user.join":
-                        await self._follow(ev[1], ev[2])
-                elif len(parts) == 4 and parts[1] == "PRIVMSG":
-                    sender = parts[0].lstrip(":").split("!", 1)[0]
-                    text = parts[3][1:] if parts[3].startswith(":") else parts[3]
-                    self._spawn(self.handle(sender, parts[2], text))
+                await self._on_line(line.decode(errors="replace").rstrip("\r\n"))
             raise ConnectionError("server closed the connection")
         finally:
-            if sweeper is not None:
-                sweeper.cancel()
+            if self._sweeper is not None:
+                self._sweeper.cancel()
+                self._sweeper = None
 
     async def run(self) -> None:
         while True:
