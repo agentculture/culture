@@ -42,10 +42,12 @@ hand needs no service manager: run the `culture server start ...` line above.
 
 ## Where guest data lives
 
-Guest transcripts are written only under the sandbox data directory
-(`~/.culture/data-sbx`). The spark data directory (`~/.culture/data`) holds no
-guest content. Guest nicks on `sbx` are prefixed `sbx-`, so `WHO` on the spark
-server never lists a sandbox nick.
+With `--no-persist` the sandbox server writes no guest content to disk at
+all: history lives in its memory and is gone at restart. The durable record of
+guest chat is irc-lens's guest store (questions and sbx-ask's answers), which
+the guest deletion flow erases, keeping only anonymized Q&A. The spark data
+directory (`~/.culture/data`) never holds guest content. Guest nicks on `sbx`
+are prefixed `sbx-`, so `WHO` on the spark server never lists a sandbox nick.
 
 ## Verification
 
