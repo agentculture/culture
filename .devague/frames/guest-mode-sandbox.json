@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T16:41:40Z",
+  "updated": "2026-10-09T18:42:10Z",
   "claims": [
     {
       "id": "c1",
@@ -1642,7 +1642,43 @@
       ]
     }
   ],
-  "lapses": [],
+  "lapses": [
+    {
+      "id": "l1",
+      "code": "grader-unverified",
+      "what": "t1's isolation tests (no shared channel, no S2S link) were never run against deliberately broken isolation, so they are not shown to be able to fail",
+      "skipped_check": "mutation check: link the two servers and confirm test_sbx_and_spark_do_not_federate fails",
+      "refs": [
+        "t1",
+        "tests/test_sandbox_server.py"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l2",
+      "code": "assumption-for-measurement",
+      "what": "t1's sbx-side 'no S2S handshake' evidence is a grep for the word 'linking' in the sbx log \u2014 a weak proxy, not a measurement",
+      "skipped_check": "assert on the sbx server's link table / introspection instead of a log substring",
+      "refs": [
+        "t1"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l3",
+      "code": "provenance-missing",
+      "what": "evidence e1\u2013e15 carry a pointer ('obligation oN (see devague oblige --list)') in --contract instead of a snapshot of the obligation text",
+      "skipped_check": "copy each obligation's seam+behavior text into --contract at filing time",
+      "refs": [
+        "e1",
+        "e15"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    }
+  ],
   "obligations": [
     {
       "id": "o1",
