@@ -38,6 +38,7 @@ from culture_core.cli import (
     introspect,
     mesh,
     residents,
+    sandbox,
     server,
     skills,
 )
@@ -57,6 +58,7 @@ GROUPS = [
     introspect,
     doctor,
     residents,
+    sandbox,
 ]
 
 
