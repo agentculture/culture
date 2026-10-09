@@ -10,15 +10,14 @@ the isolation boundary is a second server.
 
 ```bash
 culture server install --standalone --name sbx \
-  --port 6700 --webhook-port 7700 \
-  --data-dir ~/.culture/data-sbx
+  --port 6700 --webhook-port 7700 --no-persist
 ```
 
 `--standalone` writes a service unit for `culture-server-sbx` that runs:
 
 ```text
 culture server start --foreground --name sbx --host 127.0.0.1 \
-  --port 6700 --webhook-port 7700 --data-dir ~/.culture/data-sbx
+  --port 6700 --webhook-port 7700 --no-persist
 ```
 
 Properties (spec obligation o3):
@@ -31,8 +30,12 @@ Properties (spec obligation o3):
   handshake with, so its log shows no S2S handshake.
 - **Own ports.** `--port` and `--webhook-port` are required so the sandbox can
   never collide with the spark server (6667 / 7680).
-- **Own data directory.** `--data-dir` defaults to `~/.culture/data-<name>`
-  (`~/.culture/data-sbx` for `sbx`).
+- **Nothing on disk (`--no-persist`).** The guest sandbox keeps channel
+  history and rooms in memory only. AgentIRC commits history to its SQLite
+  store only at shutdown, so a persisted sandbox would write a deleted
+  guest's messages back to disk after the deletion. The durable record of
+  guest chat is irc-lens's guest store, which the deletion flow fully covers.
+  Without `--no-persist`, `--data-dir` defaults to `~/.culture/data-<name>`.
 
 Remove the unit with `culture server uninstall --name sbx`. Starting it by
 hand needs no service manager: run the `culture server start ...` line above.

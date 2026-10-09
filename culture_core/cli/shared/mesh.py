@@ -144,7 +144,7 @@ def build_standalone_server_start_cmd(
     name: str,
     port: int,
     webhook_port: int,
-    data_dir: str,
+    data_dir: str | None,
     host: str = SANDBOX_LOOPBACK_HOST,
 ) -> list[str]:
     """Build an isolated, unlinked ``server start`` command (guest sandbox).
@@ -152,6 +152,9 @@ def build_standalone_server_start_cmd(
     Unlike :func:`build_server_start_cmd` this never emits ``--link`` or
     ``--mesh-config``, so the server can never federate; every listener
     (``--port``, ``--webhook-port``) and the ``--data-dir`` are explicit.
+    ``data_dir=None`` emits ``--no-persist`` instead: history and rooms stay
+    in memory only (the guest sandbox, so deletion is never undone by a
+    shutdown flush).
     """
     prefix: list[str] = [culture_cmd] if isinstance(culture_cmd, str) else list(culture_cmd)
     return [
@@ -167,6 +170,5 @@ def build_standalone_server_start_cmd(
         str(port),
         "--webhook-port",
         str(webhook_port),
-        "--data-dir",
-        data_dir,
+        *(["--no-persist"] if data_dir is None else ["--data-dir", data_dir]),
     ]

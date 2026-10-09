@@ -140,6 +140,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=os.path.expanduser("~/.culture/data"),
         help="Data directory for persistent storage (default: ~/.culture/data)",
     )
+    srv_start.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Keep history and rooms in memory only; write nothing to --data-dir",
+    )
 
     srv_stop = server_sub.add_parser("stop", help="Stop the IRC server daemon")
     srv_stop.add_argument("--name", default=None, help=_SERVER_NAME_HELP)
@@ -228,6 +233,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--data-dir",
         default=None,
         help="Data directory (--standalone; default: ~/.culture/data-<name>)",
+    )
+    srv_install.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Memory-only history and rooms (--standalone; the guest sandbox)",
     )
 
     srv_uninstall = server_sub.add_parser(
@@ -489,7 +499,7 @@ def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> Non
     _maybe_set_default_server(args.name)
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
         )
     finally:
         remove_pid(pid_name)
@@ -655,7 +665,7 @@ def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> N
     exit_code = 0
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
         )
     except KeyboardInterrupt:
         # Clean shutdown path — Ctrl-C from foreground / SIGINT.
@@ -695,6 +705,11 @@ def _server_start(args: argparse.Namespace) -> None:
         return
 
     _daemonize_server(args, pid_name, links)
+
+
+def _data_dir(args: argparse.Namespace) -> str:
+    """``""`` (memory-only) under ``--no-persist``, else ``--data-dir``."""
+    return "" if getattr(args, "no_persist", False) else args.data_dir
 
 
 async def _run_server(
@@ -893,7 +908,10 @@ def _standalone_install_cmd(args: argparse.Namespace) -> tuple[str, list[str]]:
             f"--standalone requires {', '.join(missing)}",
             "e.g. culture server install --standalone --name sbx --port 6700 --webhook-port 7700",
         )
-    data_dir = args.data_dir or os.path.expanduser(f"~/.culture/data-{args.name}")
+    if getattr(args, "no_persist", False):
+        data_dir = None
+    else:
+        data_dir = args.data_dir or os.path.expanduser(f"~/.culture/data-{args.name}")
     cmd = build_standalone_server_start_cmd(
         [sys.executable, "-m", "culture_core"],
         name=args.name,

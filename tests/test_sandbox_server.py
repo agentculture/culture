@@ -228,3 +228,66 @@ async def test_sbx_and_spark_do_not_federate(server, sbx_process):
     ]
     assert spark_dials == []
     assert "linking" not in log.read_text().lower()
+
+
+# --- d8: memory-only sandbox (no history on disk) ----------------------------
+
+
+def test_standalone_cmd_no_persist_drops_data_dir():
+    """d8: the guest sandbox keeps no channel history on disk, so a guest's
+    deletion request cannot be undone by the IRCd flushing at shutdown."""
+    cmd = build_standalone_server_start_cmd(
+        _CULTURE, name="sbx", port=6700, webhook_port=7700, data_dir=None
+    )
+    assert "--no-persist" in cmd and "--data-dir" not in cmd
+
+
+def test_cli_install_standalone_no_persist(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "culture_core.persistence.install_service",
+        lambda name, command, description, after=None, **kw: captured.update(command=command)
+        or "/tmp/fake.service",
+    )
+    srv_mod._server_install(_install_args(no_persist=True))
+    assert "--no-persist" in captured["command"]
+    assert "--data-dir" not in captured["command"]
+
+
+def test_cli_parser_accepts_no_persist():
+    parser = argparse.ArgumentParser()
+    srv_mod.register(parser.add_subparsers(dest="command"))
+    assert parser.parse_args(["server", "start", "--no-persist"]).no_persist is True
+    ns = parser.parse_args(
+        ["server", "install", "--standalone", "--name", "sbx", "--port", "6700"]
+        + ["--webhook-port", "7700", "--no-persist"]
+    )
+    assert ns.no_persist is True
+
+
+@pytest.mark.asyncio
+async def test_no_persist_server_writes_no_history(tmp_path):
+    port, webhook = _free_port(), _free_port()
+    cmd = build_standalone_server_start_cmd(
+        _CULTURE, name="sbx", port=port, webhook_port=webhook, data_dir=None
+    )
+    env = {**os.environ, "HOME": str(tmp_path)}
+    with open(tmp_path / "sbx.log", "w") as log:
+        proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, cwd=tmp_path)
+        try:
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                try:
+                    socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+                    break
+                except OSError:
+                    time.sleep(0.2)
+            c = await _register(port, "sbx-guest")
+            await c.send("JOIN #g-abc")
+            await c.send("PRIVMSG #g-abc :a private question")
+            await asyncio.sleep(0.5)
+            await c.send("QUIT :bye")
+        finally:
+            proc.terminate()
+            proc.wait(10)
+    assert not list(tmp_path.rglob("history.db")), (tmp_path / "sbx.log").read_text()
