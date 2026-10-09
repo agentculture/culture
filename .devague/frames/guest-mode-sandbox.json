@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T16:32:08Z",
+  "updated": "2026-10-09T16:38:03Z",
   "claims": [
     {
       "id": "c1",
@@ -1236,6 +1236,25 @@
       "origin": "user",
       "status": "confirmed",
       "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c58",
+      "kind": "requirement",
+      "text": "The Terms of Service and Privacy Policy must include: (a) guests' agreement that the owner may use the data they provide; (b) guests' right to request deletion of their data; (c) an obligation to behave respectfully toward the owner, the system, the agents, and other users; (d) a ban on NSFW content; (e) that violating the terms leads to an immediate block",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h50",
+          "text": "The published /terms and /privacy pages contain each of clauses (a)-(e) in plain words, and the consent checkbox links to both",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
       "hard_questions": [],
       "links": [],
       "instruction": "",

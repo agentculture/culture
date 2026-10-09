@@ -77,6 +77,8 @@
   - honesty: After a deletion request completes, a search of the sandbox data-dir and guest store for that guest's email or nick finds none of their messages or uploads
 - Token emails go out for every address that chooses Guest mode, with identical wording and timing whether or not the address is approved, so the token step leaks no membership (c45)
   - honesty: Choosing Guest mode with an approved email and with an unknown email produces the same screen and the same email template
+- The Terms of Service and Privacy Policy must include: (a) guests' agreement that the owner may use the data they provide; (b) guests' right to request deletion of their data; (c) an obligation to behave respectfully toward the owner, the system, the agents, and other users; (d) a ban on NSFW content; (e) that violating the terms leads to an immediate block
+  - honesty: The published /terms and /privacy pages contain each of clauses (a)-(e) in plain words, and the consent checkbox links to both
 
 ## Honesty conditions
 
