@@ -1,0 +1,1271 @@
+{
+  "slug": "guest-mode-sandbox",
+  "title": "guest mode sandbox",
+  "schema_version": 6,
+  "status": "exported",
+  "created": "2026-10-09T15:32:07Z",
+  "updated": "2026-10-09T16:19:40Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "Visitors to culture.dev can sign in with any email, accept the Terms of Service and Privacy Policy, and chat in an isolated guest sandbox where a local model (lobes) explains culture's code and docs \u2014 while the owner's email still lands on the real mesh console and can hop into the guest sandbox",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "A private browser window with no Cloudflare session can open chat.culture.dev, submit email + nickname + consent, and get an answer from the sandbox agent",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c2",
+      "kind": "audience",
+      "text": "Visitors curious about culture (any email address) \u2014 plus the owner, who must be able to enter the guest sandbox too",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "The guest flow needs nothing but a browser and an email address \u2014 no Cloudflare or IdP account, no email round-trip",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c3",
+      "kind": "before_state",
+      "text": "chat.culture.dev admits only the owner's email; there is no way for an outsider to try culture or ask about it",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "Today an unlisted email is blocked: the Access policy chat.culture.dev-allow lists only approved emails and irc-lens 403s anyone else (auth.py:234-239)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c4",
+      "kind": "after_state",
+      "text": "chat.culture.dev is one site for everyone: approved users sign in via SSO and land on the real console (the owner can switch into the sandbox); guests enter an email + nickname, accept ToS + Privacy Policy, and land in the sandbox chat",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "The same hostname serves both tiers: a request with no Access JWT renders guest entry; a request with a valid JWT for an approved email renders the real console",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Any email can sign in (after confirming it), accepts ToS + Privacy Policy, and lands in a sandbox chat; the owner's email lands on the real console and can hop into the sandbox",
+          "kind": "after_state",
+          "reason": "user decision: one site; guests skip SSO"
+        }
+      ]
+    },
+    {
+      "id": "c5",
+      "kind": "requirement",
+      "text": "Guests must accept a Terms of Service (behave, be respectful) and a Privacy Policy (owner may use data guests provide) before getting any sandbox access",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "No sandbox route (stream, send, join, upload) responds to a guest session lacking a consent record for the current ToS + Privacy version",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c6",
+      "kind": "requirement",
+      "text": "In the sandbox, an available local model (lobes) replies to guests and explains culture.dev \u2014 the code and the docs",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "Asked 'what is the all-backends rule?', the sandbox agent answers consistently with culture's CLAUDE.md within 30s",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c7",
+      "kind": "requirement",
+      "text": "Approved users (emails on the approved list \u2014 today the owner and one approved collaborator) sign in via SSO and get the real site (the live mesh console), unchanged; the list itself lives in the lens config and the Access policy, never in the spec",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "An approved email signing in via SSO lands on the real spark console with the same channels and agents as before guest mode shipped",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The owner's email gets the real site (the live mesh console), unchanged",
+          "kind": "requirement",
+          "reason": "c31: approved list now has two emails"
+        },
+        {
+          "text": "Approved users (emails on the approved list \u2014 today the owner and [approved collaborator]) sign in via SSO and get the real site (the live mesh console), unchanged",
+          "kind": "requirement",
+          "reason": "privacy: no personal emails in the public repo"
+        }
+      ]
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "The owner can hop into the guest sandbox to see what guests see",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "An approved user can switch into the sandbox and back without re-authenticating, appearing under a distinct, recognizable sandbox nick",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c9",
+      "kind": "non_goal",
+      "text": "Answer quality is v1 \u2014 the guest model's knowledge and behavior will improve later; v1 does not need to be excellent",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c10",
+      "kind": "boundary",
+      "text": "Guests never connect to the real spark IRCd: the sandbox is a separate, unlinked culture IRCd bound to 127.0.0.1 \u2014 agentirc has no join ACL, ban/invite/key modes, opers, or flood control, so confinement cannot be done inside a shared IRCd",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "The sandbox IRCd listens on 127.0.0.1 only and has no links configured: ss -ltn shows only the loopback bind; its log shows no S2S handshake",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h25",
+          "text": "Guests on a shared IRCd could /join any channel \u2014 agentirc has no join ACL (client.py:449-459) \u2014 so isolation must come from the separate server, not channel modes",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c11",
+      "kind": "assumption",
+      "text": "The sandbox IRCd is a second 'culture server start --name <sbx> --port <p> --webhook-port <w> --data-dir <d> --host 127.0.0.1' with no --link/--mesh-config, so it is federation-isolated by default",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "irc-lens recognizes two tiers on one site: 'approved' (Cloudflare Access JWT, email on the approved list) and 'guest' (no JWT; self-declared email + nickname, identified by IP + email); the role decides which IRCd a session connects to",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "irc-lens enforces the tier itself: every real-mesh route (stream, send, join, residents, overview, media upload) returns 401/403 without a verified Access JWT for an approved email \u2014 because the edge now protects only a path, not the whole host",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h11",
+          "text": "Tier is derived only from a verified JWT (header or CF_Authorization cookie); no client-supplied parameter, cookie, or header can select the real mesh",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "irc-lens gains an owner/guest role tier: any Access-verified email is admitted as 'guest', emails on the owner list as 'owner'; Identity carries the role",
+          "kind": "requirement",
+          "reason": "user decision: guests don't SSO"
+        }
+      ]
+    },
+    {
+      "id": "c13",
+      "kind": "requirement",
+      "text": "A guest's ToS + Privacy acceptance is recorded persistently (email, ToS/Privacy version, timestamp) and enforced before any sandbox route; a version bump re-prompts",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "Consent records survive an irc-lens restart and record email, IP, ToS version, Privacy version, timestamp",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c14",
+      "kind": "requirement",
+      "text": "Guest nicks on the sandbox IRCd come from the guest's chosen nickname (prefixed <sbx>-, sanitized, unique \u2014 a taken nickname is refused at entry), never from the email; the owner's sandbox nick is distinct and recognizable",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "A requested nickname already in use on the sandbox IRCd is refused at entry; the guest's email never appears in their nick",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Guest nicks on the sandbox IRCd are collision-free and do not leak the email (e.g. <sbx>-g<short-hash>); the owner gets a distinct, recognizable sandbox nick",
+          "kind": "requirement",
+          "reason": "user decision: guests pick a nickname"
+        }
+      ]
+    },
+    {
+      "id": "c15",
+      "kind": "requirement",
+      "text": "Cloudflare Access gates only chat.culture.dev/login (path-scoped app, approved-email policy); the front site sends a user there only after a correct password for an approved email; guests never reach Access, so they consume no seats",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h14",
+          "text": "Guests are never redirected to Cloudflare login; only the SSO path triggers Access, and the Access app's policy is the approved-email list",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The guest-facing Access policy admits any email via Cloudflare's One-time PIN login (the emailed code is the 'confirmation' step); the owner's existing chat.culture.dev allow-by-email policy stays as is",
+          "kind": "requirement",
+          "reason": "user decision: seat limit; site before Access"
+        },
+        {
+          "text": "Cloudflare Access gates only the approved-user area (SSO, allow-by-email list); the guest entry and sandbox are public, so guests consume no Access seats",
+          "kind": "requirement",
+          "reason": "q5 decision"
+        },
+        {
+          "text": "Cloudflare Access gates only chat.culture.dev/login (path-scoped app, approved-email policy); a visible Login button leads there; the guest entry and sandbox are public, so guests consume no Access seats",
+          "kind": "requirement",
+          "reason": "c44: password step precedes SSO"
+        }
+      ]
+    },
+    {
+      "id": "c16",
+      "kind": "requirement",
+      "text": "Terms of Service and Privacy Policy are published, versioned pages on culture.dev (katvan site), linked from the consent gate",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h15",
+          "text": "culture.dev/terms and culture.dev/privacy load with a visible version and date, and the consent form links both",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c17",
+      "kind": "non_goal",
+      "text": "Claude-drafted ToS/Privacy text is not legal advice; the owner reviews and owns the final wording before it goes live",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c18",
+      "kind": "assumption",
+      "text": "The sandbox answerer is a new, dedicated agent on the sandbox IRCd (not an existing resident), seeded from spark-ask (~/.culture/ask-agent/ask_agent.py): tool-less, cortex-spark2 via the lobes gateway, thinking off",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The guest-answering agent is a culture resident with backend: colleague (engine vllm-openai, base_url on the lobes gateway) joined to the sandbox IRCd, working in a read-only docs/code checkout of culture",
+          "kind": "assumption",
+          "reason": "user decision: unique agent"
+        },
+        {
+          "text": "The sandbox answerer is a new, dedicated agent (not an existing resident such as spark-colleague) on the sandbox IRCd, backed by the spark2 cortex via the lobes gateway",
+          "kind": "assumption",
+          "reason": "spark-ask shipped 2026-10-09 (c31) and proves the pattern"
+        }
+      ]
+    },
+    {
+      "id": "c19",
+      "kind": "boundary",
+      "text": "The sandbox agent has no bash/shell, write, or network tools; it may use read-only tools, but only over knowledge held inside the sandbox (a curated culture docs/code copy), never the host filesystem or the real mesh",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h16",
+          "text": "The sandbox agent's model requests carry no tools (or only read-only tools rooted in the sandbox knowledge directory); asked to run a command, it declines",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q1",
+          "text": "Which culture.yaml / cultureagent knob confines a colleague resident to read-only (or no) tools \u2014 and if none exists, is that a cultureagent hand-off that blocks v1?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "A dedicated, unique sandbox agent (not an existing resident). No bash. Read-only tools are allowed but scoped to sandbox-held knowledge only"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The guest-facing agent has no write, shell, or network tools \u2014 guests are untrusted and their messages are prompt-injection input; worst case it can only read the culture docs/code checkout",
+          "kind": "boundary",
+          "reason": "user decision q1"
+        }
+      ]
+    },
+    {
+      "id": "c20",
+      "kind": "requirement",
+      "text": "Guest model traffic goes to the spark2 cortex via the lobes gateway with thinking disabled, using its own gateway key, single-flight queueing, capped max_tokens, and per-guest (IP+email) rate limits",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h17",
+          "text": "With 5 guests asking at once, guest requests queue single-flight with max_tokens <= 700, and the owner's agents still get gateway responses",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Guest model traffic is bounded: its own gateway key (not colleague's), single-flight queueing, capped max_tokens, and per-guest rate limits, so guests cannot starve the owner's agents on the shared GPU",
+          "kind": "requirement",
+          "reason": "user decision v1"
+        }
+      ]
+    },
+    {
+      "id": "c21",
+      "kind": "assumption",
+      "text": "v1 grounds answers by giving the model a curated culture docs bundle (README, docs/, CLAUDE.md) in context or via its read-only checkout \u2014 retrieval/RAG is a later improvement",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c22",
+      "kind": "boundary",
+      "text": "The real console stays reachable only by approved users through SSO; guest traffic never reaches culture-server-spark (:6667) or the real mesh",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h18",
+          "text": "No guest-tier session ever opens a connection to :6667; WHO on the spark IRCd lists no sandbox nicks",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The owner's live stack is not reshaped for guests: culture-server-spark (:6667), culture-console-spark (:8765) and the chat.culture.dev Access app keep serving the owner; guest pieces are added alongside",
+          "kind": "boundary",
+          "reason": "user decision: one site"
+        }
+      ]
+    },
+    {
+      "id": "c23",
+      "kind": "requirement",
+      "text": "One irc-lens site routes per role: approved \u2192 real spark IRCd, guest \u2192 sandbox IRCd; approved users get a toggle to enter the sandbox under their sandbox nick",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h19",
+          "text": "Backend selection happens in one place (routes._resolve_session) keyed on the verified tier; an approved user's sandbox toggle never lets a guest-tier session reach the real IRCd",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q2",
+          "text": "One hostname or two? (a) guest.culture.dev \u2192 sandbox console :8766 with an any-email OTP Access app, owner reaches it by visiting it too; or (b) a single chat.culture.dev irc-lens that routes owner\u2192real IRCd and guest\u2192sandbox IRCd per role (routes._resolve_session, routes.py:76-80), with an owner toggle. Access apps are per-hostname and can't route by email.",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "(b) one site for all: chat.culture.dev serves everyone; approved users SSO in, guests enter email+nickname; role routes to real mesh vs sandbox"
+        },
+        {
+          "id": "q5",
+          "text": "How does one hostname split public and SSO areas? Cloudflare Access supports path-scoped self-hosted apps (e.g. protect chat.culture.dev/mesh/*, leave / public), but cultureflare only creates hostname-wide apps (_access_app.py:8-13) \u2014 extend cultureflare, or configure the path app once by hand/API?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "Path-scoped Cloudflare Access app on chat.culture.dev/login, configured once via API; the rest of the host is public; a visible Login button on the site sends approved users to /login (SSO) and back; the hostname-wide CF_Authorization cookie then marks them approved; irc-lens enforces the tier in-app; teaching cultureflare path-scoped apps is a follow-up"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "A second irc-lens console (culture console serve --web-port 8766) pointed at the sandbox IRCd can serve guests side by side with the owner's console",
+          "kind": "assumption",
+          "reason": "user decision q2 (b)"
+        }
+      ]
+    },
+    {
+      "id": "c24",
+      "kind": "requirement",
+      "text": "Guest conversations stay in the sandbox IRCd's own data-dir, separate from the mesh, retained as long as required; the owner may use them to improve models",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h20",
+          "text": "Guest transcripts are written only under the sandbox data-dir; the spark data-dir holds no guest content",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Guest conversations stay in the sandbox IRCd's own data-dir, separate from the mesh, and are retained/used exactly as the Privacy Policy states",
+          "kind": "requirement",
+          "reason": "user decision q3"
+        }
+      ]
+    },
+    {
+      "id": "c25",
+      "kind": "boundary",
+      "text": "Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, guest entry, consent gate, routing), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes ship as hand-off briefs to those repos",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h26",
+          "text": "Every non-culture change lands as a hand-off issue/brief in its repo (irc-lens, katvan, cultureflare), not as code written from culture",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Culture-side work is the sandbox provisioning + docs; irc-lens (roles, consent gate), cultureflare (any-email OTP policy), katvan (ToS/Privacy pages) and cultureagent (read-only resident tools, if needed) changes are hand-off briefs to those repos",
+          "kind": "boundary",
+          "reason": "v2/c29: no any-email Access policy anymore"
+        }
+      ]
+    },
+    {
+      "id": "c26",
+      "kind": "requirement",
+      "text": "The owner can ban a guest by email and/or IP in the guest store, blocking re-entry and dropping their active sandbox session, without touching the mesh or Cloudflare",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h21",
+          "text": "Banning an email or IP blocks re-entry at the form and drops any active sandbox session for it within 1 minute",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q3",
+          "text": "Privacy Policy terms: how long are guest transcripts retained, may they be used to improve the guest model / docs, and may they be published?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "Retain as long as required. Owner may use guest data to improve models and may publish it with user PII removed"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The owner can ban a guest email (consent store or Access exclude rule) and revoke sandbox access without touching the mesh",
+          "kind": "requirement",
+          "reason": "guests are not on Access, so bans live in the app"
+        }
+      ]
+    },
+    {
+      "id": "c27",
+      "kind": "requirement",
+      "text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h22",
+          "text": "The entry form validates email syntax and nickname rules and stores IP + email as the guest's identity",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q4",
+          "text": "risk: Guest email is self-declared and unverified, so anyone can type someone else's email; ToS acceptance and bans keyed on it are only as strong as IP + a claimed email",
+          "resolved": false,
+          "blocking": false,
+          "resolution": ""
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Guest entry is a public form on the site: email + nickname + ToS/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email",
+          "kind": "requirement",
+          "reason": "c44 entry flow"
+        }
+      ]
+    },
+    {
+      "id": "c28",
+      "kind": "requirement",
+      "text": "Published guest data has user PII removed (email, IP, and anything identifying them)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h23",
+          "text": "A publish/export step strips email, IP, and the nick-to-person mapping; a fixture seeded with PII produces output containing none of it",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c29",
+      "kind": "decision",
+      "text": "The SSO path is for approved users only; guests and approved users share one site, and Cloudflare Access seats are spent only on approved users",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c30",
+      "kind": "requirement",
+      "text": "Because the guest surface is public (no Access), it carries its own abuse controls: per-IP rate limits on entry and messages, a cap on concurrent guest sessions, and bot protection on the entry form",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h24",
+          "text": "One IP exceeding the entry or message rate limit gets HTTP 429; the entry form carries bot protection (e.g. Cloudflare Turnstile, which uses no Access seats)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c31",
+      "kind": "decision",
+      "text": "Approved (SSO) users today: the owner and one approved collaborator; the real site carries a tool-less Q&A agent (spark-ask) that only answers questions",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Approved (SSO) users today: [owner] and [approved collaborator]; the real site carries a tool-less Q&A agent (spark-ask) that only answers questions",
+          "kind": "decision",
+          "reason": "privacy: no personal emails in the public repo"
+        }
+      ]
+    },
+    {
+      "id": "c32",
+      "kind": "success_signal",
+      "text": "A first-time guest goes from landing on chat.culture.dev to a grounded answer from the sandbox agent in < 2 minutes, and sandbox answers arrive in < 30s p95 with up to 5 concurrent guests",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h27",
+          "text": "Measured by a scripted guest run: timestamps from form submit to first agent line, and gateway latency over 5 parallel guests",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c33",
+      "kind": "success_signal",
+      "text": "0 guest sessions ever reach the real spark IRCd (:6667) and 0 Cloudflare Access seats are consumed by guests over the first 30 days",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h28",
+          "text": "Verified from spark IRCd connection logs (no sandbox-prefixed nicks) and the Access seat count staying at the approved-user count",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c34",
+      "kind": "success_signal",
+      "text": "100% of guest sessions have a consent record for the current ToS + Privacy version before their first message is accepted",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h29",
+          "text": "Verified by a consent-store query joined against sandbox session starts: no session without a matching record",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c35",
+      "kind": "decision",
+      "text": "Access protects only chat.culture.dev/login (path-scoped app, set up once via API); the site shows a visible Login button that takes approved users through SSO and back",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c36",
+      "kind": "requirement",
+      "text": "General uplift of the site (irc-lens on chat.culture.dev): both experience and visuals \u2014 commands, clarity, etc.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h30",
+          "text": "Every item in the uplift (landing, command discovery, clarity, visual pass) is shown to the owner as a before/after screenshot set at desktop and 375px widths before it ships",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c37",
+      "kind": "requirement",
+      "text": "A guest-first landing on chat.culture.dev (Option A): heading 'Ask culture.', a real sandbox transcript as the hero, and the c44 entry card (email \u2192 Continue \u2192 password with 'Sign in' / 'Guest mode' \u2192 SSO or nickname + consent) \u2014 no explanatory prose",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h31",
+          "text": "A first-time visitor, given no instructions, reaches a sandbox answer using only what the landing page says (checked in the scripted guest run behind c32)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "A guest-first landing on chat.culture.dev: says in plain words what culture is and what a guest can do, holds the email + nickname + consent form, and shows the Login button for approved users",
+          "kind": "requirement",
+          "reason": "user: less to none prose; Option A chosen"
+        },
+        {
+          "text": "A guest-first landing on chat.culture.dev (Option A): heading 'Ask culture.', a real sandbox transcript as the hero, the email + nickname + Terms/Privacy form, and a Sign in button for approved users \u2014 no explanatory prose",
+          "kind": "requirement",
+          "reason": "user: Guest mode button instead of a login-first form"
+        },
+        {
+          "text": "A guest-first landing on chat.culture.dev (Option A): heading 'Ask culture.', a real sandbox transcript as the hero, and two buttons \u2014 'Guest mode' (primary; opens the email + nickname + Terms/Privacy form in place, with Back) and 'Sign in' (secondary; SSO via /login for approved users) \u2014 no explanatory prose",
+          "kind": "requirement",
+          "reason": "c44 entry flow"
+        }
+      ]
+    },
+    {
+      "id": "c38",
+      "kind": "requirement",
+      "text": "Commands are discoverable without memorizing them: a visible help control and inline slash-command suggestions as you type, each with a one-line description; the list is tier-aware (guests see only what works in the sandbox)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h32",
+          "text": "Typing '/' in the input lists available commands with descriptions; a guest never sees a command that would fail in the sandbox tier",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c39",
+      "kind": "requirement",
+      "text": "Clarity without prose: the header shows nick, a tier badge (Guest / Real mesh / Sandbox preview) and the active room instead of nick@host:port; the approved user's sandbox view carries an amber top rule plus 'Guest view' and 'Back to mesh'; empty states are a single action",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h33",
+          "text": "The header never shows a raw host:port; tier and active channel are always visible; each empty state has a next-step hint",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Clarity: the header shows who you are, your tier (guest / approved / in sandbox) and the active channel in plain language instead of nick@host:port; every empty state says what to do next",
+          "kind": "requirement",
+          "reason": "Option A + no prose"
+        }
+      ]
+    },
+    {
+      "id": "c40",
+      "kind": "requirement",
+      "text": "Visual pass: keep culture.dev's dark-terminal palette, but refine typography, spacing and hierarchy, add visible focus states, and make the layout usable on a phone (375px wide), not just desktop",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h34",
+          "text": "Lighthouse accessibility score >= 90 on the landing and chat views; no horizontal scroll at 375px; all interactive elements show a visible focus ring",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c41",
+      "kind": "non_goal",
+      "text": "No frontend-framework rewrite: the uplift stays within irc-lens's htmx + SSE + static-JS stack and its script-src 'self' CSP",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c42",
+      "kind": "requirement",
+      "text": "The site uses little to no prose: one-word headings, short labels, 1-3 word command descriptions; the real conversation is the explanation",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h35",
+          "text": "Every visible string on the landing and chat views is a heading, label, nick, command or message \u2014 no explanatory sentences; the longest UI string outside chat messages is <= 4 words (Terms/Privacy consent line excepted)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c43",
+      "kind": "decision",
+      "text": "Visual direction is Option A, terminal sharpened (canvas https://claude.ai/artifact/4bDJqM8gmU38LqDDnhAH9S): culture.dev dark-terminal palette, IBM Plex Mono + Sans, amber marks the sandbox, real transcript as the landing hero, inline slash-command palette with a tier-aware list",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c44",
+      "kind": "decision",
+      "text": "Entry flow: (1) everyone enters an email and continues; (2) every email gets the identical next window \u2014 a password field with two buttons under it, 'Sign in' and 'Guest mode'. A correct password for an approved email leads to SSO; 'Guest mode' leads to nickname + Terms/Privacy consent. The window never differs by email, so nobody can probe which emails are in the system",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h39",
+          "text": "Entering any email always shows the password window with both buttons; 'Guest mode' works for every email, including approved ones (the owner's sandbox hop-in, c8)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "The landing leads with a 'Guest mode' button rather than a login-style form; the guest form opens only after choosing Guest mode, and 'Sign in' stays as the secondary path",
+          "kind": "decision",
+          "reason": "user: same window for all emails (no enumeration); replaces the Guest-mode-first layout"
+        }
+      ]
+    },
+    {
+      "id": "c45",
+      "kind": "requirement",
+      "text": "The entry flow does not reveal membership: unknown emails, approved emails, and wrong passwords get the same window, the same single error ('Email or password is wrong'), and indistinguishable response timing; password attempts are rate-limited per IP and per email",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h36",
+          "text": "A scripted probe of 1 approved and 1 unknown email (and a wrong password) sees byte-identical windows and errors, with median response times within 50 ms of each other",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h37",
+          "text": "After 5 failed password attempts in 15 minutes from one IP or for one email, further attempts get the same generic error and a delay, not a different message",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c46",
+      "kind": "requirement",
+      "text": "Approved users have a site password stored only as a slow salted hash (e.g. argon2id) in the front site's store; the password is a pre-check before SSO \u2014 Cloudflare Access on /login remains the real gate for the real mesh",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h38",
+          "text": "The store holds no plaintext or reversible passwords; a correct password without a valid Access login still cannot open any real-mesh route (h10)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q6",
+          "text": "How are approved-user passwords set and reset \u2014 a CLI on spark (e.g. a lens admin verb), or a self-service flow? A self-service reset by email would itself leak membership unless it also responds identically for every email",
+          "resolved": false,
+          "blocking": false,
+          "resolution": ""
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "Which model endpoint serves guests: the lobes primary (model-gear-vllm-primary) is currently exited/unhealthy, the gateway's cortex is proxied from peer spark2, and nemotron-120B on :8010 is up but keyless and memory-heavy",
+      "kind": "unknown_blocking",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Guests are served by the spark2 cortex via the lobes gateway for now, with thinking disabled",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v2",
+      "text": "Cloudflare Zero Trust plan/seat cap: on the free plan every authenticated guest consumes a seat (50 max) \u2014 unverified which plan the agentculture team is on",
+      "kind": "unknown_blocking",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Seats are spent only on approved users: a public front site sits before Cloudflare Access; guests never authenticate through Access",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v3",
+      "text": "Whether the One-time PIN identity provider is already enabled on the agentculture Access team \u2014 needs a dashboard/API read",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Moot: guests no longer authenticate through Cloudflare Access (c29), so the One-time PIN IdP is not needed",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v4",
+      "text": "Whether a second culture server/config home coexists cleanly with ~/.culture/server.yaml and its agents manifest (pidfile.py / config.py HOME handling unverified)",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v5",
+      "text": "Abuse handling beyond ToS: banning a misbehaving guest email, and who moderates \u2014 agentirc has no ban modes, so it would live in the consent store / Access policy",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Bans live in the guest store by email and/or IP, owner-moderated (c26)",
+      "resolution_claim_id": "c26"
+    },
+    {
+      "id": "v6",
+      "text": "Visual direction details (type scale, layout of the guest landing, sandbox vs real-mesh visual distinction) \u2014 settle with mockups during planning via a design pass",
+      "kind": "follow_up",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Option A chosen on the uplift canvas; remaining detail settles during implementation against those artboards",
+      "resolution_claim_id": null
+    }
+  ],
+  "scope_entries": [
+    {
+      "id": "s1",
+      "surface": "agentirc IRCd ACL (installed agentirc/client.py)",
+      "finding": "JOIN only checks archived rooms (client.py:449-459); channel modes are just +R/+S/+o/+v; no +i/+k/+m/+b, no opers, no rate limiting beyond bot fires_event \u2014 a guest on the real IRCd could /join any channel",
+      "seeds": [
+        "c10"
+      ]
+    },
+    {
+      "id": "s2",
+      "surface": "culture_core/cli/server.py",
+      "finding": "start takes --name/--port/--webhook-port/--data-dir/--link/--mesh-config (server.py:109-140); links default to [] (server.py:672,697) and pidfiles key on server-<name>, so a second named server coexists isolated; default port/webhook/data-dir collide and must be overridden",
+      "seeds": [
+        "c11"
+      ]
+    },
+    {
+      "id": "s3",
+      "surface": "irc-lens src/irc_lens/web/auth.py + identity.py",
+      "finding": "_authorize_principal 403s any email not in auth.allowed_emails (auth.py:234-239, verified); Identity is a 3-field NamedTuple with no role (identity.py:12-15); tests/test_auth_middleware.py:122 asserts the 403 and would flip",
+      "seeds": [
+        "c12"
+      ]
+    },
+    {
+      "id": "s4",
+      "surface": "irc-lens state/consent (sessions.py, routes.py, app.py)",
+      "finding": "no consent, terms, cookie-setting or DB exists \u2014 state is in-memory only (sessions.py:30 registry); gate must precede get_index (routes.py:249) with /tos,/accept exempt in auth.py:313-318; CSP is script-src 'self' (app.py:36-40) so the consent page needs no inline JS",
+      "seeds": [
+        "c13"
+      ]
+    },
+    {
+      "id": "s5",
+      "surface": "irc-lens identity.py derive_nick + agentirc nick rules",
+      "finding": "derive_nick = `<server>-<email local part>` (identity.py:18-37) so `a@x.com` and `a@y.com` collide (433 at agentirc client.py:380); IRCd enforces the `<servername>-` prefix (client.py:363, verified)",
+      "seeds": [
+        "c14"
+      ]
+    },
+    {
+      "id": "s6",
+      "surface": "cultureflare/_remote_login/_access_policy.py + _access_app.py",
+      "finding": "build_include only emits email/email_domain includes and refuses empty lists (_access_policy.py:9-26, verified) \u2014 no 'everyone' include; ensure_allow_policy never updates an existing policy (39-62); find_app keys one Access app per hostname, no path apps (_access_app.py:8-13)",
+      "seeds": [
+        "c15"
+      ]
+    },
+    {
+      "id": "s7",
+      "surface": "katvan/site (culture.dev apex, Jekyll on Cloudflare Pages)",
+      "finding": "culture.dev is built from agentculture/katvan (culture CHANGELOG.md:367; katvan/site/_worker.js:1-10); git grep for 'privacy policy|terms of service|code of conduct' found nothing in katvan, culture, cultureflare, culture-guide \u2014 pages must be written from scratch",
+      "seeds": [
+        "c16"
+      ]
+    },
+    {
+      "id": "s8",
+      "surface": "ToS/Privacy authorship",
+      "finding": "no existing legal text anywhere in the workspace (same grep as katvan entry); drafts would be LLM-proposed and need owner sign-off",
+      "seeds": [
+        "c17"
+      ]
+    },
+    {
+      "id": "s9",
+      "surface": "docs/reference/harnesses/colleague.md + culture.yaml",
+      "finding": "colleague needs only backend: colleague, engine: vllm-openai, base_url (colleague.md:~50-70); culture/culture.yaml already does this; unknown keys pass via AgentConfig.extras (culture_core/config.py:115,285-294); one bounded engine.work turn per message, no git/PR path",
+      "seeds": [
+        "c18"
+      ]
+    },
+    {
+      "id": "s10",
+      "surface": "colleague tools.py / engines (installed colleague package)",
+      "finding": "colleague supports tool allowlists + a read-only role (tools.py:572-574,702-712) and a no-tools completion (engines/vllm_openai.py:298-303), but no culture.yaml key was found that selects them for a resident \u2014 must be verified in cultureagent clients/colleague/config.py",
+      "seeds": [
+        "c19"
+      ]
+    },
+    {
+      "id": "s11",
+      "surface": "lobes deployment (~/.lobes, lobes-cli, nvidia-smi)",
+      "finding": "gateway localhost:8001 requires a Bearer key; compose caps --max-num-seqs=2 ('4 OOMs', ~/.lobes/docker-compose.yml:137); one GB10 with ~86GB held by a vLLM EngineCore; prior memory colleague-fanout-serialize-gpu: concurrent colleague drives caused 600s turns and model eviction",
+      "seeds": [
+        "c20"
+      ]
+    },
+    {
+      "id": "s12",
+      "surface": "grounding options (eidetic, knowledgebase-cli, model context)",
+      "finding": "eidetic has public-scope recall usable for RAG but its embedder lane isn't local now; knowledgebase-cli is AWS Bedrock-only; Qwen3.8-27B advertises 262k ctx and nemotron 393k, enough for a docs bundle",
+      "seeds": [
+        "c21"
+      ]
+    },
+    {
+      "id": "s13",
+      "surface": "chat.culture.dev live deployment (~/.config/irc-lens/config.yaml, memory reference_chat_agentculture_console)",
+      "finding": "lens config header names chat.culture.dev and media.public_base_url https://chat.culture.dev (verified); tunnel cloudflared-chat -> 127.0.0.1:8765; owner-only allowed_emails + one service token",
+      "seeds": [
+        "c22"
+      ]
+    },
+    {
+      "id": "s14",
+      "surface": "culture_core/cli/console.py + docs/reference/cli/console.md",
+      "finding": "console builds an irc-lens serve argv; pidfiles key per web port console-<port> (console.py:57-61); conflict check keys on (server_name,nick,host,irc_port) (console.py:64,201-208); docs name side-by-side --web-port runs as supported",
+      "seeds": [
+        "c23"
+      ]
+    },
+    {
+      "id": "s15",
+      "surface": "sandbox data handling (culture server --data-dir, irc-lens MediaStore)",
+      "finding": "server data-dir defaults to ~/.culture/data (server.py) and must be overridden for the sandbox; irc-lens media uploads go to media.dir \u2014 guest uploads would need their own dir or be disabled",
+      "seeds": [
+        "c24"
+      ]
+    },
+    {
+      "id": "s16",
+      "surface": "repo ownership across the change",
+      "finding": "role/consent code lives in irc-lens src/irc_lens/web; Access policy code in cultureflare; site pages in katvan; resident tool config in cultureagent \u2014 per the cross-repo hand-off convention, culture implements only its side",
+      "seeds": [
+        "c25"
+      ]
+    },
+    {
+      "id": "s17",
+      "surface": "Cloudflare Access plan + IdP (agentculture team, unverified)",
+      "finding": "cultureflare has no reference to OTP or an 'everyone' include; Access counts each authenticated user as a seat; plan tier and OTP enablement not checked (no CF API reads made during scope)",
+      "seeds": [
+        "c15"
+      ]
+    },
+    {
+      "id": "s18",
+      "surface": "moderation + privacy terms",
+      "finding": "no ban/kick ACL in agentirc (client.py JOIN path); no existing privacy policy to inherit retention terms from \u2014 retention/usage terms are an owner decision",
+      "seeds": [
+        "c26",
+        "q3"
+      ]
+    },
+    {
+      "id": "s19",
+      "surface": "culture_core resident presence (/residents.json, PRESENCE)",
+      "finding": "residents view queries a single IRCd (renderer_web.py:199,238; docs/resident-presence.md) \u2014 pointing a copy at the sandbox IRCd would show guests whether the culture-explainer agent is up; optional for v1, not required",
+      "seeds": []
+    },
+    {
+      "id": "s20",
+      "surface": "irc-lens auth middleware exemptions (auth.py:313-318)",
+      "finding": "today every non-static path requires a CF JWT; a public guest area means the middleware must allow JWT-less requests on guest routes and treat a present, valid JWT as the approved tier \u2014 the 401 on missing JWT (tests/test_auth_middleware.py) changes meaning",
+      "seeds": [
+        "c12",
+        "c30"
+      ]
+    },
+    {
+      "id": "s21",
+      "surface": "spark-ask (~/.culture/ask-agent/ask_agent.py, culture-ask-spark.service)",
+      "finding": "a stdlib IRC client sending chat completions with no tools field answered a culture question correctly and refused 'run ls /' over DM on 2026-10-09; no culture backend offers a no-tools knob (cultureagent claude agent_runner.py:144-151 bypassPermissions; colleague harness engine.work offers full tools)",
+      "seeds": [
+        "c18",
+        "c19"
+      ]
+    },
+    {
+      "id": "s22",
+      "surface": "irc-lens UI (templates/*.j2, static/lens.css, lens.js, mesh.js)",
+      "finding": "help is a static <dl> reached only via /help (_info.html.j2:5-24); header shows raw nick@host:port (index.html.j2:25); 3-column lens-grid, monospace 14px, palette mirrors culture.dev dark-terminal (lens.css:1-14); input placeholder 'Type a message or /command\u2026'; htmx + sse.js vendored, CSP script-src 'self' (app.py:36-40)",
+      "seeds": [
+        "c36",
+        "c37",
+        "c38",
+        "c39",
+        "c40",
+        "c41"
+      ]
+    },
+    {
+      "id": "s23",
+      "surface": "uplift design canvas (https://claude.ai/artifact/4bDJqM8gmU38LqDDnhAH9S)",
+      "finding": "three directions mocked (A terminal sharpened, B mesh-as-room, C ask-first) as landing + tier-switchable chat + phone artboards; user chose A and asked for little to no prose; A's artboards are the reference for c37-c40",
+      "seeds": [
+        "c36",
+        "c37",
+        "c38",
+        "c39",
+        "c40"
+      ]
+    }
+  ],
+  "lapses": [],
+  "obligations": []
+}
