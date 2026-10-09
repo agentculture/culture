@@ -342,3 +342,28 @@ def test_resolve_key_env_then_file(tmp_path, monkeypatch):
     monkeypatch.delenv("SBX_X")
     with pytest.raises(RuntimeError):
         resolve_key("SBX_X", None)
+
+
+@pytest.mark.asyncio
+async def test_answers_unaddressed_room_question_by_default(
+    server, gateway, make_client, start_agent
+):
+    """Guests don't know to @mention the agent: in the sandbox room it answers
+    every guest line (staging E2E found guests got no reply otherwise)."""
+    await start_agent()
+    g = await _guest(make_client, "testserv-g1")
+    await g.send("PRIVMSG #general :what is culture?")
+    lines = await _collect(g, "canned answer")
+    assert any(
+        "PRIVMSG #general" in ln and "testserv-g1: " in ln and "canned answer" in ln for ln in lines
+    )
+
+
+@pytest.mark.asyncio
+async def test_mention_only_mode_ignores_unaddressed(server, gateway, make_client, start_agent):
+    await start_agent(answer_unaddressed=False)
+    g = await _guest(make_client, "testserv-g1")
+    await g.send("PRIVMSG #general :what is culture?")
+    lines = await _collect(g, "canned answer", timeout=1.5)
+    assert not any("canned answer" in ln for ln in lines)
+    assert gateway.requests == []

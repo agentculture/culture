@@ -29,6 +29,7 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `max_tokens` | `700` | clamped to at most 700 |
 | `knowledge_dir` | `~/.culture/sandbox/knowledge` | the only place the agent reads |
 | `max_active` | `5` | guests served at once |
+| `answer_unaddressed` | `true` | answer every room line (guests don't know to @mention); `false` = mention-only in channels, DMs always answered |
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 
 Adding a model (for example an AWS-hosted one) is a config entry with its own

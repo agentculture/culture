@@ -86,6 +86,10 @@ class SandboxConfig:
     line_bytes: int = 400
     line_delay: float = 0.3
     timeout: float = 180.0
+    # Sandbox rooms exist for guests' questions and guests don't know to
+    # @mention the agent, so by default every room line is answered.
+    # False restores mention-only behavior in channels (DMs always answered).
+    answer_unaddressed: bool = True
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -348,7 +352,8 @@ class SandboxAgent:
         if target == nick:
             convo, out, prefix, question = sender, sender, "", text
         else:
-            if not re.search(rf"(^|\W)@?{re.escape(nick)}\b", text):
+            mentioned = re.search(rf"(^|\W)@?{re.escape(nick)}\b", text)
+            if not mentioned and not self.cfg.answer_unaddressed:
                 return
             convo, out, prefix = f"{target}/{sender}", target, f"{sender}: "
             question = re.sub(rf"@?{re.escape(nick)}[:,]?\s*", "", text).strip()
