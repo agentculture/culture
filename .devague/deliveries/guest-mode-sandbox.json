@@ -2,7 +2,7 @@
   "plan_slug": "guest-mode-sandbox",
   "schema_version": 2,
   "created": "2026-10-09T17:15:02Z",
-  "updated": "2026-10-09T20:04:26Z",
+  "updated": "2026-10-09T20:49:30Z",
   "deviations": [
     {
       "id": "d1",
@@ -89,6 +89,38 @@
       "status": "approved",
       "classification": null,
       "seq": 27
+    },
+    {
+      "id": "d7",
+      "what": "Pre-PR must-fix set from the post-browser-pass triage: (1) guest deletion also purges the guest's messages from the sandbox IRCd history and sbx-ask's flag log; guest rooms get a random per-guest id (#g-<id>) stored with the guest so a deleted guest's room is unreachable and nickname reuse never inherits history; the owner's Guest view lists current guests' rooms from the guest store; (2) approved users' sandbox nick becomes sbx-op-<local> and guest nicknames may not contain '-', so a guest can never take an approved user's nick or room; (3) idle guest sandbox sessions close after guest_mode.idle_close_s (default 600 s) with no open event stream, and sbx-ask parts guest rooms that have emptied; (4) the real-mesh 'No room' empty state gets a next-step hint (h58) and the owner metrics agent state uses room membership",
+      "task_ref": "t13",
+      "reason": "owner confirmed the triage recommendation 2026-10-09: deletion is a Privacy Policy promise; nick/room collision lets a guest share or impersonate the owner; sessions never closed so the active-guest gauge only grows; h58 is a confirmed honesty condition",
+      "affects": [
+        "t2",
+        "t5",
+        "t10",
+        "t11"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 31
+    },
+    {
+      "id": "d8",
+      "what": "Amends d7's deletion fix after staging showed AgentIRC commits history only at shutdown (an external purge cannot see or remove live rows and would block on the IRCd's write transaction): the sandbox IRCd runs memory-only (culture server --no-persist, no history/rooms on disk); the lens records each sbx-ask answer in the guest store beside the guest's question (linked, erased by deletion); on deletion the guest's Q&A pairs are first copied, PII-scrubbed and stripped of email/IP/nick/room, with a random id and day-only date, NSFW-declined pairs dropped, into a separate corpus table that deletion keeps; the lens no longer purges IRCd history (flag-log purge stays); the Privacy Policy gains a sentence that anonymized Q&A that cannot reasonably identify the guest may be kept after deletion (owner reviews wording, r3)",
+      "task_ref": "t11",
+      "reason": "owner decision 2026-10-09: memory-only + store answers + keep in DB anonymized Q&A that can't reasonably be linked to or identify a user",
+      "affects": [
+        "t1",
+        "t5",
+        "t12",
+        "t14"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 32
     }
   ],
   "evidence": [
@@ -547,6 +579,25 @@
       "status": "proposed",
       "superseded": false,
       "seq": 30
+    },
+    {
+      "id": "e25",
+      "obligation_ref": "o13",
+      "test_ref": "browser pass t16a: guest hal deleted via /delete in Chromium after a Q&A and an NSFW flag",
+      "behavior_text": "guest store dump names hal only in the deletions record; corpus kept 1 row with [name]/[email] in place of the guest's name and address, NSFW pair dropped; flag log has 0 sbx-hal lines; memory-only sandbox wrote no history.db",
+      "contract_text": "after token re-verification removes that guest's messages, uploads, and profile from the sandbox store and keeps only the deletion record",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "real browser deletion against the integrated build, then direct inspection of guests.db, flags.jsonl and the sandbox HOME",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:50:00",
+        "commit": "2410fc6"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 33
     }
   ],
   "deltas": [
@@ -695,6 +746,42 @@
       "evidence_refs": [],
       "origin": "user",
       "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b12",
+      "kind": "amended",
+      "behavior_text": "Guest rooms are #g-<random id> stored with the guest; approved users' sandbox nicks are sbx-op-<name>; guest nicknames are [a-z0-9_] only",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b13",
+      "kind": "added",
+      "behavior_text": "Sandbox sessions with no open tab close after guest_mode.idle_close_s (SSE keepalive every 15 s detects closed tabs); sbx-ask leaves guest rooms that emptied",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b14",
+      "kind": "amended",
+      "behavior_text": "The sandbox IRCd runs memory-only (--no-persist); the guest store holds each guest's questions and sbx-ask's answers; deletion keeps an anonymized Q&A corpus (no email/IP/nick/room, PII-scrubbed, day-only, NSFW pairs dropped) and erases everything linked, plus the guest's flag-log lines",
+      "caused_by": [
+        "d8"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
       "superseded": false
     }
   ],

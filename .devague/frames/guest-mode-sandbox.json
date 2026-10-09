@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T20:04:11Z",
+  "updated": "2026-10-09T20:49:30Z",
   "claims": [
     {
       "id": "c1",
@@ -1686,6 +1686,17 @@
       "refs": [
         "t16a",
         "d6"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l5",
+      "code": "grader-unverified",
+      "what": "The idle-session reaper shipped calling subscriber_count() on a property; its unit test mocked the event bus, so the test passed while the real sweeper raised every cycle (7 logged failures in staging). Fixed and mutation-checked in 2410fc6.",
+      "skipped_check": "running the reaper against the real SessionEventBus",
+      "refs": [
+        "d7"
       ],
       "origin": "llm",
       "status": "proposed"
