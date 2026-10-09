@@ -399,3 +399,50 @@ def test_knowledge_budget_and_priority_order(tmp_path):
     assert text.index("README.md") < text.index("CLAUDE.md") < text.index("docs/a.md")
     assert "docs/reference/z.md" not in text  # over budget, lowest priority dropped
     assert len(text) < 500
+
+
+# ---- private guest rooms (d6) ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_follows_guest_into_private_room(server, gateway, make_client, start_agent):
+    """Each guest has a private #g-<nick> room; sbx-ask joins it when the guest
+    does (EVENTSUB user.join) and answers there, never in a shared room."""
+    await start_agent()
+    g = await _guest(make_client, "testserv-g1", join="#g-g1")
+    await asyncio.sleep(0.5)
+    await g.send("PRIVMSG #g-g1 :what is culture?")
+    lines = await _collect(g, "canned answer")
+    assert any("PRIVMSG #g-g1" in ln and "canned answer" in ln for ln in lines)
+
+
+@pytest.mark.asyncio
+async def test_rejoins_existing_private_rooms_on_start(server, gateway, make_client, start_agent):
+    """After an agent restart, rooms whose guests are still inside are rejoined."""
+    g = await _guest(make_client, "testserv-g2", join="#g-g2")
+    await start_agent()
+    await g.send("PRIVMSG #g-g2 :what is culture?")
+    lines = await _collect(g, "canned answer")
+    assert any("PRIVMSG #g-g2" in ln and "canned answer" in ln for ln in lines)
+
+
+@pytest.mark.asyncio
+async def test_does_not_follow_into_other_rooms(server, gateway, make_client, start_agent):
+    await start_agent()
+    g = await _guest(make_client, "testserv-g3", join="#elsewhere")
+    await asyncio.sleep(0.5)
+    await g.send("PRIVMSG #elsewhere :what is culture?")
+    lines = await _collect(g, "canned answer", timeout=1.5)
+    assert not any("canned answer" in ln for ln in lines)
+    assert gateway.requests == []
+
+
+@pytest.mark.asyncio
+async def test_private_rooms_off_skips_bot_capability(server, gateway, make_client, start_agent):
+    agent = await start_agent(guest_room_prefix=None)
+    g = await _guest(make_client, "testserv-g4", join="#g-g4")
+    await asyncio.sleep(0.5)
+    await g.send("PRIVMSG #g-g4 :what is culture?")
+    lines = await _collect(g, "canned answer", timeout=1.5)
+    assert not any("canned answer" in ln for ln in lines)
+    assert agent.rooms == set()

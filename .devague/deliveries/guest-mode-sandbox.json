@@ -2,7 +2,7 @@
   "plan_slug": "guest-mode-sandbox",
   "schema_version": 2,
   "created": "2026-10-09T17:15:02Z",
-  "updated": "2026-10-09T18:42:35Z",
+  "updated": "2026-10-09T19:34:27Z",
   "deviations": [
     {
       "id": "d1",
@@ -74,6 +74,21 @@
       "status": "approved",
       "classification": "needs-follow-up",
       "seq": 5
+    },
+    {
+      "id": "d6",
+      "what": "Browser pass (t16a) found the sandbox is one shared #general with full history: a new guest sees earlier guests' nicks, questions and flagged content. Owner decided: each guest gets a private room with sbx-ask (guests never see each other; owner sees all rooms from Guest view), and system join/welcome lines are hidden in guest and Guest-view sessions. Same pass also fixes: GET /login 404 after Access SSO, chat log opening at the oldest message, empty sandbox member list, false 'agent offline' in the owner's Guest view, htmx CSP errors (keyup filters + inline indicator styles), missing username field on the password form, token mail copy",
+      "task_ref": "t13",
+      "reason": "owner chose 'Private room each' and 'Hide for guests' at the 2026-10-09 browser-pass question; the spec never decided cross-guest visibility",
+      "affects": [
+        "t2",
+        "t10",
+        "t16"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 27
     }
   ],
   "evidence": [

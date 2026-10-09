@@ -62,6 +62,7 @@ _COMMAND_RE = re.compile(
 DECLINE_COMMAND = (
     "I can't run commands or take actions - I only answer questions about " "culture from its docs."
 )
+BOT_CAP = "agentirc.io/bot"  # grants EVENTSUB (agentirc protocol.BOT_CAP)
 DECLINE_NSFW = "I can't help with that. This request has been flagged to the owner."
 
 
@@ -96,6 +97,11 @@ class SandboxConfig:
     # False restores mention-only behavior in channels (DMs always answered).
     answer_unaddressed: bool = True
     knowledge_budget_chars: int = KNOWLEDGE_BUDGET_CHARS
+    # Each guest chats in a private room named <prefix><nick>. The agent
+    # follows guests into rooms with this prefix (EVENTSUB user.join, which
+    # needs the agentirc.io/bot capability) and rejoins existing ones on
+    # connect (LIST). None turns private rooms off.
+    guest_room_prefix: str | None = "#g-"
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -260,6 +266,7 @@ class SandboxAgent:
         self.waiting: collections.deque[_Job] = collections.deque()
         self.writer: asyncio.StreamWriter | None = None
         self._tasks: set[asyncio.Task] = set()
+        self.rooms: set[str] = set()  # private guest rooms joined
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -399,11 +406,24 @@ class SandboxAgent:
             return
         await self._admit(_Job(sender, convo, out, prefix, question))
 
+    async def _follow(self, chan: str, nick: str | None = None) -> None:
+        prefix = self.cfg.guest_room_prefix
+        if not prefix or not chan.startswith(prefix) or nick == self.cfg.nick:
+            return
+        if chan not in self.rooms:
+            self.rooms.add(chan)
+            await self.send(f"JOIN {chan}")
+
     # -- IRC loop
     async def run_once(self) -> None:
         reader, self.writer = await asyncio.open_connection(self.cfg.host, self.cfg.port)
+        self.rooms = set()
+        if self.cfg.guest_room_prefix:
+            await self.send(f"CAP REQ :{BOT_CAP}")
         await self.send(f"NICK {self.cfg.nick}")
         await self.send(f"USER {self.cfg.nick} 0 * :tool-less Q&A agent (answers only)")
+        if self.cfg.guest_room_prefix:
+            await self.send("CAP END")
         while line := await reader.readline():
             msg = line.decode(errors="replace").rstrip("\r\n")
             if msg.startswith("PING"):
@@ -417,8 +437,18 @@ class SandboxAgent:
                     *([self.cfg.owner_channel] if self.cfg.owner_channel else []),
                 ]:
                     await self.send(f"JOIN {chan}")
+                if self.cfg.guest_room_prefix:
+                    await self.send("EVENTSUB rooms type=user.join")
+                    await self.send("LIST")
             elif len(parts) >= 2 and parts[1] in ("432", "433"):
                 raise RuntimeError(f"nick rejected: {msg}")
+            elif len(parts) == 4 and parts[1] == "322":  # RPL_LIST
+                await self._follow(parts[3].split(" ", 1)[0])
+            elif len(parts) == 4 and parts[1] == "EVENT":
+                # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
+                ev = parts[3].split(" ")
+                if len(ev) >= 3 and ev[0] == "user.join":
+                    await self._follow(ev[1], ev[2])
             elif len(parts) == 4 and parts[1] == "PRIVMSG":
                 sender = parts[0].lstrip(":").split("!", 1)[0]
                 text = parts[3][1:] if parts[3].startswith(":") else parts[3]

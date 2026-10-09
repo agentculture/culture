@@ -30,6 +30,7 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `knowledge_dir` | `~/.culture/sandbox/knowledge` | the only place the agent reads |
 | `max_active` | `5` | guests served at once |
 | `answer_unaddressed` | `true` | answer every room line (guests don't know to @mention); `false` = mention-only in channels, DMs always answered |
+| `guest_room_prefix` | `#g-` | follow each guest into its private room `<prefix><nick>` (EVENTSUB `user.join`, needs the `agentirc.io/bot` capability) and rejoin existing ones on connect; must match irc-lens `guest_mode.sandbox.room_prefix`; `null` turns it off |
 | `knowledge_budget_chars` | `48000` | prompt budget for the bundle (sets latency: ~7 s/answer at ~10k tokens on cortex-spark2) |
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 
