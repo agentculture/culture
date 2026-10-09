@@ -102,6 +102,9 @@ class SandboxConfig:
     # needs the agentirc.io/bot capability) and rejoins existing ones on
     # connect (LIST). None turns private rooms off.
     guest_room_prefix: str | None = "#g-"
+    # How often to LIST and leave guest rooms nobody else is in any more
+    # (AgentIRC sends no PART/QUIT we can rely on for a closed tab).
+    room_sweep_s: float = 300.0
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -414,6 +417,33 @@ class SandboxAgent:
             self.rooms.add(chan)
             await self.send(f"JOIN {chan}")
 
+    async def _on_list_row(self, row: str) -> None:
+        """``<channel> <members> :<topic>``: follow a guest room someone is in,
+        leave one that only we are still in."""
+        fields = row.split(" ", 2)
+        chan = fields[0]
+        prefix = self.cfg.guest_room_prefix
+        if not prefix or not chan.startswith(prefix):
+            return
+        try:
+            members = int(fields[1])
+        except (IndexError, ValueError):
+            members = 1
+        others = members - (1 if chan in self.rooms else 0)
+        if others > 0:
+            await self._follow(chan)
+        elif chan in self.rooms:
+            self.rooms.discard(chan)
+            self.history.pop(chan, None)
+            for key in [k for k in self.history if k.startswith(chan + "/")]:
+                del self.history[key]
+            await self.send(f"PART {chan}")
+
+    async def _sweep_rooms(self) -> None:
+        while True:
+            await asyncio.sleep(self.cfg.room_sweep_s)
+            await self.send("LIST")
+
     # -- IRC loop
     async def run_once(self) -> None:
         reader, self.writer = await asyncio.open_connection(self.cfg.host, self.cfg.port)
@@ -424,36 +454,43 @@ class SandboxAgent:
         await self.send(f"USER {self.cfg.nick} 0 * :tool-less Q&A agent (answers only)")
         if self.cfg.guest_room_prefix:
             await self.send("CAP END")
-        while line := await reader.readline():
-            msg = line.decode(errors="replace").rstrip("\r\n")
-            if msg.startswith("PING"):
-                await self.send("PONG" + msg[4:])
-                continue
-            parts = msg.split(" ", 3)
-            if len(parts) >= 2 and parts[1] == "001":
-                log.info("registered as %s", self.cfg.nick)
-                for chan in [
-                    *self.cfg.channels,
-                    *([self.cfg.owner_channel] if self.cfg.owner_channel else []),
-                ]:
-                    await self.send(f"JOIN {chan}")
-                if self.cfg.guest_room_prefix:
-                    await self.send("EVENTSUB rooms type=user.join")
-                    await self.send("LIST")
-            elif len(parts) >= 2 and parts[1] in ("432", "433"):
-                raise RuntimeError(f"nick rejected: {msg}")
-            elif len(parts) == 4 and parts[1] == "322":  # RPL_LIST
-                await self._follow(parts[3].split(" ", 1)[0])
-            elif len(parts) == 4 and parts[1] == "EVENT":
-                # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
-                ev = parts[3].split(" ")
-                if len(ev) >= 3 and ev[0] == "user.join":
-                    await self._follow(ev[1], ev[2])
-            elif len(parts) == 4 and parts[1] == "PRIVMSG":
-                sender = parts[0].lstrip(":").split("!", 1)[0]
-                text = parts[3][1:] if parts[3].startswith(":") else parts[3]
-                self._spawn(self.handle(sender, parts[2], text))
-        raise ConnectionError("server closed the connection")
+        sweeper: asyncio.Future | None = None
+        try:
+            while line := await reader.readline():
+                msg = line.decode(errors="replace").rstrip("\r\n")
+                if msg.startswith("PING"):
+                    await self.send("PONG" + msg[4:])
+                    continue
+                parts = msg.split(" ", 3)
+                if len(parts) >= 2 and parts[1] == "001":
+                    log.info("registered as %s", self.cfg.nick)
+                    for chan in [
+                        *self.cfg.channels,
+                        *([self.cfg.owner_channel] if self.cfg.owner_channel else []),
+                    ]:
+                        await self.send(f"JOIN {chan}")
+                    if self.cfg.guest_room_prefix:
+                        await self.send("EVENTSUB rooms type=user.join")
+                        await self.send("LIST")
+                        if sweeper is None:
+                            sweeper = asyncio.ensure_future(self._sweep_rooms())
+                elif len(parts) >= 2 and parts[1] in ("432", "433"):
+                    raise RuntimeError(f"nick rejected: {msg}")
+                elif len(parts) == 4 and parts[1] == "322":  # RPL_LIST
+                    await self._on_list_row(parts[3])
+                elif len(parts) == 4 and parts[1] == "EVENT":
+                    # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
+                    ev = parts[3].split(" ")
+                    if len(ev) >= 3 and ev[0] == "user.join":
+                        await self._follow(ev[1], ev[2])
+                elif len(parts) == 4 and parts[1] == "PRIVMSG":
+                    sender = parts[0].lstrip(":").split("!", 1)[0]
+                    text = parts[3][1:] if parts[3].startswith(":") else parts[3]
+                    self._spawn(self.handle(sender, parts[2], text))
+            raise ConnectionError("server closed the connection")
+        finally:
+            if sweeper is not None:
+                sweeper.cancel()
 
     async def run(self) -> None:
         while True:

@@ -446,3 +446,33 @@ async def test_private_rooms_off_skips_bot_capability(server, gateway, make_clie
     lines = await _collect(g, "canned answer", timeout=1.5)
     assert not any("canned answer" in ln for ln in lines)
     assert agent.rooms == set()
+
+
+@pytest.mark.asyncio
+async def test_parts_guest_room_once_the_guest_left(server, gateway, make_client, start_agent):
+    """Rooms are swept (LIST every room_sweep_s): sbx-ask leaves a guest room
+    with nobody else in it, so rooms do not pile up (d7)."""
+    agent = await start_agent(room_sweep_s=0.3)
+    g = await _guest(make_client, "testserv-g5", join="#g-g5")
+    for _ in range(40):
+        if "#g-g5" in agent.rooms:
+            break
+        await asyncio.sleep(0.05)
+    assert "#g-g5" in agent.rooms
+    await g.send("PART #g-g5")
+    for _ in range(40):
+        if "#g-g5" not in agent.rooms:
+            break
+        await asyncio.sleep(0.05)
+    assert "#g-g5" not in agent.rooms
+
+
+@pytest.mark.asyncio
+async def test_does_not_rejoin_empty_guest_rooms_on_start(
+    server, gateway, make_client, start_agent
+):
+    g = await _guest(make_client, "testserv-g6", join="#g-g6")
+    await g.send("PART #g-g6")
+    await asyncio.sleep(0.3)
+    agent = await start_agent()
+    assert "#g-g6" not in agent.rooms
