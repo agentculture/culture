@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.5.1] - 2026-10-09
+
+### Added
+
+- `validate-delivery` skill (origin devague): runs the confirmed plan's behavioral tests agent-side after `assign-to-workforce` merges and files evidence records + behavioral deltas via `devague evidence` / `devague delta` before `summarize-delivery` closes the loop.
+
+### Changed
+
+- Re-synced the seven existing devague-origin skills (`scope`, `think`, `challenge`, `spec-to-plan`, `assign-to-workforce`, `deviate`, `summarize-delivery`) verbatim from agentculture/devague main (0.24.2, 78d9bfb): eight-leg flow, `--instruction` handoff to plan tasks, obligations/evidence/deltas, lapse-ledger-grounded delivery confidence, repo-owned `.worktrees.<repo>/` root for workforce worktrees.
+
 ## [14.5.0] - 2026-07-07
 
 ### Added

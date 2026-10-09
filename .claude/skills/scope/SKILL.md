@@ -45,9 +45,33 @@ of the method: no wizard.)
 1. **Enumerate candidate surfaces.** List what the idea *might* touch: source
    packages, CLI verbs, renderers, schemas, tests, docs, skills, CI workflows,
    sibling repos. `git ls-files` and the repo's `CLAUDE.md` are the usual map.
-2. **Explore each surface read-only.** Read enough of each candidate to decide:
-   touched, not touched, or unknown. Exploration never mutates anything —
-   no edits, no state changes, no CLI moves yet.
+   Count the candidates — the count decides how step 2 explores them.
+2. **Explore each surface read-only — inline for a handful, fanned out for a
+   broader survey.** Read enough of each candidate to decide: touched, not
+   touched, or unknown. Exploration never mutates anything — no edits, no
+   state changes, no CLI moves — while surveying, whether you explore inline
+   or fan out.
+   - **4 or fewer candidate surfaces: explore them yourself, inline,
+     serially**, exactly as before. Spinning up subagents to read three files
+     costs more than it saves, and the no-wizard rule still applies underneath
+     this: a small idea can skip scope exploration altogether (see *When to
+     use — and when to skip*, above).
+   - **5 or more candidate surfaces: fan out.** Dispatch one **read-only
+     exploration subagent per surface** (or per tight cluster of closely
+     related surfaces, e.g. "the five files under `render/`"), defaulting to a
+     **smaller tier — sonnet** — for every subagent in the fan-out. Sonnet is
+     the default, not a ceiling: escalate a single subagent to a stronger tier
+     only when that specific surface demands it (an ambiguous design doc
+     needing real synthesis, say), never as the default for the whole survey.
+   - **Subagents explore and report; they never run a `devague` move.** A
+     fan-out subagent's job ends at a read-only finding — touched / not
+     touched / unknown, with the file, line, or command output that grounds
+     the verdict — handed back to the main agent in its report. The main
+     agent alone runs every `capture`, `scope`, `question`, and `park` call in
+     step 4, from the subagents' reported evidence. This is the load-bearing
+     rule of the whole fan-out: provenance and the anti-fabrication contract
+     stay in one place (the main agent), never scattered across however many
+     subagent transcripts the user never sees.
 3. **Classify every finding.** Each explored surface yields one of:
    - **in scope** — the idea changes it → becomes a `requirement` or
      `assumption` claim in the frame;
@@ -59,13 +83,20 @@ of the method: no wizard.)
    `devague new "<announcement>" --title "<short>"` (this is also `/think`'s
    first move) — scope entries live on the frame, so it must exist first.
    Record each explored surface as a first-class finding:
-   `` `devague scope "<surface>" --finding "<text>" [--seeds <claim-id> ...]` ``
+   `` `devague scope "<surface>" --finding "<text>" [--seeds <id> ...]` ``
    — text that **cites the surface explored** ("the CLI stays deterministic
    per issue 20; scope exploration is agent-side" beats "we won't overreach").
    Capture the claim it seeded first (`capture --kind ...`), then pass its id
-   to `--seeds` — an unknown seed id is refused with a hint. Provenance, not
+   to `--seeds`; a finding you routed to a hard question instead (the
+   "genuinely unknown" branch above) links the same way — `--seeds` accepts a
+   claim id (`c*`) **or** a claim-attached hard-question id (`q*`, #84) — and
+   an unknown seed id is refused with a hint. Provenance, not
    generic disclaimers: a reviewer should be able to trace every boundary claim
-   back to something you read.
+   back to something you read. **This move is always the main agent's, never a
+   subagent's** — when step 2 fanned out, the main agent writes the finding
+   from the subagent's reported evidence (still citing the actual surface, not
+   "a subagent explored this"), so every seeded claim traces back to a
+   concrete file, line, or command output either way.
 
 ## How findings land (the shipped surface)
 
@@ -84,8 +115,14 @@ already exist, so run `devague new` first:
 | Move | What it does |
 |------|--------------|
 | `devague scope "<surface>" --finding "<text>"` | Record a finding on the current frame. |
-| `devague scope "<surface>" --finding "<text>" --seeds <claim-id> [<claim-id> ...]` | Record a finding, linking it to the claim id(s) it went on to seed. An unknown seed id is refused with a hint (`run 'devague show' to see valid claim ids`). |
+| `devague scope "<surface>" --finding "<text>" --seeds <id> [<id> ...]` | Record a finding, linking it to what it went on to seed — a claim id (`c*`) or a claim-attached hard-question id (`q*`, #84), so a finding routed to `interrogate --hard-question` keeps its provenance link too. An unknown seed id is refused with a hint (`run 'devague show' to see valid claim ids`). |
+| `devague scope --amend <sN> --finding "<corrected>"` | Replace an entry's finding in place — same `id`, `surface`, and `seeds` (#84). Use this instead of recording a second entry that says "supersedes s18"; there is no revision trail here, unlike claim `amend`. |
 | `devague scope --list [--json]` | Read every recorded entry back. |
+
+After every successful, non-exempt move (`status` itself is exempt, since
+reporting the next move is already its whole purpose) the CLI prints a
+`next: <recommended move>` line to **stderr**. Follow that hint or run
+`devague status` — either gets you the same recommended next move.
 
 Boundary / non-goal / in-scope claims still land the same way they always
 did, through the normal frame moves — `devague scope` documents *what surface
@@ -99,17 +136,39 @@ followed*:
 | genuinely unknown, needs a user decision | `question "<text>"` (later `question --resolve <qid> --decision "<text>"`) |
 | genuinely unknown, not decidable now | `park "<text>" --kind unknown_blocking\|unknown_nonblocking` |
 
+**Which `q*` ids `--seeds` accepts.** Two independent things mint `qN` ids and
+both start counting at `q1`: **claim-attached** hard questions
+(`interrogate <cN> --hard-question "<text>"`) and the separate durable
+`.devague/questions/<slug>.md` artifact (`devague question`). `scope --seeds`
+resolves against the **claim-attached** ones only. So when you want a
+"needs a user decision" finding to carry a provenance link, raise it with
+`interrogate --hard-question` on the claim it hangs off and seed that id —
+seeding a `devague question` id would either be refused or, worse, match an
+unrelated claim-attached question with the same number.
+
 ## Hard rules (do not violate)
 
 - **Exploration is read-only.** Surveying scope never edits files, never
-  mutates frame state, never runs a mutating CLI move.
+  mutates frame state, never runs a mutating CLI move — true whether you
+  explore inline or fan out to subagents (step 2).
 - **Provenance in every seeded claim.** A scope-derived claim cites what was
-  explored. If you didn't read it, don't claim it.
+  explored. If you didn't read it, don't claim it — including what a fan-out
+  subagent read on your behalf: its report is the evidence, not a substitute
+  for citing the surface.
+- **Subagents explore; only the main agent moves.** When step 2 fans out to
+  read-only exploration subagents, they never run `devague capture`, `scope`,
+  `question`, or `park` — only report findings back. The main agent runs
+  every one of those moves itself, from the subagents' reported evidence, so
+  provenance and the anti-fabrication contract are never split across agents.
 - **LLM proposals stay proposed.** Findings you capture with `--origin llm`
   land `proposed`; the user confirms. Same anti-fabrication contract as
   `/think`.
 - **Don't become a wizard.** Scope exploration is optional-by-size and
-  adaptive. Never block a small idea on a survey it doesn't need.
+  adaptive. Never block a small idea on a survey it doesn't need — and even
+  a broad survey that fans out to subagents skips the fan-out entirely if the
+  idea itself is small (4 or fewer candidate surfaces, step 2).
+- File the record the moment the thing happens, never at closeout — written
+  late is written flattering (issue 97).
 
 ## Worked example
 
@@ -154,6 +213,13 @@ into the buildable artifact (#53 t6). When the survey is done, continue with
 `/think`'s remaining moves (`interrogate`, `confirm`/`reject`, `converge`,
 `export`) to take the frame the rest of the way. The user confirms
 LLM-proposed claims there, as always.
+
+## Before and after this leg
+
+```text
+Previous leg: nothing precedes
+Next leg: think
+```
 
 ## Provenance
 
