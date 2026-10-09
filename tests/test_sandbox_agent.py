@@ -367,3 +367,35 @@ async def test_mention_only_mode_ignores_unaddressed(server, gateway, make_clien
     lines = await _collect(g, "canned answer", timeout=1.5)
     assert not any("canned answer" in ln for ln in lines)
     assert gateway.requests == []
+
+
+def test_bundle_is_curated_excluding_working_papers(tmp_path):
+    """Guest knowledge excludes internal working papers (plans/specs/superpowers)."""
+    src = tmp_path / "repo"
+    for rel in (
+        "README.md",
+        "CLAUDE.md",
+        "docs/guide.md",
+        "docs/reference/cli.md",
+        "docs/superpowers/plans/p.md",
+        "docs/specs/s.md",
+        "docs/plans/x.md",
+    ):
+        f = src / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(f"# {rel}\n")
+    copied = {p.relative_to(tmp_path / "kb").as_posix() for p in build_bundle(src, tmp_path / "kb")}
+    assert copied == {"README.md", "CLAUDE.md", "docs/guide.md", "docs/reference/cli.md"}
+
+
+def test_knowledge_budget_and_priority_order(tmp_path):
+    kb = tmp_path / "kb"
+    (kb / "docs" / "reference").mkdir(parents=True)
+    (kb / "README.md").write_text("R" * 100)
+    (kb / "CLAUDE.md").write_text("C" * 100)
+    (kb / "docs" / "a.md").write_text("A" * 100)
+    (kb / "docs" / "reference" / "z.md").write_text("Z" * 100)
+    text = load_knowledge(kb, budget=350)  # three 100-char files fit, the fourth does not
+    assert text.index("README.md") < text.index("CLAUDE.md") < text.index("docs/a.md")
+    assert "docs/reference/z.md" not in text  # over budget, lowest priority dropped
+    assert len(text) < 500

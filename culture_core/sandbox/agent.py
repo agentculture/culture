@@ -36,7 +36,12 @@ SHORT_ANSWER_INSTRUCTION = (
     "sentences or one short paragraph."
 )
 _KNOWLEDGE_FILE_CAP = 200_000  # bytes read per bundle file
-_KNOWLEDGE_TOTAL_CAP = 400_000  # bytes of bundle placed in the prompt
+# Default prompt budget for the bundle. Measured on cortex-spark2
+# (2026-10-09): ~7 s per answer at ~10k prompt tokens, ~28 s at ~66k, no
+# prefix-cache benefit — so the budget, not the bundle size, sets latency.
+KNOWLEDGE_BUDGET_CHARS = 48_000
+# Internal working papers are not guest knowledge.
+_BUNDLE_EXCLUDED_DIRS = ("superpowers", "specs", "plans")
 
 # --- documented first-pass filters (deliberately simple) -------------------
 # NSFW: keyword pre-filter; the system prompt also instructs the model to
@@ -90,6 +95,7 @@ class SandboxConfig:
     # @mention the agent, so by default every room line is answered.
     # False restores mention-only behavior in channels (DMs always answered).
     answer_unaddressed: bool = True
+    knowledge_budget_chars: int = KNOWLEDGE_BUDGET_CHARS
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -115,7 +121,11 @@ def build_bundle(src_root: str | Path, dest: str | Path) -> list[Path]:
             p.chmod(0o755)
         shutil.rmtree(dst)
     dst.mkdir(parents=True)
-    wanted = [src / "README.md", src / "CLAUDE.md"] + sorted((src / "docs").rglob("*.md"))
+    wanted = [src / "README.md", src / "CLAUDE.md"] + sorted(
+        p
+        for p in (src / "docs").rglob("*.md")
+        if not set(p.relative_to(src / "docs").parts[:-1]) & set(_BUNDLE_EXCLUDED_DIRS)
+    )
     copied = []
     for f in wanted:
         if not f.is_file() or f.is_symlink():
@@ -131,18 +141,34 @@ def build_bundle(src_root: str | Path, dest: str | Path) -> list[Path]:
     return copied
 
 
-def load_knowledge(knowledge_dir: str | Path) -> str:
-    """Read ONLY ``*.md`` files under the knowledge dir (the sole file access)."""
+def _knowledge_priority(rel: Path) -> tuple:
+    """README, CLAUDE.md, top-level docs, then everything deeper (alphabetical)."""
+    order = {"README.md": 0, "CLAUDE.md": 1, "docs/README.md": 2}
+    key = rel.as_posix()
+    if key in order:
+        return (order[key], key)
+    return (3 if len(rel.parts) <= 2 else 4, key)
+
+
+def load_knowledge(knowledge_dir: str | Path, budget: int = KNOWLEDGE_BUDGET_CHARS) -> str:
+    """Read ONLY ``*.md`` files under the knowledge dir (the sole file access).
+
+    Files are taken in priority order until *budget* characters are used;
+    a file that would overflow the budget is skipped.
+    """
     root = Path(knowledge_dir).expanduser()
     if not root.is_dir():
         return ""
+    files = [
+        f
+        for f in root.rglob("*.md")
+        if not f.is_symlink() and f.resolve().is_relative_to(root.resolve())
+    ]
     parts, total = [], 0
-    for f in sorted(root.rglob("*.md")):
-        if f.is_symlink() or not f.resolve().is_relative_to(root.resolve()):
-            continue
+    for f in sorted(files, key=lambda f: _knowledge_priority(f.relative_to(root))):
         text = f.read_bytes()[:_KNOWLEDGE_FILE_CAP].decode(errors="replace")
-        if total + len(text) > _KNOWLEDGE_TOTAL_CAP:
-            break
+        if total + len(text) > budget:
+            continue
         total += len(text)
         parts.append(f"\n===== {f.relative_to(root)} =====\n{text}")
     return "".join(parts)
@@ -219,7 +245,12 @@ class SandboxAgent:
     def __init__(self, cfg: SandboxConfig, knowledge: str | None = None) -> None:
         self.cfg = cfg
         self.system = system_prompt(
-            cfg.nick, load_knowledge(cfg.knowledge_dir) if knowledge is None else knowledge
+            cfg.nick,
+            (
+                load_knowledge(cfg.knowledge_dir, cfg.knowledge_budget_chars)
+                if knowledge is None
+                else knowledge
+            ),
         )
         self.history: dict[str, collections.deque] = collections.defaultdict(
             lambda: collections.deque(maxlen=cfg.history_turns * 2)

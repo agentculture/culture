@@ -30,6 +30,7 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `knowledge_dir` | `~/.culture/sandbox/knowledge` | the only place the agent reads |
 | `max_active` | `5` | guests served at once |
 | `answer_unaddressed` | `true` | answer every room line (guests don't know to @mention); `false` = mention-only in channels, DMs always answered |
+| `knowledge_budget_chars` | `48000` | prompt budget for the bundle (sets latency: ~7 s/answer at ~10k tokens on cortex-spark2) |
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 
 Adding a model (for example an AWS-hosted one) is a config entry with its own
@@ -47,7 +48,8 @@ Adding a model (for example an AWS-hosted one) is a config entry with its own
 - **Commands are declined** by a deterministic regex pre-filter (no model call)
   and by the system prompt.
 - **Curated, read-only knowledge.** `--bundle-from REPO` copies `README.md`,
-  `CLAUDE.md` and `docs/**/*.md` into `knowledge_dir` (files 0444, dirs 0555).
+  `CLAUDE.md` and `docs/**/*.md` minus internal working papers
+  (`docs/superpowers`, `docs/specs`, `docs/plans`) into `knowledge_dir` (files 0444, dirs 0555).
   The agent reads only `*.md` there (symlinks ignored) and nothing else.
 - **NSFW.** First-pass handling: a keyword pre-filter, plus a system-prompt
   instruction to reply with `[[NSFW]]`. Either path declines, appends a JSON
