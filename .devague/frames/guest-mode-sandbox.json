@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T18:42:10Z",
+  "updated": "2026-10-09T20:04:11Z",
   "claims": [
     {
       "id": "c1",
@@ -1674,6 +1674,18 @@
       "refs": [
         "e1",
         "e15"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l4",
+      "code": "control-absent",
+      "what": "Declared the run ready for PR after /validate-delivery and /summarize-delivery without any real-browser pass over the integrated build; staging E2E used HTTP scripts that never ran the pages' JS. The browser pass then found 10 defects (cross-guest history leak, /login 404, dead room rows, false agent state, empty member list, CSP errors, log scrolled to top)",
+      "skipped_check": "click-through of the integrated build in a real browser (guest, approved, Guest view, phone)",
+      "refs": [
+        "t16a",
+        "d6"
       ],
       "origin": "llm",
       "status": "proposed"

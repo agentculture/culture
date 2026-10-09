@@ -2,7 +2,7 @@
   "plan_slug": "guest-mode-sandbox",
   "schema_version": 2,
   "created": "2026-10-09T17:15:02Z",
-  "updated": "2026-10-09T19:34:27Z",
+  "updated": "2026-10-09T20:04:26Z",
   "deviations": [
     {
       "id": "d1",
@@ -490,6 +490,63 @@
       "status": "proposed",
       "superseded": false,
       "seq": 26
+    },
+    {
+      "id": "e22",
+      "obligation_ref": "o4",
+      "test_ref": "browser pass t16a (Playwright, localhost:8767): known vs unknown email POST /entry/email and wrong-password /entry/signin",
+      "behavior_text": "password window and wrong-password error byte-identical after swapping the email; both 401 at 503 ms vs 504 ms",
+      "contract_text": "status code, body, and timing are indistinguishable for approved vs unknown emails",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "ran in a real Chromium against the integrated build with the entry card's own JS",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 28
+    },
+    {
+      "id": "e23",
+      "obligation_ref": "o2",
+      "test_ref": "browser pass t16a: two guests (desktop + 375 px) through the full entry card, then WHO on the sandbox IRCd",
+      "behavior_text": "each guest lands in its own #g-<nick> room with sbx-ask; neither sees the other's messages or earlier guests' history; the stand-in mesh IRCd (:6669) saw no sbx- nick",
+      "contract_text": "a guest-tier session only ever connects to the sandbox IRCd host:port",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "real Chromium sessions against the integrated build; room membership checked with WHO on the sandbox IRCd",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 29
+    },
+    {
+      "id": "e24",
+      "obligation_ref": "o12",
+      "test_ref": "browser pass t16a: NSFW request from a guest in a private room",
+      "behavior_text": "sbx-ask declined in the guest's room and appended a flag record naming sbx-eli",
+      "contract_text": "admits at most ~5 active guests",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "observed in a real browser plus the flag log",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 30
     }
   ],
   "deltas": [
@@ -590,6 +647,54 @@
       ],
       "origin": "llm",
       "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b8",
+      "kind": "amended",
+      "behavior_text": "Each guest chats in a private room <prefix><nick> (default #g-) that sbx-ask follows via EVENTSUB user.join; guests never see each other or earlier guests' history; the approved user's Guest view joins and can /switch between all guest rooms",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b9",
+      "kind": "amended",
+      "behavior_text": "agent online/offline means the agent is in this session's room now, re-read with WHO on every 15 s poll (was: spoke within 60 s)",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b10",
+      "kind": "added",
+      "behavior_text": "GET /login answers 303 to / for every tier (the post-SSO landing; was 404)",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b11",
+      "kind": "amended",
+      "behavior_text": "Sandbox views hide system-* join/welcome lines; the chat log opens at the newest message; the sidebar member list is filled live from WHO",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
       "superseded": false
     }
   ],

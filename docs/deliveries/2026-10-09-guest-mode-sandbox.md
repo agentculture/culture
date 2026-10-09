@@ -80,6 +80,8 @@ irc-lens `feat/guest-mode`, katvan `feat/terms-privacy`.
 - Integration fixes made by the main agent at merge time (no deviation record; contracts unchanged): t9/t10 seam — one shared `GuestStore`, a `GET /consent` route (`b5`), tests stubbing `irc_lens.legal` as a package attribute, and an autouse `XDG_DATA_HOME` fixture after guest-mode tests wrote `~/.local/share/irc-lens/guests.db` (the stray, empty file was deleted).
 - Staging found three gaps no unit test caught; each was fixed test-first: sandbox sessions joined no room, so guests could not reach the agent (`b3`, irc-lens `2ae7914`); `sbx-ask` ignored unaddressed questions (`b1`, culture `24cff92`); the "curated" bundle was 2.5 MB and made the first answer 82 s (`b2`, culture `408e234`). The documented `culture sandbox agent --config/--bundle-from` CLI also failed (culture `ba1eec5`).
 
+- `d6` — Browser pass (t16a) found the sandbox was one shared `#general` with full history: a new guest saw earlier guests' nicks, questions and flagged content. Owner decided: each guest gets a private room with sbx-ask; the owner's Guest view sees all rooms; system join/welcome lines are hidden in sandbox views. The same pass fixed nine more defects (below) — the owner chose "Private room each" and "Hide for guests"; the spec never decided cross-guest visibility.
+
 ## Drift From Plan
 
 | Plan item | Reason for divergence | Classification |
@@ -91,6 +93,8 @@ irc-lens `feat/guest-mode`, katvan `feat/terms-privacy`.
 | `t16` (`d5`) | the owner's goal requires /validate-delivery and /summarize-delivery before opening PRs, while t16's public cutover would expose unreviewed code and its 'landed as PRs' criterion can only hold after merge | needs-follow-up |
 | `t15` | the narrowing script landed but was not applied, and the browser cookie-scope verification (assumption c48) was not done; both ride with the t16(b) cutover — no record covers this beyond `d5` | needs-follow-up |
 | `t2` | three post-merge fixes from staging (CLI flags, `answer_unaddressed`, curated budgeted bundle) changed shipped behavior relative to the first merge; contract unchanged | acceptable |
+| `t13` (`d6`) | browser pass: private room per guest, live member list, room-based agent state, Guest view room switching, system lines hidden; `guest_mode.sandbox.room` replaced by `room_prefix` (stale key rejected) | acceptable |
+| `t2` (`d6`) | sbx-ask follows guests into `#g-*` rooms (EVENTSUB `user.join`, `agentirc.io/bot` capability) and rejoins them on connect | acceptable |
 | `t10` | merged with main-agent seam fixes (shared store, `/consent`, test isolation); the sandbox room auto-join was added after staging | acceptable |
 
 ## Evidence
@@ -105,6 +109,8 @@ irc-lens `feat/guest-mode`, katvan `feat/terms-privacy`.
 - probe: cortex-spark2 latency, no prefix-cache benefit — ~7 s at ~10.7k prompt tokens, ~28 s at ~66k
 - commits: culture `0600e10..408e234`; irc-lens `origin/main..2ae7914` on `feat/guest-mode`; katvan `origin/main..188d1b4`
 - deltas: `b1`–`b7` (proposed)
+- browser pass (t16a, real Chromium via Playwright, after this summary was first written): staging lens on :8767 with a local fake Cloudflare Access (JWKS + minted `CF_Authorization`), a stand-in mesh IRCd `stg` on :6669, sbx IRCd :6668, sbx-ask on cortex-spark2. Found 10 defects the HTTP-only E2E missed, each fixed test-first: cross-guest history leak (`d6`); `GET /login` 404 after SSO; chat log opened at the oldest message; "In this room" never filled from the server; agent state "offline" whenever idle 60 s; owner's Guest view could not open guest rooms (`/switch` refused); room rows dead after any live roster swap (pre-existing); two roster WHOs clobbering each other; agent state never noticing a stopped agent (AgentIRC sends no `QUIT` for bot-capability or abrupt disconnects); htmx CSP errors (inline indicator styles, eval'd `keyup[...]` filters, pre-existing). Also: password form gained a hidden username field, mail says "code" and "15 minutes". Re-run after fixes — two guests (desktop + 375 px) in separate rooms, no cross-guest text, no system lines, log at bottom, no console errors, answers 3.3–5.8 s; owner Guest view switches between all guest rooms by click and keyboard; NSFW declined + flagged in a private room; agent stop -> "agent offline", restart -> rejoins and answers. Point-in-time WHOIS on the stand-in mesh: no `sbx-` nick. Evidence `e22`–`e24` (proposed), deltas `b8`–`b11`, lapse `l4`.
+- tests after the browser pass: irc-lens `uv run pytest -q` at `21403b1` — 1012 passed; `-m playwright` — 22 passed; culture `tests/test_sandbox_agent.py` — 22 passed at `8495588`
 - PRs / issues: none yet — PRs open after this summary
 
 ## Delivery Claims
@@ -149,5 +155,6 @@ pending approval (not yet evidence): `l1`, `l2`, `l3`
 - `c28` — the PII scrub is heuristic; a review step (or NER) before any publication.
 - `c33` — measure guests-on-spark and Access seat count over the first 30 days after cutover.
 - Lapses `l1`, `l2` (t1 isolation tests never mutation-checked; weak log check) and `l3` (evidence `--contract` holds pointers, not snapshots) — owner adjudication; `l1` can be closed by a mutation run that links the two servers.
-- Owner adjudication of evidence `e1`–`e21` and deltas `b1`–`b7` (`devague evidence --confirm`, `devague delta --confirm`).
+- `d6` follow-ups: sbx-ask did not recognise a question about itself ("what does sbx-ask know about?") — tune its system prompt; the agent-state badge can read stale for up to one 15 s poll after a page load; guest rooms are never parted or archived (they accumulate on the sandbox IRCd); evidence `e24` pairs an NSFW observation with `o12` (capacity) by mistake — reject it.
+- Owner adjudication of evidence `e1`–`e24`, deltas `b1`–`b11` (`b8`–`b11` were filed without `--origin llm` and so landed approved; treat them as proposed) and lapse `l4` (`devague evidence --confirm`, `devague delta --confirm`).
 - Colleague drafted good RED tests but finished 0 of 3 drives (memory note updated); plan future splits with a native finisher.
