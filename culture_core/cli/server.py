@@ -65,7 +65,9 @@ from .shared.constants import (
     LOG_DIR,
 )
 from .shared.mesh import (
+    SANDBOX_LOOPBACK_HOST,
     build_server_start_cmd,
+    build_standalone_server_start_cmd,
     load_mesh_or_generate,
     parse_link,
     resolve_links_from_mesh,
@@ -138,6 +140,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=os.path.expanduser("~/.culture/data"),
         help="Data directory for persistent storage (default: ~/.culture/data)",
     )
+    srv_start.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Keep history and rooms in memory only; write nothing to --data-dir",
+    )
 
     srv_stop = server_sub.add_parser("stop", help="Stop the IRC server daemon")
     srv_stop.add_argument("--name", default=None, help=_SERVER_NAME_HELP)
@@ -205,8 +212,41 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
 
+    srv_install.add_argument(
+        "--standalone",
+        action="store_true",
+        help=(
+            "Install an isolated, unlinked server (e.g. the guest sandbox): "
+            "no mesh.yaml, no --link/--mesh-config; requires --name, --port "
+            "and --webhook-port; binds 127.0.0.1 unless --host is given"
+        ),
+    )
+    srv_install.add_argument("--name", default=None, help="Server name (--standalone)")
+    srv_install.add_argument(
+        "--host", default=SANDBOX_LOOPBACK_HOST, help="Listen address (--standalone)"
+    )
+    srv_install.add_argument("--port", type=int, default=None, help="Listen port (--standalone)")
+    srv_install.add_argument(
+        "--webhook-port", type=int, default=None, help="Webhook HTTP port (--standalone)"
+    )
+    srv_install.add_argument(
+        "--data-dir",
+        default=None,
+        help="Data directory (--standalone; default: ~/.culture/data-<name>)",
+    )
+    srv_install.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Memory-only history and rooms (--standalone; the guest sandbox)",
+    )
+
     srv_uninstall = server_sub.add_parser(
         "uninstall", help="Remove the server's auto-start service unit"
+    )
+    srv_uninstall.add_argument(
+        "--name",
+        default=None,
+        help="Remove the unit of a --standalone server by name (skips mesh.yaml)",
     )
     srv_uninstall.add_argument(
         "--config",
@@ -459,7 +499,7 @@ def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> Non
     _maybe_set_default_server(args.name)
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
         )
     finally:
         remove_pid(pid_name)
@@ -625,7 +665,7 @@ def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> N
     exit_code = 0
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, args.data_dir)
+            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
         )
     except KeyboardInterrupt:
         # Clean shutdown path — Ctrl-C from foreground / SIGINT.
@@ -665,6 +705,11 @@ def _server_start(args: argparse.Namespace) -> None:
         return
 
     _daemonize_server(args, pid_name, links)
+
+
+def _data_dir(args: argparse.Namespace) -> str:
+    """``""`` (memory-only) under ``--no-persist``, else ``--data-dir``."""
+    return "" if getattr(args, "no_persist", False) else args.data_dir
 
 
 async def _run_server(
@@ -846,12 +891,56 @@ def _load_mesh_for_provisioning(config_path: str):
     return mesh
 
 
+def _standalone_install_cmd(args: argparse.Namespace) -> tuple[str, list[str]]:
+    """Validate ``install --standalone`` flags and build its unit command."""
+    missing = [
+        flag
+        for flag, val in (
+            ("--name", args.name),
+            ("--port", args.port),
+            ("--webhook-port", args.webhook_port),
+        )
+        if val is None
+    ]
+    if missing:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"--standalone requires {', '.join(missing)}",
+            "e.g. culture server install --standalone --name sbx --port 6700 --webhook-port 7700",
+        )
+    if getattr(args, "no_persist", False):
+        data_dir = None
+    else:
+        data_dir = args.data_dir or os.path.expanduser(f"~/.culture/data-{args.name}")
+    cmd = build_standalone_server_start_cmd(
+        [sys.executable, "-m", "culture_core"],
+        name=args.name,
+        port=args.port,
+        webhook_port=args.webhook_port,
+        data_dir=data_dir,
+        host=args.host,
+    )
+    return args.name, cmd
+
+
 def _server_install(args: argparse.Namespace) -> None:
     """Install a systemd/launchd/scheduled-task unit for the server.
 
     Idempotent: rerunning rewrites the same unit content and re-enables it.
     """
     from culture_core.persistence import install_service
+
+    if getattr(args, "standalone", False):
+        server_name, server_cmd = _standalone_install_cmd(args)
+        svc = f"culture-server-{server_name}"
+        path = install_service(
+            svc,
+            server_cmd,
+            f"culture-core server {server_name} (standalone)",
+            allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+        )
+        print(f"Installed {svc} → {path}")
+        return
 
     mesh = _load_mesh_for_provisioning(args.config)
     server_name = mesh.server.name
@@ -872,8 +961,11 @@ def _server_uninstall(args: argparse.Namespace) -> None:
     """Remove the server's service unit. Graceful no-op if not installed."""
     from culture_core.persistence import uninstall_service
 
-    mesh = _load_mesh_for_provisioning(args.config)
-    svc = f"culture-server-{mesh.server.name}"
+    if getattr(args, "name", None):
+        svc = f"culture-server-{args.name}"
+    else:
+        mesh = _load_mesh_for_provisioning(args.config)
+        svc = f"culture-server-{mesh.server.name}"
     if uninstall_service(svc):
         print(f"Uninstalled {svc}")
     else:

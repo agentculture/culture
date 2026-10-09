@@ -1,0 +1,789 @@
+{
+  "plan_slug": "guest-mode-sandbox",
+  "schema_version": 2,
+  "created": "2026-10-09T17:15:02Z",
+  "updated": "2026-10-09T20:49:30Z",
+  "deviations": [
+    {
+      "id": "d1",
+      "what": "t3 was completed by the main agent: colleague's drive stopped after the RED tests + LensConfig fields (WIP on stop); the main agent wrote the loader and docs against colleague's tests",
+      "task_ref": "t3",
+      "reason": "colleague (local Qwen) ran out of steps before implementing; salvage per the colleague-tiering practice kept the confirmed contract and tests unchanged",
+      "affects": [],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 1
+    },
+    {
+      "id": "d2",
+      "what": "t5 owner changes from colleague to a native subagent (sonnet) that implements guest_store.py against colleague's salvaged RED tests (tests/test_guest_store.py + argon2-cffi dep)",
+      "task_ref": "t5",
+      "reason": "colleague's second drive (t5) also exhausted its step budget with no implementation (exit 2); two of two colleague drives incomplete",
+      "affects": [
+        "t9",
+        "t10",
+        "t11",
+        "t12"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 2
+    },
+    {
+      "id": "d3",
+      "what": "Remaining colleague tasks (t6 if its in-flight drive is incomplete, t8, t12) move to native subagents (sonnet), keeping each task's contract unchanged",
+      "task_ref": "t8",
+      "reason": "colleague completed 0 of 2 drives within budget; keeping it on the critical path stalls waves 3-4; native subagents completed every wave-1/2 task first try",
+      "affects": [
+        "t6",
+        "t12"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 3
+    },
+    {
+      "id": "d4",
+      "what": "t13 additionally enforces a server-side guest command allowlist (guests may only run commands that work in the sandbox; agent-control commands like /kick, /start, /stop refused) and the per-guest /input message rate limit (guest_rate_messages_per_min, 429)",
+      "task_ref": "t13",
+      "reason": "t10 landed routing but left guest /input unrate-limited and guest slash commands unrestricted; c30/h24 (message rate limits) and c38 (tier-aware commands) need server-side enforcement, and session.py/input handling sit in t13's files",
+      "affects": [
+        "t10",
+        "t9"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 4
+    },
+    {
+      "id": "d5",
+      "what": "t16 splits in two: (a) BEFORE the PRs \u2014 a local staging rollout on spark (sandbox IRCd sbx + sbx-ask agent + a second irc-lens from feat/guest-mode with guest_mode on, all on loopback ports, mail via a recording adapter) where the E2E success-signal probes run for /validate-delivery; (b) AFTER the PRs merge \u2014 the public cutover (units, irc-lens upgrade, Access narrowed to /login, guest_mode on for chat.culture.dev) and the browser cookie check",
+      "task_ref": "t16",
+      "reason": "the owner's goal requires /validate-delivery and /summarize-delivery before opening PRs, while t16's public cutover would expose unreviewed code and its 'landed as PRs' criterion can only hold after merge",
+      "affects": [
+        "c1",
+        "c32",
+        "c33",
+        "c34"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 5
+    },
+    {
+      "id": "d6",
+      "what": "Browser pass (t16a) found the sandbox is one shared #general with full history: a new guest sees earlier guests' nicks, questions and flagged content. Owner decided: each guest gets a private room with sbx-ask (guests never see each other; owner sees all rooms from Guest view), and system join/welcome lines are hidden in guest and Guest-view sessions. Same pass also fixes: GET /login 404 after Access SSO, chat log opening at the oldest message, empty sandbox member list, false 'agent offline' in the owner's Guest view, htmx CSP errors (keyup filters + inline indicator styles), missing username field on the password form, token mail copy",
+      "task_ref": "t13",
+      "reason": "owner chose 'Private room each' and 'Hide for guests' at the 2026-10-09 browser-pass question; the spec never decided cross-guest visibility",
+      "affects": [
+        "t2",
+        "t10",
+        "t16"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 27
+    },
+    {
+      "id": "d7",
+      "what": "Pre-PR must-fix set from the post-browser-pass triage: (1) guest deletion also purges the guest's messages from the sandbox IRCd history and sbx-ask's flag log; guest rooms get a random per-guest id (#g-<id>) stored with the guest so a deleted guest's room is unreachable and nickname reuse never inherits history; the owner's Guest view lists current guests' rooms from the guest store; (2) approved users' sandbox nick becomes sbx-op-<local> and guest nicknames may not contain '-', so a guest can never take an approved user's nick or room; (3) idle guest sandbox sessions close after guest_mode.idle_close_s (default 600 s) with no open event stream, and sbx-ask parts guest rooms that have emptied; (4) the real-mesh 'No room' empty state gets a next-step hint (h58) and the owner metrics agent state uses room membership",
+      "task_ref": "t13",
+      "reason": "owner confirmed the triage recommendation 2026-10-09: deletion is a Privacy Policy promise; nick/room collision lets a guest share or impersonate the owner; sessions never closed so the active-guest gauge only grows; h58 is a confirmed honesty condition",
+      "affects": [
+        "t2",
+        "t5",
+        "t10",
+        "t11"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 31
+    },
+    {
+      "id": "d8",
+      "what": "Amends d7's deletion fix after staging showed AgentIRC commits history only at shutdown (an external purge cannot see or remove live rows and would block on the IRCd's write transaction): the sandbox IRCd runs memory-only (culture server --no-persist, no history/rooms on disk); the lens records each sbx-ask answer in the guest store beside the guest's question (linked, erased by deletion); on deletion the guest's Q&A pairs are first copied, PII-scrubbed and stripped of email/IP/nick/room, with a random id and day-only date, NSFW-declined pairs dropped, into a separate corpus table that deletion keeps; the lens no longer purges IRCd history (flag-log purge stays); the Privacy Policy gains a sentence that anonymized Q&A that cannot reasonably identify the guest may be kept after deletion (owner reviews wording, r3)",
+      "task_ref": "t11",
+      "reason": "owner decision 2026-10-09: memory-only + store answers + keep in DB anonymized Q&A that can't reasonably be linked to or identify a user",
+      "affects": [
+        "t1",
+        "t5",
+        "t12",
+        "t14"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": null,
+      "seq": 32
+    }
+  ],
+  "evidence": [
+    {
+      "id": "e1",
+      "obligation_ref": "o1",
+      "test_ref": "irc-lens tests/test_auth_tiers.py (approved header JWT, spoofed headers, non-approved JWT, anonymous denied on real-mesh routes)",
+      "behavior_text": "approved tier only from a verified Access JWT for an approved email; spoofed headers/params/non-approved JWTs resolve anonymous and get 401 on every real-mesh route",
+      "contract_text": "obligation o1 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 6
+    },
+    {
+      "id": "e2",
+      "obligation_ref": "o2",
+      "test_ref": "irc-lens tests/test_session_routing.py::test_guest_connects_only_to_sandbox + ::test_guest_input_and_events_stay_in_sandbox",
+      "behavior_text": "with two real IRC servers, guest sessions register only on the sandbox server; the mesh server receives nothing",
+      "contract_text": "obligation o2 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 7
+    },
+    {
+      "id": "e3",
+      "obligation_ref": "o3",
+      "test_ref": "culture tests/test_sandbox_server.py::test_sbx_binds_loopback_only + ::test_sbx_and_spark_do_not_federate",
+      "behavior_text": "sbx listens only on 127.0.0.1 and does not link or share channels with a spark server (see lapses l1/l2 on assertion strength)",
+      "contract_text": "obligation o3 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 408e234e86 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 8
+    },
+    {
+      "id": "e4",
+      "obligation_ref": "o4",
+      "test_ref": "irc-lens tests/test_entry.py::test_email_step_identical_for_approved_and_unknown, ::test_sign_in_failures_identical, ::test_sign_in_timing_probe_approved_vs_unknown, ::test_token_step_identical_for_approved_and_unknown",
+      "behavior_text": "identical status/body for approved vs unknown emails (modulo the echoed address); sign-in timing medians within 50 ms",
+      "contract_text": "obligation o4 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 9
+    },
+    {
+      "id": "e5",
+      "obligation_ref": "o5",
+      "test_ref": "irc-lens tests/test_mail.py::test_o5_same_mail_for_approved_looking_and_unknown_address",
+      "behavior_text": "the token email subject/body are identical for approved-looking and unknown recipients",
+      "contract_text": "obligation o5 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 10
+    },
+    {
+      "id": "e6",
+      "obligation_ref": "o6",
+      "test_ref": "irc-lens tests/test_entry.py::test_token_single_use, ::test_token_expires_after_15_minutes, ::test_verify_rate_limited_per_email_same_body, ::test_verify_rate_limited_per_ip",
+      "behavior_text": "token accepted once, rejected after 15 min (injected clock), verify attempts rate-limited per email and per IP with the same body",
+      "contract_text": "obligation o6 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 11
+    },
+    {
+      "id": "e7",
+      "obligation_ref": "o7",
+      "test_ref": "irc-lens tests/test_guest_store.py::test_password_stored_as_argon2id_hash_not_plaintext + tests/test_auth_tiers.py::test_guest_mode_anonymous_denied_on_real_mesh_routes",
+      "behavior_text": "only argon2id hashes stored (raw DB scan finds no plaintext); without a valid Access JWT no real-mesh route opens",
+      "contract_text": "obligation o7 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 12
+    },
+    {
+      "id": "e8",
+      "obligation_ref": "o8",
+      "test_ref": "irc-lens tests/test_session_routing.py -k consent (5 tests incl. test_guest_without_consent_redirected, test_consent_gate_fails_closed_when_legal_unavailable)",
+      "behavior_text": "guests without current consent are redirected/refused; the gate fails closed when legal versions are unavailable",
+      "contract_text": "obligation o8 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 13
+    },
+    {
+      "id": "e9",
+      "obligation_ref": "o9",
+      "test_ref": "irc-lens tests/test_csrf_guest_cookie.py (15 tests incl. cross-origin POST matrix)",
+      "behavior_text": "cross-origin POSTs to /input, /upload, consent, deletion with a valid cookie return 403 and never reach IRC",
+      "contract_text": "obligation o9 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 14
+    },
+    {
+      "id": "e10",
+      "obligation_ref": "o10",
+      "test_ref": "irc-lens tests/test_auth_tiers.py::test_guest_mode_off_missing_jwt_401, ::test_guest_mode_off_non_allowlisted_email_403 + tests/test_session_routing.py::test_guest_mode_off_sandbox_routes_404_and_auth_unchanged",
+      "behavior_text": "with guest_mode off: missing JWT 401, non-allowlisted 403, guest/sandbox routes 404",
+      "contract_text": "obligation o10 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 15
+    },
+    {
+      "id": "e11",
+      "obligation_ref": "o11",
+      "test_ref": "culture tests/test_sandbox_agent.py::test_every_wire_request_is_toolless",
+      "behavior_text": "every request on the wire to a recording gateway carries no tools/tool_choice/functions",
+      "contract_text": "obligation o11 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 408e234e86 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 16
+    },
+    {
+      "id": "e12",
+      "obligation_ref": "o12",
+      "test_ref": "culture tests/test_sandbox_agent.py::test_request_builder_no_tools_thinking_off_short_capped + ::test_queue_position_for_overflow_guests",
+      "behavior_text": "enable_thinking=false, short-answer instruction, max_tokens clamped to 700; beyond max_active guests get queue positions",
+      "contract_text": "obligation o12 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 408e234e86 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 17
+    },
+    {
+      "id": "e13",
+      "obligation_ref": "o13",
+      "test_ref": "irc-lens tests/test_guest_admin.py::test_deletion_flow_removes_everything_but_the_record",
+      "behavior_text": "after token re-verification, a full DB dump finds no nick and the email only in the deletion record",
+      "contract_text": "obligation o13 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 18
+    },
+    {
+      "id": "e14",
+      "obligation_ref": "o14",
+      "test_ref": "irc-lens tests/test_guest_export.py (10 tests incl. test_fixture_output_contains_no_pii, test_no_mapping_in_output_or_on_disk)",
+      "behavior_text": "seeded emails/phones/IPs/names/nicks absent from jsonl+md output; no mapping written (heuristic name scrubbing has documented gaps)",
+      "contract_text": "obligation o14 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 19
+    },
+    {
+      "id": "e15",
+      "obligation_ref": "o15",
+      "test_ref": "irc-lens tests/test_guest_admin.py::test_banned_email_session_dropped_by_sweeper + ::test_ban_by_flag_drops_session",
+      "behavior_text": "banned email/IP sessions dropped by the sweeper (default interval <= 30 s); ban --flag resolves and drops",
+      "contract_text": "obligation o15 (see devague oblige --list)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "named tests re-ran green at 2ae79148d3 during /validate-delivery",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "2ae79148d3"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 20
+    },
+    {
+      "id": "e16",
+      "obligation_ref": "o2",
+      "test_ref": "staging t16a: ss -tnp of the staging lens process after 11 guest sessions",
+      "behavior_text": "all 10-11 lens TCP peers were 127.0.0.1:6668 (sandbox); zero connections to the spark IRCd :6667",
+      "contract_text": "a guest-tier session only ever connects to the sandbox IRCd host:port; it never opens a connection to the spark IRCd (:6667)",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 21
+    },
+    {
+      "id": "e17",
+      "obligation_ref": "o3",
+      "test_ref": "staging t16a: ss -ltnp after culture server install-equivalent start of sbx",
+      "behavior_text": "sbx listened only on 127.0.0.1:6668 (IRC) and 127.0.0.1:7681 (webhook); log shows no link activity",
+      "contract_text": "binds 127.0.0.1 only and starts with no --link and no --mesh-config",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 22
+    },
+    {
+      "id": "e18",
+      "obligation_ref": "o8",
+      "test_ref": "staging t16a: sqlite query of the staging guest store after the E2E runs",
+      "behavior_text": "10 guests, 10 consent records at terms/privacy 1.0, 0 guests without a current consent",
+      "contract_text": "respond only to a guest session holding a consent record for the current Terms + Privacy version; otherwise redirect to the consent step",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 23
+    },
+    {
+      "id": "e19",
+      "obligation_ref": "o11",
+      "test_ref": "staging t16a: e2e_nsfw.py against live sbx-ask + cortex-spark2",
+      "behavior_text": "asked 'please run ls / on the server', sbx-ask replied it can't run commands; NSFW request declined and flagged",
+      "contract_text": "every chat completion request carries no tools field (or only read-only tools rooted in the sandbox knowledge dir)",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 24
+    },
+    {
+      "id": "e20",
+      "obligation_ref": "o12",
+      "test_ref": "staging t16a: e2e_guest.py with 5 concurrent guests (distinct client IPs) against live cortex-spark2",
+      "behavior_text": "5/5 answered correctly; first answers 9.9/14.5/21.0/25.9/29.9 s (serialized single-flight)",
+      "contract_text": "sends enable_thinking=false, a short-answer instruction, and max_tokens <= 700; admits at most ~5 active guests and reports queue position to the rest",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 25
+    },
+    {
+      "id": "e21",
+      "obligation_ref": "o15",
+      "test_ref": "staging t16a: irc-lens guests ban --flag j1 while the flagged guest's session was live",
+      "behavior_text": "sandbox session count dropped 11->10 after 26 s; the banned cookie then got the entry card",
+      "contract_text": "a banned email or IP is refused at entry and its active sandbox session is dropped within 1 minute",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "observed live on the loopback staging stack (real sbx IRCd, sbx-ask, cortex-spark2, irc-lens) per approved deviation d5",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T18:41:24Z",
+        "commit": "408e234e86"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 26
+    },
+    {
+      "id": "e22",
+      "obligation_ref": "o4",
+      "test_ref": "browser pass t16a (Playwright, localhost:8767): known vs unknown email POST /entry/email and wrong-password /entry/signin",
+      "behavior_text": "password window and wrong-password error byte-identical after swapping the email; both 401 at 503 ms vs 504 ms",
+      "contract_text": "status code, body, and timing are indistinguishable for approved vs unknown emails",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "ran in a real Chromium against the integrated build with the entry card's own JS",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 28
+    },
+    {
+      "id": "e23",
+      "obligation_ref": "o2",
+      "test_ref": "browser pass t16a: two guests (desktop + 375 px) through the full entry card, then WHO on the sandbox IRCd",
+      "behavior_text": "each guest lands in its own #g-<nick> room with sbx-ask; neither sees the other's messages or earlier guests' history; the stand-in mesh IRCd (:6669) saw no sbx- nick",
+      "contract_text": "a guest-tier session only ever connects to the sandbox IRCd host:port",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "real Chromium sessions against the integrated build; room membership checked with WHO on the sandbox IRCd",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 29
+    },
+    {
+      "id": "e24",
+      "obligation_ref": "o12",
+      "test_ref": "browser pass t16a: NSFW request from a guest in a private room",
+      "behavior_text": "sbx-ask declined in the guest's room and appended a flag record naming sbx-eli",
+      "contract_text": "admits at most ~5 active guests",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "observed in a real browser plus the flag log",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:05:00",
+        "commit": "21403b1"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 30
+    },
+    {
+      "id": "e25",
+      "obligation_ref": "o13",
+      "test_ref": "browser pass t16a: guest hal deleted via /delete in Chromium after a Q&A and an NSFW flag",
+      "behavior_text": "guest store dump names hal only in the deletions record; corpus kept 1 row with [name]/[email] in place of the guest's name and address, NSFW pair dropped; flag log has 0 sbx-hal lines; memory-only sandbox wrote no history.db",
+      "contract_text": "after token re-verification removes that guest's messages, uploads, and profile from the sandbox store and keeps only the deletion record",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "real browser deletion against the integrated build, then direct inspection of guests.db, flags.jsonl and the sandbox HOME",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-09T23:50:00",
+        "commit": "2410fc6"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 33
+    }
+  ],
+  "deltas": [
+    {
+      "id": "b1",
+      "kind": "added",
+      "behavior_text": "sbx-ask answers every guest line in its sandbox room without an @mention (answer_unaddressed, default true); mention-only remains configurable",
+      "caused_by": [
+        "c6"
+      ],
+      "evidence_refs": [
+        "e20"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b2",
+      "kind": "amended",
+      "behavior_text": "the sandbox knowledge bundle excludes internal working papers (docs/superpowers, docs/specs, docs/plans) and loads README, CLAUDE.md, top-level docs, then reference within a 48k-char budget \u2014 the 400 KB alphabetical fill made first answers 82 s",
+      "caused_by": [
+        "c32"
+      ],
+      "evidence_refs": [
+        "e20"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b3",
+      "kind": "added",
+      "behavior_text": "every sandbox session (guest or approved preview) auto-joins guest_mode.sandbox.room (default #general) \u2014 guests cannot /join, so this is how they reach the agent",
+      "caused_by": [
+        "c23"
+      ],
+      "evidence_refs": [
+        "e16",
+        "e20"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b4",
+      "kind": "added",
+      "behavior_text": "guests (and approved users in sandbox preview) may only run /help /who /me /read and chat; other commands get 403 before IRC; per-guest+IP message rate limit returns 429",
+      "caused_by": [
+        "d4"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b5",
+      "kind": "added",
+      "behavior_text": "GET /consent serves the entry card so a guest with an outdated consent renews it by re-running the flow",
+      "caused_by": [
+        "c5"
+      ],
+      "evidence_refs": [
+        "e18"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b6",
+      "kind": "amended",
+      "behavior_text": "Access narrowing edits the EXISTING chat.culture.dev app's destination to /login (keeping its AUD and pinning path_cookie=false, same_site=lax) instead of creating a second path app",
+      "caused_by": [
+        "c15"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b7",
+      "kind": "amended",
+      "behavior_text": "t16 split: the public cutover (units, Access narrowed, guest_mode on for chat.culture.dev) is not done in this run; only the loopback staging rollout is \u2014 guest mode is NOT live yet",
+      "caused_by": [
+        "d5"
+      ],
+      "evidence_refs": [
+        "e16",
+        "e17",
+        "e18",
+        "e20",
+        "e21"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b8",
+      "kind": "amended",
+      "behavior_text": "Each guest chats in a private room <prefix><nick> (default #g-) that sbx-ask follows via EVENTSUB user.join; guests never see each other or earlier guests' history; the approved user's Guest view joins and can /switch between all guest rooms",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b9",
+      "kind": "amended",
+      "behavior_text": "agent online/offline means the agent is in this session's room now, re-read with WHO on every 15 s poll (was: spoke within 60 s)",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b10",
+      "kind": "added",
+      "behavior_text": "GET /login answers 303 to / for every tier (the post-SSO landing; was 404)",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b11",
+      "kind": "amended",
+      "behavior_text": "Sandbox views hide system-* join/welcome lines; the chat log opens at the newest message; the sidebar member list is filled live from WHO",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [],
+      "origin": "user",
+      "status": "approved",
+      "superseded": false
+    },
+    {
+      "id": "b12",
+      "kind": "amended",
+      "behavior_text": "Guest rooms are #g-<random id> stored with the guest; approved users' sandbox nicks are sbx-op-<name>; guest nicknames are [a-z0-9_] only",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b13",
+      "kind": "added",
+      "behavior_text": "Sandbox sessions with no open tab close after guest_mode.idle_close_s (SSE keepalive every 15 s detects closed tabs); sbx-ask leaves guest rooms that emptied",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b14",
+      "kind": "amended",
+      "behavior_text": "The sandbox IRCd runs memory-only (--no-persist); the guest store holds each guest's questions and sbx-ask's answers; deletion keeps an anonymized Q&A corpus (no email/IP/nick/room, PII-scrubbed, day-only, NSFW pairs dropped) and erases everything linked, plus the guest's flag-log lines",
+      "caused_by": [
+        "d8"
+      ],
+      "evidence_refs": [],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    }
+  ],
+  "supersessions": []
+}

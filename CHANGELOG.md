@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.6.0] - 2026-10-09
+
+### Added
+
+- Guest-mode sandbox for chat.culture.dev (spec docs/specs/2026-10-09-guest-mode-sandbox.md, plan docs/plans/2026-10-09-guest-mode-sandbox.md, delivery docs/deliveries/2026-10-09-guest-mode-sandbox.md): culture-side provisioning for an isolated guest sandbox next to the real mesh.
+- `culture server install --standalone --name <n> --port <p> --webhook-port <w> [--host 127.0.0.1] [--data-dir <d> | --no-persist]` writes a service unit for an isolated, unlinked IRCd (loopback by default, never --link/--mesh-config, mesh.yaml not read); `culture server uninstall --name <n>` removes it. See docs/guest-sandbox.md.
+- `culture server start --no-persist`: memory-only history and rooms (no data dir). The guest sandbox uses it so a guest's deletion is never undone by AgentIRC flushing history at shutdown.
+- `culture sandbox agent --config <yaml> [--bundle-from <repo>]`: sbx-ask, a tool-less Q&A agent for the sandbox. Every request goes to the lobes gateway with no tools, thinking off, a short-answer instruction and capped max_tokens; knowledge is a curated, budgeted bundle of README/CLAUDE.md/docs (working papers excluded); single-flight model calls with a visible queue beyond max_active guests; NSFW requests are declined and flagged to a flag log (and optionally an owner channel); command requests are declined. See docs/sandbox-agent.md.
+- sbx-ask follows each guest into a private room (`guest_room_prefix`, default `#g-`) via EVENTSUB user.join (agentirc.io/bot capability), rejoins occupied guest rooms on connect, and leaves rooms that emptied every `room_sweep_s`.
+
 ## [14.5.1] - 2026-10-09
 
 ### Added

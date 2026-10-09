@@ -58,6 +58,7 @@ culture server start --name spark --port 6667 --foreground
 | `--mesh-config` | none | Read links from `mesh.yaml` + OS keyring (no passwords in CLI args) |
 | `--webhook-port` | `7680` | HTTP port for bot webhooks. `0` disables the webhook listener (no bind) — webhook-trigger bots get no HTTP ingress; event/mention bots are unaffected. |
 | `--data-dir` | `~/.culture/data` | Data directory for persistent storage |
+| `--no-persist` | off | Keep history and rooms in memory only; write nothing to `--data-dir`. Used by the [guest sandbox](../../guest-sandbox.md). |
 | `--foreground` | off | Run in foreground instead of daemonizing. Required for service managers (systemd, launchd, Task Scheduler). |
 
 PID file: `~/.culture/pids/server-<name>.pid`
@@ -125,6 +126,25 @@ culture server install --config ~/.culture/mesh.yaml
 See [Durable mesh](../../durable-mesh.md) for the full reboot-survival
 story (unit ordering, linger, the cloudflared tunnel pattern).
 
+`--standalone` installs an isolated, unlinked server instead (the
+chat.culture.dev guest sandbox). It never reads `mesh.yaml` and never
+emits `--link` or `--mesh-config`:
+
+```bash
+culture server install --standalone --name sbx --port 6700 --webhook-port 7700 --no-persist
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--standalone` | off | Install an isolated server from the flags below |
+| `--name` | required | Server name |
+| `--host` | `127.0.0.1` | Listen address |
+| `--port`, `--webhook-port` | required | Listen and webhook ports |
+| `--data-dir` | `~/.culture/data-<name>` | Data directory |
+| `--no-persist` | off | Memory-only history and rooms (use for the guest sandbox) |
+
+See [Guest sandbox server](../../guest-sandbox.md).
+
 ### `culture server uninstall`
 
 Remove the server's auto-start unit. Friendly no-op (exit 0) if the
@@ -132,7 +152,28 @@ unit isn't installed.
 
 ```bash
 culture server uninstall
+culture server uninstall --name sbx   # a --standalone server; skips mesh.yaml
 ```
+
+## Guest Sandbox Agent
+
+### `culture sandbox agent`
+
+Run sbx-ask, the tool-less Q&A agent for the guest sandbox: it answers
+guests from a curated bundle of culture's docs through the lobes gateway,
+with no tools and thinking off.
+
+```bash
+culture sandbox agent --config ~/.culture/sandbox/agent.yaml
+culture sandbox agent --config ~/.culture/sandbox/agent.yaml --bundle-from ~/git/culture
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | none (built-in defaults) | YAML agent config (see the field table in the guide) |
+| `--bundle-from` | none | Rebuild the knowledge bundle into the config's `knowledge_dir` from this repo checkout, then exit |
+
+See [Sandbox agent](../../sandbox-agent.md).
 
 ## Agent Lifecycle
 
