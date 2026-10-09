@@ -32,7 +32,7 @@
   - honesty: Guests are never redirected to Cloudflare login; only the SSO path triggers Access, and the Access app's policy is the approved-email list
 - Terms of Service and Privacy Policy are published, versioned pages on culture.dev (katvan site), linked from the consent gate
   - honesty: culture.dev/terms and culture.dev/privacy load with a visible version and date, and the consent form links both
-- Guest model traffic goes to the spark2 cortex via the lobes gateway with thinking disabled, using its own gateway key, single-flight queueing, capped `max_tokens`, and per-guest (IP+email) rate limits
+- Guest model traffic goes through the lobes gateway with thinking disabled and a short-answer instruction: cortex-spark2 today, with more models to be added (e.g. AWS gpt-6-luna) to spread load; its own gateway key, single-flight per model, capped `max_tokens`, per-guest (IP + email) rate limits, at most ~5 active guests with a visible queue
   - honesty: With 5 guests asking at once, guest requests queue single-flight with `max_tokens` <= 700, and the owner's agents still get gateway responses
 - One irc-lens site routes per role: approved → real spark IRCd, guest → sandbox IRCd; approved users get a toggle to enter the sandbox under their sandbox nick
   - honesty: Backend selection happens in one place (routes.`_resolve_session`) keyed on the verified tier; an approved user's sandbox toggle never lets a guest-tier session reach the real IRCd
@@ -40,10 +40,12 @@
   - honesty: Guest transcripts are written only under the sandbox data-dir; the spark data-dir holds no guest content
 - The owner can ban a guest by email and/or IP in the guest store, blocking re-entry and dropping their active sandbox session, without touching the mesh or Cloudflare
   - honesty: Banning an email or IP blocks re-entry at the form and drops any active sandbox session for it within 1 minute
-- Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email
+- Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance, then a one-time token emailed to that address must be entered before sandbox access; no SSO; a guest is identified by their verified email (+ IP for rate limits and bans)
   - honesty: The entry form validates email syntax and nickname rules and stores IP + email as the guest's identity
+  - honesty: A guest who cannot read the address they typed never reaches the sandbox; the token is single-use, expires within 15 minutes, and is rate-limited per email and per IP
 - Published guest data has user PII removed (email, IP, and anything identifying them)
   - honesty: A publish/export step strips email, IP, and the nick-to-person mapping; a fixture seeded with PII produces output containing none of it
+  - honesty: PII stripping covers free text guests type (emails, phone numbers, names they volunteer), not only the stored email/IP metadata
 - Because the guest surface is public (no Access), it carries its own abuse controls: per-IP rate limits on entry and messages, a cap on concurrent guest sessions, and bot protection on the entry form
   - honesty: One IP exceeding the entry or message rate limit gets HTTP 429; the entry form carries bot protection (e.g. Cloudflare Turnstile, which uses no Access seats)
 - General uplift of the site (irc-lens on chat.culture.dev): both experience and visuals — commands, clarity, etc.
@@ -63,6 +65,18 @@
   - honesty: After 5 failed password attempts in 15 minutes from one IP or for one email, further attempts get the same generic error and a delay, not a different message
 - Approved users have a site password stored only as a slow salted hash (e.g. argon2id) in the front site's store; the password is a pre-check before SSO — Cloudflare Access on /login remains the real gate for the real mesh
   - honesty: The store holds no plaintext or reversible passwords; a correct password without a valid Access login still cannot open any real-mesh route (h10)
+- Guest sessions are carried by a server-issued signed cookie (HttpOnly, Secure, SameSite=Strict, short expiry); every state-changing route (POST /input, uploads, consent) rejects cross-site requests via SameSite plus an Origin/CSRF-token check — for guests and approved users alike
+  - honesty: A cross-origin form POST to /input carrying a valid guest or approved cookie is rejected (403) and sends nothing to IRC
+- Guest mode ships behind a config switch (default off); switching it off restores exactly today's behavior — approved-only access, guest routes 404 — without a redeploy of the approved path, and doubles as the kill switch during abuse
+  - honesty: With the switch off, the existing auth tests (tests/`test_auth_middleware.py`, including the non-allowlisted 403) pass unchanged; flipping it on and off needs only a config reload/restart
+- The guest surface is observable: counts of entries, active guest sessions, 429s, failed sign-ins, and model errors are logged/exported, and when the sandbox agent or spark2 is down guests see a one-line 'agent offline' state instead of silence
+  - honesty: Stopping the sandbox agent shows 'agent offline' to an open guest session within 60 s; the counters are visible to the owner without reading raw logs
+- One source of truth for the current Terms/Privacy version: the katvan pages publish it, and the lens consent gate reads the same value — a version bump re-prompts guests only after the new pages are live
+  - honesty: Bumping the version without the new pages live is refused (or ignored) by the lens; the version the consent record stores always matches a published page
+- A verified guest can request deletion of the data they input: after re-verifying their email with a fresh token, their messages, uploads, and consent-linked profile are removed from the sandbox store within a stated period; the consent record of the request itself is kept as proof
+  - honesty: After a deletion request completes, a search of the sandbox data-dir and guest store for that guest's email or nick finds none of their messages or uploads
+- Token emails go out for every address that chooses Guest mode, with identical wording and timing whether or not the address is approved, so the token step leaks no membership (c45)
+  - honesty: Choosing Guest mode with an approved email and with an unknown email produces the same screen and the same email template
 
 ## Honesty conditions
 
@@ -79,10 +93,11 @@
 - Verified from spark IRCd connection logs (no sandbox-prefixed nicks) and the Access seat count staying at the approved-user count
 - Verified by a consent-store query joined against sandbox session starts: no session without a matching record
 - Entering any email always shows the password window with both buttons; 'Guest mode' works for every email, including approved ones (the owner's sandbox hop-in, c8)
+- Verified once in a real browser before build: after /login, a request to / carries `CF_Authorization` and irc-lens resolves the approved tier; if the cookie is path-scoped, /login must instead hand off via a lens-issued session
 
 ## Success signals
 
-- A first-time guest goes from landing on chat.culture.dev to a grounded answer from the sandbox agent in < 2 minutes, and sandbox answers arrive in < 30s p95 with up to 5 concurrent guests
+- A first-time guest goes from landing on chat.culture.dev to a grounded answer in < 2 minutes; a guest's first answer arrives in < 30 s p95 with up to 5 active guests (more wait in a visible queue showing their position)
 - 0 guest sessions ever reach the real spark IRCd (:6667) and 0 Cloudflare Access seats are consumed by guests over the first 30 days
 - 100% of guest sessions have a consent record for the current ToS + Privacy version before their first message is accepted
 
@@ -91,7 +106,7 @@
 - Guests never connect to the real spark IRCd: the sandbox is a separate, unlinked culture IRCd bound to 127.0.0.1 — agentirc has no join ACL, ban/invite/key modes, opers, or flood control, so confinement cannot be done inside a shared IRCd
 - The sandbox agent has no bash/shell, write, or network tools; it may use read-only tools, but only over knowledge held inside the sandbox (a curated culture docs/code copy), never the host filesystem or the real mesh
 - The real console stays reachable only by approved users through SSO; guest traffic never reaches culture-server-spark (:6667) or the real mesh
-- Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, guest entry, consent gate, routing), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes ship as hand-off briefs to those repos
+- Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, entry card, password + token login, consent gate, routing, token emails), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes land as direct PRs to those repos
 
 ## Non-goals
 
@@ -104,6 +119,7 @@
 - The sandbox IRCd is a second 'culture server start --name <sbx> --port <p> --webhook-port <w> --data-dir <d> --host 127.0.0.1' with no --link/--mesh-config, so it is federation-isolated by default
 - The sandbox answerer is a new, dedicated agent on the sandbox IRCd (not an existing resident), seeded from spark-ask (~/.culture/ask-agent/`ask_agent.py`): tool-less, cortex-spark2 via the lobes gateway, thinking off
 - v1 grounds answers by giving the model a curated culture docs bundle (README, docs/, CLAUDE.md) in context or via its read-only checkout — retrieval/RAG is a later improvement
+- After SSO on the path-scoped /login Access app, the `CF_Authorization` cookie is set for the whole chat.culture.dev host (Path=/) and carries a JWT whose AUD irc-lens is configured to accept — so approved users are recognized on public paths
 
 ## Scope exploration
 
@@ -152,6 +168,22 @@
   - seeds: `c36`, `c37`, `c38`, `c39`, `c40`, `c41`
 - `s23` — `uplift design canvas (https://claude.ai/artifact/4bDJqM8gmU38LqDDnhAH9S)`: three directions mocked (A terminal sharpened, B mesh-as-room, C ask-first) as landing + tier-switchable chat + phone artboards; user chose A and asked for little to no prose; A's artboards are the reference for c37-c40
   - seeds: `c36`, `c37`, `c38`, `c39`, `c40`
+- `s24` — `challenge pass / cheap-probe lens: lobes gateway cortex-spark2 under 5 concurrent requests`: requests serialize on spark2; per-answer ~7 s at this prompt size; c32's 30 s p95 at 5 concurrent is not met (36 s) — routed to a blocking hard question on c32
+  - seeds: `c32`
+- `s25` — `challenge pass / security lens: irc-lens web/auth.py + routes.py (cookie handling)`: today irc-lens sets no cookies and relies on Cloudflare Access for every path (auth.py:142-150 reads `CF_Authorization`, never sets one); a public site with cookie-identified guests, and approved users identified by the `CF_Authorization` cookie on public paths, opens a CSRF surface on POST /input that Access previously fronted
+  - seeds: `c47`
+- `s26` — `challenge pass / security lens: Cloudflare Access path-scoped app (q5 decision) + irc-lens aud pinning (auth.py:153-179)`: not probed — creating the path app would mutate live Access config; Access injects Cf-Access-Jwt-Assertion only on protected paths, so recognition on / rests entirely on the cookie's scope and on the new app's AUD being in the lens config
+  - seeds: `c48`
+- `s27` — `challenge pass / adjacent-systems lens: real mesh agents + approved-user tier (c7, c31)`: the frame treats 'approved' as one tier, but agentirc has no join/ban ACL (client.py:449-459) and tool-capable agents answer any mention; nothing distinguishes the owner from an approved collaborator — routed to a user question
+- `s28` — `challenge pass / operations lens: deployment units + rollback path`: the frame specifies no rollback, kill switch, or monitoring for a newly public surface; the existing deployment is hand-written systemd units (memory `reference_chat_agentculture_console`) — seeded the switch and observability requirements
+  - seeds: `c49`, `c50`
+- `s29` — `challenge pass / hidden-dependency lens: katvan /terms,/privacy (c16) + lens consent store (c13)`: ToS text deploys from katvan (Cloudflare Pages) and consent is enforced in irc-lens on spark — separately deployed; nothing in the frame keeps their version numbers in step
+  - seeds: `c51`
+- `s30` — `challenge pass / overlooked-actors lens: guest data lifecycle (c24, c28)`: retention is 'as long as required' and publication strips PII, but the frame has no path for a guest asking to be forgotten — routed to a user question
+- `s31` — `challenge pass / unexamined: legal adequacy of ToS/Privacy`: not examined — c17 already records drafts are not legal advice; jurisdiction-specific obligations (e.g. GDPR for EU guests) were not researched
+- `s32` — `challenge pass / concurrency lens: guest consent store + session registry (sessions.py:30)`: clean for v1 scale — single irc-lens process, in-memory registry plus one consent store; residual risk only if irc-lens is ever run as multiple workers
+- `s33` — `challenge pass / dependency lens: outbound email for guest tokens`: git grep for smtplib/sendmail/resend/mailgun/sendgrid/postmark/`send_email` across irc-lens, culture, cultureflare, katvan, grant found no mail-sending code (only false hits: a vendored htmx bundle and one plan doc mention); the token decision adds a new outbound-email dependency — parked blocking (v8) until a sender is chosen
+  - seeds: `c54`, `c55`
 
 ## Decisions
 
@@ -160,6 +192,10 @@
 - Access protects only chat.culture.dev/login (path-scoped app, set up once via API); the site shows a visible Login button that takes approved users through SSO and back
 - Visual direction is Option A, terminal sharpened (canvas <https://claude.ai/artifact/4bDJqM8gmU38LqDDnhAH9S>): culture.dev dark-terminal palette, IBM Plex Mono + Sans, amber marks the sandbox, real transcript as the landing hero, inline slash-command palette with a tier-aware list
 - Entry flow: (1) everyone enters an email and continues; (2) every email gets the identical next window — a password field with two buttons under it, 'Sign in' and 'Guest mode'. A correct password for an approved email leads to SSO; 'Guest mode' leads to nickname + Terms/Privacy consent. The window never differs by email, so nobody can probe which emails are in the system
+- Approved users (owner and approved collaborators) get full access to the real mesh, including addressing tool-capable agents — approval is the trust boundary
+- A guest's email is verified with an emailed token before sandbox access, so nobody can pretend to be someone else; the verified identity lets a guest request deletion of the data they input
+- The login owner (irc-lens, which serves the chat.culture.dev entry card) owns guest token emails; work may land as direct PRs to any repo needed (irc-lens, katvan, cultureflare, cultureagent, culture) rather than hand-off briefs
+- Guest answers are short with no thinking; more models will be added soon, and AWS gpt-6-luna may be used alongside cortex-spark2
 
 ## Hard questions
 
@@ -167,12 +203,16 @@
 - One hostname or two? (a) guest.culture.dev → sandbox console :8766 with an any-email OTP Access app, owner reaches it by visiting it too; or (b) a single chat.culture.dev irc-lens that routes owner→real IRCd and guest→sandbox IRCd per role (routes.`_resolve_session`, routes.py:76-80), with an owner toggle. Access apps are per-hostname and can't route by email. (resolved: (b) one site for all: chat.culture.dev serves everyone; approved users SSO in, guests enter email+nickname; role routes to real mesh vs sandbox)
 - How does one hostname split public and SSO areas? Cloudflare Access supports path-scoped self-hosted apps (e.g. protect chat.culture.dev/mesh/\*, leave / public), but cultureflare only creates hostname-wide apps (`_access_app.py`:8-13) — extend cultureflare, or configure the path app once by hand/API? (resolved: Path-scoped Cloudflare Access app on chat.culture.dev/login, configured once via API; the rest of the host is public; a visible Login button on the site sends approved users to /login (SSO) and back; the hostname-wide `CF_Authorization` cookie then marks them approved; irc-lens enforces the tier in-app; teaching cultureflare path-scoped apps is a follow-up)
 - Privacy Policy terms: how long are guest transcripts retained, may they be used to improve the guest model / docs, and may they be published? (resolved: Retain as long as required. Owner may use guest data to improve models and may publish it with user PII removed)
-- risk: Guest email is self-declared and unverified, so anyone can type someone else's email; ToS acceptance and bans keyed on it are only as strong as IP + a claimed email
+- risk: Guest email is self-declared and unverified, so anyone can type someone else's email; ToS acceptance and bans keyed on it are only as strong as IP + a claimed email (resolved: Resolved by email verification: an emailed token proves the guest controls the address)
+- Probe 2026-10-09: 5 concurrent spark-ask-shaped requests (4572 prompt tokens, 73-318 completion) to cortex-spark2 completed at 10.6/19.0/26.8/33.2/35.8 s — effectively serialized, p95 ~36 s, so '< 30s p95 with 5 concurrent guests' fails at today's capacity. Lower the target (e.g. < 45 s), cap concurrent active guests (e.g. 3), or show queue position? (resolved: Option (c) approved: keep < 30 s for a guest's first answer, show queued guests their position, cap active guests at ~5; the sandbox agent is instructed to answer briefly with thinking off; more models (e.g. AWS gpt-6-luna) will be added to spread load)
 - How are approved-user passwords set and reset — a CLI on spark (e.g. a lens admin verb), or a self-service flow? A self-service reset by email would itself leak membership unless it also responds identically for every email
 
 ## Open parks
 
 - [unknown_nonblocking] Whether a second culture server/config home coexists cleanly with ~/.culture/server.yaml and its agents manifest (pidfile.py / config.py HOME handling unverified)
+- [unknown_nonblocking] Prompt-injection resilience of the sandbox agent beyond 'no tools' (e.g. leaking its system prompt or being steered into abusive replies) was not probed
+- [unknown_nonblocking] Which mail provider irc-lens uses for token emails (transactional API such as Resend/Postmark, SMTP relay, or Cloudflare Email Workers) — an implementation choice, credentials via grant
+- [follow_up] Whether a deletion request also reaches already-published, PII-stripped material — stripped data is no longer linkable to the guest, so likely out of reach; confirm when the publication pipeline exists
 
 ## Resolved vagueness
 
@@ -181,3 +221,4 @@
 - [unknown_nonblocking] Whether the One-time PIN identity provider is already enabled on the agentculture Access team — needs a dashboard/API read — resolved: Moot: guests no longer authenticate through Cloudflare Access (c29), so the One-time PIN IdP is not needed
 - [unknown_nonblocking] Abuse handling beyond ToS: banning a misbehaving guest email, and who moderates — agentirc has no ban modes, so it would live in the consent store / Access policy — resolved: Bans live in the guest store by email and/or IP, owner-moderated (c26)
 - [follow_up] Visual direction details (type scale, layout of the guest landing, sandbox vs real-mesh visual distinction) — settle with mockups during planning via a design pass — resolved: Option A chosen on the uplift canvas; remaining detail settles during implementation against those artboards
+- [unknown_blocking] Which outbound email sender the front site uses for tokens (SMTP relay, a transactional service, or Cloudflare Email) — no mail-sending path was found in the explored repos; needed before the token step can ship — resolved: Token emails are sent by the component that owns the login: irc-lens (chat.culture.dev entry card), or the culture.dev site if login moves there; the concrete mail provider is picked during implementation

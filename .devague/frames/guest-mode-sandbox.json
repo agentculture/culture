@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-09T15:32:07Z",
-  "updated": "2026-10-09T16:19:40Z",
+  "updated": "2026-10-09T16:32:08Z",
   "claims": [
     {
       "id": "c1",
@@ -424,7 +424,7 @@
     {
       "id": "c20",
       "kind": "requirement",
-      "text": "Guest model traffic goes to the spark2 cortex via the lobes gateway with thinking disabled, using its own gateway key, single-flight queueing, capped max_tokens, and per-guest (IP+email) rate limits",
+      "text": "Guest model traffic goes through the lobes gateway with thinking disabled and a short-answer instruction: cortex-spark2 today, with more models to be added (e.g. AWS gpt-6-luna) to spread load; its own gateway key, single-flight per model, capped max_tokens, per-guest (IP + email) rate limits, at most ~5 active guests with a visible queue",
       "origin": "llm",
       "status": "confirmed",
       "honesty_conditions": [
@@ -432,6 +432,12 @@
           "id": "h17",
           "text": "With 5 guests asking at once, guest requests queue single-flight with max_tokens <= 700, and the owner's agents still get gateway responses",
           "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h49",
+          "text": "If guest traffic is routed to a hosted model (e.g. AWS gpt-6-luna), the Privacy Policy names that third-party processing before any guest message is sent there",
+          "status": "proposed",
           "instruction": ""
         }
       ],
@@ -443,6 +449,11 @@
           "text": "Guest model traffic is bounded: its own gateway key (not colleague's), single-flight queueing, capped max_tokens, and per-guest rate limits, so guests cannot starve the owner's agents on the shared GPU",
           "kind": "requirement",
           "reason": "user decision v1"
+        },
+        {
+          "text": "Guest model traffic goes to the spark2 cortex via the lobes gateway with thinking disabled, using its own gateway key, single-flight queueing, capped max_tokens, and per-guest (IP+email) rate limits",
+          "kind": "requirement",
+          "reason": "q7 decision + user: more models soon"
         }
       ]
     },
@@ -551,7 +562,7 @@
     {
       "id": "c25",
       "kind": "boundary",
-      "text": "Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, guest entry, consent gate, routing), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes ship as hand-off briefs to those repos",
+      "text": "Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, entry card, password + token login, consent gate, routing, token emails), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes land as direct PRs to those repos",
       "origin": "llm",
       "status": "confirmed",
       "honesty_conditions": [
@@ -570,6 +581,11 @@
           "text": "Culture-side work is the sandbox provisioning + docs; irc-lens (roles, consent gate), cultureflare (any-email OTP policy), katvan (ToS/Privacy pages) and cultureagent (read-only resident tools, if needed) changes are hand-off briefs to those repos",
           "kind": "boundary",
           "reason": "v2/c29: no any-email Access policy anymore"
+        },
+        {
+          "text": "Culture-side work is the sandbox provisioning (sandbox IRCd, sandbox agent, units) + docs; irc-lens (tiers, guest entry, consent gate, routing), cultureflare (path-scoped Access app, if automated), and katvan (ToS/Privacy pages) changes ship as hand-off briefs to those repos",
+          "kind": "boundary",
+          "reason": "user: may PR any repo needed"
         }
       ]
     },
@@ -609,7 +625,7 @@
     {
       "id": "c27",
       "kind": "requirement",
-      "text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email",
+      "text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance, then a one-time token emailed to that address must be entered before sandbox access; no SSO; a guest is identified by their verified email (+ IP for rate limits and bans)",
       "origin": "user",
       "status": "confirmed",
       "honesty_conditions": [
@@ -618,15 +634,21 @@
           "text": "The entry form validates email syntax and nickname rules and stores IP + email as the guest's identity",
           "status": "confirmed",
           "instruction": ""
+        },
+        {
+          "id": "h46",
+          "text": "A guest who cannot read the address they typed never reaches the sandbox; the token is single-use, expires within 15 minutes, and is rate-limited per email and per IP",
+          "status": "confirmed",
+          "instruction": ""
         }
       ],
       "hard_questions": [
         {
           "id": "q4",
           "text": "risk: Guest email is self-declared and unverified, so anyone can type someone else's email; ToS acceptance and bans keyed on it are only as strong as IP + a claimed email",
-          "resolved": false,
+          "resolved": true,
           "blocking": false,
-          "resolution": ""
+          "resolution": "Resolved by email verification: an emailed token proves the guest controls the address"
         }
       ],
       "links": [],
@@ -636,6 +658,11 @@
           "text": "Guest entry is a public form on the site: email + nickname + ToS/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email",
           "kind": "requirement",
           "reason": "c44 entry flow"
+        },
+        {
+          "text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance; no SSO and no email confirmation; a guest is identified by IP + email",
+          "kind": "requirement",
+          "reason": "user decision: emailed token enforces guest identity"
         }
       ]
     },
@@ -649,6 +676,12 @@
         {
           "id": "h23",
           "text": "A publish/export step strips email, IP, and the nick-to-person mapping; a fixture seeded with PII produces output containing none of it",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h45",
+          "text": "PII stripping covers free text guests type (emails, phone numbers, names they volunteer), not only the stored email/IP metadata",
           "status": "confirmed",
           "instruction": ""
         }
@@ -710,7 +743,7 @@
     {
       "id": "c32",
       "kind": "success_signal",
-      "text": "A first-time guest goes from landing on chat.culture.dev to a grounded answer from the sandbox agent in < 2 minutes, and sandbox answers arrive in < 30s p95 with up to 5 concurrent guests",
+      "text": "A first-time guest goes from landing on chat.culture.dev to a grounded answer in < 2 minutes; a guest's first answer arrives in < 30 s p95 with up to 5 active guests (more wait in a visible queue showing their position)",
       "origin": "llm",
       "status": "confirmed",
       "honesty_conditions": [
@@ -721,10 +754,24 @@
           "instruction": ""
         }
       ],
-      "hard_questions": [],
+      "hard_questions": [
+        {
+          "id": "q7",
+          "text": "Probe 2026-10-09: 5 concurrent spark-ask-shaped requests (4572 prompt tokens, 73-318 completion) to cortex-spark2 completed at 10.6/19.0/26.8/33.2/35.8 s \u2014 effectively serialized, p95 ~36 s, so '< 30s p95 with 5 concurrent guests' fails at today's capacity. Lower the target (e.g. < 45 s), cap concurrent active guests (e.g. 3), or show queue position?",
+          "resolved": true,
+          "blocking": true,
+          "resolution": "Option (c) approved: keep < 30 s for a guest's first answer, show queued guests their position, cap active guests at ~5; the sandbox agent is instructed to answer briefly with thinking off; more models (e.g. AWS gpt-6-luna) will be added to spread load"
+        }
+      ],
       "links": [],
       "instruction": "",
-      "revisions": []
+      "revisions": [
+        {
+          "text": "A first-time guest goes from landing on chat.culture.dev to a grounded answer from the sandbox agent in < 2 minutes, and sandbox answers arrive in < 30s p95 with up to 5 concurrent guests",
+          "kind": "success_signal",
+          "reason": "q7 option (c); probe showed spark2 serializes"
+        }
+      ]
     },
     {
       "id": "c33",
@@ -1012,6 +1059,187 @@
       "links": [],
       "instruction": "",
       "revisions": []
+    },
+    {
+      "id": "c47",
+      "kind": "requirement",
+      "text": "Guest sessions are carried by a server-issued signed cookie (HttpOnly, Secure, SameSite=Strict, short expiry); every state-changing route (POST /input, uploads, consent) rejects cross-site requests via SameSite plus an Origin/CSRF-token check \u2014 for guests and approved users alike",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h40",
+          "text": "A cross-origin form POST to /input carrying a valid guest or approved cookie is rejected (403) and sends nothing to IRC",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c48",
+      "kind": "assumption",
+      "text": "After SSO on the path-scoped /login Access app, the CF_Authorization cookie is set for the whole chat.culture.dev host (Path=/) and carries a JWT whose AUD irc-lens is configured to accept \u2014 so approved users are recognized on public paths",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h41",
+          "text": "Verified once in a real browser before build: after /login, a request to / carries CF_Authorization and irc-lens resolves the approved tier; if the cookie is path-scoped, /login must instead hand off via a lens-issued session",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c49",
+      "kind": "requirement",
+      "text": "Guest mode ships behind a config switch (default off); switching it off restores exactly today's behavior \u2014 approved-only access, guest routes 404 \u2014 without a redeploy of the approved path, and doubles as the kill switch during abuse",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h42",
+          "text": "With the switch off, the existing auth tests (tests/test_auth_middleware.py, including the non-allowlisted 403) pass unchanged; flipping it on and off needs only a config reload/restart",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c50",
+      "kind": "requirement",
+      "text": "The guest surface is observable: counts of entries, active guest sessions, 429s, failed sign-ins, and model errors are logged/exported, and when the sandbox agent or spark2 is down guests see a one-line 'agent offline' state instead of silence",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h43",
+          "text": "Stopping the sandbox agent shows 'agent offline' to an open guest session within 60 s; the counters are visible to the owner without reading raw logs",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c51",
+      "kind": "requirement",
+      "text": "One source of truth for the current Terms/Privacy version: the katvan pages publish it, and the lens consent gate reads the same value \u2014 a version bump re-prompts guests only after the new pages are live",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h44",
+          "text": "Bumping the version without the new pages live is refused (or ignored) by the lens; the version the consent record stores always matches a published page",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c52",
+      "kind": "decision",
+      "text": "Approved users (owner and approved collaborators) get full access to the real mesh, including addressing tool-capable agents \u2014 approval is the trust boundary",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c53",
+      "kind": "decision",
+      "text": "A guest's email is verified with an emailed token before sandbox access, so nobody can pretend to be someone else; the verified identity lets a guest request deletion of the data they input",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c54",
+      "kind": "requirement",
+      "text": "A verified guest can request deletion of the data they input: after re-verifying their email with a fresh token, their messages, uploads, and consent-linked profile are removed from the sandbox store within a stated period; the consent record of the request itself is kept as proof",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h47",
+          "text": "After a deletion request completes, a search of the sandbox data-dir and guest store for that guest's email or nick finds none of their messages or uploads",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c55",
+      "kind": "requirement",
+      "text": "Token emails go out for every address that chooses Guest mode, with identical wording and timing whether or not the address is approved, so the token step leaks no membership (c45)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h48",
+          "text": "Choosing Guest mode with an approved email and with an unknown email produces the same screen and the same email template",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c56",
+      "kind": "decision",
+      "text": "The login owner (irc-lens, which serves the chat.culture.dev entry card) owns guest token emails; work may land as direct PRs to any repo needed (irc-lens, katvan, cultureflare, cultureagent, culture) rather than hand-off briefs",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c57",
+      "kind": "decision",
+      "text": "Guest answers are short with no thinking; more models will be added soon, and AWS gpt-6-luna may be used alongside cortex-spark2",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
     }
   ],
   "open_vagueness": [
@@ -1067,6 +1295,42 @@
       "claim_id": null,
       "resolved": true,
       "resolution": "Option A chosen on the uplift canvas; remaining detail settles during implementation against those artboards",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v7",
+      "text": "Prompt-injection resilience of the sandbox agent beyond 'no tools' (e.g. leaking its system prompt or being steered into abusive replies) was not probed",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v8",
+      "text": "Which outbound email sender the front site uses for tokens (SMTP relay, a transactional service, or Cloudflare Email) \u2014 no mail-sending path was found in the explored repos; needed before the token step can ship",
+      "kind": "unknown_blocking",
+      "claim_id": null,
+      "resolved": true,
+      "resolution": "Token emails are sent by the component that owns the login: irc-lens (chat.culture.dev entry card), or the culture.dev site if login moves there; the concrete mail provider is picked during implementation",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v9",
+      "text": "Whether a deletion request also reaches already-published, PII-stripped material \u2014 stripped data is no longer linkable to the guest, so likely out of reach; confirm when the publication pipeline exists",
+      "kind": "follow_up",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v10",
+      "text": "Which mail provider irc-lens uses for token emails (transactional API such as Resend/Postmark, SMTP relay, or Cloudflare Email Workers) \u2014 an implementation choice, credentials via grant",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
       "resolution_claim_id": null
     }
   ],
@@ -1264,8 +1528,218 @@
         "c39",
         "c40"
       ]
+    },
+    {
+      "id": "s24",
+      "surface": "challenge pass / cheap-probe lens: lobes gateway cortex-spark2 under 5 concurrent requests",
+      "finding": "requests serialize on spark2; per-answer ~7 s at this prompt size; c32's 30 s p95 at 5 concurrent is not met (36 s) \u2014 routed to a blocking hard question on c32",
+      "seeds": [
+        "c32"
+      ]
+    },
+    {
+      "id": "s25",
+      "surface": "challenge pass / security lens: irc-lens web/auth.py + routes.py (cookie handling)",
+      "finding": "today irc-lens sets no cookies and relies on Cloudflare Access for every path (auth.py:142-150 reads CF_Authorization, never sets one); a public site with cookie-identified guests, and approved users identified by the CF_Authorization cookie on public paths, opens a CSRF surface on POST /input that Access previously fronted",
+      "seeds": [
+        "c47"
+      ]
+    },
+    {
+      "id": "s26",
+      "surface": "challenge pass / security lens: Cloudflare Access path-scoped app (q5 decision) + irc-lens aud pinning (auth.py:153-179)",
+      "finding": "not probed \u2014 creating the path app would mutate live Access config; Access injects Cf-Access-Jwt-Assertion only on protected paths, so recognition on / rests entirely on the cookie's scope and on the new app's AUD being in the lens config",
+      "seeds": [
+        "c48"
+      ]
+    },
+    {
+      "id": "s27",
+      "surface": "challenge pass / adjacent-systems lens: real mesh agents + approved-user tier (c7, c31)",
+      "finding": "the frame treats 'approved' as one tier, but agentirc has no join/ban ACL (client.py:449-459) and tool-capable agents answer any mention; nothing distinguishes the owner from an approved collaborator \u2014 routed to a user question",
+      "seeds": []
+    },
+    {
+      "id": "s28",
+      "surface": "challenge pass / operations lens: deployment units + rollback path",
+      "finding": "the frame specifies no rollback, kill switch, or monitoring for a newly public surface; the existing deployment is hand-written systemd units (memory reference_chat_agentculture_console) \u2014 seeded the switch and observability requirements",
+      "seeds": [
+        "c49",
+        "c50"
+      ]
+    },
+    {
+      "id": "s29",
+      "surface": "challenge pass / hidden-dependency lens: katvan /terms,/privacy (c16) + lens consent store (c13)",
+      "finding": "ToS text deploys from katvan (Cloudflare Pages) and consent is enforced in irc-lens on spark \u2014 separately deployed; nothing in the frame keeps their version numbers in step",
+      "seeds": [
+        "c51"
+      ]
+    },
+    {
+      "id": "s30",
+      "surface": "challenge pass / overlooked-actors lens: guest data lifecycle (c24, c28)",
+      "finding": "retention is 'as long as required' and publication strips PII, but the frame has no path for a guest asking to be forgotten \u2014 routed to a user question",
+      "seeds": []
+    },
+    {
+      "id": "s31",
+      "surface": "challenge pass / unexamined: legal adequacy of ToS/Privacy",
+      "finding": "not examined \u2014 c17 already records drafts are not legal advice; jurisdiction-specific obligations (e.g. GDPR for EU guests) were not researched",
+      "seeds": []
+    },
+    {
+      "id": "s32",
+      "surface": "challenge pass / concurrency lens: guest consent store + session registry (sessions.py:30)",
+      "finding": "clean for v1 scale \u2014 single irc-lens process, in-memory registry plus one consent store; residual risk only if irc-lens is ever run as multiple workers",
+      "seeds": []
+    },
+    {
+      "id": "s33",
+      "surface": "challenge pass / dependency lens: outbound email for guest tokens",
+      "finding": "git grep for smtplib/sendmail/resend/mailgun/sendgrid/postmark/send_email across irc-lens, culture, cultureflare, katvan, grant found no mail-sending code (only false hits: a vendored htmx bundle and one plan doc mention); the token decision adds a new outbound-email dependency \u2014 parked blocking (v8) until a sender is chosen",
+      "seeds": [
+        "c54",
+        "c55"
+      ]
     }
   ],
   "lapses": [],
-  "obligations": []
+  "obligations": [
+    {
+      "id": "o1",
+      "claim_id": "c12",
+      "seam": "irc-lens tier resolution (routes._resolve_session)",
+      "behavior": "returns a real-mesh session only for a verified Access JWT (header or CF_Authorization cookie) whose email is on the approved list; every other request resolves to guest or anonymous",
+      "source_text": "irc-lens recognizes two tiers on one site: 'approved' (Cloudflare Access JWT, email on the approved list) and 'guest' (no JWT; self-declared email + nickname, identified by IP + email); the role decides which IRCd a session connects to",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o2",
+      "claim_id": "c22",
+      "seam": "irc-lens Session factory -> IRC connect",
+      "behavior": "a guest-tier session only ever connects to the sandbox IRCd host:port; it never opens a connection to the spark IRCd (:6667)",
+      "source_text": "The real console stays reachable only by approved users through SSO; guest traffic never reaches culture-server-spark (:6667) or the real mesh",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o3",
+      "claim_id": "c10",
+      "seam": "sandbox IRCd server config / systemd unit",
+      "behavior": "binds 127.0.0.1 only and starts with no --link and no --mesh-config",
+      "source_text": "Guests never connect to the real spark IRCd: the sandbox is a separate, unlinked culture IRCd bound to 127.0.0.1 \u2014 agentirc has no join ACL, ban/invite/key modes, opers, or flood control, so confinement cannot be done inside a shared IRCd",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o4",
+      "claim_id": "c45",
+      "seam": "entry card HTTP endpoints (email continue, password sign-in, guest mode)",
+      "behavior": "status code, body, and timing are indistinguishable for approved vs unknown emails; any sign-in failure returns the single error 'Email or password is wrong'",
+      "source_text": "The entry flow does not reveal membership: unknown emails, approved emails, and wrong passwords get the same window, the same single error ('Email or password is wrong'), and indistinguishable response timing; password attempts are rate-limited per IP and per email",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o5",
+      "claim_id": "c55",
+      "seam": "guest token email send",
+      "behavior": "sends the same template, from the same sender, for every address that chooses Guest mode, regardless of approval",
+      "source_text": "Token emails go out for every address that chooses Guest mode, with identical wording and timing whether or not the address is approved, so the token step leaks no membership (c45)",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o6",
+      "claim_id": "c27",
+      "seam": "guest token verification endpoint",
+      "behavior": "accepts a token once, rejects it after 15 minutes, and rate-limits attempts per email and per IP",
+      "source_text": "Guest entry is the c44 card: email, then 'Guest mode' under the password field, then nickname + Terms/Privacy acceptance, then a one-time token emailed to that address must be entered before sandbox access; no SSO; a guest is identified by their verified email (+ IP for rate limits and bans)",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o7",
+      "claim_id": "c46",
+      "seam": "approved-user password store",
+      "behavior": "stores only argon2id (or equivalent slow salted) hashes; a correct password without a valid Access login opens no real-mesh route",
+      "source_text": "Approved users have a site password stored only as a slow salted hash (e.g. argon2id) in the front site's store; the password is a pre-check before SSO \u2014 Cloudflare Access on /login remains the real gate for the real mesh",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o8",
+      "claim_id": "c5",
+      "seam": "sandbox routes (stream, send, join, upload)",
+      "behavior": "respond only to a guest session holding a consent record for the current Terms + Privacy version; otherwise redirect to the consent step",
+      "source_text": "Guests must accept a Terms of Service (behave, be respectful) and a Privacy Policy (owner may use data guests provide) before getting any sandbox access",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o9",
+      "claim_id": "c47",
+      "seam": "state-changing POST routes (/input, uploads, consent, deletion)",
+      "behavior": "reject cross-site requests (SameSite=Strict cookie plus Origin/CSRF-token check) with 403 and no side effect",
+      "source_text": "Guest sessions are carried by a server-issued signed cookie (HttpOnly, Secure, SameSite=Strict, short expiry); every state-changing route (POST /input, uploads, consent) rejects cross-site requests via SameSite plus an Origin/CSRF-token check \u2014 for guests and approved users alike",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o10",
+      "claim_id": "c49",
+      "seam": "guest_mode config switch",
+      "behavior": "when off, guest routes 404 and auth behaves exactly as today (approved allowlist, non-allowlisted 403)",
+      "source_text": "Guest mode ships behind a config switch (default off); switching it off restores exactly today's behavior \u2014 approved-only access, guest routes 404 \u2014 without a redeploy of the approved path, and doubles as the kill switch during abuse",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o11",
+      "claim_id": "c19",
+      "seam": "sandbox agent -> lobes gateway request",
+      "behavior": "every chat completion request carries no tools field (or only read-only tools rooted in the sandbox knowledge dir)",
+      "source_text": "The sandbox agent has no bash/shell, write, or network tools; it may use read-only tools, but only over knowledge held inside the sandbox (a curated culture docs/code copy), never the host filesystem or the real mesh",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o12",
+      "claim_id": "c20",
+      "seam": "sandbox agent model client",
+      "behavior": "sends chat_template_kwargs.enable_thinking=false, a short-answer instruction, and max_tokens <= 700; admits at most ~5 active guests and reports queue position to the rest",
+      "source_text": "Guest model traffic goes through the lobes gateway with thinking disabled and a short-answer instruction: cortex-spark2 today, with more models to be added (e.g. AWS gpt-6-luna) to spread load; its own gateway key, single-flight per model, capped max_tokens, per-guest (IP + email) rate limits, at most ~5 active guests with a visible queue",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o13",
+      "claim_id": "c54",
+      "seam": "guest deletion request handler",
+      "behavior": "after token re-verification removes that guest's messages, uploads, and profile from the sandbox store and keeps only the deletion record",
+      "source_text": "A verified guest can request deletion of the data they input: after re-verifying their email with a fresh token, their messages, uploads, and consent-linked profile are removed from the sandbox store within a stated period; the consent record of the request itself is kept as proof",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o14",
+      "claim_id": "c28",
+      "seam": "guest data publication export",
+      "behavior": "emits no email, IP, or nick-to-person mapping, and strips PII from free text",
+      "source_text": "Published guest data has user PII removed (email, IP, and anything identifying them)",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o15",
+      "claim_id": "c26",
+      "seam": "owner ban control",
+      "behavior": "a banned email or IP is refused at entry and its active sandbox session is dropped within 1 minute",
+      "source_text": "The owner can ban a guest by email and/or IP in the guest store, blocking re-entry and dropping their active sandbox session, without touching the mesh or Cloudflare",
+      "origin": "llm",
+      "status": "proposed"
+    }
+  ]
 }
