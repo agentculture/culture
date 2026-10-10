@@ -8,13 +8,16 @@ description: >
   dedups by content hash) — re-remembering updates in place, never duplicates.
   Stamps a `created` date on every record at ingest time. Accepts `supersedes`
   (id of the record this one replaces, for within-scope shadowing via `sweep`)
-  and `links` (list of related-memory ids). The store lives at
-  ~/.eidetic/memory (a home-dir path outside any git worktree), and the wrapper
-  defaults records to this agent's PERSONAL, PRIVATE scope (`--scope culture
-  --visibility private`, suffix read from culture.yaml) so they don't leak to a
-  default/other-scope recall — Claude and the colleague backend still share them
-  because both resolve the same suffix via this skill. Pass `--visibility public`
-  to contribute to the shared public pool instead. Use when the user says
+  and `links` (list of related-memory ids). The store uses visibility-aware
+  routing: PUBLIC records inside a git repo go to <repo-root>/.eidetic/memory
+  (committed, team-shared); PRIVATE records, or any record outside a git repo,
+  go to $HOME/.eidetic/memory (never committed). An explicit EIDETIC_DATA_DIR
+  wins and short-circuits to that single dir. The wrapper defaults records to
+  this agent's personal scope with PUBLIC visibility (`--scope culture
+  --visibility public`, suffix read from culture.yaml), so a plain remember is
+  written into this repo's committed `.eidetic/memory` and shared with the team
+  and mesh. Pass `--visibility private` to keep a record in $HOME, uncommitted.
+  Never put secrets or personal data in a plain remember. Use when the user says
   "remember this", "store this", "save to memory", "index these", "eidetic
   remember", or when something learned this session should outlive it. Pairs with
   the sibling /recall skill.
@@ -23,9 +26,11 @@ description: >
 # remember — write to the shared eidetic memory
 
 `remember` drives **`eidetic remember`**, the write half of the memory surface
-(the read half is the sibling **/recall** skill). Records you store here are
-recallable later by *any* agent on this machine — Claude or the colleague
-backend — because the default store is one shared `~/.eidetic/memory` path.
+(the read half is the sibling **/recall** skill). By default a record is
+**public** and lands in this repo at `<repo-root>/.eidetic/memory`, which is
+**committed and pushed**: anyone with the repo, Claude or the colleague backend,
+can recall it. Pass `--visibility private` for a record that must stay on this
+machine (`$HOME/.eidetic/memory`, never committed).
 
 ## How to run
 
@@ -59,11 +64,11 @@ The wrapper resolves the CLI portably (installed `eidetic` on `PATH`, else
 | `links` | optional | list of related-memory ids; persisted for future corroboration scoring |
 
 `score` and `signal` are recall-only and are ignored on ingest. **Mind the
-scope:** the default personal scope is **private** (`--scope culture
---visibility private`), so personal/role-gated notes stay isolated to this
-agent's recall and are safe to store. Only when you deliberately write to a
-**public** scope (`--visibility public`) does the record enter the shared pool
-visible to every scope — keep public-scope records to public data only.
+visibility:** the default is **public** (`--scope culture --visibility
+public`) — the record is committed with the repo and visible to every scope, so
+keep plain remembers to data that may be public. Tokens, hostnames, personal
+data or anything role-gated need `--visibility private`, which keeps the record
+in `$HOME/.eidetic/memory`, isolated to this agent's scope and never committed.
 
 ## Idempotency
 
@@ -90,14 +95,16 @@ eidetic sweep             # apply transitions
 
 - `--json` — structured result (`{"upserted": N, "ids": [...]}`) to stdout.
 - `--scope NAME` / `--visibility public|private` — record scope. **The wrapper
-  defaults this to the agent's PERSONAL, PRIVATE scope** — `--scope <suffix>
-  --visibility private`, where `<suffix>` is read from the nearest `culture.yaml`
-  (here, `culture`). Private records are served only to a recall in the same
-  scope, so they don't leak to a `default`/other-scope query. Pass `--scope` to
-  steer to a different scope (which then uses the plain CLI default visibility),
-  or `--visibility public` to keep the personal scope but make it shared. A wheel
-  install with no `culture.yaml` falls back to the CLI default `default`/`public`.
-- `--backend files|mongo|neo4j` — default `files` (the shared home-dir store);
+  defaults this to the agent's personal scope with PUBLIC visibility** —
+  `--scope <suffix> --visibility public`, where `<suffix>` is read from the
+  nearest `culture.yaml` (here, `culture`) — a recipe policy that keeps
+  memory in-repo (eidetic's own wrapper defaults to private). Pass
+  `--visibility private` to keep a record in `$HOME`, served only to a recall in
+  the same scope. Pass `--scope` to steer to a different scope (which then uses
+  the plain CLI default visibility). A wheel install with no `culture.yaml`
+  falls back to the CLI default `default`/`public`.
+- `--backend files|mongo|neo4j` — default `files` (in-repo for public records,
+  `$HOME` for private ones);
   use `mongo`/`neo4j` (with `EIDETIC_MONGO_URI` / `NEO4J_URI`) for a server store.
 
 ## Notes

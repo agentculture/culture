@@ -119,8 +119,10 @@ A plain `/remember` lands the note in `./.eidetic/memory` in this repo — no
 flag needed (the wrappers here default to `--visibility public`; in-repo
 routing needs `eidetic >= 0.10.0`, older CLIs keep records in `$HOME`). Keep
 something out of the committed store only by passing `--visibility private`
-(routes to `$HOME/.eidetic/memory`, never committed); `/recall` reads both
-stores and merges. Don't store what the repo already records (code structure,
+(routes to `$HOME/.eidetic/memory`, never committed) — anything secret or
+personal needs it. A plain `/recall` searches the in-repo public records; add
+`--visibility private` to include your private `$HOME` notes too.
+Don't store what the repo already records (code structure,
 git history, what's already in this file or `CHANGELOG.md`) — store what you'd
 have to re-derive. These are the `recall`/`remember` skills (`.claude/skills/`),
 backed by the `eidetic` store.

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.6.2] - 2026-10-10
+
+### Fixed
+
+- **`/remember` and `/recall` docs now match the public default.** The vendored wrappers default to `--visibility public` (records committed in-repo at `.eidetic/memory`), but both `SKILL.md` files and the remember help text still said records default to a private `$HOME` scope. Re-applied rollout-cli's corrected `eidetic-memory` recipe (rollout-cli#22): the docs and the CLAUDE.md memory convention now say a plain remember is committed and shared (secrets and personal data need `--visibility private`), and that a plain recall searches only the in-repo public records (`--visibility private` also includes private ones). `remember.sh --json` on a terminal no longer hangs.
+
 ## [14.6.1] - 2026-10-10
 
 ### Added

@@ -79,7 +79,7 @@ esac
 
 resolve_eidetic || exit 2
 
-# ── default to this agent's PERSONAL, PRIVATE scope (culture.yaml `suffix`) ──
+# ── default to this agent's PERSONAL scope, PUBLIC visibility (culture.yaml `suffix`) ──
 # Query this agent's OWN personal scope by default, matching where /remember
 # writes, instead of the global `default` scope shared by every project on this
 # host. We read the `suffix` from the nearest culture.yaml (walking up from this
@@ -88,15 +88,16 @@ resolve_eidetic || exit 2
 # backend (running in a worktree of this same repo) resolves the same suffix,
 # keeping the Claude↔colleague shared-memory story intact.
 #
-# The personal scope is PRIVATE by default to match /remember: in eidetic's model
-# a private record is served only to a recall in the SAME scope (`can_serve`), so
-# querying with --scope <suffix> --visibility private is what retrieves those
-# isolated records (a public/default recall can't see them). Scope and visibility
-# are paired — the private default applies only when we inject the resolved scope,
+# Visibility defaults to PUBLIC (a recipe-level policy override of eidetic's
+# upstream private default — see the POLICY OVERRIDE comment below) to match
+# /remember, so a plain recall queries the in-repo public pool at
+# <repo>/.eidetic/memory that /remember writes to. Scope and visibility are
+# paired — the public default applies only when we inject the resolved scope,
 # and only if the caller didn't pass --visibility (so an explicit
-# `--visibility public` still wins). An explicit --scope on the command line takes
-# over steering entirely; a wheel install with no culture.yaml falls back to the
-# plain CLI default (`default`/`public`).
+# `--visibility private` still wins, also surfacing this agent's private $HOME
+# notes). An explicit --scope on the command line takes over steering entirely; a
+# wheel install with no culture.yaml falls back to the plain CLI default
+# (`default`/`public`).
 resolve_scope() {
     local dir suffix=""
     dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -140,16 +141,17 @@ if ! has_flag --scope "$@"; then
         # upstream private default): default to PUBLIC, so a plain recall queries
         # the in-repo public pool (<repo>/.eidetic/memory) this repo writes to.
         # Pass --visibility private to also surface this agent's private ($HOME)
-        # notes. The two-store read model reads both dirs regardless.
+        # notes: eidetic reads both dirs, but serves private records only to a
+        # --visibility private query in the same scope.
         has_flag --visibility "$@" || SCOPE_ARGS+=(--visibility public)
     elif ! has_flag --visibility "$@"; then
         # No suffix AND no explicit --visibility: the query runs against
-        # eidetic's own default (scope=default, visibility=public), not this
-        # agent's private personal scope — so an empty result isn't silently
-        # misread. Warn on stderr (stdout stays clean for --json). Warn ONLY
-        # here: an explicit --scope (outer guard) or --visibility (this guard) is
-        # a deliberate choice, honored verbatim, so either flag silences this.
-        printf 'warning: no culture.yaml suffix resolved; querying the public default scope rather than a private personal scope. Pass --scope or --visibility to target deliberately.\n' >&2
+        # eidetic's own default scope (scope=default), not this repo's personal
+        # scope — so an empty result isn't silently misread. Warn on stderr
+        # (stdout stays clean for --json). Warn ONLY here: an explicit --scope
+        # (outer guard) or --visibility (this guard) is a deliberate choice,
+        # honored verbatim, so either flag silences this.
+        printf 'warning: no culture.yaml suffix resolved; querying the default scope rather than the personal scope of this repo. Pass --scope or --visibility to target deliberately.\n' >&2
     fi
 fi
 
