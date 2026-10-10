@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.6.1] - 2026-10-10
+
+### Added
+
+- `gate:` section in the root `culture.yaml` so the culture-rules PR fixer can run the unit test suite (`uv sync --python 3.12`, then `uv run --python 3.12 pytest -n auto`, the same interpreter and runner as the CI `test` job) before pushing a fix. Python is pinned to 3.12 because one test (`tests/test_channel_cli.py::TestMessageIpcRouting`) fails on 3.13, where `asyncio` unlinks the unix socket on close.
+
 ## [14.6.0] - 2026-10-09
 
 ### Added
