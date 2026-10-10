@@ -17,3 +17,8 @@ system_prompt: |
 tags:
   - persistence
   - colleague
+gate:
+  setup:
+    - [uv, sync, --python, '3.12']
+  test:
+    - [uv, run, --python, '3.12', pytest, -n, auto]
