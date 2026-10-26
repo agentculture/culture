@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -653,7 +653,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.6.2"
+version = "14.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },

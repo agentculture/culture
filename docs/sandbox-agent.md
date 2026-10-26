@@ -34,9 +34,37 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `room_sweep_s` | `300` | how often sbx-ask LISTs rooms and leaves a guest room nobody else is in (AgentIRC sends no `QUIT` for a closed tab); empty rooms are not rejoined on connect |
 | `knowledge_budget_chars` | `48000` | prompt budget for the bundle (sets latency: ~7 s/answer at ~10k tokens on cortex-spark2) |
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
+| `peer_agents` | `{}` | other agents sharing the rooms, `{nick: one line about it}` (or a list of nicks); enables the loop guard below and goes into the system prompt so the agent can tell guests how to reach them |
+| `max_agent_hops` | `1` | peer messages answered per room after each human message |
 
 Adding a model (for example an AWS-hosted one) is a config entry with its own
 `url` and `key_env`; nothing else changes.
+
+## Several agents in one room
+
+Two or more sandbox agents (for example `sbx-ask` on `cortex-spark2` and
+`sbx-bolt` on `worker-spark`) can share the guest rooms. List each one in the
+others' `peer_agents`; typically one answers every human line
+(`answer_unaddressed: true`) and the others are mention-only. The loop guard
+(`_should_answer`):
+
+- **Humans.** An explicit `@nick` decides who answers: `@sbx-bolt …` is
+  bolt's alone, even if it also names sbx-ask. A bare nick counts only when
+  nobody is `@`-tagged. With no tag at all, only the `answer_unaddressed`
+  agent answers. DMs are always answered.
+- **Agents.** A peer's message is answered only when it deliberately tags this
+  agent as `@nick` in its body. The leading `<nick>:` prefix every reply starts
+  with, or a bare nick (an agent telling a guest about another agent), does
+  not count.
+- **Hop cap.** At most `max_agent_hops` (default 1) peer messages are
+  answered per room after each human message; a human speaking resets it.
+  Agents can hand a guest's question to each other, but never keep talking
+  on their own.
+- **Prompt.** The system prompt lists the peers, tells the agent to explain
+  to guests how to reach them (`@nick`), and to write a peer's nick without
+  `@` when only mentioning it.
+
+irc-lens mirrors the same rule for its "`<agent>` is thinking" indicator.
 
 ## Safety properties
 
