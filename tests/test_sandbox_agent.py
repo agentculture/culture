@@ -891,7 +891,8 @@ def test_docs_budget_shrinks_to_fit_the_request_cap(tmp_path):
     cfg = SandboxConfig(knowledge_dir=str(tmp_path))
     budget = knowledge_budget(cfg)
     assert 20_000 < budget < cfg.knowledge_budget_chars  # 40k cap: the docs give way
-    rest = cfg.room_context_chars + cfg.search_chars + cfg.history_chars
+    # A request carries room lines + hits or DM history, never both.
+    rest = max(cfg.room_context_chars + cfg.search_chars, cfg.history_chars)
     assert len(system_prompt(cfg.nick, "", {})) + budget + rest < cfg.max_prompt_chars
     assert knowledge_budget(SandboxConfig(max_prompt_chars=1000)) == 0
     roomy = SandboxConfig(max_prompt_chars=10**6)
@@ -937,8 +938,19 @@ def test_dm_history_is_capped_in_characters_too(tmp_path):
 # --- per-request chat search ---------------------------------------------------
 
 
+def _record_with_hits(agent, jobs):
+    """Admitted jobs are recorded with their search hits (the search runs
+    when the job is answered)."""
+
+    async def admit(job):
+        jobs.append(await agent._with_hits(job))
+
+    agent._admit = admit
+
+
 async def _searching_agent(tmp_path, **kw):
     agent, jobs = _guarded(tmp_path, **kw)
+    _record_with_hits(agent, jobs)
     agent._history_ok = True  # the server has answered HISTORY before
     sent = []
 
@@ -1015,6 +1027,7 @@ async def test_words_already_in_the_window_nicks_and_off_switch_do_not_search(tm
 @pytest.mark.asyncio
 async def test_search_times_out_and_waits_for_nothing_without_history(tmp_path):
     agent, jobs = _guarded(tmp_path, search_timeout=0.05, room_context_lines=1)
+    _record_with_hits(agent, jobs)
     sent = []
 
     async def send(line):
@@ -1070,3 +1083,86 @@ async def test_real_server_search_hits_reach_the_model_once(
     assert "testserv-ann: my favourite colour is teal" in found[0]
     assert not any("found by searching" in m["content"] for m in after["messages"])
     assert all("teal" not in t for _n, t in agent.transcripts["#general"])
+
+
+def test_a_lone_oversized_dm_pair_is_cut_not_dropped(tmp_path):
+    agent, _jobs = _guarded(tmp_path, history_chars=1_000)
+    agent.history["sbx-ann"].extend(
+        [
+            {"role": "user", "content": "list the steps"},
+            {"role": "assistant", "content": "s" * 4_100},
+        ]
+    )
+    ((user, answer),) = agent._dm_turns("sbx-ann")
+    assert user["content"] == "list the steps"
+    assert answer["content"].startswith("sss") and answer["content"].endswith("…")
+    assert len(user["content"]) + len(answer["content"]) <= 1_000
+
+
+@pytest.mark.asyncio
+async def test_a_searching_question_is_not_overtaken_by_a_later_one(tmp_path):
+    """Review finding: the search used to run before admission, so a later
+    question with nothing to search was answered first."""
+    agent, _jobs = _guarded(tmp_path, room_context_lines=1)
+    del agent._admit  # the real admission and model lock
+    agent._history_ok = True
+    agent.cfg.line_delay = 0
+    loop = asyncio.get_running_loop()
+    said = []
+
+    async def send(line):
+        if line.startswith("HISTORY SEARCH"):  # a slow server
+            loop.call_later(0.2, agent._on_history_end, "#g-1 :End of history")
+        elif line.startswith("PRIVMSG"):
+            said.append(line.split(":", 1)[1])
+
+    agent.send = send
+    agent.complete = lambda job: f"answer to {job.question}"
+    await agent.handle("sbx-ann", "#g-1", "hello")
+    said.clear()
+    first = asyncio.ensure_future(agent.handle("sbx-ann", "#g-1", "what about the zebra?"))
+    await asyncio.sleep(0.01)
+    await agent.handle("sbx-ann", "#g-1", "ok")
+    await first
+    for _ in range(50):
+        if len(said) == 2:
+            break
+        await asyncio.sleep(0.02)
+    assert said == ["sbx-ann: answer to what about the zebra?", "sbx-ann: answer to ok"]
+
+
+@pytest.mark.asyncio
+async def test_no_search_while_the_server_is_far_behind(tmp_path):
+    import culture_core.sandbox.agent as agent_mod
+
+    agent, jobs, sent = await _searching_agent(tmp_path, room_context_lines=1)
+    await agent.handle("sbx-ann", "#g-1", "hello")
+    for _ in range(agent_mod.HISTORY_PENDING_MAX):
+        agent._new_history_query("#g-1")
+    await agent.handle("sbx-ann", "#g-1", "what about the zebra?")
+    assert not [w for w in sent if "SEARCH" in w]
+    assert jobs[-1].hits == ()
+
+
+@pytest.mark.asyncio
+async def test_a_cut_window_line_is_not_found_again_as_a_hit(tmp_path):
+    agent, jobs, _sent = await _searching_agent(tmp_path, room_context_chars=30)
+    long_line = "the zebra " + "z" * 60
+    agent.server_history = [(1.0, "sbx-ann", long_line)]
+    await agent.handle("sbx-ann", "#g-1", long_line)  # shown cut in the window
+    await agent.handle("sbx-ann", "#g-1", "and the zebrafish?")
+    assert jobs[-1].hits == ()
+
+
+@pytest.mark.asyncio
+async def test_a_full_catch_up_lets_the_first_question_search(tmp_path):
+    """Review finding: the catch-up ending with the question left context one
+    line short of full, and the search was skipped."""
+    agent, jobs, sent = await _searching_agent(tmp_path, room_context_lines=2)
+    agent.rooms.discard("#g-1")
+    await agent._follow("#g-1", "sbx-ann")
+    for n, line in enumerate(["older line", "what about the zebra?"]):
+        agent._on_history_line(f"#g-1 sbx-ann {n}.0 :{line}")
+    agent._on_history_end("#g-1 :End of history")
+    await agent.handle("sbx-ann", "#g-1", "what about the zebra?")
+    assert [w for w in sent if "SEARCH" in w] == ["HISTORY SEARCH #g-1 zebra"]

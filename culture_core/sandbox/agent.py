@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import dataclasses
 import datetime as _dt
 import json
 import logging
@@ -81,7 +82,8 @@ HISTORY_REQUEST_MAX = 200
 SEED_WAIT_S = 3.0
 SEED_TIMEOUT_S = 10.0
 # HISTORY replies carry no request id: they are matched to requests in the
-# order sent, per room. A room keeps at most this many unanswered requests.
+# order sent, per room (never dropped, or every later match would shift). A
+# search isn't sent while a room has this many unanswered requests.
 HISTORY_PENDING_MAX = 32
 # Words a question is searched for: at least 4 letters, not one of these.
 _SEARCH_WORD_RE = re.compile(r"[^\W_][\w-]{3,}")
@@ -236,10 +238,12 @@ def _knowledge_priority(rel: Path) -> tuple:
 
 def knowledge_budget(cfg: "SandboxConfig") -> int:
     """Characters of docs that fit in ``max_prompt_chars`` beside the rest of
-    the system prompt and the full room, search and DM budgets (at most
-    ``knowledge_budget_chars``)."""
+    the system prompt and the larger context budget a request can use: room
+    lines plus search hits (a room question) or DM history (a DM), never
+    both (at most ``knowledge_budget_chars``)."""
     fixed = len(system_prompt(cfg.nick, "", cfg.peer_agents))
-    reserve = cfg.room_context_chars + cfg.search_chars + cfg.history_chars + PROMPT_RESERVE_CHARS
+    context = max(cfg.room_context_chars + cfg.search_chars, cfg.history_chars)
+    reserve = context + PROMPT_RESERVE_CHARS
     return max(0, min(cfg.knowledge_budget_chars, cfg.max_prompt_chars - fixed - reserve))
 
 
@@ -426,6 +430,9 @@ class _Job:
     # Earlier room lines a history search found for this question, oldest
     # first ((nick, text)); used for this request only, never stored.
     hits: tuple = ()
+    # The room line as it was said (before the tag was stripped), so a
+    # search doesn't return the question itself.
+    line: str = ""
 
 
 @dataclass
@@ -477,6 +484,9 @@ class SandboxAgent:
         # the server has answered a HISTORY request (searches wait for none
         # on an IRCd without the HISTORY skill)
         self._history_ok = False
+        # rooms whose transcript has dropped lines (or whose catch-up filled
+        # it): only these have older lines a search can find
+        self._overflowed: set[str] = set()
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -508,14 +518,22 @@ class SandboxAgent:
         return newest_within([f"{n}: {t}" for n, t in context], self.cfg.room_context_chars)
 
     def _dm_turns(self, convo: str) -> list[tuple[dict, dict]]:
-        """The guest's newest DM question/answer pairs within ``history_chars``."""
+        """The guest's newest DM question/answer pairs within ``history_chars``;
+        a newest pair longer than the whole budget is cut (the answer's end
+        first) rather than leaving no history."""
         h = list(self.history.get(convo, ()))
+        budget = self.cfg.history_chars
         turns, used = [], 0
-        for pair in reversed(list(zip(h[::2], h[1::2]))):
-            used += sum(len(m["content"]) for m in pair)
-            if used > self.cfg.history_chars:
+        for user, answer in reversed(list(zip(h[::2], h[1::2]))):
+            size = len(user["content"]) + len(answer["content"])
+            if used + size > budget:
+                if not turns and budget > 2:
+                    q = newest_within([user["content"]], budget // 2)[0]
+                    a = newest_within([answer["content"]], budget - len(q))
+                    turns.append(({**user, "content": q}, {**answer, "content": a[0] if a else ""}))
                 break
-            turns.append(pair)
+            turns.append((user, answer))
+            used += size
         return turns[::-1]
 
     def _prompt(self, job: "_Job") -> tuple[str, list[dict], str]:
@@ -600,7 +618,7 @@ class SandboxAgent:
         try:
             async with self.lock:
                 try:
-                    answer = await asyncio.to_thread(self.complete, job)
+                    answer = await asyncio.to_thread(self.complete, await self._with_hits(job))
                 except Exception as exc:  # noqa: BLE001 - keep the agent up
                     log.warning("completion failed: %s", exc)
                     answer = "Sorry, I couldn't reach my model right now."
@@ -695,6 +713,8 @@ class SandboxAgent:
         lines = self.transcripts.setdefault(
             room, collections.deque(maxlen=self.cfg.room_context_lines)
         )
+        if len(lines) == lines.maxlen:
+            self._overflowed.add(room)
         lines.append((nick, text))
         seeding = self._seeding.get(room)
         if seeding is not None:
@@ -744,10 +764,16 @@ class SandboxAgent:
         if _COMMAND_RE.search(question):
             await self.reply(out, prefix, DECLINE_COMMAND, remember=False)
             return
-        hits: tuple = ()
-        if target.startswith("#") and self._keeps_context(target):
-            hits = await self._search_history(target, context, sender, text, question)
-        await self._admit(_Job(sender, convo, out, prefix, question, context, hits))
+        await self._admit(_Job(sender, convo, out, prefix, question, context, line=text))
+
+    async def _with_hits(self, job: _Job) -> _Job:
+        """*job* with its search hits, for a room job. Run under the model
+        lock, so a question that searches can't be overtaken by a later one
+        that doesn't."""
+        if not job.out.startswith("#") or not self._keeps_context(job.out):
+            return job
+        hits = await self._search_history(job.out, job.context, job.sender, job.line, job.question)
+        return dataclasses.replace(job, hits=hits)
 
     def _search_words(self, question: str, window: list[str]) -> list[str]:
         """Up to ``search_keywords`` of the question's words (longest first)
@@ -771,19 +797,26 @@ class SandboxAgent:
         cfg = self.cfg
         if cfg.search_hits <= 0 or cfg.search_chars <= 0 or not self._history_ok:
             return ()
+        if len(self._history_queries.get(room, ())) >= HISTORY_PENDING_MAX:
+            return ()  # the IRCd is far behind: don't add to its queue
         window = self._room_lines(context)
-        if len(context) < cfg.room_context_lines and len(window) == len(context):
+        if room not in self._overflowed and len(window) == len(context):
             return ()  # the whole room is in the window: nothing older to find
         words = self._search_words(question, window)
         if not words:
             return ()
         queries = await self._run_searches(room, words)
-        newest = self._new_hits(queries, set(window) | {f"{sender}: {line}"})
-        newest = newest[-cfg.search_hits :]
+        shown = context[len(context) - len(window) :] if window else ()
+        known = {f"{n}: {t}" for n, t in shown} | {f"{sender}: {line}"}
+        newest = self._new_hits(queries, known)[-cfg.search_hits :]
         kept = newest_within([f"{n}: {t}" for n, t in newest], cfg.search_chars)
-        # A lone oversized newest hit comes back cut: keep pairs aligned.
-        pairs = newest[len(newest) - len(kept) :]
-        return tuple((n, k[len(n) + 2 :]) for (n, _t), k in zip(pairs, kept))
+        # A lone oversized newest hit comes back cut; a cut that would reach
+        # into the nick leaves no hit.
+        hits = []
+        for (nick, _text), entry in zip(newest[len(newest) - len(kept) :], kept):
+            if len(entry) > len(nick) + 2:
+                hits.append((nick, entry[len(nick) + 2 :]))
+        return tuple(hits)
 
     async def _run_searches(self, room: str, words: list[str]) -> list[_HistoryQuery]:
         """Send one HISTORY SEARCH per word and wait up to ``search_timeout``
@@ -851,10 +884,7 @@ class SandboxAgent:
         come in the order requests were sent; a request still unanswered
         stays queued so its late reply can't be taken for a newer one's."""
         query = _HistoryQuery()
-        queue = self._history_queries.setdefault(chan, collections.deque())
-        queue.append(query)
-        if len(queue) > HISTORY_PENDING_MAX:
-            queue.popleft().done.set()
+        self._history_queries.setdefault(chan, collections.deque()).append(query)
         return query
 
     def _on_history_line(self, rest: str) -> None:
@@ -901,9 +931,10 @@ class SandboxAgent:
                 overlap = k
                 break
         if self._keeps_context(chan):
-            self.transcripts[chan] = collections.deque(
-                replay + live[overlap:], maxlen=self.cfg.room_context_lines
-            )
+            lines = replay + live[overlap:]
+            if len(lines) >= self.cfg.room_context_lines:
+                self._overflowed.add(chan)  # the server may hold more
+            self.transcripts[chan] = collections.deque(lines, maxlen=self.cfg.room_context_lines)
         self._end_seeding(chan)
 
     def _seed_timeout(self, chan: str) -> None:
@@ -937,8 +968,8 @@ class SandboxAgent:
             self.history.pop(chan, None)
             self.agent_hops.pop(chan, None)
             self.transcripts.pop(chan, None)
+            self._overflowed.discard(chan)
             self._end_seeding(chan)
-            self._history_queries.pop(chan, None)
             for key in [k for k in self.history if k.startswith(chan + "/")]:
                 del self.history[key]
             await self.send(f"PART {chan}")
@@ -995,7 +1026,12 @@ class SandboxAgent:
         reader, self.writer = await asyncio.open_connection(self.cfg.host, self.cfg.port)
         self.rooms = set()
         self._sweeper = None
-        self._history_queries = {}  # replies to the old connection never come
+        # Replies to the old connection never come; whoever waits stops now.
+        for queue in self._history_queries.values():
+            for query in queue:
+                query.done.set()
+        self._history_queries = {}
+        self._history_ok = False  # the new server may lack the HISTORY skill
         if self.cfg.guest_room_prefix:
             await self.send(f"CAP REQ :{BOT_CAP}")
         await self.send(f"NICK {self.cfg.nick}")

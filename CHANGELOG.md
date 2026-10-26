@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- Sandbox agents: one hard cap on the whole request (`max_prompt_chars`, 40,000 by default). Context gives way in order (search hits, oldest room lines, oldest DM turns); the question is never cut, and the docs bundle is loaded to fit beside the other budgets (about 25,700 chars by default, was 48,000).
+- Sandbox agents: one hard cap on the whole request (`max_prompt_chars`, 40,000 by default). Context gives way in order (search hits, oldest room lines, oldest DM turns); the question is never cut, and the docs bundle is loaded to fit beside the other budgets (about 30,000 chars by default, was 48,000).
 - Sandbox agents: DM history is capped in characters too (`history_chars`, 4,000), not only in turns.
 - Sandbox agents: chat search for one request only. When a room question has words that are not in the recent window, the agent runs `HISTORY SEARCH` for up to 3 of them and passes at most 8 hits / 1,500 chars as earlier messages that may be relevant; never stored, 2 s timeout.
 

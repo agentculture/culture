@@ -81,30 +81,39 @@ Each answer is kept to a small, fixed amount of work:
   `<think>` block is stripped (see Safety properties).
 - **One cap on the request.** Everything the model is sent fits in
   `max_prompt_chars` (40,000). The docs bundle is loaded to fit beside the
-  full room, search and DM budgets (`max_prompt_chars` minus the rest of the
-  system prompt, `room_context_chars`, `search_chars`, `history_chars` and
-  1,500 for the headers and the question, at most `knowledge_budget_chars`;
-  about 25,700 with the defaults). If a request is still over, context gives
+  larger context a request can carry: a room question carries room lines and
+  search hits, a DM carries DM history, never both. So the docs get
+  `max_prompt_chars` minus the rest of the system prompt, minus the larger
+  of `room_context_chars` + `search_chars` and `history_chars`, minus 1,500
+  for the headers and the question, at most `knowledge_budget_chars`: about
+  30,000 with the defaults. If a request is still over, context gives
   way in this order: search hits first, then the oldest room lines, then the
   oldest DM turns. The question is never cut; only if it and the bare system
   prompt are over the cap is the end of the docs cut.
 - **DM history in characters.** A DM sends at most `history_chars` of the
   guest's newest whole question/answer pairs (and at most `history_turns`).
+  A newest pair longer than the whole budget is cut, the answer's end
+  first, rather than sending no history.
 - **Chat search for this request only.** The agents have no tools, so the
   agent searches deterministically. When a room question has words (at least
   4 letters, not common words or agent nicks) that aren't in the recent
-  window, and the room has older lines outside the window, the agent sends
+  window, and the room has older lines outside the window (its transcript
+  has dropped lines, or a catch-up filled it), the agent sends
   `HISTORY SEARCH <room> <word>` for up to `search_keywords` of them, longest
   first. It keeps lines not already in the window (no `system-*`, NSFW or
   command lines), the newest `search_hits` within `search_chars`, and passes
   them before the recent lines as "earlier messages in this room that may be
   relevant". They are part of that one request: never added to the
   transcript or the history, so the next request starts clean. The agent
-  waits at most `search_timeout` seconds and answers with whatever arrived;
-  it doesn't search at all until the IRCd has answered a HISTORY request.
-  HISTORY replies carry no request id, so they are matched to requests in
-  the order sent, per room; a timed-out search's late reply is still taken
-  as its own.
+  waits at most `search_timeout` seconds and answers with whatever arrived.
+  The search runs when the question's turn with the model comes (under the
+  single-flight lock), so answers keep the order questions arrived in. It
+  doesn't search until the IRCd on this connection has answered a HISTORY
+  request. HISTORY replies carry no request id, so they are matched to
+  requests in the order sent, per room. A request is never dropped from
+  that queue, so a timed-out search's late reply is still taken as its own.
+  Instead, no search is sent while a room has 32 unanswered requests, and a
+  reconnect releases every waiter.
 
 ## Several agents in one room
 
