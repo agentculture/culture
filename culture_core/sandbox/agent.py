@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import collections
-import dataclasses
 import datetime as _dt
 import json
 import logging
@@ -772,8 +771,10 @@ class SandboxAgent:
         that doesn't."""
         if not job.out.startswith("#") or not self._keeps_context(job.out):
             return job
-        hits = await self._search_history(job.out, job.context, job.sender, job.line, job.question)
-        return dataclasses.replace(job, hits=hits)
+        job.hits = await self._search_history(
+            job.out, job.context, job.sender, job.line, job.question
+        )
+        return job
 
     def _search_words(self, question: str, window: list[str]) -> list[str]:
         """Up to ``search_keywords`` of the question's words (longest first)

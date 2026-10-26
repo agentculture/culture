@@ -1095,7 +1095,8 @@ def test_a_lone_oversized_dm_pair_is_cut_not_dropped(tmp_path):
     )
     ((user, answer),) = agent._dm_turns("sbx-ann")
     assert user["content"] == "list the steps"
-    assert answer["content"].startswith("sss") and answer["content"].endswith("…")
+    assert answer["content"].startswith("sss")
+    assert answer["content"].endswith("…")
     assert len(user["content"]) + len(answer["content"]) <= 1_000
 
 
