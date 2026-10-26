@@ -41,6 +41,18 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+      # No unresolved SonarCloud issue on the PR. A code smell leaves the quality gate
+      # green, so this fails the job while the PR has any OPEN or CONFIRMED issue;
+      # ACCEPTED and FALSE_POSITIVE ones pass. Cited from culture-rules (#43).
+      - name: SonarCloud unresolved issues
+        if: env.SONAR_TOKEN_PRESENT == 'true' && github.event_name == 'pull_request'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/sonar-pr-issues.py
+
   backend-parity:
     # All-backends rule (CLAUDE.md): a feature touched in only some of the
     # enforced backends (claude/codex — plus colleague once its client dir

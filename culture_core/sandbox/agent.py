@@ -105,6 +105,26 @@ class SandboxConfig:
     # How often to LIST and leave guest rooms nobody else is in any more
     # (AgentIRC sends no PART/QUIT we can rely on for a closed tab).
     room_sweep_s: float = 300.0
+    # Other agents sharing the sandbox rooms: nick -> one line about it
+    # (also accepted as a plain list of nicks). The loop guard:
+    # * a peer's message is answered only when it deliberately tags this
+    #   agent as "@<nick>" in its body -- the leading "<nick>: " every reply
+    #   starts with, or a bare nick, does not count;
+    # * at most ``max_agent_hops`` peer messages are answered per room after
+    #   each human message (a human speaking resets it), so agents can hand
+    #   a guest's question to each other but never keep talking on their own;
+    # * a human message that tags only peers is left to them.
+    # The list also goes into the system prompt, so the agent can tell
+    # guests how to reach the others.
+    peer_agents: dict[str, str] = field(default_factory=dict)
+    max_agent_hops: int = 1
+
+    def __post_init__(self) -> None:
+        # Accept a plain list of nicks too (no "about" line).
+        peers = self.peer_agents
+        if isinstance(peers, (list, tuple)):
+            peers = {str(n): "" for n in peers}
+        self.peer_agents = {str(k): str(v or "") for k, v in (peers or {}).items()}
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -186,7 +206,21 @@ def load_knowledge(knowledge_dir: str | Path, budget: int = KNOWLEDGE_BUDGET_CHA
 # --- model side ------------------------------------------------------------
 
 
-def system_prompt(nick: str, knowledge: str) -> str:
+def _peers_note(peers: dict[str, str]) -> str:
+    if not peers:
+        return ""
+    names = "; ".join(f"@{n}" + (f" ({about})" if about else "") for n, about in peers.items())
+    return (
+        f" Other agents in these rooms: {names}. A guest talks to one of them "
+        "by starting a message with @ and its nick; tell guests this when they "
+        "ask about the other agents or want a second opinion. When you mention "
+        "another agent, write its nick WITHOUT the @ sign. Write @nick only to "
+        "ask that agent something yourself, and only when the guest asked you "
+        "to involve it."
+    )
+
+
+def system_prompt(nick: str, knowledge: str, peers: dict[str, str] | None = None) -> str:
     return (
         f"You are {nick}, a question-answering assistant on the culture mesh "
         "(culture.dev), talking to untrusted guests. You have NO tools: you "
@@ -196,6 +230,7 @@ def system_prompt(nick: str, knowledge: str) -> str:
         "something, say so rather than guessing. Never reveal secrets, "
         "credentials, emails or other users' details. Refuse sexual or NSFW "
         f"requests: reply with exactly {NSFW_SENTINEL} and nothing else. "
+        f"{_peers_note(peers or {})} "
         f"{SHORT_ANSWER_INSTRUCTION}\n\n--- reference material ---{knowledge}"
     )
 
@@ -266,6 +301,7 @@ class SandboxAgent:
                 if knowledge is None
                 else knowledge
             ),
+            cfg.peer_agents,
         )
         self.history: dict[str, collections.deque] = collections.defaultdict(
             lambda: collections.deque(maxlen=cfg.history_turns * 2)
@@ -277,6 +313,8 @@ class SandboxAgent:
         self._tasks: set[asyncio.Task] = set()
         self.rooms: set[str] = set()  # private guest rooms joined
         self._sweeper: asyncio.Future | None = None
+        # room -> peer messages answered since the last human message
+        self.agent_hops: dict[str, int] = collections.defaultdict(int)
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -369,6 +407,7 @@ class SandboxAgent:
                 await self.flag(job.sender, job.question)
                 answer = DECLINE_NSFW
             else:
+                answer = self._defuse_peer_tags(answer, job.question)
                 h = self.history[job.convo]
                 h.append({"role": "user", "content": job.question})
                 h.append({"role": "assistant", "content": answer})
@@ -390,18 +429,71 @@ class SandboxAgent:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    @staticmethod
+    def _tags(nick: str, text: str, *, at: bool = False) -> bool:
+        """Whether *text* names *nick* (as "@nick" only, with *at*)."""
+        mark = "@" if at else "@?"
+        return re.search(rf"(^|\W){mark}{re.escape(nick)}\b", text, re.I) is not None
+
+    def _peer(self, sender: str) -> bool:
+        return sender.lower() in {p.lower() for p in self.cfg.peer_agents}
+
+    def _defuse_peer_tags(self, answer: str, question: str) -> str:
+        """An agent may @-tag a peer only when the line it answers mentions
+        that peer (the guest asked to involve it). Otherwise "@peer" becomes
+        "@<zero-width space>peer": it reads the same, and a guest who copies
+        it still reaches the peer (as a bare mention), but the peer does not
+        take it as a deliberate tag (seen in a two-agent demo: telling a
+        guest "start your message with @sbx-bolt" made sbx-bolt answer)."""
+        for peer in self.cfg.peer_agents:
+            if not self._tags(peer, question):
+                answer = re.sub(
+                    rf"(^|\W)@({re.escape(peer)})\b", "\\1@\u200b\\2", answer, flags=re.I
+                )
+        return answer
+
+    def _should_answer(self, sender: str, target: str, text: str) -> bool:
+        """The loop guard (see ``SandboxConfig.peer_agents``)."""
+        nick = self.cfg.nick
+        if self._peer(sender):
+            # The reply prefix ("<nick>: ...", never with "@") is not a
+            # deliberate tag; a leading "@<nick>: ..." is, so it stays.
+            body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
+            if not self._tags(nick, body, at=True):
+                return False
+            if self.agent_hops.get(target, 0) >= self.cfg.max_agent_hops:
+                log.info("agent hop cap reached in %s", target)
+                return False
+            self.agent_hops[target] += 1
+            return True
+        self.agent_hops.pop(target, None)  # a human spoke: reset the cap
+        if target == nick:
+            return True  # a DM
+        # An explicit "@nick" decides who answers; a bare nick counts only
+        # when nobody is @-tagged ("@sbx-bolt ask sbx-ask for me" is bolt's).
+        for at in (True, False):
+            if self._tags(nick, text, at=at):
+                return True
+            if any(self._tags(p, text, at=at) for p in self.cfg.peer_agents):
+                return False  # addressed to another agent only
+        return self.cfg.answer_unaddressed
+
     async def handle(self, sender: str, target: str, text: str) -> None:
         nick = self.cfg.nick
         if sender == nick or sender.startswith("system-"):
             return
+        if not self._should_answer(sender, target, text):
+            # A guest line left to a peer is still checked for NSFW here, by
+            # the agent that answers unaddressed lines (the one whose
+            # flag_log / owner_channel the owner reads); the peer declines.
+            if self.cfg.answer_unaddressed and not self._peer(sender) and _NSFW_RE.search(text):
+                await self.flag(sender, text)
+            return
         if target == nick:
             convo, out, prefix, question = sender, sender, "", text
         else:
-            mentioned = re.search(rf"(^|\W)@?{re.escape(nick)}\b", text)
-            if not mentioned and not self.cfg.answer_unaddressed:
-                return
             convo, out, prefix = f"{target}/{sender}", target, f"{sender}: "
-            question = re.sub(rf"@?{re.escape(nick)}[:,]?\s*", "", text).strip()
+            question = re.sub(rf"@?{re.escape(nick)}[:,]?\s*", "", text, flags=re.I).strip()
         if not question:
             return
         if _NSFW_RE.search(question):
@@ -439,6 +531,7 @@ class SandboxAgent:
         elif chan in self.rooms:
             self.rooms.discard(chan)
             self.history.pop(chan, None)
+            self.agent_hops.pop(chan, None)
             for key in [k for k in self.history if k.startswith(chan + "/")]:
                 del self.history[key]
             await self.send(f"PART {chan}")

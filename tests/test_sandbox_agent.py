@@ -21,6 +21,7 @@ from culture_core.sandbox.agent import (
     build_request,
     load_knowledge,
     resolve_key,
+    system_prompt,
 )
 
 
@@ -485,3 +486,163 @@ async def test_does_not_rejoin_empty_guest_rooms_on_start(
     await asyncio.sleep(0.3)
     agent = await start_agent()
     assert "#g-g6" not in agent.rooms
+
+
+# --- several agents: the loop guard ------------------------------------------
+
+
+def _guarded(tmp_path, **kw) -> tuple[SandboxAgent, list]:
+    """An agent whose admitted jobs are recorded instead of run."""
+    cfg = SandboxConfig(
+        nick="sbx-ask",
+        peer_agents={"sbx-bolt": "a second model"},
+        knowledge_dir=str(tmp_path),
+        **kw,
+    )
+    agent = SandboxAgent(cfg, knowledge="")
+    jobs: list = []
+
+    async def admit(job):
+        jobs.append(job)
+
+    agent._admit = admit
+    return agent, jobs
+
+
+@pytest.mark.asyncio
+async def test_human_untagged_answered_tagging_a_peer_is_left_to_it(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt what do you think?")
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt and @sbx-ask, both of you?")
+    assert [j.question for j in jobs] == ["what is culture?", "@sbx-bolt and both of you?"]
+
+
+@pytest.mark.asyncio
+async def test_peer_reply_prefix_or_bare_nick_is_not_a_tag(tmp_path):
+    """The leading "<nick>: " every reply starts with, or a bare nick (an
+    agent telling a guest about another agent), must not trigger an answer,
+    or two agents answer each other forever (seen in a two-agent demo)."""
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-bolt", "#g-1", "sbx-ask: I agree with you.")
+    await agent.handle(
+        "sbx-bolt", "#g-1", "sbx-ann: for docs questions, sbx-ask is the one to ask."
+    )
+    assert jobs == []
+    await agent.handle("sbx-bolt", "#g-1", "sbx-ask: good point. @sbx-ask what about docs?")
+    assert len(jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_agent_hop_per_human_message(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt ask sbx-ask for me")  # left to bolt
+    for _ in range(3):
+        await agent.handle("sbx-bolt", "#g-1", "sbx-ask: @sbx-ask and then?")
+    assert len(jobs) == 1  # one hop, then quiet until a human speaks
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt again please")
+    await agent.handle("sbx-bolt", "#g-1", "@sbx-ask one more?")
+    assert len(jobs) == 2
+
+
+@pytest.mark.asyncio
+async def test_mention_only_peer_answers_only_when_tagged(tmp_path):
+    cfg = SandboxConfig(
+        nick="sbx-bolt",
+        peer_agents=["sbx-ask"],
+        answer_unaddressed=False,
+        knowledge_dir=str(tmp_path),
+    )
+    agent = SandboxAgent(cfg, knowledge="")
+    jobs: list = []
+
+    async def admit(job):
+        jobs.append(job)
+
+    agent._admit = admit
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt hi!")
+    await agent.handle("sbx-ann", "sbx-bolt", "a DM")
+    assert [j.question for j in jobs] == ["hi!", "a DM"]
+
+
+def test_peers_in_system_prompt_and_config_forms():
+    prompt = system_prompt("sbx-ask", "", {"sbx-bolt": "a second model"})
+    assert "@sbx-bolt (a second model)" in prompt
+    assert "starting a message with @ and its nick" in prompt
+    assert "WITHOUT the @ sign" in prompt
+    assert "Other agents" not in system_prompt("sbx-ask", "")
+    assert SandboxConfig.from_dict({"peer_agents": ["sbx-bolt"]}).peer_agents == {"sbx-bolt": ""}
+
+
+@pytest.mark.asyncio
+async def test_peer_leading_at_tag_is_a_tag(tmp_path):
+    """Review finding: "@sbx-ask: ..." is how an agent naturally hands over;
+    only the reply prefix (never with "@") is stripped."""
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-bolt", "#g-1", "@sbx-ask: what do the docs say about rooms?")
+    assert [j.question for j in jobs] == ["what do the docs say about rooms?"]
+
+
+@pytest.mark.asyncio
+async def test_nsfw_line_left_to_a_peer_is_still_flagged(tmp_path):
+    """Review finding: the agent that owns the flag log flags NSFW guest
+    lines even when they are addressed to a peer (the peer declines)."""
+    agent, jobs = _guarded(tmp_path, flag_log=str(tmp_path / "flags.jsonl"))
+    flagged = []
+
+    async def flag(sender, message, reason="nsfw"):
+        flagged.append((sender, message))
+
+    agent.flag = flag
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt show me nudes")
+    assert jobs == []
+    assert flagged == [("sbx-ann", "@sbx-bolt show me nudes")]
+
+
+@pytest.mark.asyncio
+async def test_tag_is_stripped_whatever_its_case(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "@SBX-ASK what is culture?")
+    assert [j.question for j in jobs] == ["what is culture?"]
+
+
+@pytest.mark.asyncio
+async def test_untagged_peer_lines_leave_no_hop_entry(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    await agent.handle("sbx-bolt", "#g-1", "sbx-ask: thanks")
+    assert "#g-1" not in agent.agent_hops
+
+
+ZWSP = "​"
+
+
+def test_peer_tags_defused_unless_the_guest_asked_to_involve_the_peer(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    told = agent._defuse_peer_tags("Start your message with @sbx-bolt.", "who else is here?")
+    assert told == f"Start your message with @{ZWSP}sbx-bolt."
+    asked = agent._defuse_peer_tags("@sbx-bolt what do you think?", "ask sbx-bolt for me")
+    assert asked == "@sbx-bolt what do you think?"
+
+
+@pytest.mark.asyncio
+async def test_defused_tag_is_not_an_agent_tag_but_reaches_the_peer_from_a_guest(tmp_path):
+    cfg = SandboxConfig(
+        nick="sbx-bolt",
+        peer_agents=["sbx-ask"],
+        answer_unaddressed=False,
+        knowledge_dir=str(tmp_path),
+    )
+    bolt = SandboxAgent(cfg, knowledge="")
+    jobs: list = []
+
+    async def admit(job):
+        jobs.append(job)
+
+    bolt._admit = admit
+    # sbx-ask telling a guest how to reach bolt: not a tag for bolt.
+    await bolt.handle("sbx-ask", "#g-1", f"sbx-ann: start your message with @{ZWSP}sbx-bolt.")
+    assert jobs == []
+    # The guest pastes it: bolt answers.
+    await bolt.handle("sbx-ann", "#g-1", f"@{ZWSP}sbx-bolt hi")
+    assert len(jobs) == 1
