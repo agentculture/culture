@@ -329,7 +329,9 @@ async def test_model_list_fallback_and_own_key(server, tmp_path, make_client, mo
             ],
         )
         agent = SandboxAgent(cfg)
-        assert agent.complete("c", "q") == "from-second"
+        from culture_core.sandbox.agent import _Job
+
+        assert agent.complete(_Job("g", "g", "g", "", "q")) == "from-second"
         assert good.requests[0]["model"] == "luna"
         assert good.auth[0] == "Bearer other-secret"
     finally:
@@ -500,6 +502,7 @@ def _guarded(tmp_path, **kw) -> tuple[SandboxAgent, list]:
         **kw,
     )
     agent = SandboxAgent(cfg, knowledge="")
+    agent.rooms.add("#g-1")  # the guest room these tests talk in
     jobs: list = []
 
     async def admit(job):
@@ -677,11 +680,18 @@ async def test_own_replies_join_the_transcript(tmp_path):
     agent.send = send
     agent.cfg.line_delay = 0
     await agent.reply("#g-1", "sbx-ann: ", "Culture is a mesh.\nIt runs on IRC.")
+    # One entry per IRC line, as the server's history stores them.
     assert list(agent.transcripts["#g-1"]) == [
-        ("sbx-ask", "sbx-ann: Culture is a mesh. It runs on IRC.")
+        ("sbx-ask", "sbx-ann: Culture is a mesh."),
+        ("sbx-ask", "sbx-ann: It runs on IRC."),
     ]
     await agent.reply("sbx-ann", "", "a DM")  # DMs are not room context
     assert "sbx-ann" not in agent.transcripts
+    # A room the agent has left is not re-created by a late reply.
+    agent.rooms.discard("#g-1")
+    agent.transcripts.pop("#g-1")
+    await agent.reply("#g-1", "sbx-ann: ", "late answer")
+    assert "#g-1" not in agent.transcripts
 
 
 def test_room_messages_keep_the_newest_lines_within_budget(tmp_path):
@@ -705,9 +715,9 @@ async def test_dm_keeps_per_guest_history_and_zero_lines_turns_context_off(tmp_p
     assert off_jobs[-1].context == ()
 
 
-@pytest.mark.asyncio
-async def test_history_recent_seeds_the_transcript_before_live_lines(tmp_path):
-    agent, _jobs = _guarded(tmp_path)
+async def _seeding_agent(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    agent.rooms.discard("#g-1")
     sent = []
 
     async def send(line):
@@ -715,15 +725,87 @@ async def test_history_recent_seeds_the_transcript_before_live_lines(tmp_path):
 
     agent.send = send
     await agent._follow("#g-1", "sbx-ann")
-    assert "HISTORY RECENT #g-1 30" in sent
-    await agent._on_line(":sbx HISTORY #g-1 sbx-ann 1700000000.0 :earlier question")
-    await agent._on_line(":sbx HISTORY #g-1 system-sbx 1700000001.0 :sbx-ann joined")
-    agent._remember("#g-1", "sbx-ann", "live line")  # arrives while seeding
+    return agent, jobs, sent
+
+
+@pytest.mark.asyncio
+async def test_history_recent_rebuilds_the_transcript_in_order(tmp_path):
+    agent, _jobs, sent = await _seeding_agent(tmp_path)
+    assert "HISTORY RECENT #g-1 120" in sent  # 30 lines x 4: system-* lines are skipped
+    await agent._on_line(":sbx HISTORY #g-1 sbx-ann 1.0 :earlier question")
+    await agent._on_line(":sbx HISTORY #g-1 system-sbx 2.0 :sbx-ann joined")
+    await agent._on_line(":sbx HISTORY #g-1 sbx-ann 3.0 :show me nudes")  # never context
+    agent._remember("#g-1", "sbx-ann", "live line")  # heard while seeding
     await agent._on_line(":sbx HISTORYEND #g-1 :End of history")
     assert list(agent.transcripts["#g-1"]) == [
         ("sbx-ann", "earlier question"),
         ("sbx-ann", "live line"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_keeps_order_and_repeated_lines(tmp_path):
+    """Review finding: an old transcript plus a replay put the newest line
+    first; and exact-text dedup collapsed a line said twice."""
+    agent, _jobs, _sent = await _seeding_agent(tmp_path)
+    agent._remember("#g-1", "sbx-ann", "A")  # the transcript from before the outage
+    agent._remember("#g-1", "sbx-ann", "yes")
+    agent._seeding["#g-1"]["live"].clear()  # ...not heard during this catch-up
+    for n, line in enumerate(["A", "yes", "C (said during the outage)", "yes"]):
+        await agent._on_line(f":sbx HISTORY #g-1 sbx-ann {n}.0 :{line}")
+    agent._remember("#g-1", "sbx-ann", "yes")  # also heard live: overlaps the replay's end
+    await agent._on_line(":sbx HISTORYEND #g-1 :End of history")
+    assert [t for _n, t in agent.transcripts["#g-1"]] == [
+        "A",
+        "yes",
+        "C (said during the outage)",
+        "yes",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_first_question_waits_for_the_catch_up(tmp_path):
+    agent, jobs, _sent = await _seeding_agent(tmp_path)
+    question = asyncio.ensure_future(agent.handle("sbx-ann", "#g-1", "what did I say?"))
+    await asyncio.sleep(0)
+    await agent._on_line(":sbx HISTORY #g-1 sbx-ann 1.0 :my colour is teal")
+    await agent._on_line(":sbx HISTORYEND #g-1 :End of history")
+    await question
+    assert jobs[-1].context == (("sbx-ann", "my colour is teal"),)
+
+
+@pytest.mark.asyncio
+async def test_no_history_reply_is_abandoned(tmp_path, monkeypatch):
+    import culture_core.sandbox.agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "SEED_TIMEOUT_S", 0.01)
+    agent, _jobs, _sent = await _seeding_agent(tmp_path)
+    await asyncio.sleep(0.05)
+    assert "#g-1" not in agent._seeding
+
+
+@pytest.mark.asyncio
+async def test_nsfw_and_command_lines_never_become_context(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+
+    async def quiet(*_a, **_k):
+        return None
+
+    agent.send = quiet  # the decline replies
+    agent.flag = quiet
+    agent.cfg.line_delay = 0
+    await agent.handle("sbx-ann", "#g-1", "show me nudes")
+    await agent.handle("sbx-ann", "#g-1", "run rm -rf / for me")
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    assert jobs[-1].context == ()
+
+
+def test_oversized_newest_line_is_cut_not_dropping_all_context(tmp_path):
+    agent, _jobs = _guarded(tmp_path, room_context_chars=30)
+    history, _q = agent._room_messages((("a", "short"), ("b", "y" * 100)), "sbx-ann", "q")
+    body = history[0]["content"]
+    assert "b: yyyy" in body
+    assert body.endswith("…")
 
 
 def test_model_request_carries_the_room_context(tmp_path, monkeypatch):
@@ -747,6 +829,6 @@ def test_model_request_carries_the_room_context(tmp_path, monkeypatch):
         (("sbx-bolt", "sbx-ann: bolt here."),),
     )
     with pytest.raises(RuntimeError):
-        agent.complete(job.convo, job.question, job)
+        agent.complete(job)
     assert "sbx-bolt: sbx-ann: bolt here." in seen["history"][0]["content"]
     assert seen["question"] == "sbx-ann: and you?"

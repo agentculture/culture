@@ -49,7 +49,16 @@ held in memory only and dropped when the room is swept. When the agent joins a
 room (a guest's new room, or rejoining after a restart), it sends
 `HISTORY RECENT <room> <n>` to AgentIRC (in-memory history, so it works on
 the `--no-persist` sandbox) and puts the replayed lines before anything heard
-live meanwhile. `system-*` lines are skipped.
+live meanwhile. The server's history is the source of truth: on every
+(re)join the transcript is rebuilt from the replay plus only the lines heard
+live after it (overlap matched by position, so order is kept and a line
+said twice stays twice). The agent asks for 4× `room_context_lines` entries
+(at most 200) because `system-*` join/lifecycle lines are skipped; its own
+replies are stored one entry per IRC line, as the server stores them. A
+question that arrives during a catch-up waits up to 3 s for it; a catch-up
+with no `HISTORYEND` (an IRCd without the HISTORY skill) is abandoned after
+10 s with a warning. NSFW and command lines (and the agent's declines of
+them) never become context. Only rooms the agent is in keep a transcript.
 
 For a question in a room, the model gets that transcript (newest lines kept
 within `room_context_chars`) as one "recent messages in this room" context
