@@ -756,7 +756,7 @@ class SandboxAgent:
         skip = (
             _SEARCH_STOPWORDS | {self.cfg.nick.lower()} | {p.lower() for p in self.cfg.peer_agents}
         )
-        words = [w for w in dict.fromkeys(_SEARCH_WORD_RE.findall(question.lower()))]
+        words = dict.fromkeys(_SEARCH_WORD_RE.findall(question.lower()))
         words = [w for w in words if w not in seen and w not in skip]
         return sorted(words, key=len, reverse=True)[: max(0, self.cfg.search_keywords)]
 
@@ -777,35 +777,46 @@ class SandboxAgent:
         words = self._search_words(question, window)
         if not words:
             return ()
+        queries = await self._run_searches(room, words)
+        newest = self._new_hits(queries, set(window) | {f"{sender}: {line}"})
+        newest = newest[-cfg.search_hits :]
+        kept = newest_within([f"{n}: {t}" for n, t in newest], cfg.search_chars)
+        # A lone oversized newest hit comes back cut: keep pairs aligned.
+        pairs = newest[len(newest) - len(kept) :]
+        return tuple((n, k[len(n) + 2 :]) for (n, _t), k in zip(pairs, kept))
+
+    async def _run_searches(self, room: str, words: list[str]) -> list[_HistoryQuery]:
+        """Send one HISTORY SEARCH per word and wait up to ``search_timeout``
+        for them all."""
         queries = []
         for word in words:
-            query = self._new_history_query(room)
-            queries.append(query)
+            queries.append(self._new_history_query(room))
             await self.send(f"HISTORY SEARCH {room} {word}")
         try:
             await asyncio.wait_for(
-                asyncio.gather(*(q.done.wait() for q in queries)), cfg.search_timeout
+                asyncio.gather(*(q.done.wait() for q in queries)), self.cfg.search_timeout
             )
         except asyncio.TimeoutError:
             log.info("history search in %s timed out; answering without it", room)
-        known = set(window) | {f"{sender}: {line}"}
+        return queries
+
+    def _new_hits(self, queries: list[_HistoryQuery], known: set[str]) -> list[tuple]:
+        """The answered searches' lines ((nick, text), oldest first, each
+        once), minus *known* lines and lines that are never context."""
         found: dict[tuple, float] = {}
-        for query in queries:
-            if not query.done.is_set():
-                continue
+        for query in (q for q in queries if q.done.is_set()):
             for ts, nick, text in query.lines:
-                entry = f"{nick}: {text}"
-                if nick.startswith("system-") or entry in known or not self._safe_for_context(text):
+                if (
+                    nick.startswith("system-")
+                    or f"{nick}: {text}" in known
+                    or not self._safe_for_context(text)
+                ):
                     continue
                 try:
                     found[(nick, text)] = float(ts)
                 except ValueError:
                     continue
-        newest = sorted(found, key=found.get)[-cfg.search_hits :]
-        kept = newest_within([f"{n}: {t}" for n, t in newest], cfg.search_chars)
-        # newest_within may cut the oldest kept line's text; keep pairs aligned
-        pairs = newest[len(newest) - len(kept) :]
-        return tuple((n, k[len(n) + 2 :]) for (n, _t), k in zip(pairs, kept))
+        return sorted(found, key=found.get)
 
     async def _follow(self, chan: str, nick: str | None = None) -> None:
         prefix = self.cfg.guest_room_prefix

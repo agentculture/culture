@@ -882,7 +882,8 @@ def test_fit_prompt_sheds_hits_then_oldest_room_lines_then_oldest_dm_turns():
 def test_fit_prompt_never_cuts_the_question_but_cuts_the_docs_last():
     system, history = fit_prompt("rules. DOCS" + "d" * 100, ["hit"], ["room"], [], "Q" * 50, 60)
     assert history == []
-    assert system.startswith("rules.") and len(system) == 10  # the docs' end gives way
+    assert system.startswith("rules.")
+    assert len(system) == 10  # the docs' end gives way
     assert _sizes(system, history, "Q" * 50) == 60
 
 
@@ -929,7 +930,8 @@ def test_dm_history_is_capped_in_characters_too(tmp_path):
         )
     turns = agent._dm_turns("sbx-ann")
     assert [t[0]["content"][:2] for t in turns] == ["q2", "q3"]  # newest pairs, whole
-    assert agent._dm_turns("nobody") == [] and "nobody" not in agent.history
+    assert agent._dm_turns("nobody") == []
+    assert "nobody" not in agent.history
 
 
 # --- per-request chat search ---------------------------------------------------
@@ -1006,7 +1008,8 @@ async def test_words_already_in_the_window_nicks_and_off_switch_do_not_search(tm
     off, off_jobs, off_sent = await _searching_agent(tmp_path, search_hits=0, room_context_lines=1)
     await off.handle("sbx-ann", "#g-1", "hello")
     await off.handle("sbx-ann", "#g-1", "remember the zebra?")
-    assert not [w for w in off_sent if "SEARCH" in w] and off_jobs[-1].hits == ()
+    assert not [w for w in off_sent if "SEARCH" in w]
+    assert off_jobs[-1].hits == ()
 
 
 @pytest.mark.asyncio
@@ -1022,7 +1025,8 @@ async def test_search_times_out_and_waits_for_nothing_without_history(tmp_path):
     assert not sent  # no HISTORY reply seen yet: don't wait for one
     agent._history_ok = True
     await asyncio.wait_for(agent.handle("sbx-ann", "#g-1", "and the giraffe?"), 1)
-    assert sent == ["HISTORY SEARCH #g-1 giraffe"] and jobs[-1].hits == ()
+    assert sent == ["HISTORY SEARCH #g-1 giraffe"]
+    assert jobs[-1].hits == ()
     # A late reply is still taken as that search's, not a newer request's.
     await agent._request_history("#g-1")
     agent._on_history_line("#g-1 sbx-ann 1.0 :the giraffe line")
@@ -1062,6 +1066,7 @@ async def test_real_server_search_hits_reach_the_model_once(
     await _collect(ann, "canned answer")
     asked, after = gateway.requests[-2], gateway.requests[-1]
     found = [m["content"] for m in asked["messages"] if "found by searching" in m["content"]]
-    assert found and "testserv-ann: my favourite colour is teal" in found[0]
+    assert found
+    assert "testserv-ann: my favourite colour is teal" in found[0]
     assert not any("found by searching" in m["content"] for m in after["messages"])
     assert all("teal" not in t for _n, t in agent.transcripts["#general"])
