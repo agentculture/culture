@@ -19,6 +19,8 @@ from culture_core.sandbox.agent import (
     SandboxConfig,
     build_bundle,
     build_request,
+    fit_prompt,
+    knowledge_budget,
     load_knowledge,
     resolve_key,
     system_prompt,
@@ -407,7 +409,7 @@ def test_knowledge_budget_and_priority_order(tmp_path):
     (kb / "CLAUDE.md").write_text("C" * 100)
     (kb / "docs" / "a.md").write_text("A" * 100)
     (kb / "docs" / "reference" / "z.md").write_text("Z" * 100)
-    text = load_knowledge(kb, budget=350)  # three 100-char files fit, the fourth does not
+    text = load_knowledge(kb, budget=400)  # three 100-char files + headers fit, the fourth does not
     assert text.index("README.md") < text.index("CLAUDE.md") < text.index("docs/a.md")
     assert "docs/reference/z.md" not in text  # over budget, lowest priority dropped
     assert len(text) < 500
@@ -694,10 +696,16 @@ async def test_own_replies_join_the_transcript(tmp_path):
     assert "#g-1" not in agent.transcripts
 
 
+def _room_job(question, context=(), hits=()):
+    from culture_core.sandbox.agent import _Job
+
+    return _Job("sbx-ann", "#g-1/sbx-ann", "#g-1", "sbx-ann: ", question, context, hits)
+
+
 def test_room_messages_keep_the_newest_lines_within_budget(tmp_path):
     agent, _jobs = _guarded(tmp_path, room_context_chars=40)
     context = (("a", "x" * 30), ("b", "second line"), ("c", "third line"))
-    history, question = agent._room_messages(context, "sbx-ann", "and now?")
+    _system, history, question = agent._prompt(_room_job("and now?", context))
     assert question == "sbx-ann: and now?"
     body = history[0]["content"]
     assert "b: second line\nc: third line" in body
@@ -802,7 +810,7 @@ async def test_nsfw_and_command_lines_never_become_context(tmp_path):
 
 def test_oversized_newest_line_is_cut_not_dropping_all_context(tmp_path):
     agent, _jobs = _guarded(tmp_path, room_context_chars=30)
-    history, _q = agent._room_messages((("a", "short"), ("b", "y" * 100)), "sbx-ann", "q")
+    _s, history, _q = agent._prompt(_room_job("q", (("a", "short"), ("b", "y" * 100))))
     body = history[0]["content"]
     assert "b: yyyy" in body
     assert body.endswith("…")
@@ -832,3 +840,228 @@ def test_model_request_carries_the_room_context(tmp_path, monkeypatch):
         agent.complete(job)
     assert "sbx-bolt: sbx-ann: bolt here." in seen["history"][0]["content"]
     assert seen["question"] == "sbx-ann: and you?"
+
+
+# --- work budget: one cap on the whole request ---------------------------------
+
+
+def _sizes(system, history, question):
+    return len(system) + len(question) + sum(len(m["content"]) for m in history)
+
+
+def test_fit_prompt_sheds_hits_then_oldest_room_lines_then_oldest_dm_turns():
+    hits = ["h1 " * 20, "h2 " * 20]
+    room = ["r1 " * 20, "r2 " * 20]
+
+    def turn(n):
+        return ({"role": "user", "content": f"q{n}" * 20}, {"role": "assistant", "content": "a"})
+
+    turns = [turn(1), turn(2)]
+
+    def size(h, r, t):
+        return _sizes("S", fit_prompt("S", h, r, t, "Q?", 10**6)[1], "Q?")
+
+    for cap, kept_hits, kept_room, kept_turns in [
+        (size(hits, room, turns), 2, 2, 2),
+        (size(hits, room, turns) - 1, 1, 2, 2),  # a search hit gives way first
+        (size([], room, turns) - 1, 0, 1, 2),  # then the oldest room line
+        (size([], [], turns) - 1, 0, 0, 1),  # then the oldest DM turn
+    ]:
+        system, history = fit_prompt("S", hits, room, turns, "Q?", cap)
+        text = "\n".join(m["content"] for m in history)
+        assert _sizes(system, history, "Q?") <= cap
+        assert sum(h in text for h in hits) == kept_hits
+        assert sum(r in text for r in room) == kept_room
+        assert sum(f"q{n}" * 20 in text for n in (1, 2)) == kept_turns
+        if kept_hits == 1:
+            assert hits[1] in text  # the newest hit stays
+        if kept_room == 1:
+            assert room[1] in text
+
+
+def test_fit_prompt_never_cuts_the_question_but_cuts_the_docs_last():
+    system, history = fit_prompt("rules. DOCS" + "d" * 100, ["hit"], ["room"], [], "Q" * 50, 60)
+    assert history == []
+    assert system.startswith("rules.") and len(system) == 10  # the docs' end gives way
+    assert _sizes(system, history, "Q" * 50) == 60
+
+
+def test_docs_budget_shrinks_to_fit_the_request_cap(tmp_path):
+    cfg = SandboxConfig(knowledge_dir=str(tmp_path))
+    budget = knowledge_budget(cfg)
+    assert 20_000 < budget < cfg.knowledge_budget_chars  # 40k cap: the docs give way
+    rest = cfg.room_context_chars + cfg.search_chars + cfg.history_chars
+    assert len(system_prompt(cfg.nick, "", {})) + budget + rest < cfg.max_prompt_chars
+    assert knowledge_budget(SandboxConfig(max_prompt_chars=1000)) == 0
+    roomy = SandboxConfig(max_prompt_chars=10**6)
+    assert knowledge_budget(roomy) == roomy.knowledge_budget_chars
+
+
+def test_every_request_fits_the_cap(tmp_path):
+    (tmp_path / "README.md").write_text("doc " * 30_000)  # far over any budget
+    agent = SandboxAgent(SandboxConfig(knowledge_dir=str(tmp_path), max_prompt_chars=8_000))
+    assert "doc doc" not in agent.system  # the oversized file is skipped
+    agent.history["sbx-ann"].extend(
+        [{"role": "user", "content": "x" * 900}, {"role": "assistant", "content": "y" * 900}] * 6
+    )
+    context = tuple(("sbx-ann", "z" * 200) for _ in range(30))
+    hits = tuple(("sbx-bolt", "w" * 180) for _ in range(8))
+    from culture_core.sandbox.agent import _Job
+
+    for job in (
+        _room_job("a room question", context, hits),
+        _Job("sbx-ann", "sbx-ann", "sbx-ann", "", "a DM question"),
+    ):
+        system, history, question = agent._prompt(job)
+        assert _sizes(system, history, question) <= 8_000
+        assert question.endswith("question")
+
+
+def test_dm_history_is_capped_in_characters_too(tmp_path):
+    agent, _jobs = _guarded(tmp_path, history_chars=1_000)
+    h = agent.history["sbx-ann"]
+    for n in range(4):
+        h.extend(
+            [
+                {"role": "user", "content": f"q{n} " + "x" * 300},
+                {"role": "assistant", "content": f"a{n} " + "y" * 150},
+            ]
+        )
+    turns = agent._dm_turns("sbx-ann")
+    assert [t[0]["content"][:2] for t in turns] == ["q2", "q3"]  # newest pairs, whole
+    assert agent._dm_turns("nobody") == [] and "nobody" not in agent.history
+
+
+# --- per-request chat search ---------------------------------------------------
+
+
+async def _searching_agent(tmp_path, **kw):
+    agent, jobs = _guarded(tmp_path, **kw)
+    agent._history_ok = True  # the server has answered HISTORY before
+    sent = []
+
+    async def send(line):
+        sent.append(line)
+        if line.startswith("HISTORY SEARCH"):
+            word = line.split()[-1]
+            for ts, nick, text in agent.server_history:
+                if word in text.lower():
+                    agent._on_history_line(f"#g-1 {nick} {ts} :{text}")
+            agent._on_history_line("#g-1 system-sbx 0.5 :old join line with teal")
+            agent._on_history_end("#g-1 :End of history")
+
+    agent.send = send
+    agent.server_history = []
+    return agent, jobs, sent
+
+
+@pytest.mark.asyncio
+async def test_question_about_older_words_searches_the_room_for_this_request_only(tmp_path):
+    agent, jobs, sent = await _searching_agent(tmp_path, room_context_lines=3)
+    agent.server_history = [
+        (1.0, "sbx-ann", "my favourite colour is teal"),
+        (2.0, "sbx-ask", "sbx-ann: noted, teal it is."),
+    ]
+    for line in ("one", "two", "three"):
+        await agent.handle("sbx-ann", "#g-1", line)
+    agent.server_history.append((9.0, "sbx-ann", "what was my colour, teal or not?"))
+    await agent.handle("sbx-ann", "#g-1", "what was my colour, teal or not?")
+    searched = [line.split()[-1] for line in sent if line.startswith("HISTORY SEARCH #g-1")]
+    assert searched == ["colour", "teal"]  # longest first; "what", "was", "not" skipped
+    assert jobs[-1].hits == (
+        ("sbx-ann", "my favourite colour is teal"),
+        ("sbx-ask", "sbx-ann: noted, teal it is."),
+    )  # oldest first; the question itself and system-* lines are not hits
+    assert all("teal" not in text for _n, text in list(agent.transcripts["#g-1"])[:-1])
+    _system, history, _q = agent._prompt(jobs[-1])
+    assert "found by searching" in history[0]["content"]
+    assert "my favourite colour is teal" in history[0]["content"]
+    # The next request starts clean: nothing to search, no hits carried over.
+    await agent.handle("sbx-ann", "#g-1", "three")
+    assert jobs[-1].hits == ()
+
+
+@pytest.mark.asyncio
+async def test_search_is_capped_in_hits_and_characters(tmp_path):
+    agent, jobs, _sent = await _searching_agent(
+        tmp_path, search_hits=8, search_chars=300, room_context_lines=1
+    )
+    await agent.handle("sbx-ann", "#g-1", "hello")
+    agent.server_history = [
+        (float(n), "sbx-ann", f"rocket number {n} " + "x" * 40) for n in range(20)
+    ]
+    await agent.handle("sbx-ann", "#g-1", "tell me about the rocket")
+    hits = jobs[-1].hits
+    assert 0 < len(hits) <= 8
+    assert sum(len(f"{n}: {t}") + 1 for n, t in hits) <= 300 + 1
+    assert hits[-1][1].startswith("rocket number 19")  # the newest are kept
+
+
+@pytest.mark.asyncio
+async def test_words_already_in_the_window_nicks_and_off_switch_do_not_search(tmp_path):
+    agent, _jobs, sent = await _searching_agent(tmp_path, room_context_lines=1)
+    await agent.handle("sbx-ann", "#g-1", "the rocket launched")  # an empty room: no search
+    await agent.handle("sbx-ann", "#g-1", "@sbx-ask when did the rocket launch? sbx-bolt said")
+    assert [w.split()[-1] for w in sent if "SEARCH" in w] == ["launch"]
+    off, off_jobs, off_sent = await _searching_agent(tmp_path, search_hits=0, room_context_lines=1)
+    await off.handle("sbx-ann", "#g-1", "hello")
+    await off.handle("sbx-ann", "#g-1", "remember the zebra?")
+    assert not [w for w in off_sent if "SEARCH" in w] and off_jobs[-1].hits == ()
+
+
+@pytest.mark.asyncio
+async def test_search_times_out_and_waits_for_nothing_without_history(tmp_path):
+    agent, jobs = _guarded(tmp_path, search_timeout=0.05, room_context_lines=1)
+    sent = []
+
+    async def send(line):
+        sent.append(line)  # the server never answers
+
+    agent.send = send
+    await agent.handle("sbx-ann", "#g-1", "about the zebra?")
+    assert not sent  # no HISTORY reply seen yet: don't wait for one
+    agent._history_ok = True
+    await asyncio.wait_for(agent.handle("sbx-ann", "#g-1", "and the giraffe?"), 1)
+    assert sent == ["HISTORY SEARCH #g-1 giraffe"] and jobs[-1].hits == ()
+    # A late reply is still taken as that search's, not a newer request's.
+    await agent._request_history("#g-1")
+    agent._on_history_line("#g-1 sbx-ann 1.0 :the giraffe line")
+    agent._on_history_end("#g-1 :End of history")  # ends the timed-out search
+    agent._on_history_line("#g-1 sbx-ann 2.0 :the catch-up line")
+    agent._on_history_end("#g-1 :End of history")
+    assert list(agent.transcripts["#g-1"])[0] == ("sbx-ann", "the catch-up line")
+    assert ("sbx-ann", "the giraffe line") not in agent.transcripts["#g-1"]
+
+
+@pytest.mark.asyncio
+async def test_no_search_while_the_whole_room_fits_the_window(tmp_path):
+    agent, _jobs, sent = await _searching_agent(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "my colour is teal")
+    await agent.handle("sbx-ann", "#g-1", "what about the zebra?")
+    assert not [w for w in sent if "SEARCH" in w]
+    tight, _j, tight_sent = await _searching_agent(tmp_path, room_context_chars=30)
+    await tight.handle("sbx-ann", "#g-1", "x" * 40)  # trimmed out of the window...
+    await tight.handle("sbx-ann", "#g-1", "hi")  # ...by this newer line
+    await tight.handle("sbx-ann", "#g-1", "what about the zebra?")
+    assert [w for w in tight_sent if "SEARCH" in w] == ["HISTORY SEARCH #g-1 zebra"]
+
+
+@pytest.mark.asyncio
+async def test_real_server_search_hits_reach_the_model_once(
+    server, gateway, make_client, start_agent
+):
+    agent = await start_agent(room_context_lines=2, search_timeout=2.0)
+    ann = await _guest(make_client, "testserv-ann")
+    for line in ("my favourite colour is teal", "ok", "fine"):
+        await ann.send(f"PRIVMSG #general :{line}")
+        await _collect(ann, "canned answer")
+    agent._history_ok = True  # also set by the catch-up's HISTORYEND
+    await ann.send("PRIVMSG #general :which colour did I pick?")
+    await _collect(ann, "canned answer")
+    await ann.send("PRIVMSG #general :thanks")
+    await _collect(ann, "canned answer")
+    asked, after = gateway.requests[-2], gateway.requests[-1]
+    found = [m["content"] for m in asked["messages"] if "found by searching" in m["content"]]
+    assert found and "testserv-ann: my favourite colour is teal" in found[0]
+    assert not any("found by searching" in m["content"] for m in after["messages"])
+    assert all("teal" not in t for _n, t in agent.transcripts["#general"])

@@ -39,7 +39,15 @@ _KNOWLEDGE_FILE_CAP = 200_000  # bytes read per bundle file
 # Default prompt budget for the bundle. Measured on cortex-spark2
 # (2026-10-09): ~7 s per answer at ~10k prompt tokens, ~28 s at ~66k, no
 # prefix-cache benefit — so the budget, not the bundle size, sets latency.
+# A ceiling: the bundle also shrinks to fit ``max_prompt_chars`` (see
+# :func:`knowledge_budget`).
 KNOWLEDGE_BUDGET_CHARS = 48_000
+# The whole request (system prompt, docs, room lines, search hits, DM
+# history, question) stays within this many characters.
+MAX_PROMPT_CHARS = 40_000
+# Kept free of docs for the context-message headers and the question (an
+# IRC line, so a few hundred characters).
+PROMPT_RESERVE_CHARS = 1_500
 # Internal working papers are not guest knowledge.
 _BUNDLE_EXCLUDED_DIRS = ("superpowers", "specs", "plans")
 
@@ -72,6 +80,18 @@ HISTORY_REQUEST_FACTOR = 4
 HISTORY_REQUEST_MAX = 200
 SEED_WAIT_S = 3.0
 SEED_TIMEOUT_S = 10.0
+# HISTORY replies carry no request id: they are matched to requests in the
+# order sent, per room. A room keeps at most this many unanswered requests.
+HISTORY_PENDING_MAX = 32
+# Words a question is searched for: at least 4 letters, not one of these.
+_SEARCH_WORD_RE = re.compile(r"[^\W_][\w-]{3,}")
+_SEARCH_STOPWORDS = frozenset(
+    "about after again also been before being could does doing done earlier from have "
+    "hello here into just know like mentioned more only other please really remember "
+    "said same should some tell than thank thanks that their them then there these they "
+    "thing think this those talked very want were what when where which while will with "
+    "would your".split()
+)
 DECLINE_NSFW = "I can't help with that. This request has been flagged to the owner."
 
 
@@ -134,6 +154,25 @@ class SandboxConfig:
     # per-guest Q&A history only).
     room_context_lines: int = 30
     room_context_chars: int = 6000
+    # The per-guest DM history keeps at most ``history_turns`` question and
+    # answer pairs, and at most ``history_chars`` of them go in a request.
+    history_chars: int = 4000
+    # One cap on the whole request, in characters. When a request would be
+    # over it, context gives way: search hits first, then the oldest room
+    # lines, then the oldest DM turns. The question is never cut. The docs
+    # bundle is loaded to fit beside the other budgets (knowledge_budget).
+    max_prompt_chars: int = MAX_PROMPT_CHARS
+    # Chat search, for one request only: when a room question has words not
+    # in the recent lines, the room's history is searched (HISTORY SEARCH)
+    # for up to ``search_keywords`` of them. At most ``search_hits`` lines and
+    # ``search_chars`` go into that request as "earlier messages that may be
+    # relevant"; they are never added to the transcript, so the next request
+    # starts clean. The search waits at most ``search_timeout`` seconds.
+    # search_hits: 0 turns it off.
+    search_hits: int = 8
+    search_chars: int = 1500
+    search_keywords: int = 3
+    search_timeout: float = 2.0
 
     def __post_init__(self) -> None:
         # Accept a plain list of nicks too (no "about" line).
@@ -195,11 +234,20 @@ def _knowledge_priority(rel: Path) -> tuple:
     return (3 if len(rel.parts) <= 2 else 4, key)
 
 
+def knowledge_budget(cfg: "SandboxConfig") -> int:
+    """Characters of docs that fit in ``max_prompt_chars`` beside the rest of
+    the system prompt and the full room, search and DM budgets (at most
+    ``knowledge_budget_chars``)."""
+    fixed = len(system_prompt(cfg.nick, "", cfg.peer_agents))
+    reserve = cfg.room_context_chars + cfg.search_chars + cfg.history_chars + PROMPT_RESERVE_CHARS
+    return max(0, min(cfg.knowledge_budget_chars, cfg.max_prompt_chars - fixed - reserve))
+
+
 def load_knowledge(knowledge_dir: str | Path, budget: int = KNOWLEDGE_BUDGET_CHARS) -> str:
     """Read ONLY ``*.md`` files under the knowledge dir (the sole file access).
 
-    Files are taken in priority order until *budget* characters are used;
-    a file that would overflow the budget is skipped.
+    Files are taken in priority order until *budget* characters (headers
+    included) are used; a file that would overflow the budget is skipped.
     """
     root = Path(knowledge_dir).expanduser()
     if not root.is_dir():
@@ -212,10 +260,11 @@ def load_knowledge(knowledge_dir: str | Path, budget: int = KNOWLEDGE_BUDGET_CHA
     parts, total = [], 0
     for f in sorted(files, key=lambda f: _knowledge_priority(f.relative_to(root))):
         text = f.read_bytes()[:_KNOWLEDGE_FILE_CAP].decode(errors="replace")
-        if total + len(text) > budget:
+        part = f"\n===== {f.relative_to(root)} =====\n{text}"
+        if total + len(part) > budget:
             continue
-        total += len(text)
-        parts.append(f"\n===== {f.relative_to(root)} =====\n{text}")
+        total += len(part)
+        parts.append(part)
     return "".join(parts)
 
 
@@ -252,6 +301,75 @@ def system_prompt(nick: str, knowledge: str, peers: dict[str, str] | None = None
         f"{_peers_note(peers or {})} "
         f"{SHORT_ANSWER_INSTRUCTION}\n\n--- reference material ---{knowledge}"
     )
+
+
+ROOM_HEADER = (
+    "Recent messages in this room, oldest first (context only; answer the last message below):\n"
+)
+HITS_HEADER = (
+    "Earlier messages in this room that may be relevant, found by searching the "
+    "room's history for words in the question (context only):\n"
+)
+
+
+def _context_messages(header: str, lines: list[str]) -> list[dict]:
+    if not lines:
+        return []
+    return [
+        {"role": "user", "content": header + "\n".join(lines)},
+        {"role": "assistant", "content": "Understood."},
+    ]
+
+
+def newest_within(lines: list[str], budget: int) -> list[str]:
+    """The newest of *lines* (oldest first) that fit in *budget* characters,
+    one newline each; a newest line longer than the whole budget is cut
+    rather than leaving nothing."""
+    kept: list[str] = []
+    used = 0
+    for line in reversed(lines):
+        if used + len(line) > budget:
+            if not kept and budget > 1:
+                kept.append(line[: budget - 1] + "…")
+            break
+        kept.append(line)
+        used += len(line) + 1
+    return kept[::-1]
+
+
+def fit_prompt(
+    system: str,
+    hits: list[str],
+    room: list[str],
+    turns: list[tuple[dict, dict]],
+    question: str,
+    max_chars: int,
+) -> tuple[str, list[dict]]:
+    """System prompt and history messages for one request, within *max_chars*
+    together with *question*. Over the cap, context gives way in order: the
+    search hits, then the oldest room lines, then the oldest DM turns (a
+    question and its answer). The question is never cut; if it and the bare
+    system prompt are still over, the system prompt's end (the docs) is."""
+    hits, room, turns = list(hits), list(room), list(turns)
+
+    def assemble() -> list[dict]:
+        history = _context_messages(HITS_HEADER, hits) + _context_messages(ROOM_HEADER, room)
+        for pair in turns:
+            history.extend(pair)
+        return history
+
+    def over(history: list[dict]) -> int:
+        size = len(system) + len(question) + sum(len(m["content"]) for m in history)
+        return size - max_chars
+
+    history = assemble()
+    while over(history) > 0 and (hits or room or turns):
+        (hits or room or turns).pop(0)
+        history = assemble()
+    excess = over(history)
+    if excess > 0:
+        system = system[: max(0, len(system) - excess)]
+    return system, history
 
 
 def build_request(
@@ -305,6 +423,20 @@ class _Job:
     # Room lines before this question, oldest first ((nick, text)); empty
     # for a DM, which keeps its per-guest Q&A history instead.
     context: tuple = ()
+    # Earlier room lines a history search found for this question, oldest
+    # first ((nick, text)); used for this request only, never stored.
+    hits: tuple = ()
+
+
+@dataclass
+class _HistoryQuery:
+    """One HISTORY request in flight: its reply lines ((timestamp, nick,
+    text), newest kept) and an Event set at its HISTORYEND."""
+
+    lines: collections.deque = field(
+        default_factory=lambda: collections.deque(maxlen=HISTORY_REQUEST_MAX)
+    )
+    done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def _append_jsonl(path: Path, rec: dict) -> None:
@@ -316,15 +448,11 @@ def _append_jsonl(path: Path, rec: dict) -> None:
 class SandboxAgent:
     def __init__(self, cfg: SandboxConfig, knowledge: str | None = None) -> None:
         self.cfg = cfg
-        self.system = system_prompt(
-            cfg.nick,
-            (
-                load_knowledge(cfg.knowledge_dir, cfg.knowledge_budget_chars)
-                if knowledge is None
-                else knowledge
-            ),
-            cfg.peer_agents,
-        )
+        if knowledge is None:
+            budget = knowledge_budget(cfg)
+            knowledge = load_knowledge(cfg.knowledge_dir, budget)
+            log.info("docs: %d chars loaded (budget %d)", len(knowledge), budget)
+        self.system = system_prompt(cfg.nick, knowledge, cfg.peer_agents)
         self.history: dict[str, collections.deque] = collections.defaultdict(
             lambda: collections.deque(maxlen=cfg.history_turns * 2)
         )
@@ -341,9 +469,14 @@ class SandboxAgent:
         # for rooms the agent is in (a plain dict: nothing re-creates a swept
         # room's entry)
         self.transcripts: dict[str, collections.deque] = {}
-        # room -> catch-up in flight: replayed lines, lines heard live since
-        # the request, an Event set when it ends, and its timeout handle
+        # room -> catch-up in flight: its HISTORY query, lines heard live
+        # since the request, an Event set when it ends, and its timeout handle
         self._seeding: dict[str, dict] = {}
+        # room -> HISTORY requests awaiting their reply, oldest first
+        self._history_queries: dict[str, collections.deque[_HistoryQuery]] = {}
+        # the server has answered a HISTORY request (searches wait for none
+        # on an IRCd without the HISTORY skill)
+        self._history_ok = False
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -369,50 +502,49 @@ class SandboxAgent:
                     await asyncio.sleep(self.cfg.line_delay)
 
     # -- model call (blocking; run in a thread)
-    def _room_messages(self, context: tuple, sender: str, question: str) -> tuple[list, str]:
-        """History + question for a room job: the room's recent lines as one
-        context message (newest kept within ``room_context_chars``; a newest
-        line longer than the whole budget is cut rather than dropping all
-        context), then the question attributed to its sender."""
-        budget = self.cfg.room_context_chars
-        lines: list[str] = []
-        used = 0
-        for nick, text in reversed(context):
-            line = f"{nick}: {text}"
-            if used + len(line) > budget:
-                if not lines and budget > 1:
-                    lines.append(line[: budget - 1] + "…")
+    def _room_lines(self, context: tuple) -> list[str]:
+        """The room's recent lines as they go in a request: the newest within
+        ``room_context_chars``."""
+        return newest_within([f"{n}: {t}" for n, t in context], self.cfg.room_context_chars)
+
+    def _dm_turns(self, convo: str) -> list[tuple[dict, dict]]:
+        """The guest's newest DM question/answer pairs within ``history_chars``."""
+        h = list(self.history.get(convo, ()))
+        turns, used = [], 0
+        for pair in reversed(list(zip(h[::2], h[1::2]))):
+            used += sum(len(m["content"]) for m in pair)
+            if used > self.cfg.history_chars:
                 break
-            lines.append(line)
-            used += len(line) + 1
-        history = []
-        if lines:
-            history = [
-                {
-                    "role": "user",
-                    "content": "Recent messages in this room, oldest first (context only; "
-                    "answer the last message below):\n" + "\n".join(reversed(lines)),
-                },
-                {"role": "assistant", "content": "Understood."},
-            ]
-        return history, f"{sender}: {question}"
+            turns.append(pair)
+        return turns[::-1]
+
+    def _prompt(self, job: "_Job") -> tuple[str, list[dict], str]:
+        """System prompt, history and question for *job*, within
+        ``max_prompt_chars``: room jobs (``job.out`` is a channel) get the
+        search hits, the room's recent lines and an attributed question; DMs
+        get the per-guest Q&A history."""
+        if job.out.startswith("#"):
+            hits = [f"{n}: {t}" for n, t in job.hits]
+            room, turns = self._room_lines(job.context), []
+            question = f"{job.sender}: {job.question}"
+        else:
+            hits, room, turns = [], [], self._dm_turns(job.convo)
+            question = job.question
+        system, history = fit_prompt(
+            self.system, hits, room, turns, question, self.cfg.max_prompt_chars
+        )
+        return system, history, question
 
     def complete(self, job: "_Job") -> str:
-        """One model answer for *job*: room jobs (``job.out`` is a channel) get
-        the room's recent lines and an attributed question; DMs get the
-        per-guest Q&A history."""
+        """One model answer for *job* (see :meth:`_prompt`)."""
         last: Exception | None = None
-        question = job.question
-        if job.out.startswith("#"):
-            history, question = self._room_messages(job.context, job.sender, question)
-        else:
-            history = list(self.history[job.convo])
+        system, history, question = self._prompt(job)
         for spec in self.cfg.models:
             try:
                 key = resolve_key(spec.key_env or self.cfg.key_env, self.cfg.key_file)
                 body = build_request(
                     spec.name,
-                    self.system,
+                    system,
                     history,
                     question,
                     self.cfg.max_tokens,
@@ -612,7 +744,68 @@ class SandboxAgent:
         if _COMMAND_RE.search(question):
             await self.reply(out, prefix, DECLINE_COMMAND, remember=False)
             return
-        await self._admit(_Job(sender, convo, out, prefix, question, context))
+        hits: tuple = ()
+        if target.startswith("#") and self._keeps_context(target):
+            hits = await self._search_history(target, context, sender, text, question)
+        await self._admit(_Job(sender, convo, out, prefix, question, context, hits))
+
+    def _search_words(self, question: str, window: list[str]) -> list[str]:
+        """Up to ``search_keywords`` of the question's words (longest first)
+        that the recent window doesn't contain; not nicks or common words."""
+        seen = set(_SEARCH_WORD_RE.findall(" ".join(window).lower()))
+        skip = (
+            _SEARCH_STOPWORDS | {self.cfg.nick.lower()} | {p.lower() for p in self.cfg.peer_agents}
+        )
+        words = [w for w in dict.fromkeys(_SEARCH_WORD_RE.findall(question.lower()))]
+        words = [w for w in words if w not in seen and w not in skip]
+        return sorted(words, key=len, reverse=True)[: max(0, self.cfg.search_keywords)]
+
+    async def _search_history(
+        self, room: str, context: tuple, sender: str, line: str, question: str
+    ) -> tuple:
+        """Earlier room lines that may be relevant to *question*, for this
+        request only (see ``SandboxConfig.search_hits``): lines not already in
+        the recent window, newest ``search_hits`` within ``search_chars``,
+        oldest first. Whatever hasn't answered within ``search_timeout`` is
+        left out."""
+        cfg = self.cfg
+        if cfg.search_hits <= 0 or cfg.search_chars <= 0 or not self._history_ok:
+            return ()
+        window = self._room_lines(context)
+        if len(context) < cfg.room_context_lines and len(window) == len(context):
+            return ()  # the whole room is in the window: nothing older to find
+        words = self._search_words(question, window)
+        if not words:
+            return ()
+        queries = []
+        for word in words:
+            query = self._new_history_query(room)
+            queries.append(query)
+            await self.send(f"HISTORY SEARCH {room} {word}")
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(q.done.wait() for q in queries)), cfg.search_timeout
+            )
+        except asyncio.TimeoutError:
+            log.info("history search in %s timed out; answering without it", room)
+        known = set(window) | {f"{sender}: {line}"}
+        found: dict[tuple, float] = {}
+        for query in queries:
+            if not query.done.is_set():
+                continue
+            for ts, nick, text in query.lines:
+                entry = f"{nick}: {text}"
+                if nick.startswith("system-") or entry in known or not self._safe_for_context(text):
+                    continue
+                try:
+                    found[(nick, text)] = float(ts)
+                except ValueError:
+                    continue
+        newest = sorted(found, key=found.get)[-cfg.search_hits :]
+        kept = newest_within([f"{n}: {t}" for n, t in newest], cfg.search_chars)
+        # newest_within may cut the oldest kept line's text; keep pairs aligned
+        pairs = newest[len(newest) - len(kept) :]
+        return tuple((n, k[len(n) + 2 :]) for (n, _t), k in zip(pairs, kept))
 
     async def _follow(self, chan: str, nick: str | None = None) -> None:
         prefix = self.cfg.guest_room_prefix
@@ -632,8 +825,9 @@ class SandboxAgent:
             return
         self._end_seeding(chan)
         loop = asyncio.get_running_loop()
+        query = self._new_history_query(chan)
         self._seeding[chan] = {
-            "replay": [],
+            "query": query,
             "live": [],
             "done": asyncio.Event(),
             "timer": loop.call_later(SEED_TIMEOUT_S, self._seed_timeout, chan),
@@ -641,18 +835,39 @@ class SandboxAgent:
         count = min(self.cfg.room_context_lines * HISTORY_REQUEST_FACTOR, HISTORY_REQUEST_MAX)
         await self.send(f"HISTORY RECENT {chan} {count}")
 
+    def _new_history_query(self, chan: str) -> _HistoryQuery:
+        """Queue a HISTORY request for *chan* (sent by the caller). Replies
+        come in the order requests were sent; a request still unanswered
+        stays queued so its late reply can't be taken for a newer one's."""
+        query = _HistoryQuery()
+        queue = self._history_queries.setdefault(chan, collections.deque())
+        queue.append(query)
+        if len(queue) > HISTORY_PENDING_MAX:
+            queue.popleft().done.set()
+        return query
+
     def _on_history_line(self, rest: str) -> None:
-        """``<channel> <nick> <timestamp> :<text>`` from HISTORY RECENT."""
+        """``<channel> <nick> <timestamp> :<text>`` from HISTORY RECENT/SEARCH."""
         fields = rest.split(" ", 3)
-        if len(fields) < 4 or fields[0] not in self._seeding:
+        queue = self._history_queries.get(fields[0])
+        if len(fields) < 4 or not queue:
             return
-        chan, sender, text = fields[0], fields[1], fields[3]
-        text = text[1:] if text.startswith(":") else text
-        if not sender.startswith("system-") and self._safe_for_context(text):
-            self._seeding[chan]["replay"].append((sender, text))
+        text = fields[3][1:] if fields[3].startswith(":") else fields[3]
+        queue[0].lines.append((fields[2], fields[1], text))
 
     def _on_history_end(self, rest: str) -> None:
-        self._finish_seeding(rest.split(" ", 1)[0])
+        chan = rest.split(" ", 1)[0]
+        queue = self._history_queries.get(chan)
+        if not queue:
+            return
+        query = queue.popleft()
+        if not queue:
+            del self._history_queries[chan]
+        self._history_ok = True
+        query.done.set()
+        seeding = self._seeding.get(chan)
+        if seeding is not None and seeding["query"] is query:
+            self._finish_seeding(chan)
 
     def _finish_seeding(self, chan: str) -> None:
         """Rebuild the transcript: the replay, then the lines heard live
@@ -663,7 +878,12 @@ class SandboxAgent:
         seeding = self._seeding.get(chan)
         if seeding is None:
             return
-        replay, live = seeding["replay"], seeding["live"]
+        replay = [
+            (nick, text)
+            for _ts, nick, text in seeding["query"].lines
+            if not nick.startswith("system-") and self._safe_for_context(text)
+        ]
+        live = seeding["live"]
         overlap = 0
         for k in range(min(len(replay), len(live)), 0, -1):
             if replay[-k:] == live[:k]:
@@ -707,6 +927,7 @@ class SandboxAgent:
             self.agent_hops.pop(chan, None)
             self.transcripts.pop(chan, None)
             self._end_seeding(chan)
+            self._history_queries.pop(chan, None)
             for key in [k for k in self.history if k.startswith(chan + "/")]:
                 del self.history[key]
             await self.send(f"PART {chan}")
@@ -763,6 +984,7 @@ class SandboxAgent:
         reader, self.writer = await asyncio.open_connection(self.cfg.host, self.cfg.port)
         self.rooms = set()
         self._sweeper = None
+        self._history_queries = {}  # replies to the old connection never come
         if self.cfg.guest_room_prefix:
             await self.send(f"CAP REQ :{BOT_CAP}")
         await self.send(f"NICK {self.cfg.nick}")

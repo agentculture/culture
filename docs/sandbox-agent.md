@@ -32,7 +32,10 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `answer_unaddressed` | `true` | answer every room line (guests don't know to @mention); `false` = mention-only in channels, DMs always answered |
 | `guest_room_prefix` | `#g-` | follow each guest into its private room `<prefix><nick>` (EVENTSUB `user.join`, needs the `agentirc.io/bot` capability) and rejoin existing ones on connect; must match irc-lens `guest_mode.sandbox.room_prefix`; `null` turns it off |
 | `room_sweep_s` | `300` | how often sbx-ask LISTs rooms and leaves a guest room nobody else is in (AgentIRC sends no `QUIT` for a closed tab); empty rooms are not rejoined on connect |
-| `knowledge_budget_chars` | `48000` | prompt budget for the bundle (sets latency: ~7 s/answer at ~10k tokens on cortex-spark2) |
+| `knowledge_budget_chars` | `48000` | ceiling on the docs bundle in the prompt; the bundle is also shrunk to fit `max_prompt_chars` (see [Work budget](#work-budget)) |
+| `max_prompt_chars` | `40000` | one hard cap on the whole request: system prompt, docs, search hits, room lines, DM history and the question |
+| `history_turns`, `history_chars` | `6`, `4000` | the per-guest DM history: question/answer pairs kept, and characters of them sent per request (newest whole pairs) |
+| `search_hits`, `search_chars`, `search_keywords`, `search_timeout` | `8`, `1500`, `3`, `2.0` | per-request chat search: hits and characters kept, words searched, seconds waited; `0` hits turns it off |
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 | `peer_agents` | `{}` | other agents sharing the rooms, `{nick: one line about it}` (or a list of nicks); enables the loop guard below and goes into the system prompt so the agent can tell guests how to reach them |
 | `max_agent_hops` | `1` | peer messages answered per room after each human message |
@@ -68,6 +71,40 @@ culture facts still come only from the reference material. DMs keep the
 per-guest Q&A history (`history_turns`). Before this, an agent saw only its
 own Q&A with each guest, so a second agent asked "what would you add to
 that?" didn't know what "that" was.
+
+## Work budget
+
+Each answer is kept to a small, fixed amount of work:
+
+- **Response cap and no reasoning.** `max_tokens` is clamped to 700, the
+  system prompt asks for a short answer, `enable_thinking` is false, and any
+  `<think>` block is stripped (see Safety properties).
+- **One cap on the request.** Everything the model is sent fits in
+  `max_prompt_chars` (40,000). The docs bundle is loaded to fit beside the
+  full room, search and DM budgets (`max_prompt_chars` minus the rest of the
+  system prompt, `room_context_chars`, `search_chars`, `history_chars` and
+  1,500 for the headers and the question, at most `knowledge_budget_chars`;
+  about 25,700 with the defaults). If a request is still over, context gives
+  way in this order: search hits first, then the oldest room lines, then the
+  oldest DM turns. The question is never cut; only if it and the bare system
+  prompt are over the cap is the end of the docs cut.
+- **DM history in characters.** A DM sends at most `history_chars` of the
+  guest's newest whole question/answer pairs (and at most `history_turns`).
+- **Chat search for this request only.** The agents have no tools, so the
+  agent searches deterministically. When a room question has words (at least
+  4 letters, not common words or agent nicks) that aren't in the recent
+  window, and the room has older lines outside the window, the agent sends
+  `HISTORY SEARCH <room> <word>` for up to `search_keywords` of them, longest
+  first. It keeps lines not already in the window (no `system-*`, NSFW or
+  command lines), the newest `search_hits` within `search_chars`, and passes
+  them before the recent lines as "earlier messages in this room that may be
+  relevant". They are part of that one request: never added to the
+  transcript or the history, so the next request starts clean. The agent
+  waits at most `search_timeout` seconds and answers with whatever arrived;
+  it doesn't search at all until the IRCd has answered a HISTORY request.
+  HISTORY replies carry no request id, so they are matched to requests in
+  the order sent, per room; a timed-out search's late reply is still taken
+  as its own.
 
 ## Several agents in one room
 
