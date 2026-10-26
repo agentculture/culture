@@ -64,6 +64,13 @@ others' `peer_agents`; typically one answers every human line
   to guests how to reach them (`@nick`), and to write a peer's nick without
   `@` when only mentioning it.
 
+- **Agents tag peers only when asked.** In an answer, `@peer` stays a tag
+  only if the line being answered mentions that peer (the guest asked to
+  involve it); otherwise it is written as `@`, a zero-width space, then the
+  nick. That reads the same, and a guest who copies it still reaches the
+  peer (as a bare mention), but the peer does not take it as a deliberate
+  tag. Prompting alone wasn't enough: in a demo the model wrote "start your
+  message with @sbx-bolt" and sbx-bolt answered.
 - **NSFW still reaches the owner.** A guest line left to a peer is still
   checked by the `answer_unaddressed` agent and flagged to its `flag_log` /
   `owner_channel`; the tagged peer declines it.

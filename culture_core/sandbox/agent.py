@@ -407,6 +407,7 @@ class SandboxAgent:
                 await self.flag(job.sender, job.question)
                 answer = DECLINE_NSFW
             else:
+                answer = self._defuse_peer_tags(answer, job.question)
                 h = self.history[job.convo]
                 h.append({"role": "user", "content": job.question})
                 h.append({"role": "assistant", "content": answer})
@@ -436,6 +437,20 @@ class SandboxAgent:
 
     def _peer(self, sender: str) -> bool:
         return sender.lower() in {p.lower() for p in self.cfg.peer_agents}
+
+    def _defuse_peer_tags(self, answer: str, question: str) -> str:
+        """An agent may @-tag a peer only when the line it answers mentions
+        that peer (the guest asked to involve it). Otherwise "@peer" becomes
+        "@<zero-width space>peer": it reads the same, and a guest who copies
+        it still reaches the peer (as a bare mention), but the peer does not
+        take it as a deliberate tag (seen in a two-agent demo: telling a
+        guest "start your message with @sbx-bolt" made sbx-bolt answer)."""
+        for peer in self.cfg.peer_agents:
+            if not self._tags(peer, question):
+                answer = re.sub(
+                    rf"(^|\W)@({re.escape(peer)})\b", "\\1@\u200b\\2", answer, flags=re.I
+                )
+        return answer
 
     def _should_answer(self, sender: str, target: str, text: str) -> bool:
         """The loop guard (see ``SandboxConfig.peer_agents``)."""

@@ -612,3 +612,37 @@ async def test_untagged_peer_lines_leave_no_hop_entry(tmp_path):
     agent, _jobs = _guarded(tmp_path)
     await agent.handle("sbx-bolt", "#g-1", "sbx-ask: thanks")
     assert "#g-1" not in agent.agent_hops
+
+
+ZWSP = "​"
+
+
+def test_peer_tags_defused_unless_the_guest_asked_to_involve_the_peer(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    told = agent._defuse_peer_tags("Start your message with @sbx-bolt.", "who else is here?")
+    assert told == f"Start your message with @{ZWSP}sbx-bolt."
+    asked = agent._defuse_peer_tags("@sbx-bolt what do you think?", "ask sbx-bolt for me")
+    assert asked == "@sbx-bolt what do you think?"
+
+
+@pytest.mark.asyncio
+async def test_defused_tag_is_not_an_agent_tag_but_reaches_the_peer_from_a_guest(tmp_path):
+    cfg = SandboxConfig(
+        nick="sbx-bolt",
+        peer_agents=["sbx-ask"],
+        answer_unaddressed=False,
+        knowledge_dir=str(tmp_path),
+    )
+    bolt = SandboxAgent(cfg, knowledge="")
+    jobs: list = []
+
+    async def admit(job):
+        jobs.append(job)
+
+    bolt._admit = admit
+    # sbx-ask telling a guest how to reach bolt: not a tag for bolt.
+    await bolt.handle("sbx-ask", "#g-1", f"sbx-ann: start your message with @{ZWSP}sbx-bolt.")
+    assert jobs == []
+    # The guest pastes it: bolt answers.
+    await bolt.handle("sbx-ann", "#g-1", f"@{ZWSP}sbx-bolt hi")
+    assert len(jobs) == 1
