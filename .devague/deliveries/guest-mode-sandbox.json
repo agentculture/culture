@@ -2,7 +2,7 @@
   "plan_slug": "guest-mode-sandbox",
   "schema_version": 2,
   "created": "2026-10-09T17:15:02Z",
-  "updated": "2026-10-09T20:49:30Z",
+  "updated": "2026-10-10T05:32:25Z",
   "deviations": [
     {
       "id": "d1",
@@ -121,6 +121,20 @@
       "status": "approved",
       "classification": null,
       "seq": 32
+    },
+    {
+      "id": "d9",
+      "what": "Supersedes d8's corpus retention after an external privacy review of the live Terms/Privacy (free-text anonymization can't be guaranteed; bundled consent; vague retention; operator unnamed; no ownership clause). Owner decisions: (1) deletion removes ALL of a guest's conversation data \u2014 no anonymized Q&A corpus is kept; (2) consent is unbundled \u2014 Terms+Privacy required to run the chat, a separate UNCHECKED opt-in for using conversations to improve models, only opted-in guests' data is ever exported; publication removed entirely (any future publication asks per item); (3) retention: guest data wiped 90 days after last activity, used codes and rate-limit counters after 1 day, blocks keep email+IP for 12 months then expire, the deletion log stores only a hash of the email; (4) the policies name the owner as an individual operator, add ownership/licensing, recipients (Cloudflare, Resend) and rights (access, correction, deletion, withdrawal); legal docs bump to 1.1; /policy/ redirects to /privacy/",
+      "task_ref": "t11",
+      "reason": "external privacy review; owner: 'I'm ok with losing a bit more to be more safe'",
+      "affects": [
+        "t6",
+        "t15"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 34
     }
   ],
   "evidence": [
