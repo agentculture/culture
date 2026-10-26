@@ -646,3 +646,107 @@ async def test_defused_tag_is_not_an_agent_tag_but_reaches_the_peer_from_a_guest
     # The guest pastes it: bolt answers.
     await bolt.handle("sbx-ann", "#g-1", f"@{ZWSP}sbx-bolt hi")
     assert len(jobs) == 1
+
+
+# --- room context: agents see the room's recent lines ------------------------
+
+
+@pytest.mark.asyncio
+async def test_room_job_carries_the_rooms_recent_lines_from_everyone(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    await agent.handle("sbx-bolt", "#g-1", "sbx-ann: it is an agent mesh.")
+    await agent.handle("sbx-ann", "#g-1", "what did bolt just say?")
+    last = jobs[-1]
+    assert last.context == (
+        ("sbx-ann", "what is culture?"),
+        ("sbx-bolt", "sbx-ann: it is an agent mesh."),
+    )
+    # The question itself is not repeated in its own context.
+    assert ("sbx-ann", "what did bolt just say?") not in last.context
+
+
+@pytest.mark.asyncio
+async def test_own_replies_join_the_transcript(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    sent = []
+
+    async def send(line):
+        sent.append(line)
+
+    agent.send = send
+    agent.cfg.line_delay = 0
+    await agent.reply("#g-1", "sbx-ann: ", "Culture is a mesh.\nIt runs on IRC.")
+    assert list(agent.transcripts["#g-1"]) == [
+        ("sbx-ask", "sbx-ann: Culture is a mesh. It runs on IRC.")
+    ]
+    await agent.reply("sbx-ann", "", "a DM")  # DMs are not room context
+    assert "sbx-ann" not in agent.transcripts
+
+
+def test_room_messages_keep_the_newest_lines_within_budget(tmp_path):
+    agent, _jobs = _guarded(tmp_path, room_context_chars=40)
+    context = (("a", "x" * 30), ("b", "second line"), ("c", "third line"))
+    history, question = agent._room_messages(context, "sbx-ann", "and now?")
+    assert question == "sbx-ann: and now?"
+    body = history[0]["content"]
+    assert "b: second line\nc: third line" in body
+    assert "x" * 30 not in body
+
+
+@pytest.mark.asyncio
+async def test_dm_keeps_per_guest_history_and_zero_lines_turns_context_off(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "sbx-ask", "a DM question")
+    assert jobs[-1].context == ()
+    off, off_jobs = _guarded(tmp_path, room_context_lines=0)
+    await off.handle("sbx-ann", "#g-1", "first")
+    await off.handle("sbx-ann", "#g-1", "second")
+    assert off_jobs[-1].context == ()
+
+
+@pytest.mark.asyncio
+async def test_history_recent_seeds_the_transcript_before_live_lines(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    sent = []
+
+    async def send(line):
+        sent.append(line)
+
+    agent.send = send
+    await agent._follow("#g-1", "sbx-ann")
+    assert "HISTORY RECENT #g-1 30" in sent
+    await agent._on_line(":sbx HISTORY #g-1 sbx-ann 1700000000.0 :earlier question")
+    await agent._on_line(":sbx HISTORY #g-1 system-sbx 1700000001.0 :sbx-ann joined")
+    agent._remember("#g-1", "sbx-ann", "live line")  # arrives while seeding
+    await agent._on_line(":sbx HISTORYEND #g-1 :End of history")
+    assert list(agent.transcripts["#g-1"]) == [
+        ("sbx-ann", "earlier question"),
+        ("sbx-ann", "live line"),
+    ]
+
+
+def test_model_request_carries_the_room_context(tmp_path, monkeypatch):
+    import culture_core.sandbox.agent as agent_mod
+    from culture_core.sandbox.agent import _Job
+
+    agent, _jobs = _guarded(tmp_path)
+    seen = {}
+
+    def fake_build(model, system, history, question, max_tokens=700):
+        seen["history"], seen["question"] = history, question
+        raise RuntimeError("stop before the network")
+
+    monkeypatch.setattr(agent_mod, "build_request", fake_build)
+    job = _Job(
+        "sbx-ann",
+        "#g-1/sbx-ann",
+        "#g-1",
+        "sbx-ann: ",
+        "and you?",
+        (("sbx-bolt", "sbx-ann: bolt here."),),
+    )
+    with pytest.raises(RuntimeError):
+        agent.complete(job.convo, job.question, job)
+    assert "sbx-bolt: sbx-ann: bolt here." in seen["history"][0]["content"]
+    assert seen["question"] == "sbx-ann: and you?"

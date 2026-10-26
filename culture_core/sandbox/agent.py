@@ -118,6 +118,13 @@ class SandboxConfig:
     # guests how to reach the others.
     peer_agents: dict[str, str] = field(default_factory=dict)
     max_agent_hops: int = 1
+    # What the agent knows of a room: the last ``room_context_lines`` lines
+    # from everyone in it (guests, other agents, its own replies), at most
+    # ``room_context_chars``, seeded from HISTORY RECENT when it joins.
+    # Memory only; dropped when the room is swept. 0 turns it off (the old
+    # per-guest Q&A history only).
+    room_context_lines: int = 30
+    room_context_chars: int = 6000
 
     def __post_init__(self) -> None:
         # Accept a plain list of nicks too (no "about" line).
@@ -226,8 +233,11 @@ def system_prompt(nick: str, knowledge: str, peers: dict[str, str] | None = None
         "(culture.dev), talking to untrusted guests. You have NO tools: you "
         "cannot run commands, read files, browse, or take any action; you can "
         "only answer in text. If asked to run a command or act, decline. "
-        "Answer only from the reference material below; if it does not cover "
-        "something, say so rather than guessing. Never reveal secrets, "
+        "Answer questions about culture only from the reference material below; "
+        "if it does not cover something, say so rather than guessing. You also "
+        "get the room's recent messages: use them to follow the conversation "
+        "(what the guest told you, what other agents said) and refer back to "
+        "them freely. Never reveal secrets, "
         "credentials, emails or other users' details. Refuse sexual or NSFW "
         f"requests: reply with exactly {NSFW_SENTINEL} and nothing else. "
         f"{_peers_note(peers or {})} "
@@ -283,6 +293,9 @@ class _Job:
     out: str
     prefix: str
     question: str
+    # Room lines before this question, oldest first ((nick, text)); empty
+    # for a DM, which keeps its per-guest Q&A history instead.
+    context: tuple = ()
 
 
 def _append_jsonl(path: Path, rec: dict) -> None:
@@ -315,6 +328,12 @@ class SandboxAgent:
         self._sweeper: asyncio.Future | None = None
         # room -> peer messages answered since the last human message
         self.agent_hops: dict[str, int] = collections.defaultdict(int)
+        # room -> recent lines from everyone, oldest first ((nick, text))
+        self.transcripts: dict[str, collections.deque] = collections.defaultdict(
+            lambda: collections.deque(maxlen=max(cfg.room_context_lines, 1))
+        )
+        # room -> HISTORY RECENT lines collected until HISTORYEND
+        self._seeding: dict[str, list] = {}
 
     # -- IRC output
     async def send(self, line: str) -> None:
@@ -324,6 +343,8 @@ class SandboxAgent:
         await self.writer.drain()
 
     async def reply(self, target: str, prefix: str, text: str) -> None:
+        if target.startswith("#"):
+            self._remember(target, self.cfg.nick, prefix + " ".join(text.split()))
         for para in text.splitlines():
             para = para.strip()
             while para:
@@ -336,15 +357,43 @@ class SandboxAgent:
                     await asyncio.sleep(self.cfg.line_delay)
 
     # -- model call (blocking; run in a thread)
-    def complete(self, convo: str, question: str) -> str:
+    def _room_messages(self, context: tuple, sender: str, question: str) -> tuple[list, str]:
+        """History + question for a room job: the room's recent lines as one
+        context message (newest kept within ``room_context_chars``), then the
+        question attributed to its sender."""
+        lines: list[str] = []
+        used = 0
+        for nick, text in reversed(context):
+            line = f"{nick}: {text}"
+            if used + len(line) > self.cfg.room_context_chars:
+                break
+            lines.append(line)
+            used += len(line) + 1
+        history = []
+        if lines:
+            history = [
+                {
+                    "role": "user",
+                    "content": "Recent messages in this room, oldest first (context only; "
+                    "answer the last message below):\n" + "\n".join(reversed(lines)),
+                },
+                {"role": "assistant", "content": "Understood."},
+            ]
+        return history, f"{sender}: {question}"
+
+    def complete(self, convo: str, question: str, job: "_Job | None" = None) -> str:
         last: Exception | None = None
+        if job is not None and job.context:
+            history, question = self._room_messages(job.context, job.sender, question)
+        else:
+            history = list(self.history[convo])
         for spec in self.cfg.models:
             try:
                 key = resolve_key(spec.key_env or self.cfg.key_env, self.cfg.key_file)
                 body = build_request(
                     spec.name,
                     self.system,
-                    list(self.history[convo]),
+                    history,
                     question,
                     self.cfg.max_tokens,
                 )
@@ -399,7 +448,7 @@ class SandboxAgent:
         try:
             async with self.lock:
                 try:
-                    answer = await asyncio.to_thread(self.complete, job.convo, job.question)
+                    answer = await asyncio.to_thread(self.complete, job.convo, job.question, job)
                 except Exception as exc:  # noqa: BLE001 - keep the agent up
                     log.warning("completion failed: %s", exc)
                     answer = "Sorry, I couldn't reach my model right now."
@@ -478,10 +527,18 @@ class SandboxAgent:
                 return False  # addressed to another agent only
         return self.cfg.answer_unaddressed
 
+    def _remember(self, room: str, nick: str, text: str) -> None:
+        if self.cfg.room_context_lines > 0:
+            self.transcripts[room].append((nick, text))
+
     async def handle(self, sender: str, target: str, text: str) -> None:
         nick = self.cfg.nick
         if sender == nick or sender.startswith("system-"):
             return
+        context: tuple = ()
+        if target.startswith("#"):
+            context = tuple(self.transcripts[target]) if self.cfg.room_context_lines > 0 else ()
+            self._remember(target, sender, text)
         if not self._should_answer(sender, target, text):
             # A guest line left to a peer is still checked for NSFW here, by
             # the agent that answers unaddressed lines (the one whose
@@ -503,7 +560,7 @@ class SandboxAgent:
         if _COMMAND_RE.search(question):
             await self.reply(out, prefix, DECLINE_COMMAND)
             return
-        await self._admit(_Job(sender, convo, out, prefix, question))
+        await self._admit(_Job(sender, convo, out, prefix, question, context))
 
     async def _follow(self, chan: str, nick: str | None = None) -> None:
         prefix = self.cfg.guest_room_prefix
@@ -512,6 +569,37 @@ class SandboxAgent:
         if chan not in self.rooms:
             self.rooms.add(chan)
             await self.send(f"JOIN {chan}")
+            await self._request_history(chan)
+
+    async def _request_history(self, chan: str) -> None:
+        """Catch up on a room just joined (after a restart, or a guest who
+        talked before this agent arrived): HISTORY RECENT seeds the room's
+        transcript; the replay lines are collected until HISTORYEND."""
+        if self.cfg.room_context_lines > 0:
+            self._seeding[chan] = []
+            await self.send(f"HISTORY RECENT {chan} {self.cfg.room_context_lines}")
+
+    def _on_history_line(self, rest: str) -> None:
+        """``<channel> <nick> <timestamp> :<text>`` from HISTORY RECENT."""
+        fields = rest.split(" ", 3)
+        if len(fields) < 4 or fields[0] not in self._seeding:
+            return
+        chan, sender, text = fields[0], fields[1], fields[3]
+        text = text[1:] if text.startswith(":") else text
+        if not sender.startswith("system-"):
+            self._seeding[chan].append((sender, text))
+
+    def _on_history_end(self, rest: str) -> None:
+        """Put the replayed lines before anything heard live meanwhile."""
+        chan = rest.split(" ", 1)[0]
+        seeded = self._seeding.pop(chan, None)
+        if not seeded:
+            return
+        live = list(self.transcripts[chan])
+        known = set(live)
+        merged = [line for line in seeded if line not in known] + live
+        self.transcripts[chan].clear()
+        self.transcripts[chan].extend(merged)
 
     async def _on_list_row(self, row: str) -> None:
         """``<channel> <members> :<topic>``: follow a guest room someone is in,
@@ -532,6 +620,8 @@ class SandboxAgent:
             self.rooms.discard(chan)
             self.history.pop(chan, None)
             self.agent_hops.pop(chan, None)
+            self.transcripts.pop(chan, None)
+            self._seeding.pop(chan, None)
             for key in [k for k in self.history if k.startswith(chan + "/")]:
                 del self.history[key]
             await self.send(f"PART {chan}")
@@ -568,6 +658,10 @@ class SandboxAgent:
             return
         elif verb == "322":  # RPL_LIST
             await self._on_list_row(parts[3])
+        elif verb == "HISTORY":
+            self._on_history_line(" ".join(parts[2:]))
+        elif verb == "HISTORYEND":
+            self._on_history_end(" ".join(parts[2:]))
         elif verb == "EVENT":
             # :<server> EVENT <sub> user.join <channel> <nick> :<b64>
             ev = parts[3].split(" ")

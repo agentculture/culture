@@ -36,9 +36,29 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 | `peer_agents` | `{}` | other agents sharing the rooms, `{nick: one line about it}` (or a list of nicks); enables the loop guard below and goes into the system prompt so the agent can tell guests how to reach them |
 | `max_agent_hops` | `1` | peer messages answered per room after each human message |
+| `room_context_lines`, `room_context_chars` | `30`, `6000` | what the agent knows of a room: the last lines from everyone in it (guests, other agents, its own replies), newest kept within the character budget; seeded from `HISTORY RECENT` on join; `0` lines turns it off |
 
 Adding a model (for example an AWS-hosted one) is a config entry with its own
 `url` and `key_env`; nothing else changes.
+
+## Room context
+
+Each agent keeps a transcript per room: the last `room_context_lines` lines
+from **everyone** in it, meaning guests, other agents and its own replies. It's
+held in memory only and dropped when the room is swept. When the agent joins a
+room (a guest's new room, or rejoining after a restart), it sends
+`HISTORY RECENT <room> <n>` to AgentIRC (in-memory history, so it works on
+the `--no-persist` sandbox) and puts the replayed lines before anything heard
+live meanwhile. `system-*` lines are skipped.
+
+For a question in a room, the model gets that transcript (newest lines kept
+within `room_context_chars`) as one "recent messages in this room" context
+message, then the question attributed to its sender. The system prompt lets
+it use the conversation (what the guest said, what other agents said); the
+culture facts still come only from the reference material. DMs keep the
+per-guest Q&A history (`history_turns`). Before this, an agent saw only its
+own Q&A with each guest, so a second agent asked "what would you add to
+that?" didn't know what "that" was.
 
 ## Several agents in one room
 
