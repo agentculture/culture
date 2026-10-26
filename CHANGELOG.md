@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.8.0] - 2026-10-26
+
+### Added
+
+- **Sandbox agents see the room** (`culture_core/sandbox/agent.py`). Each agent keeps a per-room transcript of the last lines from everyone (guests, other agents, its own replies), memory only, seeded from `HISTORY RECENT` when it joins or rejoins a room. Room questions now give the model that transcript as context, so an agent can follow the conversation (what the guest said earlier, what another agent answered); DMs keep the per-guest history. New config `room_context_lines` (30) and `room_context_chars` (6000); `0` lines turns it off. The system prompt lets the agent use the conversation, while culture facts still come only from the reference material. Before this, a second agent asked "what would you add to that?" did not know what "that" was.
+
 ## [14.7.0] - 2026-10-26
 
 ### Added
