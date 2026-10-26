@@ -573,3 +573,42 @@ def test_peers_in_system_prompt_and_config_forms():
     assert "WITHOUT the @ sign" in prompt
     assert "Other agents" not in system_prompt("sbx-ask", "")
     assert SandboxConfig.from_dict({"peer_agents": ["sbx-bolt"]}).peer_agents == {"sbx-bolt": ""}
+
+
+@pytest.mark.asyncio
+async def test_peer_leading_at_tag_is_a_tag(tmp_path):
+    """Review finding: "@sbx-ask: ..." is how an agent naturally hands over;
+    only the reply prefix (never with "@") is stripped."""
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-bolt", "#g-1", "@sbx-ask: what do the docs say about rooms?")
+    assert [j.question for j in jobs] == ["what do the docs say about rooms?"]
+
+
+@pytest.mark.asyncio
+async def test_nsfw_line_left_to_a_peer_is_still_flagged(tmp_path):
+    """Review finding: the agent that owns the flag log flags NSFW guest
+    lines even when they are addressed to a peer (the peer declines)."""
+    agent, jobs = _guarded(tmp_path, flag_log=str(tmp_path / "flags.jsonl"))
+    flagged = []
+
+    async def flag(sender, message, reason="nsfw"):
+        flagged.append((sender, message))
+
+    agent.flag = flag
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt show me nudes")
+    assert jobs == []
+    assert flagged == [("sbx-ann", "@sbx-bolt show me nudes")]
+
+
+@pytest.mark.asyncio
+async def test_tag_is_stripped_whatever_its_case(tmp_path):
+    agent, jobs = _guarded(tmp_path)
+    await agent.handle("sbx-ann", "#g-1", "@SBX-ASK what is culture?")
+    assert [j.question for j in jobs] == ["what is culture?"]
+
+
+@pytest.mark.asyncio
+async def test_untagged_peer_lines_leave_no_hop_entry(tmp_path):
+    agent, _jobs = _guarded(tmp_path)
+    await agent.handle("sbx-bolt", "#g-1", "sbx-ask: thanks")
+    assert "#g-1" not in agent.agent_hops

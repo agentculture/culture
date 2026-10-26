@@ -441,11 +441,12 @@ class SandboxAgent:
         """The loop guard (see ``SandboxConfig.peer_agents``)."""
         nick = self.cfg.nick
         if self._peer(sender):
-            # The reply prefix ("<nick>: ...") is not a deliberate tag.
-            body = re.sub(rf"^@?{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
+            # The reply prefix ("<nick>: ...", never with "@") is not a
+            # deliberate tag; a leading "@<nick>: ..." is, so it stays.
+            body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
             if not self._tags(nick, body, at=True):
                 return False
-            if self.agent_hops[target] >= self.cfg.max_agent_hops:
+            if self.agent_hops.get(target, 0) >= self.cfg.max_agent_hops:
                 log.info("agent hop cap reached in %s", target)
                 return False
             self.agent_hops[target] += 1
@@ -467,12 +468,17 @@ class SandboxAgent:
         if sender == nick or sender.startswith("system-"):
             return
         if not self._should_answer(sender, target, text):
+            # A guest line left to a peer is still checked for NSFW here, by
+            # the agent that answers unaddressed lines (the one whose
+            # flag_log / owner_channel the owner reads); the peer declines.
+            if self.cfg.answer_unaddressed and not self._peer(sender) and _NSFW_RE.search(text):
+                await self.flag(sender, text)
             return
         if target == nick:
             convo, out, prefix, question = sender, sender, "", text
         else:
             convo, out, prefix = f"{target}/{sender}", target, f"{sender}: "
-            question = re.sub(rf"@?{re.escape(nick)}[:,]?\s*", "", text).strip()
+            question = re.sub(rf"@?{re.escape(nick)}[:,]?\s*", "", text, flags=re.I).strip()
         if not question:
             return
         if _NSFW_RE.search(question):
@@ -510,6 +516,7 @@ class SandboxAgent:
         elif chan in self.rooms:
             self.rooms.discard(chan)
             self.history.pop(chan, None)
+            self.agent_hops.pop(chan, None)
             for key in [k for k in self.history if k.startswith(chan + "/")]:
                 del self.history[key]
             await self.send(f"PART {chan}")

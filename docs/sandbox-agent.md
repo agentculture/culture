@@ -64,7 +64,17 @@ others' `peer_agents`; typically one answers every human line
   to guests how to reach them (`@nick`), and to write a peer's nick without
   `@` when only mentioning it.
 
+- **NSFW still reaches the owner.** A guest line left to a peer is still
+  checked by the `answer_unaddressed` agent and flagged to its `flag_log` /
+  `owner_channel`; the tagged peer declines it.
+
 irc-lens mirrors the same rule for its "`<agent>` is thinking" indicator.
+
+**Known limitation.** The agent doesn't track who is in a room, so a guest
+line that tags only a peer is left to that peer even when the peer is down or
+not in the room; the guest then gets no answer. Run peers under the same
+supervision as `sbx-ask`, and remove a peer from `peer_agents` when it is
+retired.
 
 ## Safety properties
 
