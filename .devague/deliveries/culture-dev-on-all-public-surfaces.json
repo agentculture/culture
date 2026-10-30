@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T10:23:48Z",
+  "updated": "2026-10-30T10:26:03Z",
   "deviations": [
     {
       "id": "d1",
@@ -414,136 +414,22 @@
     },
     {
       "id": "e20",
-      "obligation_ref": "o7",
-      "test_ref": "live IRC probe on sbx IRCd 127.0.0.1:6668, room #g-cdbcheck (~/culture-dev-specimens/2026-10-30/guest-agent-answer.txt)",
-      "behavior_text": "sbx-ask (culture 14.10.0) answered 'The product is called culture.'",
-      "contract_text": "h5: asked what this is, a sandbox guest agent names the product CULTURE.DEV",
+      "obligation_ref": "o22",
+      "test_ref": "gh repo view agentculture/culture and agentculture/irc-lens (~/culture-dev-specimens/2026-10-30/github-about.txt); PyPI JSON irc-lens 0.16.0",
+      "behavior_text": "both About descriptions and the irc-lens PyPI summary name CULTURE.DEV",
+      "contract_text": "h23: gh repo view and PyPI show CULTURE.DEV in the culture and irc-lens descriptions",
       "evidence_type": "observation",
       "strength": "execution",
-      "strength_basis": "live answer captured; cause: the knowledge bundle ~/.culture/sandbox/knowledge was a read-only snapshot from 2026-10-10 (98 'Culture', 3 'CULTURE.DEV')",
-      "outcome": "fail",
+      "strength_basis": "descriptions set via gh repo edit after the decider picked wording (0.503 / 0.567 leans); read back live",
+      "outcome": "pass",
       "run": {
-        "timestamp": "2026-10-30T10:14:00",
+        "timestamp": "2026-10-30T10:26:03",
         "commit": "ab3dae2"
       },
       "origin": "llm",
       "status": "proposed",
       "superseded": false,
       "seq": 23
-    },
-    {
-      "id": "e21",
-      "obligation_ref": "o7",
-      "test_ref": "live IRC probe on sbx IRCd, room #g-cdbcheck3, after 'culture sandbox agent --bundle-from' rebuild + restart",
-      "behavior_text": "sbx-ask answered 'This chat is powered by **CULTURE.DEV** \u2014 a professional workspace for specialized agents\u2026'",
-      "contract_text": "h5: asked what this is, a sandbox guest agent names the product CULTURE.DEV",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "live answer captured after rebuilding the bundle from merged main (141 CULTURE.DEV / 7 Culture) and restarting both sbx agents",
-      "outcome": "pass",
-      "run": {
-        "timestamp": "2026-10-30T10:20:00",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false,
-      "seq": 24
-    },
-    {
-      "id": "e22",
-      "obligation_ref": "o8",
-      "test_ref": "live IRC probe on sbx IRCd: three joins into #g-cdbcheck*",
-      "behavior_text": "system-sbx-welcome posted 'Welcome <nick> to #g-\u2026' for each join and neither sbx-ask nor sbx-bolt replied to it",
-      "contract_text": "h20: a guest joining a sandbox room produces the welcome line and zero agent replies to it",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "observed live; note the sbx IRCd still runs the pre-14.10 welcome template (not restarted)",
-      "outcome": "pass",
-      "run": {
-        "timestamp": "2026-10-30T10:20:00",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false,
-      "seq": 25
-    },
-    {
-      "id": "e23",
-      "obligation_ref": "o18",
-      "test_ref": "PyPI JSON API culture/14.10.0 (~/culture-dev-specimens/2026-10-30/pypi-metadata.json)",
-      "behavior_text": "summary 'CULTURE.DEV \u2014 the professional workspace for agents\u2026', Homepage https://culture.dev, README contains CULTURE.DEV\u2122",
-      "contract_text": "h8: the PyPI page for culture shows CULTURE.DEV in its summary and README lead, and its Homepage URL is https://culture.dev",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "live PyPI metadata fetched after publish (browser screenshot blocked by PyPI bot challenge)",
-      "outcome": "pass",
-      "run": {
-        "timestamp": "2026-10-30T10:23:24",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false,
-      "seq": 26
-    },
-    {
-      "id": "e24",
-      "obligation_ref": "o21",
-      "test_ref": "~/culture-dev-specimens/2026-10-30/ (access-log.json): culture.dev home+terms and chat.culture.dev entry at desktop and 390px, guest-agent answer, culture --version, PyPI metadata",
-      "behavior_text": "all captured surfaces show CULTURE.DEV; culture.dev hero CULTURE.DEV\u2122 + footer notice; chat entry title CULTURE.DEV (pre-0.16.1: no \u2122 on entry hero, see d4)",
-      "contract_text": "h19: the screenshot set is captured from live production surfaces after release, each with an access date",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "PARTIAL: missing signed-in chat UI, received email, live IRC greeting (IRCds not restarted), GitHub About",
-      "outcome": "fail",
-      "run": {
-        "timestamp": "2026-10-30T10:23:30",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false,
-      "seq": 27
-    },
-    {
-      "id": "e25",
-      "obligation_ref": "o20",
-      "test_ref": "deploy record: irc-lens 0.16.0 on chat.culture.dev at 2026-10-30T10:03Z (console restart), culture.dev (katvan#72 Cloudflare Pages) live by 2026-10-30T10:05:57Z, PyPI culture 14.10.0 / irc-lens 0.16.0 / agentirc-cli 9.13.0 published 2026-10-30",
-      "behavior_text": "first-use dates for chat and site surfaces recorded",
-      "contract_text": "h24: each repo CHANGELOG names the first release exposing CULTURE.DEV, and the production deploy date is recorded",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "deploy timestamps from systemd restart and the live access log",
-      "outcome": "pass",
-      "run": {
-        "timestamp": "2026-10-30T10:24:00",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": true,
-      "seq": 28
-    },
-    {
-      "id": "e26",
-      "obligation_ref": "o20",
-      "test_ref": "deploy record: irc-lens 0.16.0 live on chat.culture.dev from 2026-10-30T10:05:22Z (culture-console-spark ActiveEnterTimestamp), culture.dev (katvan#72 Cloudflare Pages) live by 2026-10-30T10:05:57Z (access log), PyPI culture 14.10.0 / irc-lens 0.16.0 / agentirc-cli 9.13.0 published 2026-10-30",
-      "behavior_text": "first-use dates for chat and site surfaces recorded",
-      "contract_text": "h24: each repo CHANGELOG names the first release exposing CULTURE.DEV, and the production deploy date is recorded",
-      "evidence_type": "observation",
-      "strength": "execution",
-      "strength_basis": "systemd ActiveEnterTimestamp + live access log (corrects e25's 10:03Z)",
-      "outcome": "pass",
-      "run": {
-        "timestamp": "2026-10-30T10:25:00",
-        "commit": "ab3dae2"
-      },
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false,
-      "seq": 29
     }
   ],
   "deltas": [
@@ -589,27 +475,7 @@
       "origin": "llm",
       "status": "proposed",
       "superseded": false
-    },
-    {
-      "id": "b4",
-      "kind": "amended",
-      "behavior_text": "deploying the sandbox agents now includes rebuilding the knowledge bundle ('culture sandbox agent --bundle-from <repo>'); the 2026-10-10 snapshot kept guest answers on the old product name",
-      "caused_by": [
-        "c36"
-      ],
-      "evidence_refs": [],
-      "origin": "llm",
-      "status": "proposed",
-      "superseded": false
     }
   ],
-  "supersessions": [
-    {
-      "id": "s1",
-      "action": "supersede",
-      "target_ref": "e25",
-      "replacement_ref": "e26",
-      "origin": "user"
-    }
-  ]
+  "supersessions": []
 }

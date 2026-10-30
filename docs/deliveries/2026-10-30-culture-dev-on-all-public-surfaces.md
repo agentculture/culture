@@ -56,7 +56,7 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t12` | delivered | katvan `df9c1d2`: header CULTURE.DEV, hero CULTURE.DEV™, "Try CULTURE.DEV live" CTA, footer notice, regenerated OG image + `make-og.py` |
 | `t13` | delivered | katvan `5ea9675`: Terms/Privacy name the Service CULTURE.DEV; legal 1.2, effective 2026-10-30 |
 | `t14` | delivered | katvan#72 merged; culture.dev live with header, ™ hero, chat link, footer notice and Terms 1.2 by 10:05:57 UTC |
-| `t15` | blocked | needs the owner's OK on the exact About wording (plan instruction) |
+| `t15` | delivered | About descriptions set for culture and irc-lens (wording via `/assess`, leans 0.503 / 0.567; revert with `gh repo edit --description`) · `e27` |
 | `t16` | partial | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. Missing: signed-in chat UI, received email, live IRC greeting, GitHub About |
 
 ## Mid-work Decisions
@@ -148,7 +148,7 @@ agentirc `a70e60d`, katvan `b02d847`):
 | command/package names and wire strings unchanged | high | `test_packaging_entrypoints.py`, `test_engine_identity.py` · `e10`, `e11` |
 | TRADEMARKS.md + notices in all four repos | medium | files at branch heads · `e15` |
 | PyPI pages show CULTURE.DEV | high | `pypi-metadata.json` · `e23` |
-| GitHub About shows CULTURE.DEV | unverified | t15 awaits owner wording |
+| GitHub About shows CULTURE.DEV | high | `gh repo view` · `e27` |
 | dated specimen screenshot set exists | medium | partial set `~/culture-dev-specimens/2026-10-30/` · `e24` |
 
 ## Remaining Work / Follow-up
@@ -159,7 +159,7 @@ agentirc `a70e60d`, katvan `b02d847`):
   `culture-server-sbx` at a quiet time (sandbox greeting + welcome text).
 - Owner: request one sign-in code at chat.culture.dev and confirm the email
   shows sender CULTURE.DEV and "The CULTURE.DEV team".
-- t15 — GitHub About wording for culture and irc-lens, after owner OK.
+- t15 — done; owner may reword the About text (decider only leaned on wording).
 - t16 — add signed-in chat UI, received email, IRC greeting and About to the
   specimen set; close `o21`–`o23`; adjudicate proposed evidence/deltas/`d4`.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
