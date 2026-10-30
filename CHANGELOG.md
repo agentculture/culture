@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.6] - 2026-10-30
+
+### Changed
+
+- `version-bump` skill re-cited from guildmaster 0.27.0 (guildmaster#150), the review follow-up to the 0.26.23 copy in 14.10.5. Every check runs before any file is written, so a failed bump changes nothing. Invalid or undecodable changelog JSON, unknown keys (e.g. `removed`) and non-string values are errors instead of a warning plus an empty stub. A mistyped bump type fails at once; unknown options are rejected.
+
+### Fixed
+
+- `version-bump`: a line like ```` ```bash``` one-liner ```` no longer breaks fence detection and appends the new section below the oldest release, and a CHANGELOG with `## 1.2.3`-style headings stops with an error instead of getting the section at the end (both 0.26.23 regressions). Stdin is read by a background thread rather than `select()`, so the no-hang behaviour also holds on Windows.
+
 ## [14.10.5] - 2026-10-30
 
 ### Changed

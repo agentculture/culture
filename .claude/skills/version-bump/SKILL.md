@@ -45,12 +45,17 @@ python3 .claude/skills/version-bump/scripts/bump.py show
 ## Changelog JSON Format
 
 Pass via stdin. All fields are optional — only non-empty sections are rendered.
+The only keys are `added`, `changed` and `fixed`, each a list of strings.
 
-Stdin is read until it closes, however slowly the JSON arrives. If it stays
-open with no new input for `BUMP_STDIN_IDLE_SECONDS` (default 5), the bump
-stops with an error and changes nothing, instead of hanging or dropping your
-entries. `--no-stdin` (or `BUMP_NO_STDIN=1`) skips stdin and writes the empty
-stub.
+Stdin is read until it closes. Any pause longer than `BUMP_STDIN_IDLE_SECONDS`
+(default 5), **including before the first byte**, stops the bump with an
+error; raise it for a slow producer (an LLM call, a cold `git log`).
+`--no-stdin` (or `BUMP_NO_STDIN=1`) skips stdin and writes the empty stub.
+
+Invalid JSON, an unknown key (e.g. `removed`), a value that isn't a list of
+strings, or bytes that don't decode are errors too, never a silent empty
+stub. Every check runs before any file is written, so a failed bump changes
+nothing; fix the input and run it again.
 
 ```json
 {
@@ -68,8 +73,10 @@ stub.
 - `CHANGELOG.md` — inserts a new `## [x.y.z] - YYYY-MM-DD` entry above the
   first `## [` release heading (headings inside fenced code blocks don't
   count). A leading `## [Unreleased]` section stays on top, untouched; its
-  content is never moved into the release for you. A CHANGELOG with no release
-  heading yet gets the entry after its Unreleased section, or at the end.
+  content is never moved into the release for you. A CHANGELOG with no `##`
+  heading yet gets the entry at the end, or after an Unreleased-only section.
+  One whose `##` headings aren't `## [...]` release headings (e.g. `## 1.2.3`)
+  stops the bump with an error.
 
 The script does the rest. Pick a bump type from the diff (patch for fixes,
 minor for new features, major for breaking changes), summarize the diff into
