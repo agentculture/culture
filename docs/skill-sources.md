@@ -36,7 +36,7 @@ propagation.
 | `sonarclaude` | guildmaster | `../guildmaster/.claude/skills/sonarclaude/` | culture-ahead (`scripts/sonar.sh`) |
 | `spec-to-plan` | devague (re-broadcast via guildmaster) | `../guildmaster/.claude/skills/spec-to-plan/` | verbatim |
 | `think` | devague (re-broadcast via guildmaster) | `../guildmaster/.claude/skills/think/` | verbatim |
-| `version-bump` | guildmaster | `../guildmaster/.claude/skills/version-bump/` | verbatim |
+| `version-bump` | guildmaster | `../guildmaster/.claude/skills/version-bump/` | verbatim (`SKILL.md`: `culture/__init__.py` in place of `steward/__init__.py`) |
 
 ## Notes
 
