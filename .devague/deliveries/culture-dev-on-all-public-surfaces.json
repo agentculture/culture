@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T08:58:42Z",
+  "updated": "2026-10-30T09:59:47Z",
   "deviations": [
     {
       "id": "d1",
@@ -15,7 +15,7 @@
         "h18"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 1
     },
@@ -30,7 +30,7 @@
         "t16"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 2
     },
@@ -45,7 +45,7 @@
         "c16"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 3
     }
@@ -423,6 +423,35 @@
       ],
       "evidence_refs": [
         "e9"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b2",
+      "kind": "added",
+      "behavior_text": "culture.dev body copy, data files and llms.txt name the product CULTURE.DEV (beyond the planned header/hero/footer chrome)",
+      "caused_by": [
+        "d1"
+      ],
+      "evidence_refs": [
+        "e12",
+        "e13"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b3",
+      "kind": "added",
+      "behavior_text": "culture explain/overview/learn output names the product CULTURE.DEV (source of the culture.dev site)",
+      "caused_by": [
+        "d3"
+      ],
+      "evidence_refs": [
+        "e16"
       ],
       "origin": "llm",
       "status": "proposed",
