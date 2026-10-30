@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.3] - 2026-10-30
+
+### Changed
+
+- CULTURE.DEV delivery record and ledger: the owner approved behavioral deltas b1–b4 and confirmed e31. Every deviation, evidence and delta record of the run is now adjudicated. No code change.
+
 ## [14.10.2] - 2026-10-30
 
 ### Changed

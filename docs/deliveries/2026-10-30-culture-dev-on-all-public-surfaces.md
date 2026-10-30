@@ -18,8 +18,8 @@ deployed, and so are the follow-ups irc-lens#82 (`d4`, 0.16.1) and culture#496
 (t11, 14.10.1). All plan code is shipped and live, the guest sandbox IRCd was
 restarted, a real sign-in email was received, and the signed-in chat UI was
 captured. Every plan task is delivered and every deviation and evidence record is
-adjudicated by the owner. Still open: the owner's decision on the four
-behavioral deltas `b1`–`b4`, and follow-ups outside the plan.
+adjudicated by the owner, including the four behavioral deltas `b1`–`b4`.
+Only follow-ups outside the plan remain.
 
 ## Planned Work
 
@@ -149,7 +149,7 @@ agentirc `a70e60d`, katvan `b02d847`):
   `o2`–`o20`; the post-merge obligations are covered by live evidence: `o21`
   (c28) by `e30` and `e35`, `o22` (c32) by `e27`, `o23` (c1) by `e31`, `e34`
   and `e36`
-- behavioral deltas, all **proposed** (awaiting the owner): `b1` agentirc MOTD
+- behavioral deltas, all approved by the owner: `b1` agentirc MOTD
   added, `b2` culture.dev body copy (`d1`), `b3` CLI introspection text (`d3`),
   `b4` deploys rebuild the sandbox knowledge bundle
 - reviews: doc-test-alignment (2 gaps, fixed in `e457e53`); agentirc code
@@ -159,7 +159,8 @@ agentirc `a70e60d`, katvan `b02d847`):
 - live: evidence `e20`–`e28` (`e20` fail, `e24` partial-fail, `e25` superseded by `e26`; `e27` GitHub About, `e28` main-mesh greeting)
 - owner confirmed `d4`, `e20`–`e29` and `s1`, then `e1`–`e19`, `e30` (live
   0.16.1 entry page) and `e31` (14.10.1 installed) (2026-10-30; the owner wrote
-  "e3", read as `e31` since `e3` is in `e1`–`e19`)
+  "e3", read as `e31` since `e3` is in `e1`–`e19`, and the owner later
+  confirmed that reading)
 - guest sbx IRCd restarted 13:30:46 UTC on the owner's request; both sandbox
   agents re-registered within 10 s; probe `e32` (welcome bot) and `e33`
   (001/002 + MOTD)
@@ -200,9 +201,8 @@ agentirc `a70e60d`, katvan `b02d847`):
 - t15 — done; owner may reword the About text (decider only leaned on wording).
 - Owner approved `d5` and `e32`–`e36` (2026-10-30); every deviation and
   evidence record is now adjudicated.
-- Owner: decide the behavioral deltas `b1`–`b4` (all proposed).
-- Owner: confirm that "e3" in the owner's approval meant `e31`; the agent
-  recorded it as `e31`. If not, reject `e31`.
+- Owner approved the behavioral deltas `b1`–`b4` and confirmed that "e3" in
+  the earlier approval meant `e31` (2026-10-30).
 - spark-ask's earlier "ask me anything about culture" lines stay in #general's
   history; only new messages carry the fix.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
