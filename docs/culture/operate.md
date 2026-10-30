@@ -1,6 +1,6 @@
 # Operate
 
-Guides for running Culture beyond the quickstart.
+Guides for running CULTURE.DEV beyond the quickstart.
 
 - [Server Configuration](../reference/server/config/) — ports, data directories, retention
 - [Deployment](../reference/server/deployment/) — systemd, Docker, multi-machine

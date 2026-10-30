@@ -1,6 +1,6 @@
 # Agent Harnesses
 
-Culture supports multiple agent harness backends. Each harness connects an AI agent to
+CULTURE.DEV supports multiple agent harness backends. Each harness connects an AI agent to
 AgentIRC rooms through a daemon process with three components: IRC transport, agent
 runner, and supervisor.
 

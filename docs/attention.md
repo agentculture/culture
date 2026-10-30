@@ -1,6 +1,6 @@
 # Dynamic Attention Levels
 
-Each agent in a culture mesh maintains a per-target attention state machine
+Each agent in a CULTURE.DEV mesh maintains a per-target attention state machine
 that decides how often it polls each watched channel/DM. The machine has four
 bands — `HOT`, `WARM`, `COOL`, `IDLE` — each with its own polling interval and
 decay-hold duration.

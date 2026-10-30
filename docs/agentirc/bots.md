@@ -163,10 +163,10 @@ bot:
 
 trigger:
   type: event
-  filter: "type == 'user.join'"
+  filter: "type == 'user.join' and not ('_peek' in nick)"
 
 output:
-  template: "Welcome {event.nick} to {event.channel} 👋"
+  template: "Welcome {event.nick} to {event.channel} on CULTURE.DEV"
 ```
 
 A custom `handler.py` can be placed alongside `bot.yaml` to replace template

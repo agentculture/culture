@@ -1,0 +1,462 @@
+{
+  "plan_slug": "culture-dev-on-all-public-surfaces",
+  "schema_version": 2,
+  "created": "2026-10-30T08:33:58Z",
+  "updated": "2026-10-30T09:59:47Z",
+  "deviations": [
+    {
+      "id": "d1",
+      "what": "add a katvan task: rewrite product-naming body copy across the culture.dev site (~42 'Culture'/'Culture.dev' hits in pages, data files, llms.txt) to CULTURE.DEV, excluding vendored historical specs; merged into the same katvan PR before t14",
+      "task_ref": "t12",
+      "reason": "after t12/t13 merged, the site body still names the product 'Culture' (grep of site-astro/src); the confirmed after-state c27 requires every public surface to name CULTURE.DEV, but the plan's katvan tasks only covered chrome. Decider (assess general): add_task_now 0.956, spec covers body copy P(yes)=0.948",
+      "affects": [
+        "t14",
+        "c27",
+        "h18"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 1
+    },
+    {
+      "id": "d2",
+      "what": "split delivery around the PR gate: validate-delivery + summarize-delivery run on waves 0-1 before the four PRs open; t5/t11/t15/t16 (deploy, agentirc pin bump, GitHub About, live screenshots) run after the PRs merge and releases publish, then validate/summarize re-run",
+      "task_ref": "t5",
+      "reason": "owner goal: validate+summarize before PR; but wave 2-3 tasks require merged PRs and published packages (t5 deploys the irc-lens release, t11 needs agentirc-cli on PyPI, t15 is outward-facing post-merge, t16 screenshots production). Decider: validate_then_pr_then_continue 0.986; record as deviation P(yes)=0.856",
+      "affects": [
+        "t11",
+        "t15",
+        "t16"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 2
+    },
+    {
+      "id": "d3",
+      "what": "add a culture task: CLI introspection output (culture_core/cli/introspect.py _PURPOSE/_culture_explain/_culture_overview, culture_core/learn_prompt.py) names the product CULTURE.DEV, with its sample output in docs/reference/cli/learn-explain-json.md",
+      "task_ref": "t8",
+      "reason": "validate-delivery found 'culture learn/explain --json' still says 'Culture is the framework\u2026'; per confirmed assumption c16 katvan builds culture.dev from that output, so it is a public surface the plan missed (t8 covered docs/ prose only). Decider: add_task_now 0.971",
+      "affects": [
+        "t9",
+        "c36",
+        "c16"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 3
+    }
+  ],
+  "evidence": [
+    {
+      "id": "e1",
+      "obligation_ref": "o2",
+      "test_ref": "irc-lens tests/test_entry.py (hero + title assertions, transcript allow-list)",
+      "behavior_text": "asserts <title> CULTURE.DEV and hero 'Ask CULTURE.DEV.'",
+      "contract_text": "h2",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "test_entry.py ran green in the full irc-lens suite (1331 passed) at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "c855644"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 4
+    },
+    {
+      "id": "e2",
+      "obligation_ref": "o3",
+      "test_ref": "irc-lens tests/test_chat_ui.py::test_guest_header_nick_badge_room_no_host_port, test_delete_ux.py::test_delete_page_title_is_culture_dev, ::test_setpw_template_title_is_culture_dev, test_render_residents.py title",
+      "behavior_text": "asserts index title/wordmark/alt/og:title/notice, delete+setpw titles, residents title",
+      "contract_text": "h3",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "all PASSED in a -rA run at the named commit; setpw check reads template source (not rendered)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "c855644"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 5
+    },
+    {
+      "id": "e3",
+      "obligation_ref": "o4",
+      "test_ref": "irc-lens tests/test_e2e_playwright.py::test_phone_header_keeps_wordmark_visible, ::test_phone_header_wordmark_text_is_culture_dev",
+      "behavior_text": "Playwright at 390x800: wordmark visible, header scrollWidth<=clientWidth, text contains CULTURE.DEV",
+      "contract_text": "h21",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "real Chromium e2e ran green after t1+t2 merged at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "c855644"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 6
+    },
+    {
+      "id": "e4",
+      "obligation_ref": "o5",
+      "test_ref": "irc-lens tests/test_mail_signin.py (golden 0.12.2 bodies + set-password endswith)",
+      "behavior_text": "asserts bodies end 'The CULTURE.DEV team\\n' and subjects unchanged",
+      "contract_text": "c4 (code part; live sender name h4 pending deploy t5)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "mail tests green at the named commit; live received-email check not yet run",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "c855644"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 7
+    },
+    {
+      "id": "e5",
+      "obligation_ref": "o6",
+      "test_ref": "agentirc tests/test_motd.py::test_welcome_and_yourhost_name_culture_dev + grep -c \u2122 mail.py/client.py = 0",
+      "behavior_text": "asserts 001/002 contain CULTURE.DEV and no \u2122; grep found 0 \u2122 in irc-lens mail.py and agentirc client.py",
+      "contract_text": "h25",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "test green + grep at the named agentirc commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "a70e60d"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 8
+    },
+    {
+      "id": "e6",
+      "obligation_ref": "o7",
+      "test_ref": "culture tests/test_sandbox_agent.py::test_prompt_and_decline_name_culture_dev",
+      "behavior_text": "asserts prompt contains CULTURE.DEV and decline reads '\u2026questions about CULTURE.DEV\u2026', no \u2122",
+      "contract_text": "c5 (h5 live answer pending t16)",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "PASSED at the named commit; a live LLM answer is not yet observed",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 9
+    },
+    {
+      "id": "e7",
+      "obligation_ref": "o8",
+      "test_ref": "culture tests/test_sandbox_agent.py::test_system_welcome_bot_line_is_ignored_but_humans_answer",
+      "behavior_text": "asserts system-sbx-welcome line (plain and @-tagged) -> no reply; human line -> job",
+      "contract_text": "h20",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "PASSED at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 10
+    },
+    {
+      "id": "e8",
+      "obligation_ref": "o9",
+      "test_ref": "culture tests/test_welcome_bot.py",
+      "behavior_text": "asserts greeting 'Welcome <nick> to #lobby on CULTURE.DEV' and peek joins not greeted",
+      "contract_text": "h6",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "4 tests green at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 11
+    },
+    {
+      "id": "e9",
+      "obligation_ref": "o10",
+      "test_ref": "agentirc tests/test_motd.py (5 tests)",
+      "behavior_text": "asserts welcome/yourhost text, 004 token 'culture', MOTD order+content, MOTD replay, unregistered no reply",
+      "contract_text": "h7",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "5 passed; full agentirc suite 843 passed at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "a70e60d"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 12
+    },
+    {
+      "id": "e10",
+      "obligation_ref": "o11",
+      "test_ref": "culture tests/test_packaging_entrypoints.py, tests/test_cli_branding.py",
+      "behavior_text": "asserts scripts == {culture, culture-core} -> culture_core.cli:main; --version 'CULTURE.DEV CLI'",
+      "contract_text": "h11",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "green at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 13
+    },
+    {
+      "id": "e11",
+      "obligation_ref": "o12",
+      "test_ref": "culture tests/test_engine_identity.py + git diff origin/main...HEAD grep for culture.dev/trace|culture.yaml",
+      "behavior_text": "identity test green; diff grep found no wire-string edits",
+      "contract_text": "h12",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "green + empty grep at the named commit",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 14
+    },
+    {
+      "id": "e12",
+      "obligation_ref": "o13",
+      "test_ref": "katvan site-astro npm run build + grep dist/index.html",
+      "behavior_text": "built header markup is 'CULTURE<span class=brand-dot>.DEV' (literal uppercase, no text-transform)",
+      "contract_text": "h9",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "build ran at the named katvan commit; markup inspected",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "b02d847"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 15
+    },
+    {
+      "id": "e13",
+      "obligation_ref": "o14",
+      "test_ref": "katvan dist/index.html, dist/terms, dist/privacy, dist/legal/version.json",
+      "behavior_text": "found href=https://chat.culture.dev 'Try CULTURE.DEV live \u2192'; \"CULTURE.DEV's live chat\" in both legal pages; version.json terms/privacy 1.2 effective 2026-10-30",
+      "contract_text": "h14",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "build output inspected at the named commit; not yet deployed",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "b02d847"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 16
+    },
+    {
+      "id": "e14",
+      "obligation_ref": "o15",
+      "test_ref": "visual inspection of site-astro/public/assets/images/og-culture.png (1200x630) + irc-lens test_chat_ui og:title assertion",
+      "behavior_text": "image shows logo, 'CULTURE.DEV\u2122', 'The professional workspace for agents'; og:title asserted on chat index",
+      "contract_text": "h22",
+      "evidence_type": "observation",
+      "strength": "fidelity",
+      "strength_basis": "image viewed by the agent; live share preview not checked",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "b02d847"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 17
+    },
+    {
+      "id": "e15",
+      "obligation_ref": "o16",
+      "test_ref": "ls TRADEMARKS.md in the four integration branches; dist/index.html footer; irc-lens test_chat_ui notice assertion",
+      "behavior_text": "identical TRADEMARKS.md committed in all four repos; footer + chat notice 'CULTURE.DEV is a trademark of Ori Nachum.'",
+      "contract_text": "h10",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "files and built output inspected at the named commits",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 18
+    },
+    {
+      "id": "e16",
+      "obligation_ref": "o17",
+      "test_ref": "grep -rnE '\\bCulture\\b' docs (excluding records dirs, AgentCulture)",
+      "behavior_text": "5 remaining hits, all inside code blocks / sample output (acp.md prompt+diagram, deployment.md unit Description, learn-explain-json sample now updated)",
+      "contract_text": "h26",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "grep at the named commit; remaining hits are code samples per the criterion's exception",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 19
+    },
+    {
+      "id": "e17",
+      "obligation_ref": "o18",
+      "test_ref": "inspection of pyproject.toml description/[project.urls] and README.md H1/lead/notice",
+      "behavior_text": "description 'CULTURE.DEV \u2014 \u2026', Homepage https://culture.dev, H1 'CULTURE.DEV\u2122', 'CULTURE.DEV is\u2026'",
+      "contract_text": "c8 (h8 live PyPI page pending release)",
+      "evidence_type": "observation",
+      "strength": "fidelity",
+      "strength_basis": "source inspected; the PyPI page itself is not yet published",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 20
+    },
+    {
+      "id": "e18",
+      "obligation_ref": "o19",
+      "test_ref": "review of diffs: subjects 'Your chat.culture.dev \u2026 code', href=https://chat.culture.dev, inbox@culture.dev, Homepage https://culture.dev",
+      "behavior_text": "no changed href/mailto/hostname uppercased",
+      "contract_text": "h13",
+      "evidence_type": "observation",
+      "strength": "fidelity",
+      "strength_basis": "manual diff review by the agent",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 21
+    },
+    {
+      "id": "e19",
+      "obligation_ref": "o20",
+      "test_ref": "CHANGELOG entries culture 14.10.0, irc-lens 0.16.0, agentirc 9.13.0, katvan 0.12.0",
+      "behavior_text": "each entry states it is the first release exposing CULTURE.DEV on its surface; deploy dates not yet recorded (post-merge, t5/t14)",
+      "contract_text": "h24 (partial)",
+      "evidence_type": "observation",
+      "strength": "coverage",
+      "strength_basis": "changelogs inspected; deploy-date half unmet until release",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T09:00:00",
+        "commit": "8d58c4c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 22
+    }
+  ],
+  "deltas": [
+    {
+      "id": "b1",
+      "kind": "added",
+      "behavior_text": "agentirc serves a fixed CULTURE.DEV MOTD (375/372/376) at registration and on MOTD; registration burst is 4 lines longer",
+      "caused_by": [
+        "c7"
+      ],
+      "evidence_refs": [
+        "e9"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b2",
+      "kind": "added",
+      "behavior_text": "culture.dev body copy, data files and llms.txt name the product CULTURE.DEV (beyond the planned header/hero/footer chrome)",
+      "caused_by": [
+        "d1"
+      ],
+      "evidence_refs": [
+        "e12",
+        "e13"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b3",
+      "kind": "added",
+      "behavior_text": "culture explain/overview/learn output names the product CULTURE.DEV (source of the culture.dev site)",
+      "caused_by": [
+        "d3"
+      ],
+      "evidence_refs": [
+        "e16"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    }
+  ],
+  "supersessions": []
+}

@@ -1,13 +1,13 @@
 # Positioning
 
 Canonical copy for the README, GitHub repo description, site meta, and
-anywhere an LLM summarizer might ingest one paragraph about Culture. Keep
+anywhere an LLM summarizer might ingest one paragraph about CULTURE.DEV. Keep
 these blocks in sync with `docs/culture/what-is-culture.md`; this file
 is the source of truth.
 
 ## The paragraph
 
-Culture is a professional workspace for specialized agents.
+CULTURE.DEV is a professional workspace for specialized agents.
 
 Through **AgentIRC**, it provides the shared environment — rooms, presence,
 roles, coordination, and history that persists across sessions — where
@@ -19,7 +19,7 @@ message, so participating in the workspace doesn't mean drowning in it.
 
 Systems like OpenClaw are useful reference points because they focus on the
 growth of an individual agent — its memory and identity — through files.
-Culture focuses instead on the workspace where specialized agents operate
+CULTURE.DEV focuses instead on the workspace where specialized agents operate
 together. These are different models, not opposing ones.
 
 Codex and Claude Code are also useful reference points: they each have their
@@ -35,7 +35,7 @@ not a replacement for what they already carry.
 ## When to use which
 
 - **Site meta description / short bios (≤160 chars):** the first sentence
-  only — "Culture is a professional workspace for specialized agents."
+  only — "CULTURE.DEV is a professional workspace for specialized agents."
 - **README, GitHub "About", LLM summaries:** the full paragraph.
 - **Comparison or positioning questions:** the full paragraph plus the
   Reference points block.

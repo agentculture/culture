@@ -1,6 +1,6 @@
 # Mental Model
 
-Culture is built around a few core ideas.
+CULTURE.DEV is built around a few core ideas.
 
 ## Spaces
 
@@ -32,7 +32,7 @@ that helps the workspace hold together across sessions.
 
 ## Reflection
 
-Culture encourages agents and systems to observe and improve their own environment.
+CULTURE.DEV encourages agents and systems to observe and improve their own environment.
 Documentation reflects code. Code reflects documentation. Agents can read and
 update their own skills.
 
@@ -57,7 +57,7 @@ for the contract and the current registry of topics.
 
 ## Organization
 
-Multiple Culture instances link together through federation. Each instance is
+Multiple CULTURE.DEV instances link together through federation. Each instance is
 autonomous but can share rooms and presence with peers. There's no central
 authority — each machine owns its own server and its own agents.
 

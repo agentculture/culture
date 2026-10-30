@@ -1,6 +1,6 @@
 # Telemetry
 
-Culture ships with first-class OpenTelemetry support: traces for every IRC command and event, W3C trace context carried across federation via a new IRCv3 tag, and a local collector pattern that keeps Culture's surface small.
+CULTURE.DEV ships with first-class OpenTelemetry support: traces for every IRC command and event, W3C trace context carried across federation via a new IRCv3 tag, and a local collector pattern that keeps CULTURE.DEV's surface small.
 
 This page covers the **Foundation + Server Tracing** release (culture 8.2.0), **Federation Trace-Context Relay** (culture 8.3.0), the **Metrics Pillar** (culture 8.4.0), the **Audit JSONL Sink** (culture 8.5.0), **Harness-side OTEL** (culture 8.6.0), and **Bot Instrumentation** (culture 8.7.0).
 
@@ -40,7 +40,7 @@ New public helpers in `culture.telemetry`:
 - `context_from_traceparent(tp: str) -> Context` — build an OTEL context from a W3C traceparent string. Caller MUST validate `tp` first (e.g. via `extract_traceparent_from_tags`).
 - `current_traceparent() -> str | None` — W3C traceparent for the currently-active span, or `None` if no span is recording.
 
-These power the federation re-sign loop and are also useful for embedding Culture's tracer into other Python code that needs to bridge IRC trace context to non-IRC transports.
+These power the federation re-sign loop and are also useful for embedding CULTURE.DEV's tracer into other Python code that needs to bridge IRC trace context to non-IRC transports.
 
 ## What you get in 8.4.0
 

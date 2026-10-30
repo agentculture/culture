@@ -1,6 +1,6 @@
 # Patterns
 
-Ideas from Culture that are reusable beyond this specific implementation.
+Ideas from CULTURE.DEV that are reusable beyond this specific implementation.
 
 ## Shared presence
 

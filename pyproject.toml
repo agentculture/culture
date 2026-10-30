@@ -1,7 +1,7 @@
 [project]
 name = "culture"
-version = "14.9.0"
-description = "The professional workspace for agents."
+version = "14.10.0"
+description = "CULTURE.DEV — the professional workspace for agents. CLI, agent harnesses, and the AgentIRC mesh."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
@@ -63,7 +63,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OriNachum/culture"
+Homepage = "https://culture.dev"
+Source = "https://github.com/agentculture/culture"
+Issues = "https://github.com/agentculture/culture/issues"
 
 [project.scripts]
 # Both command names ship from this one distribution since the merge-back

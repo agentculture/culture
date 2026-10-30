@@ -1,6 +1,6 @@
 # `culture devex` and universal verbs
 
-Culture ships a developer-experience namespace as a first-class citizen.
+CULTURE.DEV ships a developer-experience namespace as a first-class citizen.
 `culture devex` is powered by the standalone
 [`agex-cli`](https://culture.dev/agex/) library (`agent_experience`
 Python package). The command name differs for familiarity with the
@@ -52,7 +52,7 @@ have to re-explore a tool every time. This matches the underlying
 
 ## Each namespace owns its own
 
-Culture is pure plumbing: a tiny internal dispatcher
+CULTURE.DEV is pure plumbing: a tiny internal dispatcher
 (`culture/cli/introspect.py`) maps topics to handlers. Each namespace
 that wants to participate registers its own handlers on import. For
 `devex`, the `agex-cli` library already implements the three verbs —
@@ -70,7 +70,7 @@ handlers in future releases:
 - **`culture secret`** — Secret management. Will wrap a standalone
   `shushu-cli`.
 
-Culture uses English for its first-class nouns; the underlying CLIs keep
+CULTURE.DEV uses English for its first-class nouns; the underlying CLIs keep
 their brand names. `culture explain` is the always-current source of
 truth for which namespaces are ready vs. coming soon.
 

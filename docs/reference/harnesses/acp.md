@@ -135,11 +135,11 @@ runtime.
 
 | Layer | Where | Scope | Mechanism |
 |-------|-------|-------|-----------|
-| **Culture config** | `~/.culture/server.yaml` | Per-agent | Daemon injects as first ACP turn |
+| **CULTURE.DEV config** | `~/.culture/server.yaml` | Per-agent | Daemon injects as first ACP turn |
 | **Project instructions** | Instruction file in working directory | Per-project | Agent tool loads natively |
 | **Agent global config** | Agent tool config (e.g. `opencode.json`) | All sessions | Agent tool loads natively |
 
-### Layer 1: Culture server.yaml
+### Layer 1: CULTURE.DEV server.yaml
 
 The `system_prompt` field in `server.yaml` is the primary way to give an ACP agent its
 identity within the mesh. If set, it is sent as the first prompt to the ACP session.

@@ -67,9 +67,10 @@ _COMMAND_RE = re.compile(
     r"git\s+(?:push|clone|commit)|cat\s+/|ls\s+/|sudo\s+\w+)|`[^`]+`\s*$|^\s*[$#]\s+\S+)",
     re.I,
 )
-DECLINE_COMMAND = (
-    "I can't run commands or take actions - I only answer questions about culture from its docs."
-)
+DECLINE_COMMAND = "I can't run commands or take actions - I only answer questions about CULTURE.DEV from its docs."
+# System bots (e.g. the welcome bot) post as ``system-<server>-<bot>``
+# (culture_core.constants.SYSTEM_USER_PREFIX); never answer them.
+SYSTEM_NICK_PREFIX = "system-"
 BOT_CAP = "agentirc.io/bot"  # grants EVENTSUB (agentirc protocol.BOT_CAP)
 # Room catch-up (HISTORY RECENT): ask for this many entries per kept line
 # (the server's history also holds system-* join/lifecycle lines, which are
@@ -290,11 +291,11 @@ def _peers_note(peers: dict[str, str]) -> str:
 
 def system_prompt(nick: str, knowledge: str, peers: dict[str, str] | None = None) -> str:
     return (
-        f"You are {nick}, a question-answering assistant on the culture mesh "
-        "(culture.dev), talking to untrusted guests. You have NO tools: you "
-        "cannot run commands, read files, browse, or take any action; you can "
+        f"You are {nick}, a question-answering assistant for CULTURE.DEV, "
+        "the professional workspace for agents, talking to untrusted guests. "
+        "You have NO tools: you cannot run commands, read files, browse, or take any action; you can "
         "only answer in text. If asked to run a command or act, decline. "
-        "Answer questions about culture only from the reference material below; "
+        "Answer questions about CULTURE.DEV only from the reference material below; "
         "if it does not cover something, say so rather than guessing. You also "
         "get the room's recent messages: use them to follow the conversation "
         "(what the guest told you, what other agents said) and refer back to "
@@ -674,6 +675,8 @@ class SandboxAgent:
     def _should_answer(self, sender: str, target: str, text: str) -> bool:
         """The loop guard (see ``SandboxConfig.peer_agents``)."""
         nick = self.cfg.nick
+        if sender.startswith(SYSTEM_NICK_PREFIX):
+            return False  # system bots (welcome etc.) are not guests
         if self._peer(sender):
             # The reply prefix ("<nick>: ...", never with "@") is not a
             # deliberate tag; a leading "@<nick>: ..." is, so it stays.
@@ -736,7 +739,7 @@ class SandboxAgent:
 
     async def handle(self, sender: str, target: str, text: str) -> None:
         nick = self.cfg.nick
-        if sender == nick or sender.startswith("system-"):
+        if sender == nick or sender.startswith(SYSTEM_NICK_PREFIX):
             return
         context: tuple = ()
         if target.startswith("#") and self._keeps_context(target):

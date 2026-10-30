@@ -1,0 +1,1116 @@
+{
+  "slug": "culture-dev-on-all-public-surfaces",
+  "title": "CULTURE.DEV on all public surfaces",
+  "schema_version": 6,
+  "status": "exported",
+  "created": "2026-10-30T06:04:26Z",
+  "updated": "2026-10-30T08:58:50Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "CULTURE.DEV is the visible product brand on every public surface \u2014 the CLI, the culture.dev site, the chat.culture.dev sign-in, the chat UI and its emails, and what guests see in chat \u2014 rendered consistently, so the CULTURE.DEV trademark filing has clean, consistent use to point to.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "Every surface in the after_state (c27) has a delivered change or a recorded 'already compliant' check; none is silently skipped.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Close out with the c28 screenshot set; each surface maps to one frame claim (c2-c10, c18).",
+      "revisions": []
+    },
+    {
+      "id": "c2",
+      "kind": "requirement",
+      "text": "The chat.culture.dev sign-in and guest entry pages show CULTURE.DEV as the visible brand. Today irc-lens templates/entry.html.j2:8 <title> is 'culture' and :18 hero is 'Ask culture.'; the sign-in form (entry.html.j2:51-70) carries no brand text.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "The live chat.culture.dev entry/sign-in page's <title> and hero both contain CULTURE.DEV (hero 'Ask CULTURE.DEV.', CULTURE.DEV\u2122 as the prominent use), and the sign-in step shows the brand.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "irc-lens templates/entry.html.j2: <title> 'CULTURE.DEV', hero 'Ask CULTURE.DEV.', brand header on the sign-in form; update tests/test_entry.py:201,671; verify in a real browser on chat.culture.dev.",
+      "revisions": [
+        {
+          "text": "x",
+          "kind": "requirement",
+          "reason": "probe placeholder replaced"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "requirement",
+      "text": "The chat UI shows CULTURE.DEV in its title and header wordmark. Today irc-lens templates/index.html.j2:6 title is 'culture \u2014 {nick}' and :30 wordmark is 'culture' beside a logo with empty alt text; delete.html.j2:8 and setpw.html.j2:8 titles are 'culture'; residents.html.j2:6 leaks the tool name 'residents \u2014 irc-lens'.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "No irc-lens page <title> or header wordmark renders lowercase 'culture' or 'irc-lens' as the product name; the logo has non-empty alt text 'CULTURE.DEV'.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "irc-lens index.html.j2 (title 'CULTURE.DEV \u2014 {nick}', wordmark CULTURE.DEV\u2122, logo alt), delete/setpw titles 'CULTURE.DEV', residents title 'Residents \u2014 CULTURE.DEV'; update test_render_residents.py:202; add title assertions.",
+      "revisions": []
+    },
+    {
+      "id": "c4",
+      "kind": "requirement",
+      "text": "Sign-in and notification emails from chat.culture.dev carry the CULTURE.DEV brand: the sign-off ('The Culture team' at irc-lens mail.py:107,124,161,211,228) and the sender display name (live config guest_mode.mail.from = 'culture.dev <no-reply@culture.dev>') use the mark.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "A real sign-in email received from chat.culture.dev shows sender name 'CULTURE.DEV' and signs off 'The CULTURE.DEV team'; hostnames in subjects/links stay lowercase.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "irc-lens mail.py sign-offs (:107,124,161,211,228) \u2192 'The CULTURE.DEV team'; live config guest_mode.mail.from \u2192 'CULTURE.DEV <no-reply@culture.dev>'; update test_mail_signin.py + test_delete_ux.py; send one real code email to verify.",
+      "revisions": []
+    },
+    {
+      "id": "c5",
+      "kind": "requirement",
+      "text": "Guests talking to sandbox agents in chat meet the product as CULTURE.DEV: the sandbox system prompt (culture_core/sandbox/agent.py:293 'the culture mesh (culture.dev)') and the DECLINE_COMMAND reply (agent.py:71 'questions about culture') name CULTURE.DEV.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "Asked 'what is this?', a sandbox guest agent names the product CULTURE.DEV; its decline reply names CULTURE.DEV.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "culture_core/sandbox/agent.py system_prompt() :291-310 and DECLINE_COMMAND :70-72 \u2192 CULTURE.DEV; add/adjust unit test pinning the strings; restart sandbox agents after release.",
+      "revisions": []
+    },
+    {
+      "id": "c6",
+      "kind": "requirement",
+      "text": "The welcome bot that posts on every channel join carries the brand. Today culture_core/bots/system/welcome/bot.yaml:16 template is 'Welcome {event.nick} to {event.channel}' \u2014 the only fixed in-channel text culture owns.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "The welcome bot's join message contains CULTURE.DEV.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q2",
+          "text": "Does the system welcome bot run on the sandbox (sbx) server? Sandbox agents answer unaddressed lines by default (answer_unaddressed=True, culture_core/sandbox/agent.py:128), and the bot nick is not a peer \u2014 so a join message newly mentioning CULTURE.DEV could draw an agent reply to every guest join.",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "Brand the welcome bot on the sandbox server too (owner: 'also them')."
+        }
+      ],
+      "links": [],
+      "instruction": "culture_core/bots/system/welcome/bot.yaml:16 template \u2192 e.g. 'Welcome {event.nick} to {event.channel} on CULTURE.DEV'; adjust any test pinning the template.",
+      "revisions": []
+    },
+    {
+      "id": "c7",
+      "kind": "requirement",
+      "text": "IRC connect greetings name CULTURE.DEV as the software: agentirc client.py:521-540 _send_welcome sends RPL_YOURHOST 'Your host is {name}, running culture' and RPL_WELCOME with no brand. This lives in the agentirc sibling (culture pins agentirc-cli>=9.12.0,<10 at pyproject.toml:27), so it is a hand-off, not a culture edit.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "An IRC client connecting to the mesh sees CULTURE.DEV in RPL_WELCOME/RPL_YOURHOST (and MOTD if added); the RPL_MYINFO version token and wire tags are unchanged.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "PR to agentirc (agentirc/client.py _send_welcome: CULTURE.DEV in RPL_WELCOME/RPL_YOURHOST, optional MOTD; keep RPL_MYINFO token); release agentirc-cli, then bump culture's pin.",
+      "revisions": []
+    },
+    {
+      "id": "c8",
+      "kind": "requirement",
+      "text": "The PyPI page and README present CULTURE.DEV as the brand: pyproject.toml:4 description 'The professional workspace for agents.' omits the mark, :66 Homepage points at github.com/OriNachum/culture rather than culture.dev, and README.md:3 says 'Culture is\u2026' right under the '# CULTURE.DEV' H1.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "The PyPI page for culture shows CULTURE.DEV in its summary and README lead, and its Homepage URL is https://culture.dev.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "pyproject.toml description 'CULTURE.DEV \u2014 the professional workspace for agents.', [project.urls] Homepage https://culture.dev (+ Source github.com/agentculture/culture); README.md:3 'CULTURE.DEV is\u2026', H1 'CULTURE.DEV\u2122'.",
+      "revisions": []
+    },
+    {
+      "id": "c9",
+      "kind": "requirement",
+      "text": "culture.dev site header renders the mark as CULTURE.DEV. katvan site-astro/src/components/SiteHeader.astro:21 renders 'culture<span class=brand-dot>.dev</span>' while the hero (data/landing.ts:45), title, footer and SITE_NAME (layouts/Base.astro:20) already use CULTURE.DEV.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "The culture.dev header nav renders the brand as CULTURE.DEV (uppercase text, not CSS text-transform only).",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "PR to katvan: site-astro/src/components/SiteHeader.astro:21 \u2192 CULTURE.DEV; reconcile retired site/_data/style.yml:7-9 rule.",
+      "revisions": []
+    },
+    {
+      "id": "c10",
+      "kind": "requirement",
+      "text": "A trademark notice exists: a TRADEMARKS.md reserving CULTURE.DEV (and related names) separate from the Apache-2.0 code license, and a short notice line on public pages. Nothing exists today \u2014 no \u2122/\u00ae, no NOTICE/TRADEMARKS file in culture, irc-lens or katvan; culture#458 and katvan#55 (both open) already propose this.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "A TRADEMARKS.md exists in culture, irc-lens and katvan reserving CULTURE.DEV (owner Ori Nachum), stating Apache-2.0 grants no trademark rights; the notice line appears on the culture.dev footer and the chat UI.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Add TRADEMARKS.md (trademark part of culture#458/katvan#55 only); footer/README notice 'CULTURE.DEV is a trademark of Ori Nachum.'; reference both issues in PRs.",
+      "revisions": []
+    },
+    {
+      "id": "c11",
+      "kind": "boundary",
+      "text": "The command and package names stay 'culture' (and the 'culture-core' alias); this is brand presentation only, never a rename \u2014 recorded in culture#440 and katvan#53.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h11",
+          "text": "After the change, the console scripts are still 'culture' and 'culture-core' and the PyPI distribution is still 'culture'.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "tests/test_packaging_entrypoints.py and test_cli_branding.py stay green unchanged.",
+      "revisions": []
+    },
+    {
+      "id": "c12",
+      "kind": "boundary",
+      "text": "Wire and identity strings never change: telemetry tags culture.dev/traceparent and culture.dev/tracestate (culture_core/telemetry/context.py:16-17, mirrored in agentirc), culture.* metric names, the culture.yaml filename, and the RPL_MYINFO version token \u2014 guarded by tests/test_engine_identity.py.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "tests/test_engine_identity.py passes unchanged; no culture.dev/* tag, culture.* metric name or culture.yaml filename is edited.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Grep the final diff for culture.dev/traceparent|tracestate and culture.yaml renames \u2014 expect none.",
+      "revisions": []
+    },
+    {
+      "id": "c13",
+      "kind": "boundary",
+      "text": "The lowercase domain stays lowercase where it is a URL or hostname (links, chat.culture.dev in email subjects/body, `inbox@culture.dev`); only places that name the product switch to CULTURE.DEV.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "Every rewritten string that is a URL, hostname or email address still resolves; only product-naming prose changed case.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Review diff: changed lowercase culture.dev occurrences must be prose, never inside href/mailto/hostnames.",
+      "revisions": [
+        {
+          "text": "The lowercase domain stays lowercase where it is a URL or hostname (links, chat.culture.dev in email subjects/body, inbox@culture.dev); only places that name the product switch to CULTURE.DEV.",
+          "kind": "boundary",
+          "reason": "md lint: backtick emails"
+        }
+      ]
+    },
+    {
+      "id": "c14",
+      "kind": "non_goal",
+      "text": "Org name AgentCulture and component names AgentIRC / irc-lens are not renamed \u2014 they are distinct names, not misuses of the mark.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c15",
+      "kind": "assumption",
+      "text": "Command-name mentions in CLI output (e.g. 'culture doctor: no drift detected' doctor.py:59, 'stopped culture console' console.py:214) are command names, not brand uses, and stay lowercase.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c16",
+      "kind": "assumption",
+      "text": "Docs prose in docs/ matters as a public surface because katvan builds culture.dev from the CLI learn/explain output (docs/README.md:11, #401) and the sandbox agent answers from the docs bundle \u2014 so docs naming 'Culture' as the product leaks onto the site and into guest chat.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c17",
+      "kind": "decision",
+      "text": "The chat at chat.culture.dev is part of CULTURE.DEV \u2014 it is the live chat/demo app of the product \u2014 so login and in-chat surfaces count as trademark use of CULTURE.DEV, not just consistency (owner, 2026-10-30).",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c18",
+      "kind": "requirement",
+      "text": "The culture.dev site presents the chat as the CULTURE.DEV live app: a visible link/CTA from the homepage to chat.culture.dev branded CULTURE.DEV, and the Terms/Privacy pages name the Service as CULTURE.DEV. Today katvan origin/main links chat.culture.dev only from legal/terms.md:3 and privacy.md:3 ('the guest chat at chat.culture.dev'), with 'culture.dev is a personal project' at terms.md:10.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h14",
+          "text": "The culture.dev homepage has a visible CULTURE.DEV-branded link to chat.culture.dev, and /terms and /privacy name the Service CULTURE.DEV.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "katvan landing.ts/index.astro: 'Try CULTURE.DEV live' CTA \u2192 https://chat.culture.dev; legal/terms.md + privacy.md name the Service CULTURE.DEV (legal-version bump per data/legal.ts if wording changes).",
+      "revisions": []
+    },
+    {
+      "id": "c19",
+      "kind": "decision",
+      "text": "Use CULTURE.DEV\u2122 on the first/most prominent use per surface (site hero, chat header, sign-in page, README H1) while the application is pending; never \u00ae before registration.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c20",
+      "kind": "decision",
+      "text": "The trademark owner is Ori Nachum personally; notice line reads 'CULTURE.DEV is a trademark of Ori Nachum.'",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c21",
+      "kind": "decision",
+      "text": "CULTURE.DEV is the product name in all copy: chat hero 'Ask CULTURE.DEV.', chat header wordmark 'CULTURE.DEV', email sign-off 'The CULTURE.DEV team', sandbox agents introduce themselves as assistants on CULTURE.DEV.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c22",
+      "kind": "decision",
+      "text": "irc-lens carries CULTURE.DEV directly in its templates and mail (hardcoded); no per-deployment brand config key.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c23",
+      "kind": "decision",
+      "text": "Hand off to agentirc: IRC connect greetings (RPL_WELCOME/RPL_YOURHOST, and a MOTD) are CULTURE.DEV-opinionated \u2014 agentirc presents itself as the CULTURE.DEV server, not a brand-neutral ircd.",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c24",
+      "kind": "audience",
+      "text": "Anyone who meets the product publicly \u2014 culture.dev visitors, people signing in to or chatting on chat.culture.dev (guests and members), PyPI/CLI users \u2014 plus the USPTO examiner reviewing specimens for the CULTURE.DEV mark.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h15",
+          "text": "Each listed audience has at least one surface in c27 that it actually sees (site, chat sign-in/UI/email, PyPI/CLI, specimen screenshots).",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c25",
+      "kind": "before_state",
+      "text": "The mark is used consistently only on the CLI (--version/--help, culture#440) and the culture.dev homepage (katvan#53/#63); the chat app, its sign-in, emails, guest agents, welcome bot, IRC greetings and PyPI page say 'culture'/'Culture'; no \u2122 or trademark notice exists anywhere.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h16",
+          "text": "The before-state is grounded in the scope entries s1-s16 (file:line evidence), not assumed.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c26",
+      "kind": "why_it_matters",
+      "text": "The chat/demo app is part of CULTURE.DEV, so its public surfaces are use of the mark; inconsistent lowercase/generic 'culture' weakens the mark as a source identifier and undercuts the specimens and first-use evidence a trademark filing relies on.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h17",
+          "text": "The rationale rests only on recorded facts (owner decision c17, katvan#53/culture#440 specimen notes), with legal judgment parked in v1.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c27",
+      "kind": "after_state",
+      "text": "Every public surface \u2014 CLI, PyPI page, culture.dev site (header, hero, chat link, Terms/Privacy), chat.culture.dev sign-in, chat UI, emails, guest agents, welcome bot, IRC greeting \u2014 names the product CULTURE.DEV, with CULTURE.DEV\u2122 on the most prominent use per surface and the notice 'CULTURE.DEV is a trademark of Ori Nachum.'",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h18",
+          "text": "The after-state surface list equals the union of the requirement claims c2-c10 and c18 \u2014 no surface listed without a claim, no claim without a surface.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c28",
+      "kind": "success_signal",
+      "text": "A screenshot set \u2014 culture.dev homepage, chat.culture.dev sign-in, chat UI, a received sign-in email, a guest-agent answer, culture --version, and the PyPI page \u2014 each shows CULTURE.DEV (with \u2122 on the prominent use) and none presents the product as lowercase 'culture'; recorded with access dates for the filing.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h19",
+          "text": "The screenshot set is captured from live production surfaces after release, each with an access date.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c29",
+      "kind": "decision",
+      "text": "Claude opens the PRs in every repo this needs \u2014 culture, irc-lens, katvan and agentirc \u2014 rather than handing off to sibling agents (owner, 2026-10-30).",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c30",
+      "kind": "requirement",
+      "text": "On phones the chat UI still shows CULTURE.DEV: irc-lens static/lens.css:480 hides .lens-logo and .lens-wordmark under @media (max-width: 760px), so after c3 a mobile user would see no brand in the header at all.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h21",
+          "text": "At a 390px-wide viewport the chat header shows CULTURE.DEV.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "irc-lens lens.css phone breakpoint: keep the wordmark (compact) visible; verify in a real browser at mobile width.",
+      "revisions": []
+    },
+    {
+      "id": "c31",
+      "kind": "requirement",
+      "text": "The culture.dev social-share card carries CULTURE.DEV: katvan public/assets/images/og-culture.png (og:image for every page, layouts/Base.astro:23,70,77) renders the wordmark 'Culture' with 'Human-Agent Collaboration System'. chat.culture.dev pages have no og:/description meta at all (irc-lens templates).",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h22",
+          "text": "Sharing a culture.dev URL previews an image reading CULTURE.DEV\u2122; chat.culture.dev has og:title/description naming CULTURE.DEV.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Regenerate katvan og-culture.png with CULTURE.DEV\u2122; add og/meta tags to irc-lens base templates.",
+      "revisions": []
+    },
+    {
+      "id": "c32",
+      "kind": "requirement",
+      "text": "Repo and package metadata name CULTURE.DEV: GitHub About for agentculture/culture ('Culture turns isolated stochastic agents\u2026') and agentculture/irc-lens ('\u2026AgentIRC in Culture ecosystem'), and the irc-lens PyPI summary ('\u2026lens for the Culture mesh', pyproject.toml:8). GitHub About is set via gh repo edit, not a PR.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h23",
+          "text": "gh repo view and PyPI show CULTURE.DEV in the culture and irc-lens descriptions.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "gh repo edit --description for culture + irc-lens (outward action, after PRs merge); irc-lens pyproject description \u2192 CULTURE.DEV.",
+      "revisions": []
+    },
+    {
+      "id": "c33",
+      "kind": "requirement",
+      "text": "Each repo's CHANGELOG names the release that first exposes CULTURE.DEV on its surface, and the date that release reaches production (chat.culture.dev deploy, culture.dev deploy) is recorded \u2014 first-use evidence for the chat surface, mirroring culture#440's changelog requirement for the CLI.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h24",
+          "text": "Each repo CHANGELOG entry for this work says it is the first release exposing CULTURE.DEV on its surface, and the production deploy date is recorded.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Changelog wording per culture#440 13.3.0 entry; note chat.culture.dev and culture.dev deploy dates in the delivery record.",
+      "revisions": []
+    },
+    {
+      "id": "c34",
+      "kind": "boundary",
+      "text": "\u2122 is used only in rendered visual surfaces (site hero, chat header, sign-in page, README H1, OG image); IRC protocol lines, email subject lines and sender names use plain CULTURE.DEV without \u2122.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h25",
+          "text": "No \u2122 in the agentirc greeting, email subjects or sender name.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Grep the final diffs of agentirc and irc-lens mail.py for \u2122.",
+      "revisions": []
+    },
+    {
+      "id": "c35",
+      "kind": "assumption",
+      "text": "Changing only the email sender display name (address stays `no-reply@culture.dev`) leaves SPF/DKIM/DMARC alignment and Resend deliverability unchanged; auth-code emails are not newly spam-filtered.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Changing only the email sender display name (address stays no-reply@culture.dev) leaves SPF/DKIM/DMARC alignment and Resend deliverability unchanged; auth-code emails are not newly spam-filtered.",
+          "kind": "assumption",
+          "reason": "md lint: backtick emails"
+        }
+      ]
+    },
+    {
+      "id": "c36",
+      "kind": "requirement",
+      "text": "The sandbox knowledge bundle stops teaching 'Culture' as the product name: guest agents answer from docs (system_prompt knowledge, culture_core/sandbox/agent.py), so the product-naming prose in those docs says CULTURE.DEV \u2014 else the prompt fix (c5) yields mixed naming in answers.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h26",
+          "text": "Grep of docs/ shows no 'Culture' used as the product name (org name AgentCulture and command 'culture' excepted).",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q1",
+          "text": "Which docs feed the sandbox knowledge bundle (knowledge_dir on the live sbx config) \u2014 rewrite only those, or all docs/ product-naming prose (large diff)?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "All product-naming prose in docs/, not only the sandbox bundle (owner)."
+        }
+      ],
+      "links": [],
+      "instruction": "Rewrite product-naming prose across culture docs/ (and the sandbox knowledge bundle sourced from it); keep links, command names and code untouched.",
+      "revisions": []
+    },
+    {
+      "id": "c37",
+      "kind": "decision",
+      "text": "Naming the Service CULTURE.DEV in /terms and /privacy is a material change: bump terms/privacy in katvan data/legal.ts so the irc-lens consent gate re-prompts guests (owner, 2026-10-30).",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c38",
+      "kind": "requirement",
+      "text": "Sandbox agents never reply to the system welcome bot: the loop guard (culture_core/sandbox/agent.py _should_answer :674-698) skips lines from system bots, so a branded join message on the sandbox server doesn't draw an agent answer per guest join.",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h20",
+          "text": "A guest joining a sandbox room produces the welcome line and zero agent replies to it.",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Filter system-bot senders in _should_answer (check how the bot nick/cap is identifiable), plus a unit test.",
+      "revisions": []
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "What 'compliance with trademark requirements' means beyond the recorded issues is legal judgment (adjective+generic-noun usage, \u2122 placement, specimen adequacy per class); no attorney guidance is recorded in any repo \u2014 the frame can only implement recorded requirements plus owner decisions.",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v2",
+      "text": "Other public surfaces may still present 'Culture' as the product (sibling repos and profiles not examined in this pass); found later, they are follow-ups, not blockers.",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    }
+  ],
+  "scope_entries": [
+    {
+      "id": "s1",
+      "surface": "irc-lens templates/entry.html.j2 (sign-in + guest entry)",
+      "finding": "<title>culture</title> at :8, hero 'Ask culture.' at :18 (pinned by tests/test_entry.py:201,671); sign-in form :51-70 has no brand; Terms/Privacy links only in the guest consent block :95,134",
+      "seeds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "s2",
+      "surface": "irc-lens templates/index/delete/setpw/residents .html.j2",
+      "finding": "every <title> and the wordmark are hardcoded lowercase 'culture' (or 'irc-lens' on residents); no footer, no \u2122, no brand config key in config.py; only test_render_residents.py:202 pins a title",
+      "seeds": [
+        "c3"
+      ]
+    },
+    {
+      "id": "s3",
+      "surface": "irc-lens src/irc_lens/mail.py + live ~/.config/irc-lens/config.yaml",
+      "finding": "subjects are host-based ('Your chat.culture.dev sign-in code' :53 etc.), sign-off 'The Culture team' hardcoded, sender name configurable via guest_mode.mail.from; pinned by tests/test_mail_signin.py and test_delete_ux.py",
+      "seeds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "s4",
+      "surface": "culture_core/sandbox/agent.py",
+      "finding": "system_prompt() :291-310 and DECLINE_COMMAND :70-72 use lowercase culture/culture.dev; answers are grounded in the docs bundle, so docs product naming also flows into guest answers",
+      "seeds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "s5",
+      "surface": "culture_core/bots/system/welcome/bot.yaml",
+      "finding": "single system bot, template has no brand; other bot code only relays webhook payloads",
+      "seeds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "s6",
+      "surface": "agentirc/agentirc/client.py (sibling, agentirc-cli 9.12.0)",
+      "finding": "001/002 human-readable text is the brandable spot; 004 RPL_MYINFO 'culture' version token is machine-parsed; no MOTD (375/372/376) support exists anywhere",
+      "seeds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "s7",
+      "surface": "pyproject.toml + README.md (PyPI long description)",
+      "finding": "H1 is CULTURE.DEV (compliant), but description/keywords/urls and body prose use 'Culture' as the product noun; culture.dev lowercase in URLs is the domain and legitimate",
+      "seeds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "s8",
+      "surface": "katvan site-astro (culture.dev website)",
+      "finding": "hero wordmark, Download CULTURE.DEV button, CULTURE.DEV CLI band, footer line and og:site_name are compliant (katvan#53, #63); gaps: header nav lowercase, no \u2122, no trademark notice, retired site/_data/style.yml:7-9 still says 'culture.dev always lowercase'",
+      "seeds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "s9",
+      "surface": "culture#458, katvan#55 (open legal-posture issues) + LICENSE",
+      "finding": "both propose TRADEMARKS.md/TERMS.md, keep trademark reservation separate from code licensing, avoid calling it 'open source'; Apache-2.0 \u00a76 grants no trademark rights; no notice exists in any of the three repos",
+      "seeds": [
+        "c10"
+      ]
+    },
+    {
+      "id": "s10",
+      "surface": "culture#440 + tests/test_cli_branding.py",
+      "finding": "CLI --version/--help already print 'CULTURE.DEV CLI' (culture_core/cli/__init__.py:129-132, CHANGELOG 13.3.0); issue fixes command/package naming as out of scope",
+      "seeds": [
+        "c11"
+      ]
+    },
+    {
+      "id": "s11",
+      "surface": "culture_core/telemetry/context.py + agentirc server_link.py",
+      "finding": "culture.dev/* IRCv3 tags are exchanged between culture and agentirc peers; changing them breaks trace propagation across the mesh",
+      "seeds": [
+        "c12"
+      ]
+    },
+    {
+      "id": "s12",
+      "surface": "README.md:50-83, irc-lens delete.html.j2:42, katvan legal/terms.md",
+      "finding": "dozens of culture.dev hits are real links/hostnames, not brand uses; rewriting them would break URLs and blur domain vs mark",
+      "seeds": [
+        "c13"
+      ]
+    },
+    {
+      "id": "s13",
+      "surface": "README.md:11, katvan SiteFooter.astro:17 '\u00a9 {year} AgentCulture \u00b7 culture.dev'",
+      "finding": "AgentCulture is the org (copyright holder line) and appears deliberately separate from the product mark",
+      "seeds": [
+        "c14"
+      ]
+    },
+    {
+      "id": "s14",
+      "surface": "culture_core/cli/doctor.py, console.py",
+      "finding": "lowercase strings name the invoked command; no startup banner exists, so #440's 'banner' criterion is vacuously satisfied",
+      "seeds": [
+        "c15"
+      ]
+    },
+    {
+      "id": "s15",
+      "surface": "docs/README.md + culture_core/overview/renderer_web.py:121",
+      "finding": "docs/ is not served directly (no _config.yml); learn/explain output and the sandbox knowledge bundle are the real public channels; overview page <title> is 'culture overview' with no brand header",
+      "seeds": [
+        "c16"
+      ]
+    },
+    {
+      "id": "s16",
+      "surface": "katvan origin/main site-astro (homepage, legal/terms.md, legal/privacy.md)",
+      "finding": "no link from homepage/nav to chat.culture.dev on origin/main (git grep); chat appears only in legal pages, named lowercase 'the guest chat'; mesh-preview.astro is unlinked and titled 'culture.dev \u2014 living mesh'; local checkout sits on legal/v1.1-privacy-review, 2 commits behind main",
+      "seeds": [
+        "c18"
+      ]
+    },
+    {
+      "id": "s17",
+      "surface": "challenge pass / missing counter-evidence lens: irc-lens static/lens.css:476-485",
+      "finding": "phone breakpoint sets .lens-logo, .lens-wordmark {display:none}; c3's honesty (h3) only checks markup, not what renders on a narrow viewport",
+      "seeds": [
+        "c30"
+      ]
+    },
+    {
+      "id": "s18",
+      "surface": "challenge pass / overlooked surfaces lens: katvan og-culture.png + irc-lens templates meta",
+      "finding": "OG image text reads 'Culture' (viewed the PNG); irc-lens culture-logo.png and favicons are icon-only (no text) \u2014 clean; no og tags in irc-lens templates",
+      "seeds": [
+        "c31"
+      ]
+    },
+    {
+      "id": "s19",
+      "surface": "challenge pass / overlooked surfaces lens: gh repo view + PyPI JSON for culture, irc-lens, agentirc-cli, katvan",
+      "finding": "culture and irc-lens About/summary use 'Culture' as product noun; agentirc-cli summary and agentirc/katvan About don't name the product (no change needed); live culture PyPI Homepage is still github.com/OriNachum/culture (covered by c8)",
+      "seeds": [
+        "c32"
+      ]
+    },
+    {
+      "id": "s20",
+      "surface": "challenge pass / operations lens: culture#440 comment + katvan#53 first-use note",
+      "finding": "recorded filing guidance uses the deploy/release date of the branding fix as first use; nothing in this frame recorded how the chat surface's first-use date is captured",
+      "seeds": [
+        "c33"
+      ]
+    },
+    {
+      "id": "s21",
+      "surface": "challenge pass / unstated assumptions lens: decision c19 + agentirc client.py _send_welcome + irc-lens mail.py subjects",
+      "finding": "c19 lists \u2122 placements but never says where it must NOT go; \u2122 is non-ASCII in IRC numerics and RFC 2047-encoded in subjects \u2014 avoidable risk with no evidential gain",
+      "seeds": [
+        "c34"
+      ]
+    },
+    {
+      "id": "s22",
+      "surface": "challenge pass / security lens: irc-lens mail.py + live guest_mode.mail.from",
+      "finding": "domain authentication keys on the address domain, not the display name; the from value lives in live config on spark (outside any PR), so the change is an ops edit verified by one real send (h4)",
+      "seeds": [
+        "c35"
+      ]
+    },
+    {
+      "id": "s23",
+      "surface": "challenge pass / adjacent systems lens: culture_core/sandbox/agent.py knowledge bundle + docs/",
+      "finding": "c16 assumed docs prose leaks into guest chat but no claim required rewriting it; c5's honesty (h5) tests one prompt \u2014 a docs-grounded answer can still say 'Culture'",
+      "seeds": [
+        "c36"
+      ]
+    },
+    {
+      "id": "s24",
+      "surface": "challenge pass / adjacent systems lens: culture_core/sandbox/agent.py:675-698 loop guard vs bots/system/welcome",
+      "finding": "loop guard only filters peer agents; whether the welcome bot is loaded on sbx was not determined read-only \u2014 routed to a hard question on c6",
+      "seeds": []
+    },
+    {
+      "id": "s25",
+      "surface": "challenge pass / reversibility + migration + concurrency lenses: all four repos",
+      "finding": "every change is a string/asset edit \u2014 no schema, no stored-data migration, no concurrency; PyPI/agentirc releases are irreversible but roll-forward fixes are cheap; only state touched is the live irc-lens mail.from config and the legal-version consent coupling (routed separately)",
+      "seeds": []
+    },
+    {
+      "id": "s26",
+      "surface": "challenge pass / unexamined surfaces",
+      "finding": "NOT examined: culture-chat, culture-guide, league-of-agents, social/Discord profiles, katvan docs pages beyond homepage/header/footer/legal, irc-lens README, culture docs/ page-by-page, live rendering of \u2122 in each font",
+      "seeds": []
+    }
+  ],
+  "lapses": [],
+  "obligations": [
+    {
+      "id": "o1",
+      "claim_id": "c2",
+      "seam": "probe",
+      "behavior": "probe",
+      "source_text": "The chat.culture.dev sign-in and guest entry pages show CULTURE.DEV as the visible brand. Today irc-lens templates/entry.html.j2:8 <title> is 'culture' and :18 hero is 'Ask culture.'; the sign-in form (entry.html.j2:51-70) carries no brand text.",
+      "origin": "llm",
+      "status": "rejected"
+    },
+    {
+      "id": "o2",
+      "claim_id": "c2",
+      "seam": "irc-lens templates/entry.html.j2",
+      "behavior": "entry/sign-in page title and hero name CULTURE.DEV; sign-in step shows a CULTURE.DEV\u2122 brand line",
+      "source_text": "The chat.culture.dev sign-in and guest entry pages show CULTURE.DEV as the visible brand. Today irc-lens templates/entry.html.j2:8 <title> is 'culture' and :18 hero is 'Ask culture.'; the sign-in form (entry.html.j2:51-70) carries no brand text.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o3",
+      "claim_id": "c3",
+      "seam": "irc-lens page titles + chat header",
+      "behavior": "no page title or wordmark presents lowercase culture/irc-lens; logo alt CULTURE.DEV; trademark notice in chat UI",
+      "source_text": "The chat UI shows CULTURE.DEV in its title and header wordmark. Today irc-lens templates/index.html.j2:6 title is 'culture \u2014 {nick}' and :30 wordmark is 'culture' beside a logo with empty alt text; delete.html.j2:8 and setpw.html.j2:8 titles are 'culture'; residents.html.j2:6 leaks the tool name 'residents \u2014 irc-lens'.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o4",
+      "claim_id": "c30",
+      "seam": "irc-lens static/lens.css phone breakpoint",
+      "behavior": "at 390px the chat header shows the CULTURE.DEV wordmark without overflow",
+      "source_text": "On phones the chat UI still shows CULTURE.DEV: irc-lens static/lens.css:480 hides .lens-logo and .lens-wordmark under @media (max-width: 760px), so after c3 a mobile user would see no brand in the header at all.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o5",
+      "claim_id": "c4",
+      "seam": "irc-lens src/irc_lens/mail.py",
+      "behavior": "every email body signs off 'The CULTURE.DEV team'; subjects keep hostname chat.culture.dev",
+      "source_text": "Sign-in and notification emails from chat.culture.dev carry the CULTURE.DEV brand: the sign-off ('The Culture team' at irc-lens mail.py:107,124,161,211,228) and the sender display name (live config guest_mode.mail.from = 'culture.dev <no-reply@culture.dev>') use the mark.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o6",
+      "claim_id": "c34",
+      "seam": "agentirc greeting + irc-lens mail",
+      "behavior": "no \u2122 in IRC protocol strings, email subjects or sender",
+      "source_text": "\u2122 is used only in rendered visual surfaces (site hero, chat header, sign-in page, README H1, OG image); IRC protocol lines, email subject lines and sender names use plain CULTURE.DEV without \u2122.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o7",
+      "claim_id": "c5",
+      "seam": "culture_core/sandbox/agent.py system_prompt/DECLINE_COMMAND",
+      "behavior": "guest agents name the product CULTURE.DEV",
+      "source_text": "Guests talking to sandbox agents in chat meet the product as CULTURE.DEV: the sandbox system prompt (culture_core/sandbox/agent.py:293 'the culture mesh (culture.dev)') and the DECLINE_COMMAND reply (agent.py:71 'questions about culture') name CULTURE.DEV.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o8",
+      "claim_id": "c38",
+      "seam": "culture_core/sandbox/agent.py _should_answer",
+      "behavior": "lines from system-<server>-<bot> senders never get an agent reply; humans still do",
+      "source_text": "Sandbox agents never reply to the system welcome bot: the loop guard (culture_core/sandbox/agent.py _should_answer :674-698) skips lines from system bots, so a branded join message on the sandbox server doesn't draw an agent answer per guest join.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o9",
+      "claim_id": "c6",
+      "seam": "culture_core/bots/system/welcome/bot.yaml",
+      "behavior": "join greeting contains CULTURE.DEV",
+      "source_text": "The welcome bot that posts on every channel join carries the brand. Today culture_core/bots/system/welcome/bot.yaml:16 template is 'Welcome {event.nick} to {event.channel}' \u2014 the only fixed in-channel text culture owns.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o10",
+      "claim_id": "c7",
+      "seam": "agentirc client.py _send_welcome/_send_motd",
+      "behavior": "001/002 name CULTURE.DEV, MOTD 375/372/376 on registration and MOTD command, 004 token unchanged",
+      "source_text": "IRC connect greetings name CULTURE.DEV as the software: agentirc client.py:521-540 _send_welcome sends RPL_YOURHOST 'Your host is {name}, running culture' and RPL_WELCOME with no brand. This lives in the agentirc sibling (culture pins agentirc-cli>=9.12.0,<10 at pyproject.toml:27), so it is a hand-off, not a culture edit.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o11",
+      "claim_id": "c11",
+      "seam": "culture packaging",
+      "behavior": "console scripts culture + culture-core and dist name culture unchanged",
+      "source_text": "The command and package names stay 'culture' (and the 'culture-core' alias); this is brand presentation only, never a rename \u2014 recorded in culture#440 and katvan#53.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o12",
+      "claim_id": "c12",
+      "seam": "culture wire/identity strings",
+      "behavior": "culture.dev/* tags, culture.* metrics and culture.yaml unchanged",
+      "source_text": "Wire and identity strings never change: telemetry tags culture.dev/traceparent and culture.dev/tracestate (culture_core/telemetry/context.py:16-17, mirrored in agentirc), culture.* metric names, the culture.yaml filename, and the RPL_MYINFO version token \u2014 guarded by tests/test_engine_identity.py.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o13",
+      "claim_id": "c9",
+      "seam": "katvan SiteHeader.astro",
+      "behavior": "header nav renders literal CULTURE.DEV",
+      "source_text": "culture.dev site header renders the mark as CULTURE.DEV. katvan site-astro/src/components/SiteHeader.astro:21 renders 'culture<span class=brand-dot>.dev</span>' while the hero (data/landing.ts:45), title, footer and SITE_NAME (layouts/Base.astro:20) already use CULTURE.DEV.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o14",
+      "claim_id": "c18",
+      "seam": "katvan homepage + legal pages",
+      "behavior": "homepage links 'Try CULTURE.DEV live' to chat.culture.dev; Terms/Privacy name the Service CULTURE.DEV; legal 1.2",
+      "source_text": "The culture.dev site presents the chat as the CULTURE.DEV live app: a visible link/CTA from the homepage to chat.culture.dev branded CULTURE.DEV, and the Terms/Privacy pages name the Service as CULTURE.DEV. Today katvan origin/main links chat.culture.dev only from legal/terms.md:3 and privacy.md:3 ('the guest chat at chat.culture.dev'), with 'culture.dev is a personal project' at terms.md:10.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o15",
+      "claim_id": "c31",
+      "seam": "katvan og-culture.png + irc-lens meta",
+      "behavior": "share image reads CULTURE.DEV\u2122; chat pages carry og:title/description naming CULTURE.DEV",
+      "source_text": "The culture.dev social-share card carries CULTURE.DEV: katvan public/assets/images/og-culture.png (og:image for every page, layouts/Base.astro:23,70,77) renders the wordmark 'Culture' with 'Human-Agent Collaboration System'. chat.culture.dev pages have no og:/description meta at all (irc-lens templates).",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o16",
+      "claim_id": "c10",
+      "seam": "TRADEMARKS.md + notices",
+      "behavior": "TRADEMARKS.md in culture/irc-lens/katvan/agentirc; notice on site footer and chat UI",
+      "source_text": "A trademark notice exists: a TRADEMARKS.md reserving CULTURE.DEV (and related names) separate from the Apache-2.0 code license, and a short notice line on public pages. Nothing exists today \u2014 no \u2122/\u00ae, no NOTICE/TRADEMARKS file in culture, irc-lens or katvan; culture#458 and katvan#55 (both open) already propose this.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o17",
+      "claim_id": "c36",
+      "seam": "culture docs/ prose",
+      "behavior": "docs name the product CULTURE.DEV",
+      "source_text": "The sandbox knowledge bundle stops teaching 'Culture' as the product name: guest agents answer from docs (system_prompt knowledge, culture_core/sandbox/agent.py), so the product-naming prose in those docs says CULTURE.DEV \u2014 else the prompt fix (c5) yields mixed naming in answers.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o18",
+      "claim_id": "c8",
+      "seam": "culture pyproject + README",
+      "behavior": "PyPI summary and README lead name CULTURE.DEV; Homepage https://culture.dev",
+      "source_text": "The PyPI page and README present CULTURE.DEV as the brand: pyproject.toml:4 description 'The professional workspace for agents.' omits the mark, :66 Homepage points at github.com/OriNachum/culture rather than culture.dev, and README.md:3 says 'Culture is\u2026' right under the '# CULTURE.DEV' H1.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o19",
+      "claim_id": "c13",
+      "seam": "all four diffs",
+      "behavior": "URLs, hostnames and email addresses keep lowercase culture.dev",
+      "source_text": "The lowercase domain stays lowercase where it is a URL or hostname (links, chat.culture.dev in email subjects/body, `inbox@culture.dev`); only places that name the product switch to CULTURE.DEV.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o20",
+      "claim_id": "c33",
+      "seam": "CHANGELOGs",
+      "behavior": "each repo names its first release exposing CULTURE.DEV; production deploy date recorded",
+      "source_text": "Each repo's CHANGELOG names the release that first exposes CULTURE.DEV on its surface, and the date that release reaches production (chat.culture.dev deploy, culture.dev deploy) is recorded \u2014 first-use evidence for the chat surface, mirroring culture#440's changelog requirement for the CLI.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o21",
+      "claim_id": "c28",
+      "seam": "production surfaces after release",
+      "behavior": "dated screenshot set of every surface shows CULTURE.DEV (t16, post-merge)",
+      "source_text": "A screenshot set \u2014 culture.dev homepage, chat.culture.dev sign-in, chat UI, a received sign-in email, a guest-agent answer, culture --version, and the PyPI page \u2014 each shows CULTURE.DEV (with \u2122 on the prominent use) and none presents the product as lowercase 'culture'; recorded with access dates for the filing.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o22",
+      "claim_id": "c32",
+      "seam": "GitHub About + PyPI summaries",
+      "behavior": "culture and irc-lens descriptions name CULTURE.DEV (t15, post-merge)",
+      "source_text": "Repo and package metadata name CULTURE.DEV: GitHub About for agentculture/culture ('Culture turns isolated stochastic agents\u2026') and agentculture/irc-lens ('\u2026AgentIRC in Culture ecosystem'), and the irc-lens PyPI summary ('\u2026lens for the Culture mesh', pyproject.toml:8). GitHub About is set via gh repo edit, not a PR.",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o23",
+      "claim_id": "c1",
+      "seam": "all public surfaces live",
+      "behavior": "every after-state surface shows CULTURE.DEV in production: live email sender (h4), live guest-agent answer (h5), PyPI pages (h8), IRC greeting via pinned agentirc 9.13 (t11)",
+      "source_text": "CULTURE.DEV is the visible product brand on every public surface \u2014 the CLI, the culture.dev site, the chat.culture.dev sign-in, the chat UI and its emails, and what guests see in chat \u2014 rendered consistently, so the CULTURE.DEV trademark filing has clean, consistent use to point to.",
+      "origin": "llm",
+      "status": "proposed"
+    }
+  ]
+}

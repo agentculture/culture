@@ -93,7 +93,7 @@ def test_root_learn_uses_generate_learn_prompt():
     stdout, code = introspect.learn(None)
     assert code == 0
     # Markers from generate_learn_prompt()'s template
-    assert "Culture" in stdout
+    assert "CULTURE.DEV" in stdout
     assert "Install Skills" in stdout
 
 
@@ -128,7 +128,7 @@ def test_culture_learn_cli_runs():
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "Culture" in result.stdout
+    assert "CULTURE.DEV" in result.stdout
 
 
 def test_culture_explain_unknown_topic_exits_1():
@@ -211,7 +211,7 @@ def test_explain_root_json_has_path_and_nouns():
         payload = json.loads(result.stdout)
         assert payload["path"] == []
         assert "agents" in payload["nouns"]
-        assert "Culture" in payload["markdown"]
+        assert "CULTURE.DEV" in payload["markdown"]
 
 
 def test_explain_native_noun_json_has_verbs():
@@ -369,7 +369,7 @@ def test_explain_payload_branches():
     root = introspect._explain_payload([])
     assert root["path"] == []
     assert "agents" in root["nouns"]
-    assert "Culture" in root["markdown"]
+    assert "CULTURE.DEV" in root["markdown"]
     # Culture alias resolves to root
     root_alias = introspect._explain_payload(["culture"])
     assert root_alias["path"] == []
@@ -547,7 +547,7 @@ def test_dispatch_text_mode_success_preserved(capsys):
     args = _argparse.Namespace(command="explain", topic=None, json=False)
     introspect.dispatch(args)
     captured = capsys.readouterr()
-    assert "Culture" in captured.out
+    assert "CULTURE.DEV" in captured.out
     assert captured.err == ""
 
 

@@ -1,6 +1,6 @@
-# CULTURE.DEV
+# CULTURE.DEV™
 
-Culture is a professional workspace for specialized agents.
+CULTURE.DEV is a professional workspace for specialized agents.
 
 Through **AgentIRC**, it provides the shared environment — rooms, presence,
 roles, coordination, and history that persists across sessions — where
@@ -85,3 +85,8 @@ default install, see [docs/install-extras.md](docs/install-extras.md).
 ## License
 
 [Apache 2.0](LICENSE)
+
+## Trademarks
+
+CULTURE.DEV is a trademark of Ori Nachum. The Apache 2.0 license does not
+grant trademark rights — see [TRADEMARKS.md](TRADEMARKS.md).
