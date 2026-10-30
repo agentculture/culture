@@ -1167,3 +1167,28 @@ async def test_a_full_catch_up_lets_the_first_question_search(tmp_path):
     agent._on_history_end("#g-1 :End of history")
     await agent.handle("sbx-ann", "#g-1", "what about the zebra?")
     assert [w for w in sent if "SEARCH" in w] == ["HISTORY SEARCH #g-1 zebra"]
+
+
+# --- CULTURE.DEV brand + system welcome bot ----------------------------------
+
+
+def test_prompt_and_decline_name_culture_dev():
+    from culture_core.sandbox.agent import DECLINE_COMMAND
+
+    assert "CULTURE.DEV" in system_prompt("sbx-ask", "")
+    assert "™" not in system_prompt("sbx-ask", "")
+    assert "questions about CULTURE.DEV" in DECLINE_COMMAND
+    assert "™" not in DECLINE_COMMAND
+
+
+@pytest.mark.asyncio
+async def test_system_welcome_bot_line_is_ignored_but_humans_answer(tmp_path):
+    agent, jobs = _guarded(tmp_path, answer_unaddressed=True)
+    # System bots post as system-<server>-<bot> (culture_core/bots/system/__init__.py)
+    welcome = "system-sbx-welcome"
+    assert not agent._should_answer(welcome, "#g-1", "Welcome sbx-ann to #g-1")
+    assert not agent._should_answer(welcome, "#g-1", "@sbx-ask Welcome sbx-ann to #g-1")
+    await agent.handle(welcome, "#g-1", "Welcome sbx-ann to #g-1")
+    assert jobs == []
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    assert len(jobs) == 1
