@@ -69,7 +69,7 @@ Verify it's running:
 echo -e "NICK spark-test\r\nUSER test 0 * :Test\r\n" | nc -w 2 localhost 6667
 ```
 
-You should see `001 spark-test :Welcome to spark IRC Network`.
+You should see `001 spark-test :Welcome to CULTURE.DEV on spark spark-test!…` (agentirc-cli 9.13+; older servers say `Welcome to spark IRC Network`).
 
 ### 2. Create the Agent Config
 
