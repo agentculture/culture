@@ -276,6 +276,14 @@ async def test_model_side_nsfw_sentinel_flags(server, make_client, tmp_path):
 # ---- knowledge bundle (criterion 3) ---------------------------------------
 
 
+def _make_writable(dest):
+    """Let pytest remove a 0555 bundle; a no-op if the build never created it."""
+    if dest.is_dir() and not dest.is_symlink():
+        for d in [dest, *dest.rglob("*")]:
+            if d.is_dir() and not d.is_symlink():
+                d.chmod(0o755)
+
+
 def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
     src = tmp_path / "repo"
     (src / "docs" / "sub").mkdir(parents=True)
@@ -296,9 +304,7 @@ def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
         assert "SECRET" not in text
         assert "nope" not in text
     finally:
-        for p in sorted(dest.rglob("*"), reverse=True):
-            p.chmod(0o755)
-        dest.chmod(0o755)
+        _make_writable(dest)
 
 
 def test_bundle_rebuilds_over_an_existing_read_only_bundle(tmp_path):
@@ -319,9 +325,49 @@ def test_bundle_rebuilds_over_an_existing_read_only_bundle(tmp_path):
         assert not (dest / "docs").exists()
         assert dest.stat().st_mode & 0o777 == 0o555
     finally:
-        for p in sorted(dest.rglob("*"), reverse=True):
-            p.chmod(0o755)
-        dest.chmod(0o755)
+        _make_writable(dest)
+
+
+def test_bundle_rebuild_never_chmods_through_a_planted_symlink(tmp_path):
+    # Review of #500: the old cleanup chmodded every entry 0755, following
+    # symlinks, so a link planted in the bundle loosened its target's mode.
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "README.md").write_text("readme")
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    secret = outside / "secret.md"
+    secret.write_text("SECRET")
+    secret.chmod(0o600)
+    dest = tmp_path / "bundle"
+    build_bundle(src, dest)
+    dest.chmod(0o755)
+    (dest / "file-link.md").symlink_to(secret)
+    (dest / "dir-link").symlink_to(outside)
+    dest.chmod(0o555)
+    try:
+        build_bundle(src, dest)
+        assert not (dest / "file-link.md").exists()
+        assert not (dest / "dir-link").exists()
+        assert secret.read_text() == "SECRET"
+        assert secret.stat().st_mode & 0o777 == 0o600
+        assert outside.stat().st_mode & 0o777 == 0o700
+    finally:
+        _make_writable(dest)
+
+
+def test_bundle_refuses_a_symlinked_dest(tmp_path):
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "README.md").write_text("readme")
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "keep.md").write_text("keep")
+    dest = tmp_path / "bundle"
+    dest.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        build_bundle(src, dest)
+    assert (target / "keep.md").read_text() == "keep"
 
 
 def test_load_knowledge_ignores_symlinks_outside(tmp_path):

@@ -196,17 +196,27 @@ class SandboxConfig:
 # --- knowledge bundle ------------------------------------------------------
 
 
+def _unlock_parent_and_retry(func, path, exc) -> None:
+    """``rmtree`` handler: the previous build left its dirs 0555 (#497), so
+    give the parent back owner write and retry. ``rmtree`` never follows
+    symlinks, and files need no mode change to be unlinked."""
+    if func not in (os.rmdir, os.unlink) or not isinstance(exc, PermissionError):
+        raise exc
+    parent = os.path.dirname(path)
+    os.chmod(parent, os.stat(parent).st_mode | 0o700)
+    func(path)
+
+
 def build_bundle(src_root: str | Path, dest: str | Path) -> list[Path]:
     """Copy README.md, CLAUDE.md and docs/**/*.md from ``src_root`` into ``dest``.
 
     Files are made read-only (0444) and dirs 0555. Returns the copied paths.
     """
     src, dst = Path(src_root).expanduser(), Path(dest).expanduser()
+    if dst.is_symlink():
+        raise ValueError(f"knowledge bundle path is a symlink, refusing to replace it: {dst}")
     if dst.exists():
-        dst.chmod(0o755)  # the previous build left the root 0555 too (#497)
-        for p in sorted(dst.rglob("*"), reverse=True):
-            p.chmod(0o755)
-        shutil.rmtree(dst)
+        shutil.rmtree(dst, onexc=_unlock_parent_and_retry)
     dst.mkdir(parents=True)
     wanted = [src / "README.md", src / "CLAUDE.md"] + sorted(
         p
@@ -1080,7 +1090,10 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
     cfg = load_config(args.config)
     if args.bundle_from:
-        n = len(build_bundle(args.bundle_from, cfg.knowledge_dir))
+        try:
+            n = len(build_bundle(args.bundle_from, cfg.knowledge_dir))
+        except ValueError as e:
+            raise SystemExit(f"error: {e}") from None
         print(f"bundled {n} files into {Path(cfg.knowledge_dir).expanduser()}")
         return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

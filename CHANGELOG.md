@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- `culture sandbox agent --bundle-from` rebuilds over an existing knowledge bundle: `build_bundle` now makes the bundle root writable before removing it, so a rebuild no longer needs a manual `chmod -R u+w` first (#497).
+- `culture sandbox agent --bundle-from` rebuilds over an existing knowledge bundle: `build_bundle` now makes the bundle root writable before removing it, so a rebuild no longer needs a manual `chmod -R u+w` first (#497). The old bundle is removed with a single `shutil.rmtree` whose handler restores owner write on the parent folder and retries. The cleanup no longer follows symlinks, so a link planted in the bundle can't loosen its target's permissions, and it no longer sets execute bits on files. A `knowledge_dir` that is itself a symlink is refused with an error instead of crashing halfway through.
 
 ## [14.10.3] - 2026-10-30
 

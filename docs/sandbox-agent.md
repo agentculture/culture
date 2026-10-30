@@ -177,6 +177,9 @@ retired.
   `CLAUDE.md` and `docs/**/*.md` minus internal working papers
   (`docs/superpowers`, `docs/specs`, `docs/plans`) into `knowledge_dir` (files 0444, dirs 0555).
   The agent reads only `*.md` there (symlinks ignored) and nothing else.
+  Re-running `--bundle-from` replaces an existing bundle in place (no manual
+  `chmod` first); it never follows a symlink inside the bundle, and it refuses
+  a `knowledge_dir` that is itself a symlink.
 - **NSFW.** First-pass handling: a keyword pre-filter, plus a system-prompt
   instruction to reply with `[[NSFW]]`. Either path declines, appends a JSON
   line (`ts`, `reason`, `nick`, `excerpt`) to `flag_log`, and posts
