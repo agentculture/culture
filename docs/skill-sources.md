@@ -1,6 +1,6 @@
 # Skill sources (provenance ledger)
 
-The skills under `.claude/skills/` are **vendored, not depended on**. Culture
+The skills under `.claude/skills/` are **vendored, not depended on**. CULTURE.DEV
 copies each one into its own tree and owns the copy — the *cite, don't import*
 policy (formalised by [citation-cli](https://github.com/OriNachum/citation-cli)).
 This file records where each skill comes from so a resync knows what to pull and

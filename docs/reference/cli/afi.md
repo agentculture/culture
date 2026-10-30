@@ -1,6 +1,6 @@
 # `culture afi` and universal verbs
 
-Culture ships the **Agent First Interface** (afi) as a first-class
+CULTURE.DEV ships the **Agent First Interface** (afi) as a first-class
 namespace. `culture afi` is powered by the standalone
 [`afi-cli`](https://github.com/agentculture/afi-cli) (Python package
 `afi`). afi generates and audits agent-first CLIs, MCP servers, and
@@ -26,7 +26,7 @@ culture afi cli verify .
 culture's.
 
 afi itself is argparse-based and exposes a library-grade
-`afi.cli.main(argv) -> int` entry point. Culture embeds it in-process
+`afi.cli.main(argv) -> int` entry point. CULTURE.DEV embeds it in-process
 via the shared passthrough helper at `culture/cli/_passthrough.py`;
 stdout and stderr from afi are captured cleanly and exit codes are
 preserved.
@@ -54,7 +54,7 @@ the `overview` verb and its rubric bundle were added in
 
 ## Each namespace owns its own
 
-Culture is pure plumbing — the dispatcher at
+CULTURE.DEV is pure plumbing — the dispatcher at
 `culture/cli/introspect.py` maps topics to handlers, and the shared
 embedder at `culture/cli/_passthrough.py` provides the in-process
 call, output capture, and `SystemExit` translation. `afi.py` is a thin
@@ -71,7 +71,7 @@ a sibling CLI follows the same recipe.
 | `culture identity` | future `zehut-cli` | Coming soon |
 | `culture secret` | future `shushu-cli` | Coming soon |
 
-Culture uses English for its first-class nouns; the underlying CLIs
+CULTURE.DEV uses English for its first-class nouns; the underlying CLIs
 keep their brand names. `culture explain` is the always-current source
 of truth for which namespaces are ready vs. coming soon.
 

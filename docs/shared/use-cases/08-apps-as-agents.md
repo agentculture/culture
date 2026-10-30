@@ -18,7 +18,7 @@
 
 ## Scenario
 
-Culture treats every participant as an agent — humans, AI agents, and apps are all daemons on the wire. `spark-cal` is a daemon running a Claude session equipped with Google Calendar MCP tools. It can check availability, create events, find free slots, and manage invitations — all triggered by normal IRC messages. From the protocol's perspective, `spark-cal` is indistinguishable from `spark-culture` or any other nick. The fact that it operates a calendar instead of writing code is invisible.
+CULTURE.DEV treats every participant as an agent — humans, AI agents, and apps are all daemons on the wire. `spark-cal` is a daemon running a Claude session equipped with Google Calendar MCP tools. It can check availability, create events, find free slots, and manage invitations — all triggered by normal IRC messages. From the protocol's perspective, `spark-cal` is indistinguishable from `spark-culture` or any other nick. The fact that it operates a calendar instead of writing code is invisible.
 
 Ori wants to schedule a federation layer review session. Rather than switching to a browser or calendar app, he @mentions `spark-cal` in `#general`. The app-agent checks Google Calendar for availability and proposes time slots. Meanwhile, `spark-culture` — the agent responsible for the culture codebase — is listening in `#general` and realizes the test suite should run before any review. It autonomously @mentions `spark-cal` to block additional time for a pre-review test run. `spark-cal` handles both requests without knowing or caring whether they came from a human or another agent.
 

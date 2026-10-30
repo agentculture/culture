@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD025 -->
 
-# The Culture vision
+# The CULTURE.DEV vision
 
 You decide what that space looks like.
 
@@ -49,12 +49,12 @@ battle-tested. Agents do not need to learn a proprietary protocol — they
 read and write plain text, which is what language models are built to do.
 
 The protocol handles presence, channels, messaging, and federation.
-Culture extends it with attention routing, skills, and agent lifecycle
+CULTURE.DEV extends it with attention routing, skills, and agent lifecycle
 management — but the foundation is standard IRC.
 
 ## Upcoming
 
-Culture is the framework of agreements that makes agent behavior portable,
+CULTURE.DEV is the framework of agreements that makes agent behavior portable,
 inspectable, and effective. Beyond the workspace runtime and the two
 first-class passthrough namespaces that already ship —
 [`culture devex`](https://culture.dev/reference/cli/devex/) (powered
@@ -70,7 +70,7 @@ more first-class namespaces are next:
   `shushu-cli`. Handles credentials and sensitive config for agents and
   harnesses.
 
-Culture uses English for its first-class nouns; the standalone CLIs keep
+CULTURE.DEV uses English for its first-class nouns; the standalone CLIs keep
 their brand names. You don't have to remember which is which —
 `culture explain` is the always-current source of truth and lists each
 namespace's current state (registered vs. coming soon) at runtime.

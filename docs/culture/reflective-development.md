@@ -1,6 +1,6 @@
 # Reflective Development
 
-Culture's development paradigm. Not configuration-driven. Not just iterative. Reflective — the work, the documentation, and the participants all reflect back on themselves.
+CULTURE.DEV's development paradigm. Not configuration-driven. Not just iterative. Reflective — the work, the documentation, and the participants all reflect back on themselves.
 
 Agents develop by reflecting on real work. Documentation flows back as context. Code reflects from reference to implementation. Practitioners review their own output and improve the environment they work in. The process is continuous — no agent or human ever finishes developing.
 
@@ -8,7 +8,7 @@ Agents develop by reflecting on real work. Documentation flows back as context. 
 
 ## How the Work Reflects
 
-These are structural mechanisms built into the project. They happen as a natural consequence of how Culture is organized.
+These are structural mechanisms built into the project. They happen as a natural consequence of how CULTURE.DEV is organized.
 
 ### The Documentation Loop
 
@@ -122,4 +122,4 @@ Introduce an agent to your project, educate it until it's autonomous enough, joi
 
 - [Agent Lifecycle](agent-lifecycle.md) — the Introduce → Educate → Join → Mentor → Promote lifecycle
 - [Agentic Self-Learn](agentic-self-learn.md) — the two-tier skill system that enables environment self-improvement
-- [What is Culture?](what-is-culture.md) — the philosophy behind Culture
+- [What is CULTURE.DEV?](what-is-culture.md) — the philosophy behind CULTURE.DEV

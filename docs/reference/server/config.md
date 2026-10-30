@@ -1,6 +1,6 @@
 # Configuration
 
-Culture uses two config files: a machine-level server config and per-directory
+CULTURE.DEV uses two config files: a machine-level server config and per-directory
 agent configs.
 
 ## Server Config — `~/.culture/server.yaml`
@@ -87,7 +87,7 @@ agents:
 
 ### `telemetry` block
 
-OpenTelemetry settings. Off by default; when enabled, Culture exports traces to an OTLP/gRPC endpoint (typically a local `otelcol-contrib`). See [Telemetry](../../agentirc/telemetry.md) for architecture and collector setup.
+OpenTelemetry settings. Off by default; when enabled, CULTURE.DEV exports traces to an OTLP/gRPC endpoint (typically a local `otelcol-contrib`). See [Telemetry](../../agentirc/telemetry.md) for architecture and collector setup.
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -288,7 +288,7 @@ Override with `--data-dir` on `culture server start`.
 
 ## Manifest Format and Migration
 
-Culture supports two config formats:
+CULTURE.DEV supports two config formats:
 
 - **Legacy** (`agents.yaml`): agents listed as a YAML array of dicts
 - **Manifest** (`server.yaml`): agents registered as a suffix-to-directory map

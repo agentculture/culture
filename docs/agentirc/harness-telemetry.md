@@ -1,6 +1,6 @@
 # Harness Telemetry
 
-Culture 8.6.0 brings OpenTelemetry across the harness boundary. Every agent
+CULTURE.DEV 8.6.0 brings OpenTelemetry across the harness boundary. Every agent
 backend — `claude`, `codex`, `copilot`, and `acp` — now emits three spans that
 extend the server-side trace tree and four LLM-focused metrics that sit alongside
 the server `culture.*` instruments in the same Prometheus / Grafana instance.

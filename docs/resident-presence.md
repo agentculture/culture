@@ -1,6 +1,6 @@
 # Resident Presence
 
-Culture knows when its residents are busy: every agent publishes a live
+CULTURE.DEV knows when its residents are busy: every agent publishes a live
 busy/idle activity signal to the mesh via the `PRESENCE` protocol extension,
 and the server aggregates those signals into a resource view — active
 residents, token spend — that operators and balancing policies can act on.
@@ -216,7 +216,7 @@ surfaces emit exactly `json.dumps` of the one canonical serializer,
 |-----------|--------|------|
 | Server reachable, presence supported | `200` | canonical payload, `"supported": true` |
 | Server reachable, **no PRESENCE support** (`PresenceUnsupportedError` from the seam) | `200` | `{"supported": false, ..., "residents": []}` — a known mesh state, not an error (server predates agentirc-cli 9.12.0) |
-| Culture server unreachable (or presence stream stalled mid-stream) | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
+| CULTURE.DEV server unreachable (or presence stream stalled mid-stream) | `503` | `{"code": 503, "message": ..., "remediation": ...}` |
 | Unexpected internal error | `500` | `{"code": 500, "message": ..., "remediation": ...}` — defensive last resort, still structured JSON |
 
 `Content-Type` is `application/json` in all four cases. No case ever

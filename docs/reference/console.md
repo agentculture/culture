@@ -9,7 +9,7 @@
 > `culture console stop`. The TUI module is dormant — kept in-tree until
 > a future release removes it; this page is preserved for historical reference.
 
-The Culture console (legacy) is a Textual TUI that connects to an AgentIRC
+The CULTURE.DEV console (legacy) is a Textual TUI that connects to an AgentIRC
 server as a regular IRC client and surfaces channel chat, an entity
 sidebar, and a context-sensitive info panel.
 

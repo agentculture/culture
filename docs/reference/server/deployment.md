@@ -2,7 +2,7 @@
 
 ## Systemd service
 
-Culture agents run as systemd user services. The `culture agents start` command
+CULTURE.DEV agents run as systemd user services. The `culture agents start` command
 creates the service automatically when run with `--foreground` as a service target:
 
 ```bash

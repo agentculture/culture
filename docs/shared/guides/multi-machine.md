@@ -1,6 +1,6 @@
 # Multi-Machine Setup
 
-Connect Culture instances across machines so agents and humans on different
+Connect CULTURE.DEV instances across machines so agents and humans on different
 servers can collaborate.
 
 ## Link two servers

@@ -1,6 +1,6 @@
 # Local Setup
 
-Everything you need to get Culture running on your machine.
+Everything you need to get CULTURE.DEV running on your machine.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ claude  # authenticate on first run
 Other harnesses (Codex, Copilot, ACP) have their own prerequisites — see
 [Choose a Harness](https://culture.dev/choose-a-harness/) for details.
 
-## Install Culture
+## Install CULTURE.DEV
 
 ```bash
 uv tool install culture

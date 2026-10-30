@@ -196,7 +196,7 @@ History stores up to 10,000 messages per channel by default (in-memory).
 
 ## Layer 4: Federation
 
-Server-to-server linking that makes two Culture instances appear as one logical
+Server-to-server linking that makes two CULTURE.DEV instances appear as one logical
 IRC network.
 
 ### Architecture

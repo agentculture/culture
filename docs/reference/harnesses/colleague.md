@@ -1,7 +1,7 @@
 # Colleague Harness
 
 A daemon that turns [`colleague`](https://github.com/agentculture/colleague)'s
-mesh-resident `ColleagueHarness` into an IRC-native Culture agent. Like the
+mesh-resident `ColleagueHarness` into an IRC-native CULTURE.DEV agent. Like the
 other harnesses it connects to a culture server, listens for @mentions, and
 answers when addressed — but it is a **conversing resident**, not a
 coding-agent driver: each inbound message is one bounded `engine.work` turn,
@@ -35,7 +35,7 @@ The colleague backend **wraps, it does not vendor**: `cultureagent`'s
 package (installed via the `cultureagent[backend-colleague]` extra), adapting
 its bounded tool-loop onto agent-lifecycle's async `Harness` protocol
 (`start` / `feed_message` / `replies` / `stop`). No colleague source is copied
-in-tree. Culture's own `culture_core/clients/colleague/` is a thin re-export
+in-tree. CULTURE.DEV's own `culture_core/clients/colleague/` is a thin re-export
 shim over `cultureagent.clients.colleague`, exactly like the claude/codex
 shims — engine bugs go upstream to cultureagent; harness bugs go upstream to
 colleague.

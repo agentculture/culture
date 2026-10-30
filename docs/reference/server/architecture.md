@@ -22,7 +22,7 @@ As of agentirc 9.7+ (issue #445), `IRCd.start()` **owns the full
 `BotManager` lifecycle** — it builds the manager, loads bot definitions
 from `~/.culture/bots/`, registers system bots, and binds the webhook
 HTTP listener on `127.0.0.1:webhook_port` when `webhook_port > 0`
-(`0`/unset = no listener). Culture no longer constructs a second
+(`0`/unset = no listener). CULTURE.DEV no longer constructs a second
 `BotManager` after `ircd.start()`; doing so would re-run `start()` and
 double-bind `webhook_port`.
 

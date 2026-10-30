@@ -45,9 +45,9 @@ invocation). See `irc-lens config init --help` for available flags.
 | `culture console explain` | Pure passthrough to `irc-lens explain`. |
 | `culture console overview` | Pure passthrough to `irc-lens overview`. |
 | `culture console learn` | Pure passthrough to `irc-lens learn`. |
-| `culture console stop` | **Culture-owned.** Stop the locally-running console. |
-| `culture console install [--config PATH]` | **Culture-owned.** Install the `culture-console-<name>` auto-start unit. |
-| `culture console uninstall` | **Culture-owned.** Remove the auto-start unit (no-op if absent). |
+| `culture console stop` | **CULTURE.DEV-owned.** Stop the locally-running console. |
+| `culture console install [--config PATH]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
+| `culture console uninstall` | **CULTURE.DEV-owned.** Remove the auto-start unit (no-op if absent). |
 | `culture console --help` | irc-lens's own help. |
 
 `stop`, `install`, and `uninstall` are reserved by culture and shadow
@@ -82,15 +82,15 @@ fail:
      - Or run side-by-side:       culture console spark --web-port 8766
    ```
 
-   Culture never auto-kills another running console — that decision
+   CULTURE.DEV never auto-kills another running console — that decision
    stays with you.
 
 3. **Foreign irc-lens.** Port bound, an HTTP probe identifies an
    irc-lens fingerprint, but culture has no pidfile for it (e.g. it was
-   started outside `culture console`). Culture prints a hint pointing
+   started outside `culture console`). CULTURE.DEV prints a hint pointing
    at `ss`/`lsof` and exits `1`.
 
-4. **Foreign owner (not irc-lens).** Culture falls through; irc-lens
+4. **Foreign owner (not irc-lens).** CULTURE.DEV falls through; irc-lens
    emits its own `cannot bind web port …` error. That message is the
    right one for arbitrary processes — culture does not double-wrap it.
 
