@@ -78,7 +78,10 @@ Quoted verbatim from the `devague summary` skeleton:
   the live check showed the sign-in page's first screen without the ™ that
   decision c19 requires (decider: patch now 0.962). After code review the ™
   is a small superscript, and the password step's separate "CULTURE.DEV™"
-  line is removed so the page shows the mark once.
+  line is removed so the page shows the mark once. Ledger note: the first
+  `d4` record (culture `5b10076`) was lost when a stale ledger copy
+  overwrote the file in `0bc704a` (same failure as the `e20` id collision);
+  it was re-filed as `d4` with the same content plus the review outcome.
 - Live check found the guest agents still said "The product is called
   culture." (evidence `e20`, **fail**): the knowledge bundle was a read-only
   snapshot from 2026-10-10. Rebuilt with `culture sandbox agent --bundle-from`
@@ -137,7 +140,7 @@ agentirc `a70e60d`, katvan `b02d847`):
 - reviews: doc-test-alignment (2 gaps, fixed in `e457e53`); agentirc code
   review (no blockers; fixes in `a70e60d`)
 - PRs merged: agentirc#63, irc-lens#81, katvan#72, culture#495; follow-ups: irc-lens#82 (0.16.1, `d4`), culture#496 (t11, this PR)
-- irc-lens#82 after review fixes: `uv run --all-extras pytest -q` — 1331 passed; Playwright — 10 passed
+- irc-lens#82 after review fixes (`dedc960`): `uv run --all-extras pytest -q` — 1331 passed; Playwright — 10 passed · evidence `e29` (proposed)
 - live: evidence `e20`–`e28` (`e20` fail, `e24` partial-fail, `e25` superseded by `e26`; `e27` GitHub About, `e28` main-mesh greeting)
 
 ## Delivery Claims

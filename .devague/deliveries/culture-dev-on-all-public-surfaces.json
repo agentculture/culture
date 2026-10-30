@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T10:28:24Z",
+  "updated": "2026-10-30T12:48:04Z",
   "deviations": [
     {
       "id": "d1",
@@ -48,6 +48,21 @@
       "status": "approved",
       "classification": "acceptable",
       "seq": 3
+    },
+    {
+      "id": "d4",
+      "what": "irc-lens 0.16.1: entry hero becomes 'Ask CULTURE.DEV\u2122.' (\u2122 as a small <sup>&trade;</sup>) so the sign-in page's most prominent use carries the \u2122; the password step's separate CULTURE.DEV\u2122 line is removed (one \u2122 per surface)",
+      "task_ref": "t1",
+      "reason": "live check after deploy: the entry page's first screen showed 'Ask CULTURE.DEV.' with the \u2122 only on the later password step; decision c19 requires \u2122 on the sign-in page's most prominent use, c21 fixed the hero copy without it. Decider: hero_tm_patch 0.962. Code review then asked for the superscript and the duplicate-line removal. Re-filed: the original d4 (seq 23, commit 5b10076) was lost when a stale ledger copy overwrote the file in 0bc704a",
+      "affects": [
+        "t5",
+        "h2",
+        "c21"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "classification": "acceptable",
+      "seq": 32
     }
   ],
   "evidence": [
@@ -582,6 +597,25 @@
       "status": "proposed",
       "superseded": false,
       "seq": 31
+    },
+    {
+      "id": "e29",
+      "obligation_ref": "o2",
+      "test_ref": "irc-lens tests/test_entry.py::test_get_entry_renders_step_one, ::test_no_explanatory_prose; tests/test_e2e_playwright.py (10)",
+      "behavior_text": "entry page renders 'Ask CULTURE.DEV<sup class=\"entry-tm\">&trade;</sup>.' on every step and no separate brand line; visible-text allow-list passes; full suite 1331 passed + 10 Playwright; rendered screenshots at desktop and 390px checked",
+      "contract_text": "irc-lens templates carry CULTURE.DEV (titles, hero, wordmark, sign-in header, meta, notice) \u2014 with d4: hero carries the \u2122",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "suite and Playwright ran green at the named irc-lens commit on branch fix/entry-hero-tm (irc-lens#82), CI green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T14:42:24+02:00",
+        "commit": "dedc960"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 33
     }
   ],
   "deltas": [
