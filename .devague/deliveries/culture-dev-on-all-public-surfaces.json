@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T13:37:25Z",
+  "updated": "2026-10-30T13:45:00Z",
   "deviations": [
     {
       "id": "d1",
@@ -73,7 +73,7 @@
         "c27"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 39
     }
@@ -683,7 +683,7 @@
         "commit": "756f63c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 36
     },
@@ -702,7 +702,7 @@
         "commit": "756f63c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 37
     },
@@ -721,7 +721,7 @@
         "commit": "3855a1a"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 38
     },
@@ -740,7 +740,7 @@
         "commit": "3855a1a"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 40
     },
@@ -759,7 +759,7 @@
         "commit": "756f63c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 41
     }

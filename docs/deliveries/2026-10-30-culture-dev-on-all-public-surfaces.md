@@ -17,8 +17,8 @@ version is the post-merge re-run: the four main PRs are merged, released and
 deployed, and so are the follow-ups irc-lens#82 (`d4`, 0.16.1) and culture#496
 (t11, 14.10.1). All plan code is shipped and live, the guest sandbox IRCd was
 restarted, a real sign-in email was received, and the signed-in chat UI was
-captured. Every plan task is delivered; the only open items are adjudication
-of the last proposed records and follow-ups outside the plan.
+captured. Every plan task is delivered and every deviation and evidence record is
+adjudicated by the owner; only follow-ups outside the plan remain.
 
 ## Planned Work
 
@@ -65,8 +65,8 @@ Quoted verbatim from the `devague summary` skeleton:
 ## Mid-work Decisions
 
 `d1`–`d3` were **approved by the owner** at the merge decision (2026-10-30);
-`d4` was approved by the owner after the merge of irc-lens#82; `d5` is
-proposed. Each was weighed with the mesh decider (`/assess`).
+`d4` was approved by the owner after the merge of irc-lens#82; `d5` was
+approved by the owner after the final live check. Each was weighed with the mesh decider (`/assess`).
 
 - `d1` (approved) — add a katvan task (t12b): rewrite product-naming body copy
   across the culture.dev site to CULTURE.DEV — after t12/t13 the site body
@@ -85,7 +85,7 @@ proposed. Each was weighed with the mesh decider (`/assess`).
   `d4` record (culture `5b10076`) was lost when a stale ledger copy
   overwrote the file in `0bc704a` (same failure as the `e20` id collision);
   it was re-filed as `d4` with the same content plus the review outcome.
-- `d5` (proposed) — the owner's signed-in chat screenshot showed spark-ask,
+- `d5` (approved) — the owner's signed-in chat screenshot showed spark-ask,
   the main-mesh Q&A agent (a local script, `~/.culture/ask-agent/ask_agent.py`,
   outside any repo and outside t6's scope), greeting "ask me anything about
   culture". The audit log showed this was live behaviour today, not only old
@@ -130,7 +130,7 @@ proposed. Each was weighed with the mesh decider (`/assess`).
 | `t8` (`d3`, approved) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
 | `t5`, `t11`, `t15`, `t16` (`d2`, approved) | run after the PR gate, not before | acceptable |
 | `t1` (`d4`, approved) | entry hero gains the ™ in 0.16.1 | acceptable |
-| `t6` (`d5`, proposed) | main-mesh agent spark-ask renamed too (local script, outside any repo) | acceptable |
+| `t6` (`d5`, approved) | main-mesh agent spark-ask renamed too (local script, outside any repo) | acceptable |
 | `t1` | the ™ moved from a password-step brand line to the hero (0.16.1, `d4`); setpw title test reads template source | acceptable |
 | `t10` | MOTD line uses an ASCII `-` rather than the em dash in the task's example | acceptable |
 
@@ -144,7 +144,7 @@ agentirc `a70e60d`, katvan `b02d847`):
   `pytest -m playwright tests/test_e2e_playwright.py` — 10 passed
 - agentirc: `uv run pytest -n auto` — 843 passed
 - katvan: `uv run pytest` — 199 passed; `npm run build` — 26 pages
-- devague evidence `e1`–`e19` (all `pass`, proposed) against obligations
+- devague evidence `e1`–`e19` (all `pass`; approved by the owner post-merge) against obligations
   `o2`–`o20`; open obligations `o21` (c28), `o22` (c32), `o23` (c1)
 - behavioral delta `b1` (agentirc MOTD added); deltas for `d1` and `d3` wait
   for those deviations to be approved
@@ -158,10 +158,10 @@ agentirc `a70e60d`, katvan `b02d847`):
   "e3", read as `e31` since `e3` is in `e1`–`e19`)
 - guest sbx IRCd restarted 13:30:46 UTC on the owner's request; both sandbox
   agents re-registered within 10 s; probe `e32` (welcome bot) and `e33`
-  (001/002 + MOTD), proposed
-- received sign-in email (owner's screenshot, code redacted): `e34`, proposed
+  (001/002 + MOTD)
+- received sign-in email (owner's screenshot, code redacted): `e34`
 - owner's signed-in chat UI + sign-in alert email: `e35`; spark-ask after the
-  `d5` fix: `e36` (both proposed)
+  `d5` fix: `e36`; `e32`–`e36` approved by the owner
 - merged follow-ups: irc-lens#82 (`3855a1a`), culture#496 (`756f63c`); deploy
   13:08:16 UTC — culture 14.10.1, irc-lens 0.16.1, sandbox bundle rebuilt from
   `756f63c`, console and both sandbox agents restarted
@@ -194,7 +194,8 @@ agentirc `a70e60d`, katvan `b02d847`):
 ## Remaining Work / Follow-up
 
 - t15 — done; owner may reword the About text (decider only leaned on wording).
-- Owner: adjudicate `d5` and `e32`–`e36` and the deltas.
+- Owner approved `d5` and `e32`–`e36` (2026-10-30); every deviation and
+  evidence record is now adjudicated.
 - spark-ask's earlier "ask me anything about culture" lines stay in #general's
   history; only new messages carry the fix.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
