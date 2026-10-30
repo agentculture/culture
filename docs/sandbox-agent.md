@@ -135,6 +135,10 @@ others' `peer_agents`; typically one answers every human line
   answered per room after each human message; a human speaking resets it.
   Agents can hand a guest's question to each other, but never keep talking
   on their own.
+- **System bots.** Lines from system bots (`system-<server>-<bot>`, such as
+  the welcome bot's "Welcome … on CULTURE.DEV" greeting) are never answered,
+  even when they `@`-tag the agent — a guest join must not draw an agent
+  reply.
 - **Prompt.** The system prompt lists the peers, tells the agent to explain
   to guests how to reach them (`@nick`), and to write a peer's nick without
   `@` when only mentioning it.
