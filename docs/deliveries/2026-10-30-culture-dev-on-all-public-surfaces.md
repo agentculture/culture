@@ -1,6 +1,6 @@
 # Delivery Summary — CULTURE.DEV on all public surfaces
 
-plan: `culture-dev-on-all-public-surfaces` · run: `partial` · date: `2026-10-30` · updated: 2026-10-30 13:20 UTC (final: all PRs merged and deployed)
+plan: `culture-dev-on-all-public-surfaces` · run: `partial` · date: `2026-10-30` · updated: 2026-10-30 13:35 UTC (final: all PRs merged and deployed, sbx IRCd restarted, email received)
 baseline: `devague summary skeleton`
 
 ## Intent
@@ -15,9 +15,10 @@ agentirc, katvan — on a `feat/culture-dev-brand` branch in each. A first versi
 summary was written before the PRs opened (owner instruction; see `d2`). This
 version is the post-merge re-run: the four main PRs are merged, released and
 deployed, and so are the follow-ups irc-lens#82 (`d4`, 0.16.1) and culture#496
-(t11, 14.10.1). All plan code is shipped. The run stays `partial` only for the
-checks that need the owner: the guest sandbox IRCd restart and a received
-sign-in email (see Remaining Work).
+(t11, 14.10.1). All plan code is shipped and live, the guest sandbox IRCd was
+restarted, and a real sign-in email was received. The run stays `partial` only
+because the specimen set lacks a signed-in chat UI screenshot (see Remaining
+Work).
 
 ## Planned Work
 
@@ -48,18 +49,18 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t2` | delivered | irc-lens `5e3521f`: wordmark stays visible ≤760px; Playwright phone tests green after t1 merged |
 | `t3` | delivered | irc-lens `c5d1910` (colleague draft, salvaged + verified by main): "The CULTURE.DEV team" sign-offs, documented sender `CULTURE.DEV <no-reply@culture.dev>` |
 | `t4` | delivered | irc-lens#81 merged; 0.16.0 on PyPI |
-| `t5` | partial | 0.16.0 deployed 10:05:22 UTC, then 0.16.1 (irc-lens#82, `d4`) at 13:08:16 UTC; live `mail.from` set to `CULTURE.DEV <no-reply@culture.dev>`; live entry page shows "Ask CULTURE.DEV™." (desktop + 390px, `e30`). Not done: a real received email |
+| `t5` | delivered | 0.16.0 deployed 10:05:22 UTC, then 0.16.1 (irc-lens#82, `d4`) at 13:08:16 UTC; live `mail.from` set to `CULTURE.DEV <no-reply@culture.dev>`; live entry page shows "Ask CULTURE.DEV™." (desktop + 390px, `e30`); a real sign-in email arrived from "CULTURE.DEV", signed "The CULTURE.DEV team" (`e34`) |
 | `t6` | delivered | culture `fd05235`, `e917576`, `7536e23` (main: prompt wording): prompt/decline name CULTURE.DEV; `_should_answer` skips `system-*` senders |
 | `t7` | delivered | culture `748dffa` (colleague draft, salvaged + verified by main): "Welcome … on CULTURE.DEV" |
 | `t8` | delivered | culture `779dd19`, `de887b4` (44 files) + `e457e53`, `51b92e9` (doc-audit fixes by main) |
 | `t9` | delivered | culture#495 merged; 14.10.0 on PyPI (summary + Homepage verified live); README leftover fixed in culture#496 |
-| `t10` | delivered | agentirc#63 merged; agentirc-cli 9.13.0 on PyPI; live on the main mesh (the IRCd restarted itself at 10:11 UTC) — probe `e28`. The guest sbx IRCd still runs the old greeting until its next restart |
+| `t10` | delivered | agentirc#63 merged; agentirc-cli 9.13.0 on PyPI; live on the main mesh (the IRCd restarted itself at 10:11 UTC, probe `e28`) and on the guest sbx IRCd (restarted by the agent on the owner's request at 13:30:46 UTC, probe `e33`) |
 | `t11` | delivered | culture#496 merged; 14.10.1 on PyPI and installed on spark with agentirc-cli 9.13.0 (`e31`) |
 | `t12` | delivered | katvan `df9c1d2`: header CULTURE.DEV, hero CULTURE.DEV™, "Try CULTURE.DEV live" CTA, footer notice, regenerated OG image + `make-og.py` |
 | `t13` | delivered | katvan `5ea9675`: Terms/Privacy name the Service CULTURE.DEV; legal 1.2, effective 2026-10-30 |
 | `t14` | delivered | katvan#72 merged; culture.dev live with header, ™ hero, chat link, footer notice and Terms 1.2 by 10:05:57 UTC |
 | `t15` | delivered | About descriptions set for culture and irc-lens (wording via `/assess`, leans 0.503 / 0.567; revert with `gh repo edit --description`) · `e27` |
-| `t16` | partial | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. plus the main-mesh IRC greeting (`e28`), GitHub About (`e27`), the 0.16.1 entry page (`e30`) and 14.10.1 versions (`e31`). Missing: signed-in chat UI, received email, sbx IRC greeting |
+| `t16` | partial | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. plus the main-mesh IRC greeting (`e28`), GitHub About (`e27`), the 0.16.1 entry page (`e30`) and 14.10.1 versions (`e31`), the sbx greeting + welcome (`e32`, `e33`) and the received email, code redacted (`e34`). Missing: signed-in chat UI |
 
 ## Mid-work Decisions
 
@@ -121,7 +122,7 @@ weighed with the mesh decider (`/assess`).
 | `t8` (`d3`, approved) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
 | `t5`, `t11`, `t15`, `t16` (`d2`, approved) | run after the PR gate, not before | acceptable |
 | `t1` (`d4`, approved) | entry hero gains the ™ in 0.16.1 | acceptable |
-| `t16` | sbx IRCd greeting/welcome text not live — not restarted (owner's rule) | needs-follow-up |
+| `t16` | no signed-in chat UI screenshot in the specimen set | needs-follow-up |
 | `t1` | the ™ moved from a password-step brand line to the hero (0.16.1, `d4`); setpw title test reads template source | acceptable |
 | `t10` | MOTD line uses an ASCII `-` rather than the em dash in the task's example | acceptable |
 
@@ -144,9 +145,13 @@ agentirc `a70e60d`, katvan `b02d847`):
 - PRs merged: agentirc#63, irc-lens#81, katvan#72, culture#495; follow-ups: irc-lens#82 (0.16.1, `d4`), culture#496 (t11, this PR)
 - irc-lens#82 after review fixes (`dedc960`): `uv run --all-extras pytest -q` — 1331 passed; Playwright — 10 passed · evidence `e29`
 - live: evidence `e20`–`e28` (`e20` fail, `e24` partial-fail, `e25` superseded by `e26`; `e27` GitHub About, `e28` main-mesh greeting)
-- owner confirmed `d4`, `e20`–`e29` and `s1` (2026-10-30); `e1`–`e19` and the
-  deploy evidence `e30` (live 0.16.1 entry page) and `e31` (14.10.1 installed)
-  are still proposed
+- owner confirmed `d4`, `e20`–`e29` and `s1`, then `e1`–`e19`, `e30` (live
+  0.16.1 entry page) and `e31` (14.10.1 installed) (2026-10-30; the owner wrote
+  "e3", read as `e31` since `e3` is in `e1`–`e19`)
+- guest sbx IRCd restarted 13:30:46 UTC on the owner's request; both sandbox
+  agents re-registered within 10 s; probe `e32` (welcome bot) and `e33`
+  (001/002 + MOTD), proposed
+- received sign-in email (owner's screenshot, code redacted): `e34`, proposed
 - merged follow-ups: irc-lens#82 (`3855a1a`), culture#496 (`756f63c`); deploy
   13:08:16 UTC — culture 14.10.1, irc-lens 0.16.1, sandbox bundle rebuilt from
   `756f63c`, console and both sandbox agents restarted
@@ -161,31 +166,26 @@ agentirc `a70e60d`, katvan `b02d847`):
 | the live sign-in page's first screen shows "Ask CULTURE.DEV™." | high | `chat-entry-0.16.1-*.png` · `e30` |
 | the chat header shows CULTURE.DEV at phone width | high | Playwright `test_phone_header_*` · `e3` |
 | emails sign off "The CULTURE.DEV team" | high | `tests/test_mail_signin.py` · `e4` |
-| live emails show sender CULTURE.DEV | low | live `mail.from` set (config inspected); no received email checked |
+| live emails show sender CULTURE.DEV | high | received email, `signin-email-received-redacted.png` · `e34` |
 | guest agents name CULTURE.DEV and ignore system bots | high | `test_sandbox_agent.py` · `e6`, `e7` |
 | a live guest-agent answer says CULTURE.DEV | high | `e21` (after bundle rebuild; `e20` failed before it) |
 | welcome bot greets "… on CULTURE.DEV" | high | `tests/test_welcome_bot.py` · `e8` |
 | agentirc greets as CULTURE.DEV with a MOTD; wire tokens unchanged | high | `tests/test_motd.py` · `e9`, `e5` |
 | the main mesh serves the new greeting + MOTD | high | live probe `irc-greeting-spark.txt` · `e28` |
-| the guest sbx IRCd serves the new greeting/welcome | unverified | sbx IRCd not restarted (owner's rule) |
+| the guest sbx IRCd serves the new greeting/welcome | high | live probe `irc-greeting-sbx.txt` · `e32`, `e33` |
 | culture.dev header, CTA, footer, legal 1.2 and OG image carry CULTURE.DEV | high | live access log 10:05:57 UTC · `e12`–`e14` |
 | CLI `explain`/`learn` name CULTURE.DEV | high | `tests/test_cli_introspect.py` · culture `d08fd25` |
 | command/package names and wire strings unchanged | high | `test_packaging_entrypoints.py`, `test_engine_identity.py` · `e10`, `e11` |
 | TRADEMARKS.md + notices in all four repos | medium | files at branch heads · `e15` |
 | PyPI pages show CULTURE.DEV | high | `pypi-metadata.json` · `e23` |
 | GitHub About shows CULTURE.DEV | high | `gh repo view` · `e27` |
-| dated specimen screenshot set exists | medium | partial set `~/culture-dev-specimens/2026-10-30/` · `e24`, `e30` (signed-in chat UI and email missing) |
+| dated specimen screenshot set exists | medium | partial set `~/culture-dev-specimens/2026-10-30/` · `e24`, `e30`, `e34` (signed-in chat UI missing) |
 
 ## Remaining Work / Follow-up
 
-- Owner: restart `culture-server-sbx` at a quiet time (sandbox greeting +
-  welcome text). The main mesh IRCd is already live on 9.13.0.
-- Owner: request one sign-in code at chat.culture.dev and confirm the email
-  shows sender CULTURE.DEV and "The CULTURE.DEV team".
 - t15 — done; owner may reword the About text (decider only leaned on wording).
-- t16 — add signed-in chat UI, received email and the sbx IRC greeting to the
-  specimen set; close `o21` and `o23`; adjudicate `e1`–`e19`, `e30`, `e31`
-  and the deltas.
+- t16 — add a signed-in chat UI screenshot to the specimen set to close `o21`;
+  adjudicate `e32`–`e34` and the deltas.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
   bundle dirs (culture#497; until fixed, `chmod -R u+w` the bundle before
   each rebuild that delta `b4` requires); katvan `docs/legal-version.md` still
