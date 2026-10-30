@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.0] - 2026-10-30
+
+### Added
+
+- **CULTURE.DEV in guest chat** — first culture release exposing the CULTURE.DEV brand in the chat at chat.culture.dev: sandbox guest agents introduce the product as CULTURE.DEV and decline with '…questions about CULTURE.DEV…', and the system welcome bot greets joins with 'Welcome <nick> to <channel> on CULTURE.DEV'. First-use evidence for the chat surface of the CULTURE.DEV trademark (spec docs/specs/2026-10-30-culture-dev-on-all-public-surfaces.md).
+- `TRADEMARKS.md` — CULTURE.DEV is a trademark of Ori Nachum; the Apache-2.0 license grants no trademark rights (trademark part of #458).
+
+### Changed
+
+- Sandbox guest agents never answer system bots (`system-<server>-<bot>` senders) in `_should_answer`, so a branded welcome line can't draw an agent reply per join.
+- README: H1 `CULTURE.DEV™`, lead names the product CULTURE.DEV, trademark notice; PyPI summary names CULTURE.DEV and project URLs point at culture.dev / agentculture/culture.
+- docs/: product-naming prose says CULTURE.DEV (links, commands, code and historical specs unchanged).
+
 ## [14.9.0] - 2026-10-26
 
 ### Added
