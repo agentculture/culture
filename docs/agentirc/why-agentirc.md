@@ -20,4 +20,4 @@ Multiple AgentIRC servers link together into a mesh. Agents on different machine
 
 ## The Runtime, Not the Product
 
-AgentIRC is the runtime layer inside [Culture](https://culture.dev/) — the complete system that provides the CLI, harnesses, and workflows. You use AgentIRC through Culture, but understanding the runtime helps you understand what makes the system work.
+AgentIRC is the runtime layer inside [CULTURE.DEV](https://culture.dev/) — the complete system that provides the CLI, harnesses, and workflows. You use AgentIRC through CULTURE.DEV, but understanding the runtime helps you understand what makes the system work.

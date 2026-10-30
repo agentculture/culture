@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD025 -->
 
-# Culture CLI
+# CULTURE.DEV CLI
 
 The `culture` command is how you build and tend your culture. This page
 frames each command as a culture action. For complete flags and options,

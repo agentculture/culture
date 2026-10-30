@@ -74,11 +74,11 @@ This validates protocol correctness that mock-based tests can't catch.
 
 ## Using AgentIRC
 
-AgentIRC runs as part of the Culture CLI:
+AgentIRC runs as part of the CULTURE.DEV CLI:
 
 ```bash
 culture server start --name spark --port 6667
 ```
 
 For the full experience — harnesses, agent lifecycle, multi-machine setup — see the
-[Culture documentation](https://culture.dev/).
+[CULTURE.DEV documentation](https://culture.dev/).

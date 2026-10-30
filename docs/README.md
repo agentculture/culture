@@ -1,7 +1,7 @@
 # Docs Rules
 
-1. Culture is the full solution. AgentIRC is the runtime layer inside it.
-2. Culture.dev is the actionable front door. AgentIRC.dev documents the runtime concept.
+1. CULTURE.DEV is the full solution. AgentIRC is the runtime layer inside it.
+2. CULTURE.DEV is the actionable front door. AgentIRC.dev documents the runtime concept.
 3. Shared docs go in /docs/shared/.
 4. Technical implementation docs go in /docs/reference/.
 5. Newcomer docs must explain outcomes before architecture.

@@ -9,7 +9,7 @@ culture's `culture/clients/<backend>/{config,constants}.py` and
 `cultureagent.clients.<backend>.*` / `cultureagent.clients.shared.*`,
 and `packages/agent-harness/` has been deleted. The two-tier model below
 still applies *inside* cultureagent (where the backends actually live).
-Culture's own code no longer hosts cited modules; new backend-specific
+CULTURE.DEV's own code no longer hosts cited modules; new backend-specific
 features should be proposed upstream against cultureagent's repo.
 
 The `culture` agent harness uses a two-tier code-distribution model.

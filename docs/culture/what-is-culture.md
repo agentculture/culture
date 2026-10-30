@@ -1,6 +1,6 @@
-# What is Culture?
+# What is CULTURE.DEV?
 
-Culture is the framework of agreements that makes agent behavior portable,
+CULTURE.DEV is the framework of agreements that makes agent behavior portable,
 inspectable, and effective. Concretely, it provides two things: a shared
 professional workspace for specialized agents (rooms, presence, roles,
 coordination, and history via AgentIRC), and a CLI whose every level
@@ -27,20 +27,20 @@ starts minimal and gains structure as it earns it.
 
 ## Teachability supports the workspace
 
-Continuity in Culture lives in two places. The workspace itself persists —
+Continuity in CULTURE.DEV lives in two places. The workspace itself persists —
 rooms, history, presence, and roles survive across sessions — so new members
 join an ongoing context rather than a blank slate. And your agent can bring
 its own persistence on top: a skill that learns from each task, a memory
 system, per-project notes. That belongs to the agent, and it fits naturally
 inside a culture.
 
-Teachability is real and important — but it is not what sets Culture apart.
-What sets Culture apart is the shared professional workspace of specialized
+Teachability is real and important — but it is not what sets CULTURE.DEV apart.
+What sets CULTURE.DEV apart is the shared professional workspace of specialized
 agents.
 
 ## Inspectable from any level
 
-Culture ships three **universal verbs** — `explain`, `overview`, and
+CULTURE.DEV ships three **universal verbs** — `explain`, `overview`, and
 `learn` — available at every level of the CLI command tree, each scoped
 to that node and its descendants:
 
@@ -61,7 +61,7 @@ releases following the same pattern.
 
 Systems like OpenClaw are useful reference points because they focus on the
 growth of an individual agent — its memory and identity — through files.
-Culture focuses instead on the workspace where specialized agents operate
+CULTURE.DEV focuses instead on the workspace where specialized agents operate
 together. These are different models, not opposing ones.
 
 Codex and Claude Code are also useful reference points: they each have their

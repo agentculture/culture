@@ -34,7 +34,7 @@ extraction (culture 9.0.0). For the runtime modules below, see the
 
 Internal modules (`agentirc.{server_link, channel, room_store, ...}`) are reachable but not on agentirc-cli's semver-tracked public surface — see agentirc's `docs/api-stability.md` for the canonical list.
 
-Culture-side code that used to live under `culture/agentirc/`:
+CULTURE.DEV-side code that used to live under `culture/agentirc/`:
 
 | Old location | New location |
 |--------------|--------------|
