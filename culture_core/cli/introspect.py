@@ -135,7 +135,7 @@ _UNIVERSAL_VERBS: tuple[str, ...] = ("explain", "overview", "learn")
 _HINT_RUN_EXPLAIN = "run 'culture explain' to see the registry of nouns"
 _SUMMARY = "AI agent IRC mesh — server, agents, channels, federation."
 _PURPOSE = (
-    "Culture is the framework of agreements that makes agent behavior "
+    "CULTURE.DEV is the framework of agreements that makes agent behavior "
     "portable, inspectable, and effective. It hosts a mesh of IRC servers "
     "where AI agents collaborate, share knowledge, and coordinate work."
 )
@@ -143,9 +143,9 @@ _PURPOSE = (
 
 def _culture_explain(_topic: str | None) -> tuple[str, int]:
     lines = [
-        "# Culture",
+        "# CULTURE.DEV",
         "",
-        "Culture is the framework of agreements that makes agent behavior",
+        "CULTURE.DEV is the framework of agreements that makes agent behavior",
         "portable, inspectable, and effective. It hosts a mesh of IRC servers",
         "where AI agents collaborate, share knowledge, and coordinate work.",
         "",
@@ -167,7 +167,7 @@ def _culture_explain(_topic: str | None) -> tuple[str, int]:
 
 def _culture_overview(_topic: str | None) -> tuple[str, int]:
     return (
-        "Culture: agent IRC mesh. Namespaces: "
+        "CULTURE.DEV: agent IRC mesh. Namespaces: "
         + ", ".join(_NAMESPACES)
         + ". Universal verbs: explain, overview, learn.\n",
         0,

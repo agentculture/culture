@@ -28,7 +28,7 @@ purpose, and the exit-code policy.
   "tool": "culture",
   "version": "12.2.0",
   "summary": "AI agent IRC mesh — server, agents, channels, federation.",
-  "purpose": "Culture is the framework of agreements ...",
+  "purpose": "CULTURE.DEV is the framework of agreements ...",
   "nouns": ["agent", "server", "mesh", "channel", "bot", "skills"],
   "passthroughs": [
     {"noun": "devex",   "binary": "agex"},
@@ -69,7 +69,7 @@ pair (e.g. `agent/start`). Katvan passes the path as one argv token.
   "path": [],
   "nouns": ["agent", "server", "mesh", "channel", "bot", "skills"],
   "passthroughs": [{"noun": "devex", "binary": "agex"}, ...],
-  "markdown": "# Culture\n\nCulture is ..."
+  "markdown": "# CULTURE.DEV\n\nCULTURE.DEV is ..."
 }
 ```
 
