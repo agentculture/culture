@@ -203,6 +203,7 @@ def build_bundle(src_root: str | Path, dest: str | Path) -> list[Path]:
     """
     src, dst = Path(src_root).expanduser(), Path(dest).expanduser()
     if dst.exists():
+        dst.chmod(0o755)  # the previous build left the root 0555 too (#497)
         for p in sorted(dst.rglob("*"), reverse=True):
             p.chmod(0o755)
         shutil.rmtree(dst)

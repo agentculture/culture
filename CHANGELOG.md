@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.4] - 2026-10-30
+
+### Fixed
+
+- `culture sandbox agent --bundle-from` rebuilds over an existing knowledge bundle: `build_bundle` now makes the bundle root writable before removing it, so a rebuild no longer needs a manual `chmod -R u+w` first (#497).
+
 ## [14.10.3] - 2026-10-30
 
 ### Changed

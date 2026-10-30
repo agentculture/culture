@@ -301,6 +301,29 @@ def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
         dest.chmod(0o755)
 
 
+def test_bundle_rebuilds_over_an_existing_read_only_bundle(tmp_path):
+    # culture#497: the first build leaves the bundle root 0555; a rebuild on the
+    # same dest must still replace it instead of failing with PermissionError.
+    src = tmp_path / "repo"
+    (src / "docs" / "sub").mkdir(parents=True)
+    (src / "README.md").write_text("old readme")
+    (src / "docs" / "sub" / "a.md").write_text("doc a")
+    dest = tmp_path / "bundle"
+    build_bundle(src, dest)
+    (src / "README.md").write_text("new readme")
+    (src / "docs" / "sub" / "a.md").unlink()
+    try:
+        copied = build_bundle(src, dest)
+        assert [str(p.relative_to(dest)) for p in copied] == ["README.md"]
+        assert (dest / "README.md").read_text() == "new readme"
+        assert not (dest / "docs").exists()
+        assert dest.stat().st_mode & 0o777 == 0o555
+    finally:
+        for p in sorted(dest.rglob("*"), reverse=True):
+            p.chmod(0o755)
+        dest.chmod(0o755)
+
+
 def test_load_knowledge_ignores_symlinks_outside(tmp_path):
     k = tmp_path / "k"
     k.mkdir()
