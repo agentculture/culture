@@ -400,8 +400,9 @@ def test_bundle_from_cli_rejects_a_symlinked_knowledge_dir(tmp_path):
     target.mkdir()
     dest = tmp_path / "bundle"
     dest.symlink_to(target)
+    args = _bundle_cli_args(tmp_path, dest)
     with pytest.raises(SystemExit, match=r"^error: .*symlink"):
-        sandbox_main(_bundle_cli_args(tmp_path, dest))
+        sandbox_main(args)
 
 
 @pytest.mark.parametrize(
