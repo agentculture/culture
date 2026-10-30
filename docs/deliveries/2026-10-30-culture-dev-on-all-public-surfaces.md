@@ -51,7 +51,7 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t7` | delivered | culture `748dffa` (colleague draft, salvaged + verified by main): "Welcome … on CULTURE.DEV" |
 | `t8` | delivered | culture `779dd19`, `de887b4` (44 files) + `e457e53`, `51b92e9` (doc-audit fixes by main) |
 | `t9` | delivered | culture#495 merged; 14.10.0 on PyPI (summary + Homepage verified live); README leftover fixed in culture#496 |
-| `t10` | partial | agentirc#63 merged; agentirc-cli 9.13.0 on PyPI. Not live yet: the running IRCds were not restarted (auto-mode blocked the restart) |
+| `t10` | delivered | agentirc#63 merged; agentirc-cli 9.13.0 on PyPI; live on the main mesh (the IRCd restarted itself at 10:11 UTC) — probe `e28`. The guest sbx IRCd still runs the old greeting until its next restart |
 | `t11` | partial | culture#496 (pin `>=9.13.0`, 14.10.1; suite green against 9.13.0) — awaits merge (auto-mode blocked agent merge) |
 | `t12` | delivered | katvan `df9c1d2`: header CULTURE.DEV, hero CULTURE.DEV™, "Try CULTURE.DEV live" CTA, footer notice, regenerated OG image + `make-og.py` |
 | `t13` | delivered | katvan `5ea9675`: Terms/Privacy name the Service CULTURE.DEV; legal 1.2, effective 2026-10-30 |
@@ -107,7 +107,7 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t8` (`d3`, approved) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
 | `t5`, `t11`, `t15`, `t16` (`d2`, approved) | run after the PR gate, not before | acceptable |
 | `t1` (`d4`, proposed) | entry hero gains the ™ in 0.16.1 | acceptable |
-| `t10`, `t16` | IRC greeting not live — IRCds not restarted | needs-follow-up |
+| `t16` | sbx IRCd greeting/welcome text not live — not restarted (owner's rule) | needs-follow-up |
 | `t1` | brand line only on the password sign-in step (hero brands the other steps); setpw title test reads template source | acceptable |
 | `t10` | MOTD line uses an ASCII `-` rather than the em dash in the task's example | acceptable |
 
@@ -142,7 +142,8 @@ agentirc `a70e60d`, katvan `b02d847`):
 | a live guest-agent answer says CULTURE.DEV | high | `e21` (after bundle rebuild; `e20` failed before it) |
 | welcome bot greets "… on CULTURE.DEV" | high | `tests/test_welcome_bot.py` · `e8` |
 | agentirc greets as CULTURE.DEV with a MOTD; wire tokens unchanged | high | `tests/test_motd.py` · `e9`, `e5` |
-| the mesh actually serves the new greeting | unverified | agentirc-cli 9.13.0 installed but IRCds not restarted |
+| the main mesh serves the new greeting + MOTD | high | live probe `irc-greeting-spark.txt` · `e28` |
+| the guest sbx IRCd serves the new greeting/welcome | unverified | sbx IRCd not restarted (owner's rule) |
 | culture.dev header, CTA, footer, legal 1.2 and OG image carry CULTURE.DEV | high | live access log 10:05:57 UTC · `e12`–`e14` |
 | CLI `explain`/`learn` name CULTURE.DEV | high | `tests/test_cli_introspect.py` · culture `d08fd25` |
 | command/package names and wire strings unchanged | high | `test_packaging_entrypoints.py`, `test_engine_identity.py` · `e10`, `e11` |
@@ -155,8 +156,8 @@ agentirc `a70e60d`, katvan `b02d847`):
 
 - Owner: merge irc-lens#82 (0.16.1, `d4`) and culture#496 (t11); then
   reinstall irc-lens 0.16.1 on spark and restart `culture-console-spark`.
-- Owner: restart `culture-server-spark` (main mesh greeting/MOTD) now, and
-  `culture-server-sbx` at a quiet time (sandbox greeting + welcome text).
+- Owner: restart `culture-server-sbx` at a quiet time (sandbox greeting +
+  welcome text). The main mesh IRCd is already live on 9.13.0.
 - Owner: request one sign-in code at chat.culture.dev and confirm the email
   shows sender CULTURE.DEV and "The CULTURE.DEV team".
 - t15 — done; owner may reword the About text (decider only leaned on wording).
