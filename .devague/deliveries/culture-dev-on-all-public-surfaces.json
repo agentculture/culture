@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T12:48:04Z",
+  "updated": "2026-10-30T13:45:00Z",
   "deviations": [
     {
       "id": "d1",
@@ -60,9 +60,22 @@
         "c21"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 32
+    },
+    {
+      "id": "d5",
+      "what": "spark-ask (main-mesh Q&A agent, local script ~/.culture/ask-agent/ask_agent.py, outside any repo) names the product CULTURE.DEV: three prompt strings edited (backup ask_agent.py.bak-before-culture-dev), culture-ask-spark restarted 13:36:35 UTC",
+      "task_ref": "t6",
+      "reason": "the owner's signed-in chat screenshot showed spark-ask greeting 'ask me anything about culture'; t6 covered the guest sandbox agents only, and the owner's decision was all product naming. The audit log showed the same text live today (08:29-08:54 UTC), not only old history. Decider: fix_now_deviation 0.635; P(owner-only Real mesh view is a public surface)=0.104, so a consistency fix rather than a trademark requirement",
+      "affects": [
+        "c27"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 39
     }
   ],
   "evidence": [
@@ -81,7 +94,7 @@
         "commit": "c855644"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 4
     },
@@ -100,7 +113,7 @@
         "commit": "c855644"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 5
     },
@@ -119,7 +132,7 @@
         "commit": "c855644"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 6
     },
@@ -138,7 +151,7 @@
         "commit": "c855644"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 7
     },
@@ -157,7 +170,7 @@
         "commit": "a70e60d"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 8
     },
@@ -176,7 +189,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 9
     },
@@ -195,7 +208,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 10
     },
@@ -214,7 +227,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 11
     },
@@ -233,7 +246,7 @@
         "commit": "a70e60d"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 12
     },
@@ -252,7 +265,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 13
     },
@@ -271,7 +284,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 14
     },
@@ -290,7 +303,7 @@
         "commit": "b02d847"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 15
     },
@@ -309,7 +322,7 @@
         "commit": "b02d847"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 16
     },
@@ -328,7 +341,7 @@
         "commit": "b02d847"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 17
     },
@@ -347,7 +360,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 18
     },
@@ -366,7 +379,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 19
     },
@@ -385,7 +398,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 20
     },
@@ -404,7 +417,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 21
     },
@@ -423,7 +436,7 @@
         "commit": "8d58c4c"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 22
     },
@@ -442,7 +455,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 23
     },
@@ -461,7 +474,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 24
     },
@@ -480,7 +493,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 25
     },
@@ -499,7 +512,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 26
     },
@@ -518,7 +531,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 27
     },
@@ -537,7 +550,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": true,
       "seq": 28
     },
@@ -556,7 +569,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 29
     },
@@ -575,7 +588,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 30
     },
@@ -594,7 +607,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 31
     },
@@ -613,9 +626,142 @@
         "commit": "dedc960"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 33
+    },
+    {
+      "id": "e30",
+      "obligation_ref": "o21",
+      "test_ref": "Playwright capture of https://chat.culture.dev/entry at 1280x800 and 390x844 (/home/spark/culture-dev-specimens/2026-10-30/chat-entry-0.16.1-desktop.png, chat-entry-0.16.1-phone.png)",
+      "behavior_text": "live entry page h1 reads 'Ask CULTURE.DEV\u2122.' (small superscript \u2122) on desktop and phone after irc-lens 0.16.1 deploy; no duplicate brand line",
+      "contract_text": "dated screenshot set of every surface shows CULTURE.DEV (t16, post-merge)",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "production page captured 2026-10-30T13:09Z after console restart 13:08:16Z; signed-in chat UI and received email still not captured",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:09:13Z",
+        "commit": "3855a1a"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 34
+    },
+    {
+      "id": "e31",
+      "obligation_ref": "o23",
+      "test_ref": "culture --version + installed metadata (/home/spark/culture-dev-specimens/2026-10-30/culture-version-14.10.1.txt); live greeting probe e28",
+      "behavior_text": "spark runs culture 14.10.1 (agentirc-cli>=9.13.0 pin, t11) with agentirc-cli 9.13.0 and irc-lens 0.16.1; main mesh greets as CULTURE.DEV (e28). Live email sender not yet verified",
+      "contract_text": "every after-state surface shows CULTURE.DEV in production: IRC greeting via pinned agentirc 9.13 (t11)",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "installed versions read from the culture tool venv after deploy 2026-10-30T13:08Z",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:09:13Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 35
+    },
+    {
+      "id": "e32",
+      "obligation_ref": "o9",
+      "test_ref": "live IRC probe of culture-server-sbx :6668 as sbx-cdbprobe, JOIN #probe-cdb (/home/spark/culture-dev-specimens/2026-10-30/irc-greeting-sbx.txt)",
+      "behavior_text": "system-sbx-welcome greets the join with 'Welcome sbx-cdbprobe to #probe-cdb on CULTURE.DEV'",
+      "contract_text": "join greeting contains CULTURE.DEV",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "production sbx IRCd probed 2026-10-30T13:31:09Z after the owner-approved restart at 13:30:46Z on culture 14.10.1",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:31:09Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 36
+    },
+    {
+      "id": "e33",
+      "obligation_ref": "o10",
+      "test_ref": "live IRC probe of culture-server-sbx :6668 as sbx-cdbprobe (/home/spark/culture-dev-specimens/2026-10-30/irc-greeting-sbx.txt)",
+      "behavior_text": "sbx 001 'Welcome to CULTURE.DEV on sbx \u2026', 002 '\u2026 running CULTURE.DEV', MOTD 375/372 '- sbx - CULTURE.DEV' + 'The professional workspace for agents. https://culture.dev', 376",
+      "contract_text": "001/002 name CULTURE.DEV, MOTD 375/372/376 on registration",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "guest sandbox IRCd probed 2026-10-30T13:31:09Z after restart; agentirc-cli 9.13.0",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:31:09Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 37
+    },
+    {
+      "id": "e34",
+      "obligation_ref": "o23",
+      "test_ref": "owner's phone screenshot of the received sign-in email, 15:09 local (13:09 UTC) (/home/spark/culture-dev-specimens/2026-10-30/signin-email-received-redacted.png, code redacted); console log auth=ok via=app-session for the owner at 13:09:38 UTC",
+      "behavior_text": "received email shows sender 'CULTURE.DEV', subject 'Your chat.culture.dev sign-in code', sign-off 'The CULTURE.DEV team'; no \u2122 in sender or subject",
+      "contract_text": "every after-state surface shows CULTURE.DEV in production: live email sender (h4)",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "a real email delivered to the owner's inbox by the live irc-lens 0.16.1 with mail.from 'CULTURE.DEV <no-reply@culture.dev>'; screenshot supplied by the owner 2026-10-30",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:09:00Z",
+        "commit": "3855a1a"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 38
+    },
+    {
+      "id": "e35",
+      "obligation_ref": "o21",
+      "test_ref": "owner's phone screenshots: signed-in chat UI (/home/spark/culture-dev-specimens/2026-10-30/chat-signed-in-phone.png) and new-sign-in alert email (/home/spark/culture-dev-specimens/2026-10-30/signin-alert-email-redacted.png, IP redacted)",
+      "behavior_text": "signed-in chat at 390-class phone width shows header wordmark CULTURE.DEV\u2122, welcome bot 'Welcome spark-orinachum to #general on CULTURE.DEV', notice 'CULTURE.DEV is a trademark of Ori Nachum.'; alert email from 'CULTURE.DEV' signed 'The CULTURE.DEV team'",
+      "contract_text": "dated screenshot set of every surface shows CULTURE.DEV (t16, post-merge)",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "production surfaces captured by the owner 2026-10-30 13:34-13:35 UTC on irc-lens 0.16.1 / culture 14.10.1",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:34:00Z",
+        "commit": "3855a1a"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 40
+    },
+    {
+      "id": "e36",
+      "obligation_ref": "o23",
+      "test_ref": "mesh audit log ~/.culture/audit/spark-2026-10-30.jsonl, spark-ask messages after restart",
+      "behavior_text": "after the d5 prompt fix spark-ask answers 'I can help with questions about CULTURE.DEV, the AgentIRC runtime, the culture CLI\u2026' (13:36:47 UTC); before it, 'ask me anything about culture' (08:29-08:54 UTC and 10:11 UTC)",
+      "contract_text": "every after-state surface shows CULTURE.DEV in production",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live audit log read after restarting culture-ask-spark at 13:36:35 UTC",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:36:47Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "approved",
+      "superseded": false,
+      "seq": 41
     }
   ],
   "deltas": [
