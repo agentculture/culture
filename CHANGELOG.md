@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - Sandbox guest agents never answer system bots (`system-<server>-<bot>` senders) in `_should_answer`, so a branded welcome line can't draw an agent reply per join.
 - README: H1 `CULTURE.DEV™`, lead names the product CULTURE.DEV, trademark notice; PyPI summary names CULTURE.DEV and project URLs point at culture.dev / agentculture/culture.
+- `culture explain` / `overview` / `learn` output (the source the culture.dev site is built from) names the product CULTURE.DEV.
 - docs/: product-naming prose says CULTURE.DEV (links, commands, code and historical specs unchanged).
 
 ## [14.9.0] - 2026-10-26
