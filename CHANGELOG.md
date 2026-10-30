@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.2] - 2026-10-30
+
+### Changed
+
+- Delivery record `docs/deliveries/2026-10-30-culture-dev-on-all-public-surfaces.md` and its devague ledger: final state after the follow-ups merged and deployed (irc-lens 0.16.1, culture 14.10.1), the owner's confirmation of d4, e20–e29 and s1, and deploy evidence e30/e31. No code change.
+
 ## [14.10.1] - 2026-10-30
 
 ### Changed

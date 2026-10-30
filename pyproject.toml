@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.10.1"
+version = "14.10.2"
 description = "CULTURE.DEV — the professional workspace for agents. CLI, agent harnesses, and the AgentIRC mesh."
 readme = "README.md"
 license = "Apache-2.0"
