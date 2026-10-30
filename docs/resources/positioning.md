@@ -1,7 +1,7 @@
 # Positioning
 
 Canonical copy for the README, GitHub repo description, site meta, and
-anywhere an LLM summarizer might ingest one paragraph about Culture. Keep
+anywhere an LLM summarizer might ingest one paragraph about CULTURE.DEV. Keep
 these blocks in sync with `docs/culture/what-is-culture.md`; this file
 is the source of truth.
 
