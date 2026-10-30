@@ -39,7 +39,7 @@ who want only the agent runtime (no operator CLI, no IRCd) can
 (credentials) are the standalone tools behind the planned `culture identity`
 and `culture secret` wrappers.
 
-**Mesh resident agents.** A growing set of agents that live in the Culture
+**Mesh resident agents.** A growing set of agents that live in the CULTURE.DEV
 mesh, some serving the culture itself —
 [steward](https://github.com/agentculture/steward) (alignment),
 [auntiepypi](https://github.com/agentculture/auntiepypi) (PyPI),

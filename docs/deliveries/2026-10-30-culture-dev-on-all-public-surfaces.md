@@ -1,6 +1,6 @@
 # Delivery Summary — CULTURE.DEV on all public surfaces
 
-plan: `culture-dev-on-all-public-surfaces` · run: `partial` · date: `2026-10-30`
+plan: `culture-dev-on-all-public-surfaces` · run: `partial` · date: `2026-10-30` · updated: 2026-10-30 (post-merge, after review of #82/#496)
 baseline: `devague summary skeleton`
 
 ## Intent
@@ -11,11 +11,12 @@ baseline: `devague summary skeleton`
 > CULTURE.DEV trademark filing has clean, consistent use to point to.
 
 The run executed the converged plan across four repos — culture, irc-lens,
-agentirc, katvan — on a `feat/culture-dev-brand` branch in each. This summary
-is written **before the PRs open** (owner instruction; see `d2`): waves 0–1
-(code + release commits) are delivered on the branches; waves 2–3 (deploy,
-pin bump, GitHub About, live screenshots) need the PRs merged and packages
-published, so they are open work here and this file is re-run after them.
+agentirc, katvan — on a `feat/culture-dev-brand` branch in each. A first version of this
+summary was written before the PRs opened (owner instruction; see `d2`). This
+version is the post-merge re-run: the four main PRs are merged, released and
+deployed; the follow-up PRs irc-lens#82 (`d4`) and culture#496 (t11, which
+carries this file) close the plan's code work; what still needs the owner is
+listed under Remaining Work.
 
 ## Planned Work
 
@@ -45,35 +46,58 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t1` | delivered | irc-lens `4191983` (+ `261d863` brand-line CSS by main): titles, "Ask CULTURE.DEV.", CULTURE.DEV™ sign-in line and wordmark, logo alt, og/description meta, trademark notice in chat UI |
 | `t2` | delivered | irc-lens `5e3521f`: wordmark stays visible ≤760px; Playwright phone tests green after t1 merged |
 | `t3` | delivered | irc-lens `c5d1910` (colleague draft, salvaged + verified by main): "The CULTURE.DEV team" sign-offs, documented sender `CULTURE.DEV <no-reply@culture.dev>` |
-| `t4` | partial | irc-lens `c855644`: 0.16.0, PyPI summary, `TRADEMARKS.md`, README notice, first-use CHANGELOG — PR not yet opened (`d2`) |
-| `t5` | blocked | needs t4 merged + released (`d2`) |
+| `t4` | delivered | irc-lens#81 merged; 0.16.0 on PyPI |
+| `t5` | partial | 0.16.0 installed on spark, console restarted 10:05:22 UTC, live `mail.from` set to `CULTURE.DEV <no-reply@culture.dev>`; live pages checked (desktop + 390px). Not done: a real received email; installing 0.16.1 (the entry-hero ™ fix, irc-lens#82, `d4`) after it merges |
 | `t6` | delivered | culture `fd05235`, `e917576`, `7536e23` (main: prompt wording): prompt/decline name CULTURE.DEV; `_should_answer` skips `system-*` senders |
 | `t7` | delivered | culture `748dffa` (colleague draft, salvaged + verified by main): "Welcome … on CULTURE.DEV" |
 | `t8` | delivered | culture `779dd19`, `de887b4` (44 files) + `e457e53`, `51b92e9` (doc-audit fixes by main) |
-| `t9` | partial | culture `7495b7c`, `8d58c4c`: 14.10.0, PyPI description + URLs, README H1 CULTURE.DEV™ + notice, `TRADEMARKS.md` — PR not yet opened (`d2`) |
-| `t10` | partial | agentirc `cdca14e`, `a9c6192`, `a70e60d`: welcome/yourhost + MOTD, docs, `TRADEMARKS.md`, 9.13.0 — PR, merge and PyPI release pending (`d2`) |
-| `t11` | blocked | needs agentirc-cli 9.13.0 on PyPI (`d2`) |
+| `t9` | delivered | culture#495 merged; 14.10.0 on PyPI (summary + Homepage verified live); README leftover fixed in culture#496 |
+| `t10` | delivered | agentirc#63 merged; agentirc-cli 9.13.0 on PyPI; live on the main mesh (the IRCd restarted itself at 10:11 UTC) — probe `e28`. The guest sbx IRCd still runs the old greeting until its next restart |
+| `t11` | delivered | this PR, culture#496: pin `>=9.13.0`, 14.10.1; suite green against 9.13.0 |
 | `t12` | delivered | katvan `df9c1d2`: header CULTURE.DEV, hero CULTURE.DEV™, "Try CULTURE.DEV live" CTA, footer notice, regenerated OG image + `make-og.py` |
 | `t13` | delivered | katvan `5ea9675`: Terms/Privacy name the Service CULTURE.DEV; legal 1.2, effective 2026-10-30 |
-| `t14` | partial | katvan `b02d847`: 0.12.0, `TRADEMARKS.md`, first-use CHANGELOG — PR + deploy pending (`d2`) |
-| `t15` | blocked | outward-facing, after PRs merge (`d2`) |
-| `t16` | blocked | production screenshots after deploy (`d2`) |
+| `t14` | delivered | katvan#72 merged; culture.dev live with header, ™ hero, chat link, footer notice and Terms 1.2 by 10:05:57 UTC |
+| `t15` | delivered | About descriptions set for culture and irc-lens (wording via `/assess`, leans 0.503 / 0.567; revert with `gh repo edit --description`) · `e27` |
+| `t16` | partial | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. plus the main-mesh IRC greeting (`e28`) and GitHub About (`e27`). Missing: signed-in chat UI, received email, sbx IRC greeting |
 
 ## Mid-work Decisions
 
-All three deviation records are **proposed** (`--origin llm`), pending the
-owner's confirmation at the PR gate; each was weighed with the mesh decider
-(`/assess`) under the owner's standing instruction for this run.
+`d1`–`d3` were **approved by the owner** at the merge decision (2026-10-30).
+`d4` is proposed. Each was weighed with the mesh decider (`/assess`).
 
-- `d1` (proposed) — add a katvan task (t12b): rewrite product-naming body copy
+- `d1` (approved) — add a katvan task (t12b): rewrite product-naming body copy
   across the culture.dev site to CULTURE.DEV — after t12/t13 the site body
   still said "Culture"; c27 requires every surface (decider: add now 0.956).
-- `d2` (proposed) — split delivery around the PR gate: validate + summarize
+- `d2` (approved) — split delivery around the PR gate: validate + summarize
   before the PRs; t5/t11/t15/t16 after merge — those tasks need merged PRs and
   published packages (decider: 0.986).
-- `d3` (proposed) — add a culture task: `culture explain/overview/learn`
+- `d3` (approved) — add a culture task: `culture explain/overview/learn`
   output names CULTURE.DEV — found during validation; katvan builds culture.dev
   from that output (c16) (decider: add now 0.971).
+- `d4` (proposed) — irc-lens 0.16.1: entry hero becomes 'Ask CULTURE.DEV™.' —
+  the live check showed the sign-in page's first screen without the ™ that
+  decision c19 requires (decider: patch now 0.962). After code review the ™
+  is a small superscript, and the password step's separate "CULTURE.DEV™"
+  line is removed so the page shows the mark once. Ledger note: the first
+  `d4` record (culture `5b10076`) was lost when a stale ledger copy
+  overwrote the file in `0bc704a` (same failure as the `e20` id collision);
+  it was re-filed as `d4` with the same content plus the review outcome.
+- Live check found the guest agents still said "The product is called
+  culture." (evidence `e20`, **fail**): the knowledge bundle was a read-only
+  snapshot from 2026-10-10. Rebuilt with `culture sandbox agent --bundle-from`
+  (after restoring write permission — the rebuild hits its own 0555 dirs, a
+  small bug) and restarted; the agent then answered "This chat is powered by
+  CULTURE.DEV…" (`e21`, pass). Delta `b4`.
+- Decider on IRCd restarts: restart the main mesh IRCd now (0.973), leave the
+  sandbox IRCd to the owner (0.984, matches the recorded never-restart rule).
+  The agent's restart of the main IRCd was blocked by Claude Code's auto-mode
+  classifier, but the main IRCd had already restarted itself at 10:11 UTC
+  after the upgrade and serves the new greeting (`e28`) — no owner restart is
+  needed there. Merging the follow-up PRs was also blocked for the agent; the
+  merges and the sbx IRCd restart are the owner's.
+- Supersession `s1` (`e25` → `e26`, a corrected console-restart timestamp)
+  was filed by the agent; the CLI recorded it as user-origin by default. It
+  was not an owner decision — the owner may confirm or reject it.
 - Colleague drafted t3 and t7; both self-checks failed on environment imports,
   so main salvaged the files from the colleague branches and ran the tests
   (rated 4/5 each).
@@ -91,11 +115,12 @@ owner's confirmation at the PR gate; each was weighed with the mesh decider
 
 | Plan item | Reason for divergence | Classification |
 |-----------|-----------------------|----------------|
-| `t12` (`d1`, proposed) | site body copy also rewritten (t12b, katvan `92f730f`) | acceptable |
-| `t8` (`d3`, proposed) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
-| `t5`, `t11`, `t15`, `t16` (`d2`, proposed) | run after the PR gate, not before | acceptable |
-| `t4`, `t9`, `t10`, `t14` | "PR merged / released / deployed" halves of their criteria not done before the PR gate (`d2`) | needs-follow-up |
-| `t1` | brand line only on the password sign-in step (hero brands the other steps); setpw title test reads template source | acceptable |
+| `t12` (`d1`, approved) | site body copy also rewritten (t12b, katvan `92f730f`) | acceptable |
+| `t8` (`d3`, approved) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
+| `t5`, `t11`, `t15`, `t16` (`d2`, approved) | run after the PR gate, not before | acceptable |
+| `t1` (`d4`, proposed) | entry hero gains the ™ in 0.16.1 | acceptable |
+| `t16` | sbx IRCd greeting/welcome text not live — not restarted (owner's rule) | needs-follow-up |
+| `t1` | the ™ moved from a password-step brand line to the hero (0.16.1, `d4`); setpw title test reads template source | acceptable |
 | `t10` | MOTD line uses an ASCII `-` rather than the em dash in the task's example | acceptable |
 
 ## Evidence
@@ -114,7 +139,9 @@ agentirc `a70e60d`, katvan `b02d847`):
   for those deviations to be approved
 - reviews: doc-test-alignment (2 gaps, fixed in `e457e53`); agentirc code
   review (no blockers; fixes in `a70e60d`)
-- PRs: not opened yet at the time of writing
+- PRs merged: agentirc#63, irc-lens#81, katvan#72, culture#495; follow-ups: irc-lens#82 (0.16.1, `d4`), culture#496 (t11, this PR)
+- irc-lens#82 after review fixes (`dedc960`): `uv run --all-extras pytest -q` — 1331 passed; Playwright — 10 passed · evidence `e29` (proposed)
+- live: evidence `e20`–`e28` (`e20` fail, `e24` partial-fail, `e25` superseded by `e26`; `e27` GitHub About, `e28` main-mesh greeting)
 
 ## Delivery Claims
 
@@ -123,35 +150,35 @@ agentirc `a70e60d`, katvan `b02d847`):
 | chat.culture.dev pages (entry, sign-in, chat, delete, setpw, residents) name CULTURE.DEV in code | high | irc-lens `4191983` · `e1`, `e2` |
 | the chat header shows CULTURE.DEV at phone width | high | Playwright `test_phone_header_*` · `e3` |
 | emails sign off "The CULTURE.DEV team" | high | `tests/test_mail_signin.py` · `e4` |
-| live emails show sender CULTURE.DEV | unverified | live config change is t5 — not done |
+| live emails show sender CULTURE.DEV | low | live `mail.from` set (config inspected); no received email checked |
 | guest agents name CULTURE.DEV and ignore system bots | high | `test_sandbox_agent.py` · `e6`, `e7` |
-| a live guest-agent answer says CULTURE.DEV | unverified | needs t16 |
+| a live guest-agent answer says CULTURE.DEV | high | `e21` (after bundle rebuild; `e20` failed before it) |
 | welcome bot greets "… on CULTURE.DEV" | high | `tests/test_welcome_bot.py` · `e8` |
 | agentirc greets as CULTURE.DEV with a MOTD; wire tokens unchanged | high | `tests/test_motd.py` · `e9`, `e5` |
-| the mesh actually serves the new greeting | unverified | needs agentirc release + t11 |
-| culture.dev header, CTA, footer, legal 1.2 and OG image carry CULTURE.DEV | medium | build output inspected (`e12`–`e14`); not deployed |
+| the main mesh serves the new greeting + MOTD | high | live probe `irc-greeting-spark.txt` · `e28` |
+| the guest sbx IRCd serves the new greeting/welcome | unverified | sbx IRCd not restarted (owner's rule) |
+| culture.dev header, CTA, footer, legal 1.2 and OG image carry CULTURE.DEV | high | live access log 10:05:57 UTC · `e12`–`e14` |
 | CLI `explain`/`learn` name CULTURE.DEV | high | `tests/test_cli_introspect.py` · culture `d08fd25` |
 | command/package names and wire strings unchanged | high | `test_packaging_entrypoints.py`, `test_engine_identity.py` · `e10`, `e11` |
 | TRADEMARKS.md + notices in all four repos | medium | files at branch heads · `e15` |
-| PyPI pages and GitHub About show CULTURE.DEV | unverified | needs releases + t15 |
-| dated specimen screenshot set exists | unverified | needs t16 |
+| PyPI pages show CULTURE.DEV | high | `pypi-metadata.json` · `e23` |
+| GitHub About shows CULTURE.DEV | high | `gh repo view` · `e27` |
+| dated specimen screenshot set exists | medium | partial set `~/culture-dev-specimens/2026-10-30/` · `e24` |
 
 ## Remaining Work / Follow-up
 
-- Owner: confirm or reject `d1`, `d2`, `d3` and the proposed evidence/obligations
-  at the PR gate; then file the `d1`/`d3` deltas.
-- `t4`/`t9`/`t10`/`t14` — open the four PRs, merge, publish irc-lens 0.16.0,
-  agentirc-cli 9.13.0, culture 14.10.0; deploy katvan (records the culture.dev
-  first-use date).
-- `t5` — install irc-lens 0.16.0 on spark, restart the console, set live
-  `guest_mode.mail.from` to `CULTURE.DEV <no-reply@culture.dev>`, receive a
-  real email, browser click-through (desktop + 390px); record the chat
-  first-use date.
-- `t11` — raise culture's `agentirc-cli` floor to 9.13.0 (separate PR).
-- `t15` — `gh repo edit` About text for culture and irc-lens (wording shown to
-  the owner first).
-- `t16` — restart sandbox agents, dated screenshots of every surface; close
-  `o21`–`o23`; re-run validate-delivery and this summary.
-- Follow-ups noticed: katvan `docs/legal-version.md` still shows the 1.1 example
-  and Jekyll paths; sibling repos not examined in the challenge pass
-  (culture-chat, culture-guide, league-of-agents, social profiles) — parked v2.
+- Owner: merge irc-lens#82 (0.16.1, `d4`); then reinstall irc-lens 0.16.1 on
+  spark and restart `culture-console-spark`.
+- Owner: restart `culture-server-sbx` at a quiet time (sandbox greeting +
+  welcome text). The main mesh IRCd is already live on 9.13.0.
+- Owner: request one sign-in code at chat.culture.dev and confirm the email
+  shows sender CULTURE.DEV and "The CULTURE.DEV team".
+- t15 — done; owner may reword the About text (decider only leaned on wording).
+- t16 — add signed-in chat UI, received email and the sbx IRC greeting to the
+  specimen set; close `o21`–`o23`; adjudicate proposed evidence/deltas/`d4`
+  and supersession `s1`.
+- Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
+  bundle dirs (culture#497; until fixed, `chmod -R u+w` the bundle before
+  each rebuild that delta `b4` requires); katvan `docs/legal-version.md` still shows the 1.1 example;
+  sibling repos not examined (culture-chat, culture-guide, league-of-agents,
+  social profiles) — parked v2.

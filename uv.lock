@@ -32,7 +32,7 @@ mcp = [
 
 [[package]]
 name = "agentirc-cli"
-version = "9.12.0"
+version = "9.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -43,9 +43,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/49/e37176340115e3faffb6ad6686621933e4d483c05fe9cd773c1d28f562c5/agentirc_cli-9.12.0.tar.gz", hash = "sha256:8cb3d5e612dec68832cd7a9134bc7e4d0f95d6d21e59562814a07681148ae90f", size = 603040, upload-time = "2026-07-07T06:14:07.594Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/1b/58c16fe622437722f6a52b4ee416e1cbf759610954b5e9fdd3b31a517406/agentirc_cli-9.13.0.tar.gz", hash = "sha256:7bd1fa21be5782c494f667f4011cf12611280ca383641ea87c933eace85f8f5d", size = 605810, upload-time = "2026-10-30T10:03:41.87Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/da/c38c40f9e9d19458cf3af8e35d2e017b448a10fcbeae8f9a6f47bfa5816b/agentirc_cli-9.12.0-py3-none-any.whl", hash = "sha256:2edab20b9be738cb02786ed8824d7acee7c79eefc8967fa5cdf10e8641d4b919", size = 181860, upload-time = "2026-07-07T06:14:06.039Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/57/0837c6007c83fbf6725b116d7553100e095b130c4f08a5d134eaa26cfbd5/agentirc_cli-9.13.0-py3-none-any.whl", hash = "sha256:0de28f0f9356076fadaa975c89f19788a63522c5bd0569a07b8545cc3003b88f", size = 182210, upload-time = "2026-10-30T10:03:40.669Z" },
 ]
 
 [[package]]
@@ -653,7 +653,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.10.0"
+version = "14.10.1"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },
@@ -715,7 +715,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agentfront", specifier = ">=0.20,<0.21" },
-    { name = "agentirc-cli", specifier = ">=9.12.0,<10" },
+    { name = "agentirc-cli", specifier = ">=9.13.0,<10" },
     { name = "agex-cli", specifier = ">=0.13,<0.14" },
     { name = "agtag", specifier = ">=0.1,<1.0" },
     { name = "aiohttp", specifier = ">=3.9" },
