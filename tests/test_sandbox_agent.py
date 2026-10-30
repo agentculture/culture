@@ -7,6 +7,7 @@ local HTTP server that records requests and returns canned completions.
 import asyncio
 import http.server
 import json
+import os
 import threading
 
 import pytest
@@ -17,11 +18,15 @@ from culture_core.sandbox.agent import (
     ModelSpec,
     SandboxAgent,
     SandboxConfig,
+    _unlock_parent_and_retry,
     build_bundle,
     build_request,
     fit_prompt,
     knowledge_budget,
     load_knowledge,
+)
+from culture_core.sandbox.agent import main as sandbox_main
+from culture_core.sandbox.agent import (
     resolve_key,
     system_prompt,
 )
@@ -276,6 +281,14 @@ async def test_model_side_nsfw_sentinel_flags(server, make_client, tmp_path):
 # ---- knowledge bundle (criterion 3) ---------------------------------------
 
 
+def _make_writable(dest):
+    """Let pytest remove a 0555 bundle; a no-op if the build never created it."""
+    if dest.is_dir() and not dest.is_symlink():
+        for d in [dest, *dest.rglob("*")]:
+            if d.is_dir() and not d.is_symlink():
+                d.chmod(0o755)
+
+
 def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
     src = tmp_path / "repo"
     (src / "docs" / "sub").mkdir(parents=True)
@@ -296,9 +309,109 @@ def test_bundle_is_curated_read_only_and_only_source_read(tmp_path):
         assert "SECRET" not in text
         assert "nope" not in text
     finally:
-        for p in sorted(dest.rglob("*"), reverse=True):
-            p.chmod(0o755)
-        dest.chmod(0o755)
+        _make_writable(dest)
+
+
+def test_bundle_rebuilds_over_an_existing_read_only_bundle(tmp_path):
+    # culture#497: the first build leaves the bundle root 0555; a rebuild on the
+    # same dest must still replace it instead of failing with PermissionError.
+    src = tmp_path / "repo"
+    (src / "docs" / "sub").mkdir(parents=True)
+    (src / "README.md").write_text("old readme")
+    (src / "docs" / "sub" / "a.md").write_text("doc a")
+    dest = tmp_path / "bundle"
+    build_bundle(src, dest)
+    (src / "README.md").write_text("new readme")
+    (src / "docs" / "sub" / "a.md").unlink()
+    try:
+        copied = build_bundle(src, dest)
+        assert [str(p.relative_to(dest)) for p in copied] == ["README.md"]
+        assert (dest / "README.md").read_text() == "new readme"
+        assert not (dest / "docs").exists()
+        assert dest.stat().st_mode & 0o777 == 0o555
+    finally:
+        _make_writable(dest)
+
+
+def test_bundle_rebuild_never_chmods_through_a_planted_symlink(tmp_path):
+    # Review of #500: the old cleanup chmodded every entry 0755, following
+    # symlinks, so a link planted in the bundle loosened its target's mode.
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "README.md").write_text("readme")
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    secret = outside / "secret.md"
+    secret.write_text("SECRET")
+    secret.chmod(0o600)
+    dest = tmp_path / "bundle"
+    build_bundle(src, dest)
+    dest.chmod(0o755)
+    (dest / "file-link.md").symlink_to(secret)
+    (dest / "dir-link").symlink_to(outside)
+    dest.chmod(0o555)
+    try:
+        build_bundle(src, dest)
+        assert not (dest / "file-link.md").exists()
+        assert not (dest / "dir-link").exists()
+        assert secret.read_text() == "SECRET"
+        assert secret.stat().st_mode & 0o777 == 0o600
+        assert outside.stat().st_mode & 0o777 == 0o700
+    finally:
+        _make_writable(dest)
+
+
+def test_bundle_refuses_a_symlinked_dest(tmp_path):
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "README.md").write_text("readme")
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "keep.md").write_text("keep")
+    dest = tmp_path / "bundle"
+    dest.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        build_bundle(src, dest)
+    assert (target / "keep.md").read_text() == "keep"
+
+
+def _bundle_cli_args(tmp_path, knowledge_dir):
+    src = tmp_path / "repo"
+    src.mkdir(exist_ok=True)
+    (src / "README.md").write_text("readme")
+    cfg = tmp_path / "sandbox.yaml"
+    cfg.write_text(f"knowledge_dir: {knowledge_dir}\n")
+    return ["--config", str(cfg), "--bundle-from", str(src)]
+
+
+def test_bundle_from_cli_rebuilds_an_existing_bundle(tmp_path, capsys):
+    dest = tmp_path / "bundle"
+    args = _bundle_cli_args(tmp_path, dest)
+    try:
+        sandbox_main(args)
+        sandbox_main(args)  # #497: the second run used to fail on the 0555 root
+        assert capsys.readouterr().out.count(f"bundled 1 files into {dest}") == 2
+    finally:
+        _make_writable(dest)
+
+
+def test_bundle_from_cli_rejects_a_symlinked_knowledge_dir(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    dest = tmp_path / "bundle"
+    dest.symlink_to(target)
+    args = _bundle_cli_args(tmp_path, dest)
+    with pytest.raises(SystemExit, match=r"^error: .*symlink"):
+        sandbox_main(args)
+
+
+@pytest.mark.parametrize(
+    "func, exc",
+    [(os.unlink, FileNotFoundError()), (os.scandir, PermissionError())],
+)
+def test_unlock_handler_reraises_what_it_cannot_fix(tmp_path, func, exc):
+    with pytest.raises(type(exc)):
+        _unlock_parent_and_retry(func, str(tmp_path / "x"), exc)
 
 
 def test_load_knowledge_ignores_symlinks_outside(tmp_path):
