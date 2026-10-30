@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T10:21:43Z",
+  "updated": "2026-10-30T10:23:48Z",
   "deviations": [
     {
       "id": "d1",
@@ -468,6 +468,82 @@
       "status": "proposed",
       "superseded": false,
       "seq": 25
+    },
+    {
+      "id": "e23",
+      "obligation_ref": "o18",
+      "test_ref": "PyPI JSON API culture/14.10.0 (~/culture-dev-specimens/2026-10-30/pypi-metadata.json)",
+      "behavior_text": "summary 'CULTURE.DEV \u2014 the professional workspace for agents\u2026', Homepage https://culture.dev, README contains CULTURE.DEV\u2122",
+      "contract_text": "h8: the PyPI page for culture shows CULTURE.DEV in its summary and README lead, and its Homepage URL is https://culture.dev",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live PyPI metadata fetched after publish (browser screenshot blocked by PyPI bot challenge)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:23:24",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 26
+    },
+    {
+      "id": "e24",
+      "obligation_ref": "o21",
+      "test_ref": "~/culture-dev-specimens/2026-10-30/ (access-log.json): culture.dev home+terms and chat.culture.dev entry at desktop and 390px, guest-agent answer, culture --version, PyPI metadata",
+      "behavior_text": "all captured surfaces show CULTURE.DEV; culture.dev hero CULTURE.DEV\u2122 + footer notice; chat entry title CULTURE.DEV (pre-0.16.1: no \u2122 on entry hero, see d4)",
+      "contract_text": "h19: the screenshot set is captured from live production surfaces after release, each with an access date",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "PARTIAL: missing signed-in chat UI, received email, live IRC greeting (IRCds not restarted), GitHub About",
+      "outcome": "fail",
+      "run": {
+        "timestamp": "2026-10-30T10:23:30",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 27
+    },
+    {
+      "id": "e25",
+      "obligation_ref": "o20",
+      "test_ref": "deploy record: irc-lens 0.16.0 on chat.culture.dev at 2026-10-30T10:03Z (console restart), culture.dev (katvan#72 Cloudflare Pages) live by 2026-10-30T10:05:57Z, PyPI culture 14.10.0 / irc-lens 0.16.0 / agentirc-cli 9.13.0 published 2026-10-30",
+      "behavior_text": "first-use dates for chat and site surfaces recorded",
+      "contract_text": "h24: each repo CHANGELOG names the first release exposing CULTURE.DEV, and the production deploy date is recorded",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "deploy timestamps from systemd restart and the live access log",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:24:00",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": true,
+      "seq": 28
+    },
+    {
+      "id": "e26",
+      "obligation_ref": "o20",
+      "test_ref": "deploy record: irc-lens 0.16.0 live on chat.culture.dev from 2026-10-30T10:05:22Z (culture-console-spark ActiveEnterTimestamp), culture.dev (katvan#72 Cloudflare Pages) live by 2026-10-30T10:05:57Z (access log), PyPI culture 14.10.0 / irc-lens 0.16.0 / agentirc-cli 9.13.0 published 2026-10-30",
+      "behavior_text": "first-use dates for chat and site surfaces recorded",
+      "contract_text": "h24: each repo CHANGELOG names the first release exposing CULTURE.DEV, and the production deploy date is recorded",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "systemd ActiveEnterTimestamp + live access log (corrects e25's 10:03Z)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:25:00",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 29
     }
   ],
   "deltas": [
@@ -527,5 +603,13 @@
       "superseded": false
     }
   ],
-  "supersessions": []
+  "supersessions": [
+    {
+      "id": "s1",
+      "action": "supersede",
+      "target_ref": "e25",
+      "replacement_ref": "e26",
+      "origin": "user"
+    }
+  ]
 }
