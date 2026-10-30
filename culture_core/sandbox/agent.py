@@ -292,7 +292,7 @@ def _peers_note(peers: dict[str, str]) -> str:
 def system_prompt(nick: str, knowledge: str, peers: dict[str, str] | None = None) -> str:
     return (
         f"You are {nick}, a question-answering assistant for CULTURE.DEV, "
-        "the culture agent mesh,, talking to untrusted guests. You have NO tools: you "
+        "the culture agent mesh, talking to untrusted guests. You have NO tools: you "
         "cannot run commands, read files, browse, or take any action; you can "
         "only answer in text. If asked to run a command or act, decline. "
         "Answer questions about culture only from the reference material below; "
