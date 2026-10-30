@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T12:48:04Z",
+  "updated": "2026-10-30T13:09:25Z",
   "deviations": [
     {
       "id": "d1",
@@ -60,7 +60,7 @@
         "c21"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "classification": "acceptable",
       "seq": 32
     }
@@ -442,7 +442,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 23
     },
@@ -461,7 +461,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 24
     },
@@ -480,7 +480,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 25
     },
@@ -499,7 +499,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 26
     },
@@ -518,7 +518,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 27
     },
@@ -537,7 +537,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": true,
       "seq": 28
     },
@@ -556,7 +556,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 29
     },
@@ -575,7 +575,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 30
     },
@@ -594,7 +594,7 @@
         "commit": "ab3dae2"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 31
     },
@@ -613,9 +613,47 @@
         "commit": "dedc960"
       },
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false,
       "seq": 33
+    },
+    {
+      "id": "e30",
+      "obligation_ref": "o21",
+      "test_ref": "Playwright capture of https://chat.culture.dev/entry at 1280x800 and 390x844 (/home/spark/culture-dev-specimens/2026-10-30/chat-entry-0.16.1-desktop.png, chat-entry-0.16.1-phone.png)",
+      "behavior_text": "live entry page h1 reads 'Ask CULTURE.DEV\u2122.' (small superscript \u2122) on desktop and phone after irc-lens 0.16.1 deploy; no duplicate brand line",
+      "contract_text": "dated screenshot set of every surface shows CULTURE.DEV (t16, post-merge)",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "production page captured 2026-10-30T13:09Z after console restart 13:08:16Z; signed-in chat UI and received email still not captured",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:09:13Z",
+        "commit": "3855a1a"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 34
+    },
+    {
+      "id": "e31",
+      "obligation_ref": "o23",
+      "test_ref": "culture --version + installed metadata (/home/spark/culture-dev-specimens/2026-10-30/culture-version-14.10.1.txt); live greeting probe e28",
+      "behavior_text": "spark runs culture 14.10.1 (agentirc-cli>=9.13.0 pin, t11) with agentirc-cli 9.13.0 and irc-lens 0.16.1; main mesh greets as CULTURE.DEV (e28). Live email sender not yet verified",
+      "contract_text": "every after-state surface shows CULTURE.DEV in production: IRC greeting via pinned agentirc 9.13 (t11)",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "installed versions read from the culture tool venv after deploy 2026-10-30T13:08Z",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:09:13Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 35
     }
   ],
   "deltas": [
