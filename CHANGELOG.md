@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.5] - 2026-10-30
+
+### Changed
+
+- `version-bump` skill re-cited from guildmaster 0.26.23 (guildmaster#149): `bump.py` never hangs on an open stdin. If stdin goes silent for `BUMP_STDIN_IDLE_SECONDS` (default 5) before it closes, the bump stops with an error and changes nothing; `--no-stdin` / `BUMP_NO_STDIN=1` skip stdin. A leading `## [Unreleased]` stays on top, and `## [` headings in code fences are ignored. `docs/skill-sources.md` now records the `culture/__init__.py` identifier divergence in `SKILL.md`.
+
 ## [14.10.4] - 2026-10-30
 
 ### Fixed
