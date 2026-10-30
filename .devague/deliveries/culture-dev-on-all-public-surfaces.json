@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T13:45:00Z",
+  "updated": "2026-10-30T13:57:22Z",
   "deviations": [
     {
       "id": "d1",
@@ -776,7 +776,7 @@
         "e9"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false
     },
     {
@@ -791,7 +791,7 @@
         "e13"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false
     },
     {
@@ -805,7 +805,7 @@
         "e16"
       ],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false
     },
     {
@@ -817,7 +817,7 @@
       ],
       "evidence_refs": [],
       "origin": "llm",
-      "status": "proposed",
+      "status": "approved",
       "superseded": false
     }
   ],
