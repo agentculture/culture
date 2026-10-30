@@ -39,7 +39,7 @@ async def test_welcome_bot_greets_on_join(server, make_client):
     )
 
     lines = await watcher.recv_all(timeout=1.0)
-    greeting = "Welcome testserv-newbie to #lobby"
+    greeting = "Welcome testserv-newbie to #lobby on CULTURE.DEV"
     assert any(
         greeting in line for line in lines
     ), f"Expected greeting {greeting!r} not found in lines: {lines}"
@@ -83,7 +83,7 @@ async def test_welcome_bot_skips_peek_nicks(server, make_client, peek_nick):
     )
 
     lines = await watcher.recv_all(timeout=0.5)
-    greeting = f"Welcome {peek_nick} to #lobby"
+    greeting = f"Welcome {peek_nick} to #lobby on CULTURE.DEV"
     assert not any(greeting in line for line in lines), (
         f"Welcome bot greeted peek nick {peek_nick!r} — should have been "
         f"filtered out. Lines: {lines}"

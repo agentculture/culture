@@ -13,4 +13,4 @@ trigger:
   filter: "type == 'user.join' and not ('_peek' in nick)"
 
 output:
-  template: "Welcome {event.nick} to {event.channel}"
+  template: "Welcome {event.nick} to {event.channel} on CULTURE.DEV"
