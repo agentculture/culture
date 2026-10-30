@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T10:26:20Z",
+  "updated": "2026-10-30T10:28:24Z",
   "deviations": [
     {
       "id": "d1",
@@ -563,6 +563,25 @@
       "status": "proposed",
       "superseded": false,
       "seq": 30
+    },
+    {
+      "id": "e28",
+      "obligation_ref": "o10",
+      "test_ref": "live IRC probe of culture-server-spark :6667 as spark-cdbprobe (~/culture-dev-specimens/2026-10-30/irc-greeting-spark.txt)",
+      "behavior_text": "001 'Welcome to CULTURE.DEV on spark \u2026', 002 'running CULTURE.DEV', 375/372/376 MOTD with CULTURE.DEV, 004 token 'culture' unchanged",
+      "contract_text": "h7: an IRC client connecting to the mesh sees CULTURE.DEV in RPL_WELCOME/RPL_YOURHOST (and MOTD); RPL_MYINFO token and wire tags unchanged",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live probe 2026-10-30T10:27:55Z; the main IRCd restarted itself at 10:11:17Z after the 14.10.0/9.13.0 upgrade",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:27:55",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 31
     }
   ],
   "deltas": [
