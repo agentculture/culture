@@ -18,7 +18,8 @@ deployed, and so are the follow-ups irc-lens#82 (`d4`, 0.16.1) and culture#496
 (t11, 14.10.1). All plan code is shipped and live, the guest sandbox IRCd was
 restarted, a real sign-in email was received, and the signed-in chat UI was
 captured. Every plan task is delivered and every deviation and evidence record is
-adjudicated by the owner; only follow-ups outside the plan remain.
+adjudicated by the owner. Still open: the owner's decision on the four
+behavioral deltas `b1`–`b4`, and follow-ups outside the plan.
 
 ## Planned Work
 
@@ -145,9 +146,12 @@ agentirc `a70e60d`, katvan `b02d847`):
 - agentirc: `uv run pytest -n auto` — 843 passed
 - katvan: `uv run pytest` — 199 passed; `npm run build` — 26 pages
 - devague evidence `e1`–`e19` (all `pass`; approved by the owner post-merge) against obligations
-  `o2`–`o20`; open obligations `o21` (c28), `o22` (c32), `o23` (c1)
-- behavioral delta `b1` (agentirc MOTD added); deltas for `d1` and `d3` wait
-  for those deviations to be approved
+  `o2`–`o20`; the post-merge obligations are covered by live evidence: `o21`
+  (c28) by `e30` and `e35`, `o22` (c32) by `e27`, `o23` (c1) by `e31`, `e34`
+  and `e36`
+- behavioral deltas, all **proposed** (awaiting the owner): `b1` agentirc MOTD
+  added, `b2` culture.dev body copy (`d1`), `b3` CLI introspection text (`d3`),
+  `b4` deploys rebuild the sandbox knowledge bundle
 - reviews: doc-test-alignment (2 gaps, fixed in `e457e53`); agentirc code
   review (no blockers; fixes in `a70e60d`)
 - PRs merged: agentirc#63, irc-lens#81, katvan#72, culture#495; follow-ups: irc-lens#82 (0.16.1, `d4`), culture#496 (t11, this PR)
@@ -189,13 +193,16 @@ agentirc `a70e60d`, katvan `b02d847`):
 | TRADEMARKS.md + notices in all four repos | medium | files at branch heads · `e15` |
 | PyPI pages show CULTURE.DEV | high | `pypi-metadata.json` · `e23` |
 | GitHub About shows CULTURE.DEV | high | `gh repo view` · `e27` |
-| dated specimen screenshot set exists | high | partial set `~/culture-dev-specimens/2026-10-30/` · `e24`, `e30`, `e34`, `e35` |
+| dated specimen screenshot set exists | high | every surface captured in `~/culture-dev-specimens/2026-10-30/` (not committed) · `e30`, `e34`, `e35`, plus earlier captures under `e21`–`e23`, `e27`, `e28`, `e32`, `e33`; `e24` was the earlier partial set |
 
 ## Remaining Work / Follow-up
 
 - t15 — done; owner may reword the About text (decider only leaned on wording).
 - Owner approved `d5` and `e32`–`e36` (2026-10-30); every deviation and
   evidence record is now adjudicated.
+- Owner: decide the behavioral deltas `b1`–`b4` (all proposed).
+- Owner: confirm that "e3" in the owner's approval meant `e31`; the agent
+  recorded it as `e31`. If not, reject `e31`.
 - spark-ask's earlier "ask me anything about culture" lines stay in #general's
   history; only new messages carry the fix.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
