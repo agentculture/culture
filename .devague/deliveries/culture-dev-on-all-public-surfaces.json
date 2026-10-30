@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T13:32:01Z",
+  "updated": "2026-10-30T13:37:25Z",
   "deviations": [
     {
       "id": "d1",
@@ -63,6 +63,19 @@
       "status": "approved",
       "classification": "acceptable",
       "seq": 32
+    },
+    {
+      "id": "d5",
+      "what": "spark-ask (main-mesh Q&A agent, local script ~/.culture/ask-agent/ask_agent.py, outside any repo) names the product CULTURE.DEV: three prompt strings edited (backup ask_agent.py.bak-before-culture-dev), culture-ask-spark restarted 13:36:35 UTC",
+      "task_ref": "t6",
+      "reason": "the owner's signed-in chat screenshot showed spark-ask greeting 'ask me anything about culture'; t6 covered the guest sandbox agents only, and the owner's decision was all product naming. The audit log showed the same text live today (08:29-08:54 UTC), not only old history. Decider: fix_now_deviation 0.635; P(owner-only Real mesh view is a public surface)=0.104, so a consistency fix rather than a trademark requirement",
+      "affects": [
+        "c27"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "classification": "acceptable",
+      "seq": 39
     }
   ],
   "evidence": [
@@ -711,6 +724,44 @@
       "status": "proposed",
       "superseded": false,
       "seq": 38
+    },
+    {
+      "id": "e35",
+      "obligation_ref": "o21",
+      "test_ref": "owner's phone screenshots: signed-in chat UI (/home/spark/culture-dev-specimens/2026-10-30/chat-signed-in-phone.png) and new-sign-in alert email (/home/spark/culture-dev-specimens/2026-10-30/signin-alert-email-redacted.png, IP redacted)",
+      "behavior_text": "signed-in chat at 390-class phone width shows header wordmark CULTURE.DEV\u2122, welcome bot 'Welcome spark-orinachum to #general on CULTURE.DEV', notice 'CULTURE.DEV is a trademark of Ori Nachum.'; alert email from 'CULTURE.DEV' signed 'The CULTURE.DEV team'",
+      "contract_text": "dated screenshot set of every surface shows CULTURE.DEV (t16, post-merge)",
+      "evidence_type": "manual",
+      "strength": "execution",
+      "strength_basis": "production surfaces captured by the owner 2026-10-30 13:34-13:35 UTC on irc-lens 0.16.1 / culture 14.10.1",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:34:00Z",
+        "commit": "3855a1a"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 40
+    },
+    {
+      "id": "e36",
+      "obligation_ref": "o23",
+      "test_ref": "mesh audit log ~/.culture/audit/spark-2026-10-30.jsonl, spark-ask messages after restart",
+      "behavior_text": "after the d5 prompt fix spark-ask answers 'I can help with questions about CULTURE.DEV, the AgentIRC runtime, the culture CLI\u2026' (13:36:47 UTC); before it, 'ask me anything about culture' (08:29-08:54 UTC and 10:11 UTC)",
+      "contract_text": "every after-state surface shows CULTURE.DEV in production",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live audit log read after restarting culture-ask-spark at 13:36:35 UTC",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T13:36:47Z",
+        "commit": "756f63c"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 41
     }
   ],
   "deltas": [

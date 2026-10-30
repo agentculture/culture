@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- Delivery record `docs/deliveries/2026-10-30-culture-dev-on-all-public-surfaces.md` and its devague ledger: final state after the follow-ups merged and deployed (irc-lens 0.16.1, culture 14.10.1), the owner's confirmation of d4, e1–e31 and s1, deploy evidence e30/e31, the guest sandbox IRCd greeting (e32/e33) and a received sign-in email (e34). No code change.
+- Delivery record `docs/deliveries/2026-10-30-culture-dev-on-all-public-surfaces.md` and its devague ledger: final state after the follow-ups merged and deployed (irc-lens 0.16.1, culture 14.10.1), the owner's confirmation of d4, e1–e31 and s1, deploy evidence e30/e31, the guest sandbox IRCd greeting (e32/e33) and a received sign-in email (e34), the signed-in chat UI (e35), and deviation d5 with e36: the main-mesh agent spark-ask names CULTURE.DEV. Run marked complete. No code change.
 
 ## [14.10.1] - 2026-10-30
 

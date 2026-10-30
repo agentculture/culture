@@ -1,6 +1,6 @@
 # Delivery Summary — CULTURE.DEV on all public surfaces
 
-plan: `culture-dev-on-all-public-surfaces` · run: `partial` · date: `2026-10-30` · updated: 2026-10-30 13:35 UTC (final: all PRs merged and deployed, sbx IRCd restarted, email received)
+plan: `culture-dev-on-all-public-surfaces` · run: `complete` · date: `2026-10-30` · updated: 2026-10-30 13:40 UTC (final: merged, deployed, sbx IRCd restarted, email + signed-in chat captured)
 baseline: `devague summary skeleton`
 
 ## Intent
@@ -16,9 +16,9 @@ summary was written before the PRs opened (owner instruction; see `d2`). This
 version is the post-merge re-run: the four main PRs are merged, released and
 deployed, and so are the follow-ups irc-lens#82 (`d4`, 0.16.1) and culture#496
 (t11, 14.10.1). All plan code is shipped and live, the guest sandbox IRCd was
-restarted, and a real sign-in email was received. The run stays `partial` only
-because the specimen set lacks a signed-in chat UI screenshot (see Remaining
-Work).
+restarted, a real sign-in email was received, and the signed-in chat UI was
+captured. Every plan task is delivered; the only open items are adjudication
+of the last proposed records and follow-ups outside the plan.
 
 ## Planned Work
 
@@ -60,13 +60,13 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t13` | delivered | katvan `5ea9675`: Terms/Privacy name the Service CULTURE.DEV; legal 1.2, effective 2026-10-30 |
 | `t14` | delivered | katvan#72 merged; culture.dev live with header, ™ hero, chat link, footer notice and Terms 1.2 by 10:05:57 UTC |
 | `t15` | delivered | About descriptions set for culture and irc-lens (wording via `/assess`, leans 0.503 / 0.567; revert with `gh repo edit --description`) · `e27` |
-| `t16` | partial | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. plus the main-mesh IRC greeting (`e28`), GitHub About (`e27`), the 0.16.1 entry page (`e30`) and 14.10.1 versions (`e31`), the sbx greeting + welcome (`e32`, `e33`) and the received email, code redacted (`e34`). Missing: signed-in chat UI |
+| `t16` | delivered | `~/culture-dev-specimens/2026-10-30/` (not committed): culture.dev home/terms + chat entry at desktop and 390px with access log, guest-agent answer, `culture --version`, PyPI metadata. plus the main-mesh IRC greeting (`e28`), GitHub About (`e27`), the 0.16.1 entry page (`e30`) and 14.10.1 versions (`e31`), the sbx greeting + welcome (`e32`, `e33`) the received email, code redacted (`e34`), and the owner's signed-in chat UI and sign-in alert email, IP redacted (`e35`) |
 
 ## Mid-work Decisions
 
 `d1`–`d3` were **approved by the owner** at the merge decision (2026-10-30);
-`d4` was approved by the owner after the merge of irc-lens#82. Each was
-weighed with the mesh decider (`/assess`).
+`d4` was approved by the owner after the merge of irc-lens#82; `d5` is
+proposed. Each was weighed with the mesh decider (`/assess`).
 
 - `d1` (approved) — add a katvan task (t12b): rewrite product-naming body copy
   across the culture.dev site to CULTURE.DEV — after t12/t13 the site body
@@ -85,6 +85,14 @@ weighed with the mesh decider (`/assess`).
   `d4` record (culture `5b10076`) was lost when a stale ledger copy
   overwrote the file in `0bc704a` (same failure as the `e20` id collision);
   it was re-filed as `d4` with the same content plus the review outcome.
+- `d5` (proposed) — the owner's signed-in chat screenshot showed spark-ask,
+  the main-mesh Q&A agent (a local script, `~/.culture/ask-agent/ask_agent.py`,
+  outside any repo and outside t6's scope), greeting "ask me anything about
+  culture". The audit log showed this was live behaviour today, not only old
+  history. Three prompt strings now name CULTURE.DEV (backup kept), the agent
+  was restarted at 13:36:35 UTC, and its next reply names CULTURE.DEV (`e36`).
+  Decider: fix now 0.635; P(the owner-only Real mesh view is a public surface)
+  = 0.104, so this is consistency, not a trademark requirement.
 - Live check found the guest agents still said "The product is called
   culture." (evidence `e20`, **fail**): the knowledge bundle was a read-only
   snapshot from 2026-10-10. Rebuilt with `culture sandbox agent --bundle-from`
@@ -122,7 +130,7 @@ weighed with the mesh decider (`/assess`).
 | `t8` (`d3`, approved) | CLI introspection text renamed too (culture `d08fd25`) | acceptable |
 | `t5`, `t11`, `t15`, `t16` (`d2`, approved) | run after the PR gate, not before | acceptable |
 | `t1` (`d4`, approved) | entry hero gains the ™ in 0.16.1 | acceptable |
-| `t16` | no signed-in chat UI screenshot in the specimen set | needs-follow-up |
+| `t6` (`d5`, proposed) | main-mesh agent spark-ask renamed too (local script, outside any repo) | acceptable |
 | `t1` | the ™ moved from a password-step brand line to the hero (0.16.1, `d4`); setpw title test reads template source | acceptable |
 | `t10` | MOTD line uses an ASCII `-` rather than the em dash in the task's example | acceptable |
 
@@ -152,6 +160,8 @@ agentirc `a70e60d`, katvan `b02d847`):
   agents re-registered within 10 s; probe `e32` (welcome bot) and `e33`
   (001/002 + MOTD), proposed
 - received sign-in email (owner's screenshot, code redacted): `e34`, proposed
+- owner's signed-in chat UI + sign-in alert email: `e35`; spark-ask after the
+  `d5` fix: `e36` (both proposed)
 - merged follow-ups: irc-lens#82 (`3855a1a`), culture#496 (`756f63c`); deploy
   13:08:16 UTC — culture 14.10.1, irc-lens 0.16.1, sandbox bundle rebuilt from
   `756f63c`, console and both sandbox agents restarted
@@ -179,13 +189,14 @@ agentirc `a70e60d`, katvan `b02d847`):
 | TRADEMARKS.md + notices in all four repos | medium | files at branch heads · `e15` |
 | PyPI pages show CULTURE.DEV | high | `pypi-metadata.json` · `e23` |
 | GitHub About shows CULTURE.DEV | high | `gh repo view` · `e27` |
-| dated specimen screenshot set exists | medium | partial set `~/culture-dev-specimens/2026-10-30/` · `e24`, `e30`, `e34` (signed-in chat UI missing) |
+| dated specimen screenshot set exists | high | partial set `~/culture-dev-specimens/2026-10-30/` · `e24`, `e30`, `e34`, `e35` |
 
 ## Remaining Work / Follow-up
 
 - t15 — done; owner may reword the About text (decider only leaned on wording).
-- t16 — add a signed-in chat UI screenshot to the specimen set to close `o21`;
-  adjudicate `e32`–`e34` and the deltas.
+- Owner: adjudicate `d5` and `e32`–`e36` and the deltas.
+- spark-ask's earlier "ask me anything about culture" lines stay in #general's
+  history; only new messages carry the fix.
 - Follow-ups: `culture sandbox agent --bundle-from` fails on its own read-only
   bundle dirs (culture#497; until fixed, `chmod -R u+w` the bundle before
   each rebuild that delta `b4` requires); katvan `docs/legal-version.md` still
