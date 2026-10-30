@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.10.0"
+version = "14.10.1"
 description = "CULTURE.DEV — the professional workspace for agents. CLI, agent harnesses, and the AgentIRC mesh."
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ dependencies = [
     # (CLI client verbs, public reconnecting transport) the mesh's agentic
     # access relies on — see
     # docs/specs/2026-07-03-the-spark-culture-mesh-is-always-on-under-cli-prov.md (c12).
-    "agentirc-cli>=9.12.0,<10",
+    "agentirc-cli>=9.13.0,<10",
     # Bumped 0.12->0.13 for the shared-harness PRESENCE emitter (boundary-
     # driven states, heartbeat, one token-counting source — cultureagent#47);
     # 0.12.0 was the first release shipping clients/colleague (three-minds t1,

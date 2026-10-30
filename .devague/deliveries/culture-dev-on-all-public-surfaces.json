@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T09:59:47Z",
+  "updated": "2026-10-30T10:06:32Z",
   "deviations": [
     {
       "id": "d1",
@@ -48,6 +48,21 @@
       "status": "approved",
       "classification": "acceptable",
       "seq": 3
+    },
+    {
+      "id": "d4",
+      "what": "irc-lens 0.16.1: entry hero becomes 'Ask CULTURE.DEV\u2122.' so the sign-in page's most prominent use carries the \u2122",
+      "task_ref": "t1",
+      "reason": "live check after deploy: the entry page's first screen showed 'Ask CULTURE.DEV.' with the \u2122 only on the later password step; decision c19 requires \u2122 on the sign-in page's most prominent use, c21 fixed the hero copy without it. Decider: hero_tm_patch 0.962",
+      "affects": [
+        "t5",
+        "h2",
+        "c21"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "classification": "acceptable",
+      "seq": 23
     }
   ],
   "evidence": [

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.10.1] - 2026-10-30
+
+### Changed
+
+- Raise the `agentirc-cli` floor to `>=9.13.0`, the release that greets clients as CULTURE.DEV (welcome + MOTD) — plan task t11 of docs/plans/2026-10-30-culture-dev-on-all-public-surfaces.md.
+
 ## [14.10.0] - 2026-10-30
 
 ### Added
