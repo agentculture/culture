@@ -2,7 +2,7 @@
   "plan_slug": "culture-dev-on-all-public-surfaces",
   "schema_version": 2,
   "created": "2026-10-30T08:33:58Z",
-  "updated": "2026-10-30T10:06:32Z",
+  "updated": "2026-10-30T10:21:43Z",
   "deviations": [
     {
       "id": "d1",
@@ -48,21 +48,6 @@
       "status": "approved",
       "classification": "acceptable",
       "seq": 3
-    },
-    {
-      "id": "d4",
-      "what": "irc-lens 0.16.1: entry hero becomes 'Ask CULTURE.DEV\u2122.' so the sign-in page's most prominent use carries the \u2122",
-      "task_ref": "t1",
-      "reason": "live check after deploy: the entry page's first screen showed 'Ask CULTURE.DEV.' with the \u2122 only on the later password step; decision c19 requires \u2122 on the sign-in page's most prominent use, c21 fixed the hero copy without it. Decider: hero_tm_patch 0.962",
-      "affects": [
-        "t5",
-        "h2",
-        "c21"
-      ],
-      "origin": "llm",
-      "status": "proposed",
-      "classification": "acceptable",
-      "seq": 23
     }
   ],
   "evidence": [
@@ -426,6 +411,63 @@
       "status": "proposed",
       "superseded": false,
       "seq": 22
+    },
+    {
+      "id": "e20",
+      "obligation_ref": "o7",
+      "test_ref": "live IRC probe on sbx IRCd 127.0.0.1:6668, room #g-cdbcheck (~/culture-dev-specimens/2026-10-30/guest-agent-answer.txt)",
+      "behavior_text": "sbx-ask (culture 14.10.0) answered 'The product is called culture.'",
+      "contract_text": "h5: asked what this is, a sandbox guest agent names the product CULTURE.DEV",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live answer captured; cause: the knowledge bundle ~/.culture/sandbox/knowledge was a read-only snapshot from 2026-10-10 (98 'Culture', 3 'CULTURE.DEV')",
+      "outcome": "fail",
+      "run": {
+        "timestamp": "2026-10-30T10:14:00",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 23
+    },
+    {
+      "id": "e21",
+      "obligation_ref": "o7",
+      "test_ref": "live IRC probe on sbx IRCd, room #g-cdbcheck3, after 'culture sandbox agent --bundle-from' rebuild + restart",
+      "behavior_text": "sbx-ask answered 'This chat is powered by **CULTURE.DEV** \u2014 a professional workspace for specialized agents\u2026'",
+      "contract_text": "h5: asked what this is, a sandbox guest agent names the product CULTURE.DEV",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "live answer captured after rebuilding the bundle from merged main (141 CULTURE.DEV / 7 Culture) and restarting both sbx agents",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:20:00",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 24
+    },
+    {
+      "id": "e22",
+      "obligation_ref": "o8",
+      "test_ref": "live IRC probe on sbx IRCd: three joins into #g-cdbcheck*",
+      "behavior_text": "system-sbx-welcome posted 'Welcome <nick> to #g-\u2026' for each join and neither sbx-ask nor sbx-bolt replied to it",
+      "contract_text": "h20: a guest joining a sandbox room produces the welcome line and zero agent replies to it",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "observed live; note the sbx IRCd still runs the pre-14.10 welcome template (not restarted)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-10-30T10:20:00",
+        "commit": "ab3dae2"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 25
     }
   ],
   "deltas": [
@@ -468,6 +510,18 @@
       "evidence_refs": [
         "e16"
       ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b4",
+      "kind": "amended",
+      "behavior_text": "deploying the sandbox agents now includes rebuilding the knowledge bundle ('culture sandbox agent --bundle-from <repo>'); the 2026-10-10 snapshot kept guest answers on the old product name",
+      "caused_by": [
+        "c36"
+      ],
+      "evidence_refs": [],
       "origin": "llm",
       "status": "proposed",
       "superseded": false
