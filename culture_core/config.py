@@ -112,8 +112,8 @@ class AgentConfig:
     token_budget: int | None = None
     # Percent of token_budget at which the resource view starts warning.
     token_budget_warn_pct: int = 80
-    # Owner of an external resident (backend: external). None for in-process
-    # agents; a name like "ops-bot" when an external process drives the agent.
+    # Owner of an external resident (backend: external): the process or unit
+    # that owns its lifecycle, e.g. "gwen.service". None for harness agents.
     owner: str | None = None
     extras: dict = field(default_factory=dict)
     # Per-agent attention overrides, merged shallowly over daemon defaults by the

@@ -1,10 +1,12 @@
 """External-resident helpers for culture CLI.
 
 An *external* resident is an agent whose ``backend`` is the free-form string
-``external`` — its turns are driven by a process outside culture (e.g. a
-colleague dispatch rig) rather than one of the in-tree SDK backends. The
-optional ``owner`` field on AgentConfig names that external process; when it
-is unset, the owner message falls back to a generic phrasing.
+``external``: a process outside culture holds its IRC connection and owns its
+lifecycle (e.g. a systemd user unit such as ``gwen.service``), so no harness
+backend runs behind its nick and ``culture agents start``/``stop``/``install``
+leave it alone (culture#506). The optional ``owner`` field on AgentConfig
+names that process or unit; when it is unset, the owner message falls back to
+a generic phrasing.
 """
 
 from __future__ import annotations
