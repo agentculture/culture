@@ -11,11 +11,11 @@ refusals and exit codes are grant's own.
 ## Usage
 
 ```bash
-culture secret set API_TOKEN --purpose "mesh bot token"   # prompts or reads the value
+culture secret set API_TOKEN "<value>" --purpose "mesh bot token"   # value is a positional argument
 culture secret list                 # names only
 culture secret show API_TOKEN       # metadata, never the value
 culture secret get API_TOKEN        # prints the value
-culture secret set VAULT_KEY --hidden
+culture secret generate VAULT_KEY --hidden   # random value, never printed
 culture secret get VAULT_KEY        # refused: hidden secrets are never printed
 culture secret run --help           # inject secrets into a subprocess
 ```
