@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.11.1] - 2026-10-31
+
+### Fixed
+
+- Fresh installs resolve the permissions console again: raise the pins to `agentfront>=0.21.3,<0.22` and `irc-lens>=0.18.1,<1.0`. With the old `agentfront<0.21` cap, `uv tool install culture==14.11.0` backtracked to irc-lens 0.16.1 (no email-keyed permissions) and pulled mcp 2.3.0, which breaks agentfront; agentfront 0.21.3 caps mcp below 2
+
 ## [14.11.0] - 2026-10-31
 
 ### Added

@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.11.0"
+version = "14.11.1"
 description = "CULTURE.DEV — the professional workspace for agents. CLI, agent harnesses, and the AgentIRC mesh."
 readme = "README.md"
 license = "Apache-2.0"
@@ -43,12 +43,14 @@ dependencies = [
     # per this repo's pin philosophy.
     "agex-cli>=0.13,<0.14",
     "agtag>=0.1,<1.0",
-    "agentfront>=0.20,<0.21",
+    # 0.21.3: remote MCP transport irc-lens 0.18 needs, and the mcp<2 cap.
+    "agentfront>=0.21.3,<0.22",
     "steward-cli>=0.16,<1.0",
     # Floor at 0.9.1: image/audio media (upload, capability URLs, mic) landed in
     # 0.8.0, agentfront adoption + fixes in 0.9.1 — the console the mesh serves
     # must have both (same spec, c12). irc-lens >=0.9.1 needs Python >=3.12.
-    "irc-lens>=0.9.1,<1.0",
+    # 0.18.1: email-keyed permissions + personal agents (chat.culture.dev).
+    "irc-lens>=0.18.1,<1.0",
     # OTel capped below 1.42 (the 0.6x track below 0.63b0): the metric-reader
     # injection the telemetry test fixtures rely on (per-test set_meter_provider
     # + InMemoryMetricReader) stops capturing under SDK 1.42, so the integration
