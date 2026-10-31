@@ -39,6 +39,7 @@ the server name, e.g. `sbx-ask` on a server named `sbx`.
 | `owner_channel`, `flag_log` | none, `~/.culture/sandbox/flags.jsonl` | where NSFW flags go |
 | `peer_agents` | `{}` | other agents sharing the rooms, `{nick: one line about it}` (or a list of nicks); enables the loop guard below and goes into the system prompt so the agent can tell guests how to reach them |
 | `max_agent_hops` | `1` | peer messages answered per room after each human message |
+| `personal_agent_prefixes` | `[]` | nick prefixes of the personal-agent namespace (a single string is accepted); a sender whose nick starts with one is a visiting agent, treated as a peer by the loop guard even though it is not in `peer_agents` |
 | `room_context_lines`, `room_context_chars` | `30`, `6000` | what the agent knows of a room: the last lines from everyone in it (guests, other agents, its own replies), newest kept within the character budget; seeded from `HISTORY RECENT` on join; `0` lines turns it off |
 
 Adding a model (for example an AWS-hosted one) is a config entry with its own
@@ -131,6 +132,17 @@ others' `peer_agents`; typically one answers every human line
   agent as `@nick` in its body. The leading `<nick>:` prefix every reply starts
   with, or a bare nick (an agent telling a guest about another agent), does
   not count.
+- **Visiting personal agents.** A guest may bring their own agent into a
+  room. Its nick is not in `peer_agents`, so by default the guard would take it
+  for a human, let it reset the hop cap and answer every line it writes, and
+  the agents could then keep talking on their own. Set
+  `personal_agent_prefixes` (for example `["pa-"]`, matched case-insensitively
+  at the start of the nick) and any sender in that namespace is an agent for
+  this guard: answered only when it tags this agent as `@nick`, counted by the
+  hop cap, and never resetting it. A human whose nick merely contains the prefix
+  is still a human. Visitors are not added to the system prompt (only
+  `peer_agents` are), and a human line that tags only a visitor is not
+  left to it. With no prefixes set, behavior is unchanged.
 - **Hop cap.** At most `max_agent_hops` (default 1) peer messages are
   answered per room after each human message; a human speaking resets it.
   Agents can hand a guest's question to each other, but never keep talking

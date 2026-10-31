@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.11.0] - 2026-10-31
+
+### Added
+
+- Sandbox agent: `personal_agent_prefixes` config (default empty). A sender whose nick starts with one of the prefixes is a visiting personal agent: the loop guard treats it as a peer (answered only when it tags the agent, counted by `max_agent_hops`, never resetting the cap) instead of as a human, even though it is not in `peer_agents`. Documented in `docs/sandbox-agent.md` and `docs/guest-sandbox.md`.
+
 ## [14.10.6] - 2026-10-30
 
 ### Changed

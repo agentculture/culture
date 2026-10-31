@@ -149,6 +149,13 @@ class SandboxConfig:
     # guests how to reach the others.
     peer_agents: dict[str, str] = field(default_factory=dict)
     max_agent_hops: int = 1
+    # Nick prefixes of the personal-agent namespace: guests may bring their
+    # own agent into a room, and a nick starting with one of these (matched
+    # case-insensitively) is an agent for the loop guard above -- a peer
+    # whose line is answered only when it tags this agent, counted by
+    # ``max_agent_hops`` and never resetting it -- even though it is not in
+    # ``peer_agents``. Empty (default): every unlisted nick is a human.
+    personal_agent_prefixes: list[str] = field(default_factory=list)
     # What the agent knows of a room: the last ``room_context_lines`` lines
     # from everyone in it (guests, other agents, its own replies), at most
     # ``room_context_chars``, seeded from HISTORY RECENT when it joins.
@@ -182,6 +189,10 @@ class SandboxConfig:
         if isinstance(peers, (list, tuple)):
             peers = {str(n): "" for n in peers}
         self.peer_agents = {str(k): str(v or "") for k, v in (peers or {}).items()}
+        prefixes = self.personal_agent_prefixes
+        if isinstance(prefixes, str):
+            prefixes = [prefixes]
+        self.personal_agent_prefixes = [str(p) for p in (prefixes or ()) if p]
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -667,7 +678,11 @@ class SandboxAgent:
         return re.search(rf"(^|\W){mark}{re.escape(nick)}\b", text, re.I) is not None
 
     def _peer(self, sender: str) -> bool:
-        return sender.lower() in {p.lower() for p in self.cfg.peer_agents}
+        low = sender.lower()
+        if low in {p.lower() for p in self.cfg.peer_agents}:
+            return True
+        # A visiting personal agent: in the configured namespace, not listed.
+        return any(low.startswith(p.lower()) for p in self.cfg.personal_agent_prefixes)
 
     def _defuse_peer_tags(self, answer: str, question: str) -> str:
         """An agent may @-tag a peer only when the line it answers mentions
