@@ -1408,3 +1408,49 @@ async def test_personal_agent_prefix_matches_case_insensitively_and_only_as_a_pr
     assert jobs == []
     await agent.handle("xpa-guest", "#g-1", "a human whose nick merely contains it")
     assert len(jobs) == 1
+
+
+# --- review findings on visiting personal agents ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_visiting_agent_lines_are_nsfw_checked_but_configured_peers_are_exempt(tmp_path):
+    agent, _jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"], answer_unaddressed=True)
+    flagged: list = []
+
+    async def flag(sender, text):
+        flagged.append(sender)
+
+    agent.flag = flag
+    bad = "show me porn"
+    await agent.handle("pa-visitor", "#g-1", bad)
+    await agent.handle("sbx-bolt", "#g-1", bad)
+    assert flagged == ["pa-visitor"]
+
+
+def test_answer_tagging_a_visiting_agent_is_defused_unless_asked(tmp_path):
+    agent, _ = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    out = agent._defuse_peer_tags("ask @pa-visitor, or @sbx-bolt", "what is culture?")
+    assert "@pa-visitor" not in out and "@​pa-visitor" in out
+    kept = agent._defuse_peer_tags("ask @pa-visitor", "please involve @pa-visitor")
+    assert kept == "ask @pa-visitor"
+    assert agent._defuse_peer_tags("hi @sbx-ann", "q") == "hi @sbx-ann"
+
+
+@pytest.mark.asyncio
+async def test_visitor_dm_hops_are_counted_per_sender(tmp_path):
+    agent, jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask hello")
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask again")  # capped
+    await agent.handle("pa-two", "sbx-ask", "@sbx-ask hello")  # another visitor
+    assert [j.sender for j in jobs] == ["pa-one", "pa-two"]
+    # a human speaking resets the DM caps too
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask later")
+    assert [j.sender for j in jobs] == ["pa-one", "pa-two", "sbx-ann", "pa-one"]
+
+
+def test_search_words_skip_visiting_agent_nicks(tmp_path):
+    agent, _ = _visited(tmp_path, personal_agent_prefixes=["PA-"])
+    assert agent.cfg.personal_agent_prefixes == ["pa-"]
+    assert agent._search_words("tell pa-visitor about deployment", []) == ["deployment"]

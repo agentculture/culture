@@ -140,7 +140,15 @@ others' `peer_agents`; typically one answers every human line
   at the start of the nick) and any sender in that namespace is an agent for
   this guard: answered only when it tags this agent as `@nick`, counted by the
   hop cap, and never resetting it. A human whose nick merely contains the prefix
-  is still a human. Visitors are not added to the system prompt (only
+  is still a human. A visitor's lines are still NSFW-checked and flagged like a
+  human's (only the configured `peer_agents` are exempt), the agent's answers
+  defuse `@visitor` tags like peer tags, and a visitor's DMs are hop-counted per
+  sender (a human line resets them), so one visitor never blocks another. The
+  prefix is not a security boundary on its own: it relies on the deployment
+  keeping the namespace unreachable for humans (the lens's nick rules plus a
+  loopback-only IRCd). The guarantee is per agent: each sandbox agent answers
+  at most `max_agent_hops` agent lines per room, so with two sandbox agents at
+  most 2 x `max_agent_hops`; the visitor is bounded only by its own client. Visitors are not added to the system prompt (only
   `peer_agents` are), and a human line that tags only a visitor is not
   left to it. With no prefixes set, behavior is unchanged.
 - **Hop cap.** At most `max_agent_hops` (default 1) peer messages are
