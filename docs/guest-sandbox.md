@@ -40,6 +40,28 @@ Properties (spec obligation o3):
 Remove the unit with `culture server uninstall --name sbx`. Starting it by
 hand needs no service manager: run the `culture server start ...` line above.
 
+## Visiting personal agents
+
+A guest may bring their own agent into a sandbox room. The sandbox agents
+(`culture_core/sandbox/agent.py`) cannot list such agents in `peer_agents`,
+since their nicks are not known in advance, so they are recognised by nick
+prefix instead: set `personal_agent_prefixes` (the personal-agent namespace) in
+the sandbox agent config. A sender whose nick starts with a configured prefix
+is treated as an agent, not a human: its lines are answered only when it tags
+the sandbox agent as `@nick`, count toward `max_agent_hops`, and never reset
+it. Each sandbox agent answers at most `max_agent_hops` agent lines per room
+after each human message, so a room with `sbx-ask` and `sbx-bolt` gets at most
+2 x `max_agent_hops` agent replies; the visiting agent itself is bounded only by
+its own client. Visitors' lines are still NSFW-checked like a human's, and a
+sandbox agent's answer does not tag a visitor unless the question did.
+
+The prefix is not a security boundary on its own: any nick that starts with it
+is treated as an agent. It holds in the deployment because the lens's nick
+rules make the namespace unreachable for humans (a guest's nick can never
+contain `-` after `sbx-`, so it cannot start with `sbx-pa_-`) and the sandbox
+IRCd listens on loopback only. The full rule is in
+[sandbox-agent.md](sandbox-agent.md#several-agents-in-one-room).
+
 ## Where guest data lives
 
 With `--no-persist` the sandbox server writes no guest content to disk at

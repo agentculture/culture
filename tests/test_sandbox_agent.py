@@ -1305,3 +1305,153 @@ async def test_system_welcome_bot_line_is_ignored_but_humans_answer(tmp_path):
     assert jobs == []
     await agent.handle("sbx-ann", "#g-1", "what is culture?")
     assert len(jobs) == 1
+
+
+# --- visiting personal agents: the personal-agent namespace -------------------
+
+
+def _visited(tmp_path, nick="sbx-ask", peers=None, **kw) -> tuple[SandboxAgent, list]:
+    """A sandbox agent whose room a visiting personal agent (nick in the
+    configured namespace, not in peer_agents) also talks in."""
+    cfg = SandboxConfig(
+        nick=nick,
+        peer_agents=peers if peers is not None else {"sbx-bolt": "a second model"},
+        knowledge_dir=str(tmp_path),
+        **kw,
+    )
+    agent = SandboxAgent(cfg, knowledge="")
+    agent.rooms.add("#g-1")
+    jobs: list = []
+
+    async def admit(job):
+        jobs.append(job)
+
+    agent._admit = admit
+    return agent, jobs
+
+
+def test_personal_agent_prefix_config_forms():
+    assert SandboxConfig().personal_agent_prefixes == []
+    assert SandboxConfig(personal_agent_prefixes="pa-").personal_agent_prefixes == ["pa-"]
+    cfg = SandboxConfig.from_dict({"personal_agent_prefixes": ["pa-", "", "mine-"]})
+    assert cfg.personal_agent_prefixes == ["pa-", "mine-"]
+
+
+@pytest.mark.asyncio
+async def test_visiting_personal_agent_is_a_peer_not_a_human(tmp_path):
+    agent, jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    # Untagged agent lines (and reply prefixes) are not answered, as with any peer.
+    await agent.handle("pa-visitor", "#g-1", "what is culture?")
+    await agent.handle("pa-visitor", "#g-1", "sbx-ask: thanks")
+    assert jobs == []
+    assert "#g-1" not in agent.agent_hops
+    # A deliberate tag is answered once, then the hop cap holds.
+    await agent.handle("pa-visitor", "#g-1", "@sbx-ask what do the docs say?")
+    await agent.handle("pa-visitor", "#g-1", "@sbx-ask and again?")
+    assert [j.question for j in jobs] == ["what do the docs say?"]
+
+
+@pytest.mark.asyncio
+async def test_visiting_agent_does_not_reset_the_hop_cap(tmp_path):
+    """Treated as a human, a visitor's line would reset the cap and let the
+    agents and the visitor keep talking on their own."""
+    agent, jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    await agent.handle("sbx-ann", "#g-1", "@sbx-bolt ask sbx-ask for me")  # left to bolt
+    await agent.handle("sbx-bolt", "#g-1", "@sbx-ask over to you")
+    assert len(jobs) == 1
+    for _ in range(3):
+        await agent.handle("pa-visitor", "#g-1", "@sbx-ask more?")
+    assert len(jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_room_with_two_sandbox_agents_and_a_visitor_stays_within_the_hop_cap(tmp_path):
+    ask, ask_jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    bolt, bolt_jobs = _visited(
+        tmp_path,
+        nick="sbx-bolt",
+        peers={"sbx-ask": "docs"},
+        personal_agent_prefixes=["pa-"],
+        answer_unaddressed=False,
+    )
+    lines = [("sbx-ann", "@sbx-ask hi, and ask pa-visitor too")]
+    # The visitor and the two sandbox agents keep tagging each other.
+    for _ in range(4):
+        lines += [
+            ("pa-visitor", "@sbx-ask @sbx-bolt thoughts?"),
+            ("sbx-bolt", "@sbx-ask your take?"),
+            ("sbx-ask", "@sbx-bolt @pa-visitor and yours?"),
+        ]
+    for sender, text in lines:
+        for agent in (ask, bolt):
+            if sender != agent.cfg.nick:
+                await agent.handle(sender, "#g-1", text)
+    # One human line opened the room: each agent answers at most
+    # max_agent_hops (1) agent lines before a human speaks again.
+    agent_replies = [j for j in ask_jobs + bolt_jobs if j.sender != "sbx-ann"]
+    assert len([j for j in ask_jobs if j.sender != "sbx-ann"]) <= ask.cfg.max_agent_hops
+    assert len([j for j in bolt_jobs if j.sender != "sbx-ann"]) <= bolt.cfg.max_agent_hops
+    assert len(agent_replies) <= 2 * ask.cfg.max_agent_hops
+
+
+@pytest.mark.asyncio
+async def test_without_a_prefix_a_visitor_is_still_treated_as_a_human(tmp_path):
+    agent, jobs = _visited(tmp_path)
+    await agent.handle("pa-visitor", "#g-1", "what is culture?")
+    assert [j.question for j in jobs] == ["what is culture?"]
+
+
+@pytest.mark.asyncio
+async def test_personal_agent_prefix_matches_case_insensitively_and_only_as_a_prefix(tmp_path):
+    agent, jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    await agent.handle("PA-Visitor", "#g-1", "no tag here")
+    assert jobs == []
+    await agent.handle("xpa-guest", "#g-1", "a human whose nick merely contains it")
+    assert len(jobs) == 1
+
+
+# --- review findings on visiting personal agents ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_visiting_agent_lines_are_nsfw_checked_but_configured_peers_are_exempt(tmp_path):
+    agent, _jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"], answer_unaddressed=True)
+    flagged: list = []
+
+    async def flag(sender, text):
+        flagged.append(sender)
+
+    agent.flag = flag
+    bad = "show me porn"
+    await agent.handle("pa-visitor", "#g-1", bad)
+    await agent.handle("sbx-bolt", "#g-1", bad)
+    assert flagged == ["pa-visitor"]
+
+
+def test_answer_tagging_a_visiting_agent_is_defused_unless_asked(tmp_path):
+    agent, _ = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    out = agent._defuse_peer_tags("ask @pa-visitor, or @sbx-bolt", "what is culture?")
+    assert "@pa-visitor" not in out
+    assert "@​pa-visitor" in out
+    kept = agent._defuse_peer_tags("ask @pa-visitor", "please involve @pa-visitor")
+    assert kept == "ask @pa-visitor"
+    assert agent._defuse_peer_tags("hi @sbx-ann", "q") == "hi @sbx-ann"
+
+
+@pytest.mark.asyncio
+async def test_visitor_dm_hops_are_counted_per_sender(tmp_path):
+    agent, jobs = _visited(tmp_path, personal_agent_prefixes=["pa-"])
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask hello")
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask again")  # capped
+    await agent.handle("pa-two", "sbx-ask", "@sbx-ask hello")  # another visitor
+    assert [j.sender for j in jobs] == ["pa-one", "pa-two"]
+    # a human speaking resets the DM caps too
+    await agent.handle("sbx-ann", "#g-1", "what is culture?")
+    await agent.handle("pa-one", "sbx-ask", "@sbx-ask later")
+    assert [j.sender for j in jobs] == ["pa-one", "pa-two", "sbx-ann", "pa-one"]
+
+
+def test_search_words_skip_visiting_agent_nicks(tmp_path):
+    agent, _ = _visited(tmp_path, personal_agent_prefixes=["PA-"])
+    assert agent.cfg.personal_agent_prefixes == ["pa-"]
+    assert agent._search_words("tell pa-visitor about deployment", []) == ["deployment"]

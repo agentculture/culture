@@ -149,6 +149,13 @@ class SandboxConfig:
     # guests how to reach the others.
     peer_agents: dict[str, str] = field(default_factory=dict)
     max_agent_hops: int = 1
+    # Nick prefixes of the personal-agent namespace: guests may bring their
+    # own agent into a room, and a nick starting with one of these (matched
+    # case-insensitively) is an agent for the loop guard above -- a peer
+    # whose line is answered only when it tags this agent, counted by
+    # ``max_agent_hops`` and never resetting it -- even though it is not in
+    # ``peer_agents``. Empty (default): every unlisted nick is a human.
+    personal_agent_prefixes: list[str] = field(default_factory=list)
     # What the agent knows of a room: the last ``room_context_lines`` lines
     # from everyone in it (guests, other agents, its own replies), at most
     # ``room_context_chars``, seeded from HISTORY RECENT when it joins.
@@ -182,6 +189,12 @@ class SandboxConfig:
         if isinstance(peers, (list, tuple)):
             peers = {str(n): "" for n in peers}
         self.peer_agents = {str(k): str(v or "") for k, v in (peers or {}).items()}
+        prefixes = self.personal_agent_prefixes
+        if isinstance(prefixes, str):
+            prefixes = [prefixes]
+        # Lowercased once here, not on every message.
+        self.personal_agent_prefixes = [str(p).lower() for p in (prefixes or ()) if p]
+        self._peer_nicks_lc = frozenset(p.lower() for p in self.peer_agents)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SandboxConfig":
@@ -483,6 +496,7 @@ class SandboxAgent:
         self._sweeper: asyncio.Future | None = None
         # room -> peer messages answered since the last human message
         self.agent_hops: dict[str, int] = collections.defaultdict(int)
+        self.dm_hops: dict[str, int] = collections.defaultdict(int)  # per DM peer
         # room -> recent lines from everyone, oldest first ((nick, text)); only
         # for rooms the agent is in (a plain dict: nothing re-creates a swept
         # room's entry)
@@ -666,8 +680,16 @@ class SandboxAgent:
         mark = "@" if at else "@?"
         return re.search(rf"(^|\W){mark}{re.escape(nick)}\b", text, re.I) is not None
 
+    def _configured_peer(self, sender: str) -> bool:
+        return sender.lower() in self.cfg._peer_nicks_lc
+
+    def _visiting(self, sender: str) -> bool:
+        """A visiting personal agent: in the configured namespace, not listed."""
+        prefixes = tuple(self.cfg.personal_agent_prefixes)
+        return bool(prefixes) and sender.lower().startswith(prefixes)
+
     def _peer(self, sender: str) -> bool:
-        return sender.lower() in {p.lower() for p in self.cfg.peer_agents}
+        return self._configured_peer(sender) or self._visiting(sender)
 
     def _defuse_peer_tags(self, answer: str, question: str) -> str:
         """An agent may @-tag a peer only when the line it answers mentions
@@ -681,6 +703,18 @@ class SandboxAgent:
                 answer = re.sub(
                     rf"(^|\W)@({re.escape(peer)})\b", "\\1@\u200b\\2", answer, flags=re.I
                 )
+        prefixes = self.cfg.personal_agent_prefixes
+        if prefixes:
+            visitor = "|".join(re.escape(p) for p in prefixes)
+
+            def defuse(m: re.Match) -> str:
+                if self._tags(m.group(2), question):
+                    return m.group(0)
+                return f"{m.group(1)}@\u200b{m.group(2)}"
+
+            answer = re.sub(
+                rf"(^|\W)@((?:{visitor})[\w\-\[\]\\`^{{}}|]*)", defuse, answer, flags=re.I
+            )
         return answer
 
     def _should_answer(self, sender: str, target: str, text: str) -> bool:
@@ -689,17 +723,9 @@ class SandboxAgent:
         if sender.startswith(SYSTEM_NICK_PREFIX):
             return False  # system bots (welcome etc.) are not guests
         if self._peer(sender):
-            # The reply prefix ("<nick>: ...", never with "@") is not a
-            # deliberate tag; a leading "@<nick>: ..." is, so it stays.
-            body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
-            if not self._tags(nick, body, at=True):
-                return False
-            if self.agent_hops.get(target, 0) >= self.cfg.max_agent_hops:
-                log.info("agent hop cap reached in %s", target)
-                return False
-            self.agent_hops[target] += 1
-            return True
+            return self._admit_peer(sender, target, text)
         self.agent_hops.pop(target, None)  # a human spoke: reset the cap
+        self.dm_hops.clear()
         if target == nick:
             return True  # a DM
         # An explicit "@nick" decides who answers; a bare nick counts only
@@ -710,6 +736,24 @@ class SandboxAgent:
             if any(self._tags(p, text, at=at) for p in self.cfg.peer_agents):
                 return False  # addressed to another agent only
         return self.cfg.answer_unaddressed
+
+    def _admit_peer(self, sender: str, target: str, text: str) -> bool:
+        """Whether a peer agent's line gets an answer (deliberate tag + hop cap)."""
+        nick = self.cfg.nick
+        # The reply prefix ("<nick>: ...", never with "@") is not a
+        # deliberate tag; a leading "@<nick>: ..." is, so it stays.
+        body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
+        if not self._tags(nick, body, at=True):
+            return False
+        # A room is capped per room; a DM per sender (the DM peer), so one
+        # visitor's cap never blocks another's.
+        hops = self.agent_hops if target != nick else self.dm_hops
+        key = target if target != nick else sender.lower()
+        if hops.get(key, 0) >= self.cfg.max_agent_hops:
+            log.info("agent hop cap reached in %s", key)
+            return False
+        hops[key] += 1
+        return True
 
     def _keeps_context(self, room: str) -> bool:
         return self.cfg.room_context_lines > 0 and (room in self.rooms or room in self.cfg.channels)
@@ -760,7 +804,11 @@ class SandboxAgent:
             # A guest line left to a peer is still checked for NSFW here, by
             # the agent that answers unaddressed lines (the one whose
             # flag_log / owner_channel the owner reads); the peer declines.
-            if self.cfg.answer_unaddressed and not self._peer(sender) and _NSFW_RE.search(text):
+            if (
+                self.cfg.answer_unaddressed
+                and not self._configured_peer(sender)
+                and _NSFW_RE.search(text)
+            ):
                 await self.flag(sender, text)
             return
         if target == nick:
@@ -794,11 +842,10 @@ class SandboxAgent:
         """Up to ``search_keywords`` of the question's words (longest first)
         that the recent window doesn't contain; not nicks or common words."""
         seen = set(_SEARCH_WORD_RE.findall(" ".join(window).lower()))
-        skip = (
-            _SEARCH_STOPWORDS | {self.cfg.nick.lower()} | {p.lower() for p in self.cfg.peer_agents}
-        )
+        skip = _SEARCH_STOPWORDS | {self.cfg.nick.lower()} | self.cfg._peer_nicks_lc
         words = dict.fromkeys(_SEARCH_WORD_RE.findall(question.lower()))
-        words = [w for w in words if w not in seen and w not in skip]
+        visitors = tuple(self.cfg.personal_agent_prefixes)
+        words = [w for w in words if w not in seen and w not in skip and not w.startswith(visitors)]
         return sorted(words, key=len, reverse=True)[: max(0, self.cfg.search_keywords)]
 
     async def _search_history(

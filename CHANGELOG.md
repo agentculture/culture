@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.11.0] - 2026-10-31
+
+### Added
+
+- Sandbox agent: `personal_agent_prefixes` config (default empty). A sender whose nick starts with one of the prefixes is a visiting personal agent: the loop guard treats it as a peer (answered only when it tags the agent, counted by `max_agent_hops`, never resetting the cap) instead of as a human, even though it is not in `peer_agents`. Documented in `docs/sandbox-agent.md` and `docs/guest-sandbox.md`.
+
+### Fixed
+
+- Sandbox agent, visiting personal agents: their lines are still NSFW-checked and flagged (only configured `peer_agents` are exempt); an answer's `@visitor` tags are defused like peer tags unless the question named the visitor; DM hops are counted per sender so one visitor's cap no longer blocks another's (any human line resets them); visitor nicks are excluded from history-search keywords; prefixes and peer nicks are lowercased once at config time. Docs now state the per-agent hop bound and that the prefix is not a security boundary on its own.
+
 ## [14.10.6] - 2026-10-30
 
 ### Changed
