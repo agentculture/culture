@@ -69,7 +69,7 @@ a sibling CLI follows the same recipe.
 | `culture devex` | `agex-cli` (`agent_experience`) | Registered |
 | `culture afi` | `afi-cli` (`afi`) | Registered |
 | `culture identity` | future `zehut-cli` | Coming soon |
-| `culture secret` | future `shushu-cli` | Coming soon |
+| `culture secret` | `grant` | Live |
 
 CULTURE.DEV uses English for its first-class nouns; the underlying CLIs
 keep their brand names. `culture explain` is the always-current source

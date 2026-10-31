@@ -76,11 +76,11 @@ def test_root_explain_mentions_culture_and_namespaces():
         assert (
             f"`culture {ns}`  (coming soon)" not in stdout
         ), f"shipped namespace {ns!r} still rendered as (coming soon)"
-    # `identity` and `secret` are not shipped namespaces and were dropped
-    # from the listing in #330. If/when they ship they should be added
-    # back together with their explain handlers.
+    # `identity` is not a shipped namespace and was dropped from the listing
+    # in #330. `secret` (grant passthrough, #506) is advertised; like `devex`
+    # and `afi` it self-registers on import, so it is not asserted here.
     assert "identity" not in stdout
-    assert "secret" not in stdout
+    assert "`culture secret`" in stdout
 
 
 def test_root_overview_is_nonempty():
@@ -196,7 +196,7 @@ def test_learn_json_emits_required_keys():
     assert payload["explain_pointer"] == "culture explain <path>"
     # Native nouns katvan should recurse into — passthroughs go in a separate key.
     assert set(payload["nouns"]) == {"agents", "server", "mesh", "channel", "bot", "skills"}
-    assert {p["binary"] for p in payload["passthroughs"]} == {"agex", "afi", "irc-lens"}
+    assert {p["binary"] for p in payload["passthroughs"]} == {"agex", "afi", "irc-lens", "grant"}
     assert payload["verbs"] == ["explain", "overview", "learn"]
     assert set(payload["exit_codes"].keys()) >= {"0", "1", "2"}
 
@@ -362,7 +362,7 @@ def test_learn_root_payload_structure():
     assert payload["tool"] == "culture"
     assert payload["json_support"] is True
     assert set(payload["nouns"]) == {"agents", "server", "mesh", "channel", "bot", "skills"}
-    assert {p["binary"] for p in payload["passthroughs"]} == {"agex", "afi", "irc-lens"}
+    assert {p["binary"] for p in payload["passthroughs"]} == {"agex", "afi", "irc-lens", "grant"}
 
 
 def test_explain_payload_branches():

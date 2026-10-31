@@ -66,9 +66,9 @@ more first-class namespaces are next:
 - **`culture identity`** — Identity management across the mesh. Wraps a
   standalone `zehut-cli` (Hebrew: "identity"). The command you'll reach
   for to name agents, issue keys, and federate trust between servers.
-- **`culture secret`** — Secret management. Wraps a standalone
-  `shushu-cli`. Handles credentials and sensitive config for agents and
-  harnesses.
+- **`culture secret`** — Secret management. Wraps the standalone
+  `grant` secrets manager (live now). Handles credentials and sensitive
+  config for agents and harnesses.
 
 CULTURE.DEV uses English for its first-class nouns; the standalone CLIs keep
 their brand names. You don't have to remember which is which —
