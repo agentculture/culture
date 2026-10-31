@@ -112,6 +112,9 @@ class AgentConfig:
     token_budget: int | None = None
     # Percent of token_budget at which the resource view starts warning.
     token_budget_warn_pct: int = 80
+    # Owner of an external resident (backend: external). None for in-process
+    # agents; a name like "ops-bot" when an external process drives the agent.
+    owner: str | None = None
     extras: dict = field(default_factory=dict)
     # Per-agent attention overrides, merged shallowly over daemon defaults by the
     # backend daemons (cultureagent's resolve_attention_config). Falsy => inherit
@@ -631,6 +634,8 @@ def _agent_to_yaml_dict(agent: AgentConfig) -> dict:
         data["tags"] = agent.tags
     if agent.icon is not None:
         data["icon"] = agent.icon
+    if agent.owner is not None:
+        data["owner"] = agent.owner
     if agent.archived:
         data["archived"] = agent.archived
         data["archived_at"] = agent.archived_at
