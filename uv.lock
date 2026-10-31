@@ -717,6 +717,7 @@ dependencies = [
     { name = "agtag" },
     { name = "aiohttp" },
     { name = "cultureagent" },
+    { name = "grant" },
     { name = "irc-lens" },
     { name = "mistune" },
     { name = "opentelemetry-api" },
@@ -782,6 +783,7 @@ requires-dist = [
     { name = "cultureagent", extras = ["backend-copilot"], marker = "extra == 'copilot'", specifier = "~=0.13.0" },
     { name = "github-copilot-sdk", marker = "extra == 'all-backends'", specifier = "==0.2.0" },
     { name = "github-copilot-sdk", marker = "extra == 'copilot'", specifier = "==0.2.0" },
+    { name = "grant", specifier = ">=0.11,<0.12" },
     { name = "irc-lens", specifier = ">=0.18.1,<1.0" },
     { name = "mistune", specifier = ">=3.0" },
     { name = "opentelemetry-api", specifier = ">=1.25,<1.42" },
@@ -1071,6 +1073,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/20/18/a746c8344152d368a5aac738d4c857012f2c5d1fd2eac7e17b647a7861bd/googleapis_common_protos-1.74.0.tar.gz", hash = "sha256:57971e4eeeba6aad1163c1f0fc88543f965bb49129b8bb55b2b7b26ecab084f1", size = 151254, upload-time = "2026-04-02T21:23:26.679Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b6/b0/be5d3329badb9230b765de6eea66b73abd5944bdeb5afb3562ddcd80ae84/googleapis_common_protos-1.74.0-py3-none-any.whl", hash = "sha256:702216f78610bb510e3f12ac3cafd281b7ac45cc5d86e90ad87e4d301a3426b5", size = 300743, upload-time = "2026-04-02T21:22:49.108Z" },
+]
+
+[[package]]
+name = "grant"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/5c/3aac36342a9d0caa8783cb6515b128ce3de789a85655cf8a673149802402/grant-0.11.0.tar.gz", hash = "sha256:a8af8e5f1e4f795d0bdd39b2dfabc4ee508a40604c2a95b24b16591f61aa984e", size = 189838, upload-time = "2026-06-23T17:27:48.903Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/61/40efbaddc8f88bc84d8abef5e51e7ab8c448da940e694c183a85cde39832/grant-0.11.0-py3-none-any.whl", hash = "sha256:a73995bc3979902259ec4c85f16d9d56a0e2ec16624441e551eba37ff7b168fc", size = 35715, upload-time = "2026-06-23T17:27:47.282Z" },
 ]
 
 [[package]]

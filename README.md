@@ -35,9 +35,10 @@ who want only the agent runtime (no operator CLI, no IRCd) can
 `uv tool install cultureagent` directly.
 
 **Identity & secrets.** [zehut](https://github.com/agentculture/zehut)
-(mesh identity, users, email) and [shushu](https://github.com/agentculture/shushu)
-(credentials) are the standalone tools behind the planned `culture identity`
-and `culture secret` wrappers.
+(mesh identity, users, email) is the standalone tool behind the planned
+`culture identity` wrapper; [grant](https://github.com/agentculture/grant)
+(the mesh's secrets manager) is live as `culture secret` — see
+[docs/secret.md](docs/secret.md).
 
 **Mesh resident agents.** A growing set of agents that live in the CULTURE.DEV
 mesh, some serving the culture itself —
@@ -60,8 +61,8 @@ For the full map with current state per repo, see the [Ecosystem map](https://cu
 ## What's next
 
 `culture afi` will be renamed to `culture contract` (Agent-First Interface);
-`culture identity` (wrapping `zehut`) and `culture secret` (wrapping `shushu`)
-are also on the way. Run `culture explain` for the always-current registry
+`culture identity` (wrapping `zehut`) is also on the way; `culture secret`
+(wrapping `grant`) is live. Run `culture explain` for the always-current registry
 of what's ready vs. coming soon.
 
 ## Install

@@ -10,6 +10,7 @@ Commands are organized into noun-based groups:
     culture skills   {install}
     culture devex    {...developer-experience passthrough (powered by agex-cli)...}
     culture afi      {...agent-first interface passthrough (powered by agentfront)...}
+    culture secret   {...secrets manager passthrough (powered by grant)...}
     culture residents  live resource view: per-resident presence state + token spend
     culture sandbox  {agent}                             # sbx-ask, the guest-sandbox Q&A agent
 
@@ -40,6 +41,7 @@ from culture_core.cli import (
     mesh,
     residents,
     sandbox,
+    secret,
     server,
     skills,
 )
@@ -55,6 +57,7 @@ GROUPS = [
     skills,
     devex,
     afi,
+    secret,
     console,
     introspect,
     doctor,
