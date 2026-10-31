@@ -723,20 +723,7 @@ class SandboxAgent:
         if sender.startswith(SYSTEM_NICK_PREFIX):
             return False  # system bots (welcome etc.) are not guests
         if self._peer(sender):
-            # The reply prefix ("<nick>: ...", never with "@") is not a
-            # deliberate tag; a leading "@<nick>: ..." is, so it stays.
-            body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
-            if not self._tags(nick, body, at=True):
-                return False
-            # A room is capped per room; a DM per sender (the DM peer), so one
-            # visitor's cap never blocks another's.
-            hops = self.agent_hops if target != nick else self.dm_hops
-            key = target if target != nick else sender.lower()
-            if hops.get(key, 0) >= self.cfg.max_agent_hops:
-                log.info("agent hop cap reached in %s", key)
-                return False
-            hops[key] += 1
-            return True
+            return self._admit_peer(sender, target, text)
         self.agent_hops.pop(target, None)  # a human spoke: reset the cap
         self.dm_hops.clear()
         if target == nick:
@@ -749,6 +736,24 @@ class SandboxAgent:
             if any(self._tags(p, text, at=at) for p in self.cfg.peer_agents):
                 return False  # addressed to another agent only
         return self.cfg.answer_unaddressed
+
+    def _admit_peer(self, sender: str, target: str, text: str) -> bool:
+        """Whether a peer agent's line gets an answer (deliberate tag + hop cap)."""
+        nick = self.cfg.nick
+        # The reply prefix ("<nick>: ...", never with "@") is not a
+        # deliberate tag; a leading "@<nick>: ..." is, so it stays.
+        body = re.sub(rf"^{re.escape(nick)}[:,]\s*", "", text, flags=re.I)
+        if not self._tags(nick, body, at=True):
+            return False
+        # A room is capped per room; a DM per sender (the DM peer), so one
+        # visitor's cap never blocks another's.
+        hops = self.agent_hops if target != nick else self.dm_hops
+        key = target if target != nick else sender.lower()
+        if hops.get(key, 0) >= self.cfg.max_agent_hops:
+            log.info("agent hop cap reached in %s", key)
+            return False
+        hops[key] += 1
+        return True
 
     def _keeps_context(self, room: str) -> bool:
         return self.cfg.room_context_lines > 0 and (room in self.rooms or room in self.cfg.channels)

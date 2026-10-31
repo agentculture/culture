@@ -1431,7 +1431,8 @@ async def test_visiting_agent_lines_are_nsfw_checked_but_configured_peers_are_ex
 def test_answer_tagging_a_visiting_agent_is_defused_unless_asked(tmp_path):
     agent, _ = _visited(tmp_path, personal_agent_prefixes=["pa-"])
     out = agent._defuse_peer_tags("ask @pa-visitor, or @sbx-bolt", "what is culture?")
-    assert "@pa-visitor" not in out and "@​pa-visitor" in out
+    assert "@pa-visitor" not in out
+    assert "@​pa-visitor" in out
     kept = agent._defuse_peer_tags("ask @pa-visitor", "please involve @pa-visitor")
     assert kept == "ask @pa-visitor"
     assert agent._defuse_peer_tags("hi @sbx-ann", "q") == "hi @sbx-ann"
