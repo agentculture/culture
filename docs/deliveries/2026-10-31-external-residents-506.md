@@ -3,10 +3,11 @@
 plan: `external-residents-506` · run: `partial` · date: `2026-10-31`
 baseline: `devague summary skeleton`
 
-Run status is `partial`. Every task merged and is deployed, and the live
-success signal passed 10/10 on production spark. Some of the plan's rollout
-remains: accounts are active only on the `spark-colleague` canary (`d10`),
-and Gwen waits on embodiment#121.
+Run status is `complete` for culture's side. Every plan task merged, was
+released and is deployed. The live success signal passed 10/10, and all
+four harness agents on spark hold accounts. What remains is outside this
+run: Gwen's side (embodiment#121), the sandbox agents (culture#517,
+`d11`), and the spec re-export for `d7`, which waits on the user.
 
 ## Intent
 
@@ -318,6 +319,16 @@ canary `spark-colleague` 0.81; evidence `e22`):
 - A no-SASL takeover of its nick is refused with "SASL authentication
   required".
 
+**Rollout completed** (`d11`, /assess `activate_sequentially_now` 0.88,
+after the canary ran for about 20 min with no restarts, errors or real-agent
+auth failures; evidence `e23`):
+
+- `spark-agentirc`, `spark-associate` and `spark-culture` were activated one
+  at a time.
+- Each was wrapped, restarted, reconnected and showed in `culture residents`.
+- A no-SASL takeover of each nick is refused.
+- All four harness agents now connect only with SASL.
+
 **External residents registered** (`d10`):
 
 | Nick | Owner | Status |
@@ -345,10 +356,9 @@ server's manifest.
   - Register spark-gwen and culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge as `backend: external` with `owner:`; sbx agents get the guest role.
   - Activate accounts agent by agent with `culture agents account activate`, keeping `account disable` ready as rollback.
   - Verify the success signal live.
-- **Activate the remaining harness agents** one at a time, once the
-  spark-colleague canary has run cleanly: `culture agents account activate
-  spark-agentirc`, then `spark-associate`, then `spark-culture`.
-- **sbx-ask / sbx-bolt:** register them through the sbx server's manifest.
+- **Done:** all four harness agents hold accounts (`e23`).
+- **sbx-ask / sbx-bolt:** out of scope (`d11`). The sandbox server runs
+  `--no-persist` with no manifest; follow-up is culture#517.
 - **thor**, which is bound to `0.0.0.0`: set `accounts.trusted_cidrs` (or bind the tailnet or loopback) before any account there is activated.
 - **embodiment#121:** Gwen's `+A` and PRESENCE now; SASL with `grant run --inject` once agentirc 9.14 is live. Obligation `o13` stays unchecked until then.
 - **Spec amendment.** Re-export the spec with claim c17 (and t14's criterion) amended to the opt-in activation of `d7`, once the user accepts it.

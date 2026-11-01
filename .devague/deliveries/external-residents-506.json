@@ -2,7 +2,7 @@
   "plan_slug": "external-residents-506",
   "schema_version": 2,
   "created": "2026-10-31T23:29:45Z",
-  "updated": "2026-11-01T05:05:20Z",
+  "updated": "2026-11-01T05:13:05Z",
   "deviations": [
     {
       "id": "d1",
@@ -129,6 +129,19 @@
       "status": "approved",
       "classification": "needs-follow-up",
       "seq": 27
+    },
+    {
+      "id": "d11",
+      "what": "sbx-ask and sbx-bolt are out of scope for this run (follow-up culture#517): the sandbox server runs --no-persist with no manifest, so they can't be registered under a manifest any tool reads, and accounts are impossible there. The remaining harness agents (spark-agentirc, spark-associate, spark-culture) were activated after the canary ran cleanly, completing the live account rollout",
+      "task_ref": "t16",
+      "reason": "Inspected on spark: culture-server-sbx has --no-persist and no server.yaml. /assess: out_of_scope_followup 0.88; rollout activate_sequentially_now 0.88 after the canary had about 20 min with no restarts, errors or real-agent auth failures",
+      "affects": [
+        "t6"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 33
     }
   ],
   "evidence": [
@@ -549,6 +562,25 @@
       "status": "proposed",
       "superseded": false,
       "seq": 32
+    },
+    {
+      "id": "e23",
+      "obligation_ref": "o15",
+      "test_ref": "live: sequential activation of spark-agentirc, spark-associate, spark-culture",
+      "behavior_text": "each activation wrapped the unit, restarted it and verified reconnect (rc 0); each unit active with 0 restarts and a grant-wrapped ExecStart; each shows in culture residents; a no-SASL takeover of each nick is refused",
+      "contract_text": "c17/c23 (amended d7): every harness agent connects only by authenticating with SASL",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark after the canary; all four harness agents now hold accounts",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:13:05Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 34
     }
   ],
   "deltas": [

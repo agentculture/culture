@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- Delivery record for culture#506 now includes the live deploy on spark: the 10/10 live success signal, the spark-colleague canary account, and spark-gwen and spark-ask registered as external residents (evidence e18–e22, deviation d10)
+- Delivery record for culture#506 now includes the live deploy on spark: the 10/10 live success signal, the spark-colleague canary account, and spark-gwen and spark-ask registered as external residents (evidence e18–e22, deviation d10); all four harness agents activated on spark (e23) and the sandbox agents deferred to culture#517 (d11)
 
 ## [14.13.0] - 2026-11-01
 
