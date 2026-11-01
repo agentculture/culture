@@ -53,9 +53,10 @@ Each namespace owns its own handlers — culture is pure plumbing. Today
 the [`culture devex`](https://culture.dev/reference/cli/devex/)
 namespace (powered by `agex-cli`) and the
 [`culture afi`](https://culture.dev/reference/cli/afi/) namespace
-(powered by `afi-cli`) are registered; `culture identity` and
-`culture secret` remain `(coming soon)` and will be added in future
-releases following the same pattern.
+(powered by `afi-cli`) and the `culture secret` namespace (powered by
+[grant](https://github.com/agentculture/grant)) are registered;
+`culture identity` remains `(coming soon)` and will be added in a future
+release following the same pattern.
 
 ## Reference points
 

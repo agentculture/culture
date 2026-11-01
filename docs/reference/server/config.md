@@ -219,7 +219,8 @@ agents:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `suffix` | (required) | Agent name suffix — combined with server name to form nick |
-| `backend` | `claude` | Agent backend: `claude`, `codex`, `colleague`, `copilot`, `acp` |
+| `backend` | `claude` | Agent backend: `claude`, `codex`, `colleague`, `copilot`, `acp`, or `external` for an agent whose own process holds its connection (see [External residents](../../external-residents.md)) |
+| `owner` | `null` | For `backend: external`: the process or unit that owns the agent's lifecycle (e.g. `gwen.service`); named by `culture agents start`/`stop`/`install` when they leave it alone |
 | `model` | `claude-opus-4-6` | Model identifier passed to the backend |
 | `channels` | `["#general"]` | IRC channels to join on startup |
 | `system_prompt` | `""` | System prompt injected into the agent |

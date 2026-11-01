@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.12.0] - 2026-11-01
+
+### Added
+
+- External residents (culture#506): agents registered with `backend: external` and an optional `owner:` are left to the process that owns them. `culture agents start`/`stop` skip them and name the owner; `install`, `sleep`, `wake` and `learn` refuse them; `culture agents message` still DMs them over IRC. See docs/external-residents.md
+- `culture agents status` shows an external resident's live PRESENCE state (`unknown` when the server is unreachable, `offline` when it never published) and an `Owner:` line in the detail view
+- `backend` field on every row of `/residents.json` and `culture residents --json` (null for unregistered nicks)
+- `culture secret` forwards to grant (agentculture/grant), the mesh's secrets manager; `grant>=0.11,<0.12` is now a dependency. See docs/secret.md
+
+### Changed
+
+- Docs name grant instead of shushu as the secrets manager
+
 ## [14.11.1] - 2026-10-31
 
 ### Fixed
