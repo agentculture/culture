@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-31T22:34:10Z",
-  "updated": "2026-10-31T23:10:11Z",
+  "updated": "2026-11-01T00:43:09Z",
   "claims": [
     {
       "id": "c1",
@@ -1268,6 +1268,105 @@
       ],
       "origin": "llm",
       "status": "approved"
+    },
+    {
+      "id": "l2",
+      "code": "control-absent",
+      "what": "t5 task agent ran only 6 test files, not the full suite; regressions elsewhere (e.g. namespace enumerations) unchecked by the agent",
+      "skipped_check": "full culture test suite on agent/er506-t5",
+      "refs": [
+        "t5"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l3",
+      "code": "grader-unverified",
+      "what": "t5 task agent did not execute the example commands in docs/secret.md; only set/get/list are exercised by tests",
+      "skipped_check": "run docs/secret.md examples",
+      "refs": [
+        "t5"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l4",
+      "code": "assumption-for-measurement",
+      "what": "t7 did not measure whether a client that sends CAP LS and never CAP END is eventually dropped; observed only 1.5 s. Unregistered connections may live forever (a pre-existing gap for clients that never send USER, now also reachable through CAP LS)",
+      "skipped_check": "observe the unregistered-connection lifetime against the ping reaper",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l5",
+      "code": "control-absent",
+      "what": "t7 bumped agentirc's version by hand rather than with the repo's /version-bump skill, and ran no code review",
+      "skipped_check": "agentirc /version-bump skill; code review of the client.py diff",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l6",
+      "code": "provenance-missing",
+      "what": "agentirc after merging t7: 1 failure in the first of 11 full-suite runs; its test name was not captured (ran without -rf). Not reproduced in 10 further full runs or 15 stress runs of the t7-related files. Accepted as a flake on that evidence",
+      "skipped_check": "capture the failing test id on the first after-merge run",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l7",
+      "code": "control-absent",
+      "what": "t2 wrote its implementation before its tests (TDD red step not first); it recovered by running the new tests red against the original agents.py",
+      "skipped_check": "write failing tests before implementing",
+      "refs": [
+        "t2"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l8",
+      "code": "control-absent",
+      "what": "t8's real-network trusted-peer tests skip on hosts with no bindable non-loopback IPv4 (CI may lack one); the always-running deterministic test patches Client.host, so CI may prove the trust rule only with a patched address",
+      "skipped_check": "a non-patched untrusted-peer test that always runs",
+      "refs": [
+        "t8"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l9",
+      "code": "control-absent",
+      "what": "t8 did not update [tool.citation] entries for the vendored client.py/ircd.py or run cite check, and ran pylint/bandit on only part of the changed files",
+      "skipped_check": "cite check; pylint/bandit over all changed files",
+      "refs": [
+        "t8"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l10",
+      "code": "instrument-changed-mid-series",
+      "what": "Worktree venvs were created with Python 3.13 (uv default) while CI runs 3.12; under 3.13, asyncio removes Unix server socket files on close, so socket tests fail in cleanup. The 'pre-existing' failures reported by t2, t3, t11 and t13 (test_channel_cli IPC routing; cultureagent skill_client/socket_server) are this artifact, not baseline breakage. Main-checkout gates ran on the repo's own venv",
+      "skipped_check": "pin worktree venvs to the CI Python (uv sync --python 3.12)",
+      "refs": [
+        "t2 t3 t11 t13"
+      ],
+      "origin": "llm",
+      "status": "proposed"
     }
   ],
   "obligations": [
