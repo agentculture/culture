@@ -17,6 +17,20 @@ The unit's `ExecStart` is intentionally minimal:
 ExecStart=/usr/bin/culture agents start <nick> --foreground
 ```
 
+For an agent with an `active` [account](../../agent-accounts.md) the command
+is wrapped with `grant run --inject` (the secret is injected into the daemon
+only), and `RestartPreventExitStatus` also parks on grant's exit 64:
+
+```text
+ExecStart=/path/to/grant run --inject CULTURE_AGENT_SECRET=<secret name> -- <culture> agents start <nick> --foreground
+RestartPreventExitStatus=78 64
+```
+
+An agent without an account keeps the plain form above and
+`RestartPreventExitStatus=78`. Only an active account is ever baked into a unit
+(`culture agents install`, `mesh setup`, `mesh update`); `culture agents
+account activate` wraps an already-installed unit.
+
 No `--config` is passed. `culture agents start` falls through to the
 argparse default — `~/.culture/server.yaml`, the manifest the rest of
 the CLI uses. Anything specified in that manifest (workdir, channels,

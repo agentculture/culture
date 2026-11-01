@@ -146,6 +146,25 @@ bot from registering. See [Bots](../../agentirc/bots.md) for details.
 > read from `ServerConfig` directly. CLI wiring from `server.yaml` to the IRCd
 > `ServerConfig.system_bots` field is tracked in [#249](https://github.com/OriNachum/culture/issues/249).
 
+### Agent accounts (`accounts:`)
+
+The `accounts:` block is read by the AgentIRC server (agentirc 9.14.0+), not by
+culture; it carries server-side SASL policy for [agent
+accounts](../../agent-accounts.md). The accounts themselves live in
+`<data-dir>/accounts.json`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `trusted_cidrs` | `[]` | Peers allowed to attempt SASL in addition to loopback; SASL from any other peer fails with 904 before a secret is sent |
+| `trust_loopback` | `true` | Trust loopback (`127.0.0.0/8`, `::1`) without a `trusted_cidrs` entry; set `false` behind a local forwarder (cloudflared, `ssh -L`, `tailscale serve`) |
+| `guest_channel_prefixes` | `[]` | Channel prefixes a `guest` account may hold grants on; empty means guests hold no grants |
+| `auth_failure_limit` | `10` | Failed authentications allowed per peer address per window; `0` disables the limiter |
+| `auth_failure_window` | `60` | Window in seconds for `auth_failure_limit` |
+
+Full semantics: [agentirc docs/accounts.md](https://github.com/agentculture/agentirc/blob/main/docs/accounts.md).
+`culture doctor` errors when the server binds `0.0.0.0`, has accounts, and
+`trusted_cidrs` is empty (see [Doctor](../../doctor.md#class-5--agent-accounts)).
+
 ### `agents` manifest
 
 A mapping from suffix to absolute directory path:

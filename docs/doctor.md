@@ -13,7 +13,10 @@ culture doctor --fix           # also register unregistered repos (opt-in)
 
 ## What it checks
 
-`culture doctor` reports three independent **drift classes**.
+`culture doctor` reports five independent **drift classes**: classes 1-3 are
+manifest/repo drift, class 4 is service health, and class 5 covers
+[agent accounts](agent-accounts.md). They are documented below in that order
+(classes 4 and 5 after the flags table).
 
 ### Class 1 — Broken registrations
 
@@ -61,6 +64,16 @@ repo, falling back to the git root of the current directory. It is never a
 hardcoded path, so relocating the workspace (e.g. `~/git` -> `~/git2`) moves the
 scan root with it. Use `--root` to point elsewhere.
 
+### Class 4 — Service health
+
+Installed `culture-agent-*` / `culture-server-*` systemd user units that are
+parked (failed) or restart-looping. A failed unit is an **error** (fails the
+exit code); a unit restarted more than 5 times
+(`SERVICE_RESTART_LOOP_THRESHOLD`) is a **warning** that does not. The fix
+hint is `systemctl --user reset-failed <unit> && systemctl --user restart
+<unit>`. `--json` carries these as `class4`. The checks live in
+`culture_core/doctor/checks.py` (`check_services`).
+
 ### Class 5 — Agent accounts
 
 Checks for [agent accounts](agent-accounts.md) (accounts file in the server's
@@ -85,8 +98,8 @@ notes). `--json` carries them as `class5`.
 ## Exit code
 
 `culture doctor` exits `0` only when there are **zero** class-1 and **zero**
-class-3 findings (and no class-4/class-5 errors). Class-2 (unregistered) findings are warning-only and never
-change the exit code. So a non-zero exit means genuine breakage — a broken
+class-3 findings (and no class-4 or class-5 errors). Class-2 (unregistered)
+findings are warning-only and never change the exit code. So a non-zero exit means genuine breakage — a broken
 registration or a suffix collision — which makes the command a reliable gate:
 
 ```bash
@@ -95,8 +108,9 @@ culture doctor || echo "manifest drift detected"
 
 The `--json` payload also carries an `ok` field, which is **stricter** than the
 exit code: `ok` is `true` only when there are *no findings at all* (including
-class-2 warnings; class-5 info/warnings are the exception and never clear it), whereas `exit_code` is `0` as long as there are no class-1 or
-class-3 errors. Gate CI on `exit_code` (or the process exit status); gate on
+class-2 warnings and class-4 warnings; class-5 info/warnings are the
+exception and never clear it), whereas `exit_code` is `0` as long as there are
+no class-1 or class-3 errors (and no class-4/class-5 errors). Gate CI on `exit_code` (or the process exit status); gate on
 `ok` only if you also want unregistered-repo warnings to fail the build. The
 exit code is `0` or `1`.
 
