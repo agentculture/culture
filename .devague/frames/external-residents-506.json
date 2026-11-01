@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-31T22:34:10Z",
-  "updated": "2026-11-01T00:43:09Z",
+  "updated": "2026-11-01T01:15:28Z",
   "claims": [
     {
       "id": "c1",
@@ -1364,6 +1364,17 @@
       "skipped_check": "pin worktree venvs to the CI Python (uv sync --python 3.12)",
       "refs": [
         "t2 t3 t11 t13"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l11",
+      "code": "control-absent",
+      "what": "t14's tests/test_register_cli.py was not hermetic: register paths with no data_dir wrote ~/.culture/data/accounts.json, an audit log and a hidden grant secret (CULTURE_AGENT_SPARK_MYAGENT) to the real host when the main session ran the t14 merge gate. No live impact (spark runs agentirc 9.13, which ignores accounts.json). Found by t15; artifacts removed by the main session 2026-11-01; t15 isolated those tests",
+      "skipped_check": "hermetic HOME/GRANT_HOME in every account-touching test before running the gate on the host",
+      "refs": [
+        "t14 merge gate"
       ],
       "origin": "llm",
       "status": "proposed"

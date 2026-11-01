@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.13.0] - 2026-11-01
+
+### Added
+
+- Agent accounts (culture#506 Phase B): `culture agents account activate <nick>` gives a registered agent a reserved, credential-gated nick on its home agentirc server. It runs an ordered flow with full rollback: preflight (server data dir, local persisting server, installed unit, cultureagent >= 0.16.0 for culture-owned agents), mint a secret into grant as a hidden secret, wrap the agent's unit in `grant run --inject CULTURE_AGENT_SECRET=<name> --`, publish the account to `<data_dir>/accounts.json`, restart, and verify the agent reconnects. External residents publish only with `--owner-ready`. See docs/agent-accounts.md
+- `culture agents account revoke|rotate|disable|show|list` and `unarchive`; archive suspends the account and disables the unit; delete/unregister revoke the secret and keep the nick reserved (tombstone)
+- `culture agents start` injects an active account's secret from grant in-process; the runner exits 78 on a permanent SASL refusal
+- `culture doctor` class 5 (agent accounts): unwrapped or stale-wrapped units, cultureagent/agentirc below their SASL versions, a 0.0.0.0-bound server with accounts but no trusted CIDRs; registered agents without an account are informational and never change `ok` or the exit code
+- `--data-dir` on `agents install`, `mesh setup`, `mesh update`, `doctor` and the account verbs; the server's data dir is resolved from the running server or its unit
+
+### Changed
+
+- `culture agents register` is unchanged by accounts: activation is explicit and opt-in
+- Agent units list `RestartPreventExitStatus=78 64` so an authentication refusal or a missing grant secret stops the unit instead of crash-looping
+- Tests can't reach the host's grant store, accounts directory or user units (autouse guard)
+
 ## [14.12.0] - 2026-11-01
 
 ### Added
