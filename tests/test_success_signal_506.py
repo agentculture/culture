@@ -366,6 +366,7 @@ async def _attack_round(server, wrong_secrets):
     return results
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_2_every_nick_takeover_without_the_secret_is_refused_online_or_offline(
     ircd, paths, tmp_path
@@ -414,6 +415,7 @@ async def test_2_every_nick_takeover_without_the_secret_is_refused_online_or_off
 # -- (3) JOIN outside the agent's grants is refused -------------------------
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_3_join_outside_grants_refused_and_read_only_cannot_speak(ircd, paths, tmp_path):
     register(paths, tmp_path, "alpha", channels=("#speak",))
@@ -468,6 +470,7 @@ async def test_3_join_outside_grants_refused_and_read_only_cannot_speak(ircd, pa
 # -- (4) revoke closes the live session in <= 5 s ---------------------------
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_4_revoke_closes_the_live_session_within_5s(ircd, paths, tmp_path, capsys):
     register(paths, tmp_path, "alpha")
