@@ -2,7 +2,7 @@
   "plan_slug": "external-residents-506",
   "schema_version": 2,
   "created": "2026-10-31T23:29:45Z",
-  "updated": "2026-11-01T02:40:37Z",
+  "updated": "2026-11-01T05:05:20Z",
   "deviations": [
     {
       "id": "d1",
@@ -116,6 +116,19 @@
       "status": "approved",
       "classification": "needs-follow-up",
       "seq": 26
+    },
+    {
+      "id": "d10",
+      "what": "Live registration covers spark-gwen (owner embodiment-gwen.service) and spark-ask (owner culture-ask-spark.service) as external residents. cultureagent-codex-bridge is dropped (it is an HTTP bridge on :8094, not an IRC client, so not a resident), and sbx-ask/sbx-bolt are deferred (they live on the sbx server, and spark's manifest only registers spark-<suffix> nicks). Account activation in the live rollout is spark-colleague only (canary); the other harness agents follow after it runs cleanly",
+      "task_ref": "t16",
+      "reason": "Inspected on spark: the codex bridge config has only an HTTP host/port, and the sandbox agents' configs name nicks on the sbx server. The canary-first rollout came from /assess (probe_then_one_canary 0.61, canary spark-colleague 0.81) under the user's deploy authorization",
+      "affects": [
+        "t6"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 27
     }
   ],
   "evidence": [
@@ -441,6 +454,101 @@
       "status": "proposed",
       "superseded": false,
       "seq": 25
+    },
+    {
+      "id": "e18",
+      "obligation_ref": "o12",
+      "test_ref": "live: scratchpad live_probe.py against production spark (agentirc 9.14.0, culture 14.13.0)",
+      "behavior_text": "revoke closed the live SASL session in 0.84 s incl. the CLI; afterwards the old secret was refused and the nick stayed reserved",
+      "contract_text": "c34/c25(4): revoke closes the live session in 5 s or less",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark after deploy; 10/10 probe checks passed",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:05:19Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 28
+    },
+    {
+      "id": "e19",
+      "obligation_ref": "o6",
+      "test_ref": "live: live_probe.py + raw takeover of spark-colleague after canary activation",
+      "behavior_text": "12/12 takeover attempts on spark-probe refused while it was online (no SASL, bare CAP REQ, wrong secret, pre-registration DM, case variants); a no-SASL NICK spark-colleague got ERROR SASL authentication required",
+      "contract_text": "c2/c25(2): nobody can take a registered agent's nick without its secret",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark after deploy",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:05:19Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 29
+    },
+    {
+      "id": "e20",
+      "obligation_ref": "o10",
+      "test_ref": "live: live_probe.py JOIN checks",
+      "behavior_text": "JOIN on the granted channel succeeded; JOIN #er506-not-granted got 474 Cannot join channel (no grant for this account)",
+      "contract_text": "c32/c25(3): JOIN outside the agent's grants is refused",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark after deploy",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:05:19Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 30
+    },
+    {
+      "id": "e21",
+      "obligation_ref": "o3",
+      "test_ref": "live: live_probe.py status check",
+      "behavior_text": "an external resident's PRESENCE idle showed in culture agents status 0.16 s after publish; culture agents start spark-probe forked nothing and printed the owner",
+      "contract_text": "c5/c3/c25(1)",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark after deploy",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:05:19Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 31
+    },
+    {
+      "id": "e22",
+      "obligation_ref": "o15",
+      "test_ref": "live: canary activation of spark-colleague",
+      "behavior_text": "culture agents account activate spark-colleague wrapped the unit (grant run --inject, RestartPreventExitStatus=78 64), restarted and verified reconnect; agent child processes have no CULTURE_AGENT_SECRET in their environment",
+      "contract_text": "c17 (amended d7): opt-in activation; secret reaches only the unit",
+      "evidence_type": "observation",
+      "strength": "execution",
+      "strength_basis": "ran live on spark; /proc/<pid>/environ of the main process still shows the start-up env (documented residual, culture#513)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T05:05:19Z",
+        "commit": "e5683d4"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 32
     }
   ],
   "deltas": [

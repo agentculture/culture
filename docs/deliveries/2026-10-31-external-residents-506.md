@@ -3,10 +3,10 @@
 plan: `external-residents-506` · run: `partial` · date: `2026-10-31`
 baseline: `devague summary skeleton`
 
-Run status is `partial` because every code task merged into its integration
-branch and passed its tests, but nothing is released, merged to `main` or
-deployed yet (deviation `d4`). Live behaviour on spark is therefore
-**unverified**.
+Run status is `partial`. Every task merged and is deployed, and the live
+success signal passed 10/10 on production spark. Some of the plan's rollout
+remains: accounts are active only on the `spark-colleague` canary (`d10`),
+and Gwen waits on embodiment#121.
 
 ## Intent
 
@@ -268,8 +268,71 @@ same four outcomes. A full suite passing after a fix is execution-level
 evidence. The filed evidence `e1`–`e17` predates this round and still
 reflects the earlier heads.
 
+## Live deploy (2026-11-01, after the user approved merge and deploy)
+
+**Merged and published:**
+
+| PR | Release |
+|----|---------|
+| agentirc#66 | agentirc-cli 9.14.0 |
+| cultureagent#59 | cultureagent 0.16.0 |
+| culture#514 | culture 14.12.0 |
+| culture#515 | culture 14.13.0, including the d8 pin commit |
+
+**Pin commit.** The culture suite ran green against the *published* agentirc
+9.14.0 and cultureagent 0.16.0: 2225 passed, 1 skipped (Playwright). All
+version-marked tests ran.
+
+**Deployed on spark:**
+
+- Ran `uv tool install --force --refresh --python 3.12
+  'culture[all-backends]==14.13.0'`.
+- Restarted, in order: both servers, all four harness agents, the sandbox
+  agents, the codex bridge and the console.
+- Every unit is active.
+- The four harness agents show `idle` in `culture residents` (PRESENCE over
+  9.14).
+- The console answers HTTP 200.
+- The spark server listens on `127.0.0.1:6667`, so no trusted CIDRs are
+  needed for local agents.
+
+**Live success signal, 10/10.** Run against a throwaway external account
+`spark-probe` (secret injected with `grant run`, never printed), which was
+removed afterwards (evidence `e18`–`e21`):
+
+| Check | Result |
+|---|---|
+| External PRESENCE shows in `status` | 0.16 s |
+| `start` forks nothing and names the owner | ✓ |
+| Takeovers without the secret, agent online | 12/12 refused |
+| The real session is unaffected | ✓ |
+| JOIN outside grants | 474 |
+| Revoke closes the live session | 0.84 s, including the CLI |
+| After revoke | old secret refused, nick stays reserved |
+
+**Canary account: spark-colleague** (/assess `probe_then_one_canary` 0.61,
+canary `spark-colleague` 0.81; evidence `e22`):
+
+- Activation wrapped its unit, restarted it and verified it reconnected.
+- Its child processes don't have the secret.
+- A no-SASL takeover of its nick is refused with "SASL authentication
+  required".
+
+**External residents registered** (`d10`):
+
+| Nick | Owner | Status |
+|---|---|---|
+| `spark-gwen` | `embodiment-gwen.service` | `offline` until it publishes PRESENCE (embodiment#121) |
+| `spark-ask` | `culture-ask-spark.service` | `offline` until it publishes PRESENCE |
+
+`cultureagent-codex-bridge` was dropped: it is an HTTP bridge, not a
+resident. `sbx-ask` and `sbx-bolt` were deferred: they live on the sbx
+server's manifest.
+
 ## Remaining Work / Follow-up
 
+- **Done 2026-11-01:** the four PRs are merged in order and deployed
+  (see Live deploy). The original list follows for reference.
 - **Open the four PRs, then merge in order** (`d8`):
   1. agentirc `feat/agent-accounts` → publishes 9.14.0;
   2. cultureagent `feat/sasl-auth` → publishes 0.16.0;
@@ -282,6 +345,10 @@ reflects the earlier heads.
   - Register spark-gwen and culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge as `backend: external` with `owner:`; sbx agents get the guest role.
   - Activate accounts agent by agent with `culture agents account activate`, keeping `account disable` ready as rollback.
   - Verify the success signal live.
+- **Activate the remaining harness agents** one at a time, once the
+  spark-colleague canary has run cleanly: `culture agents account activate
+  spark-agentirc`, then `spark-associate`, then `spark-culture`.
+- **sbx-ask / sbx-bolt:** register them through the sbx server's manifest.
 - **thor**, which is bound to `0.0.0.0`: set `accounts.trusted_cidrs` (or bind the tailnet or loopback) before any account there is activated.
 - **embodiment#121:** Gwen's `+A` and PRESENCE now; SASL with `grant run --inject` once agentirc 9.14 is live. Obligation `o13` stays unchecked until then.
 - **Spec amendment.** Re-export the spec with claim c17 (and t14's criterion) amended to the opt-in activation of `d7`, once the user accepts it.
