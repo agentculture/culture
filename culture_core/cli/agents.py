@@ -1026,7 +1026,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
                 f"Agent '{args.nick}' not found in config (configured nicks: {configured})",
                 "run 'culture agents status' without a nick to list all agents",
             )
-        print_agent_detail(agent, args.config, args)
+        print_agent_detail(agent, args.config, args, server_config=config)
         _print_archived_info(agent)
         return
 
@@ -1037,7 +1037,7 @@ def _cmd_status(args: argparse.Namespace) -> None:
         print(_no_agents_message(config, show_all))
         return
 
-    print_agents_overview(agents, args.full, show_archived_marker=show_all)
+    print_agents_overview(agents, args.full, show_archived_marker=show_all, server_config=config)
     print_bot_listing(show_archived=show_all)
 
 
