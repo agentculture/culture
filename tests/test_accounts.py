@@ -151,5 +151,8 @@ def test_audit_log_one_line_per_change_no_secrets(data_dir):
     assert ls[1]["changes"]["state"] == {"from": "active", "to": "revoked"}
 
 
-def test_default_data_dir_under_home(tmp_home):
+def test_default_data_dir_under_home(tmp_home, monkeypatch):
+    # conftest's host guard redirects DEFAULT_DATA_DIR; restore the real
+    # default here (HOME is already isolated by tmp_home).
+    monkeypatch.setattr(accounts, "DEFAULT_DATA_DIR", "~/.culture/data")
     assert accounts.accounts_path() == tmp_home / ".culture/data/accounts.json"

@@ -557,6 +557,26 @@ def _canary_snapshot() -> dict[Path, tuple[float, int] | None]:
 
 
 @pytest.fixture(autouse=True)
+def _host_secret_store_guard(tmp_path_factory, monkeypatch):
+    """Keep every test away from the host's grant store and account files.
+
+    culture#506 accounts mint hidden secrets into grant (per-OS-user store,
+    ``$GRANT_HOME`` or ``~/.local/share/grant``) and write agentirc's
+    ``accounts.json`` under ``~/.culture/data`` by default. A test that forgot
+    to isolate once wrote both on a live host (lapse l11). Default both to a
+    per-test temp dir; tests that set their own ``GRANT_HOME``/``data_dir``
+    still win because they patch after this fixture runs.
+    """
+    root = tmp_path_factory.mktemp("host-guard")
+    monkeypatch.setenv("GRANT_HOME", str(root / "grant"))
+    try:
+        import culture_core.accounts as _accounts
+    except ImportError:  # pragma: no cover - module absent on old branches
+        return
+    monkeypatch.setattr(_accounts, "DEFAULT_DATA_DIR", str(root / "culture-data"))
+
+
+@pytest.fixture(autouse=True)
 def _repo_root_mutation_guard(request):
     """Fail any test that mutates tracked repo-root files (closes #351).
 

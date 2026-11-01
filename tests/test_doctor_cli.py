@@ -77,6 +77,9 @@ def test_clean_exits_zero(tmp_path, capsys, monkeypatch):
     from culture_core import accounts
 
     monkeypatch.setattr(accounts, "installed_version", lambda d: "99.0")
+    # conftest's host guard redirects DEFAULT_DATA_DIR; this test writes the
+    # account under its own isolated HOME, so point the default back there.
+    monkeypatch.setattr(accounts, "DEFAULT_DATA_DIR", "~/.culture/data")
     # a registered agent without an account is a class-5 warning, so give it one
     accounts.save(
         [accounts.AccountRecord(nick="spark-culture", secret_sha256="c" * 64)],
