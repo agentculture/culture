@@ -72,7 +72,8 @@
     <div>culture explain / overview / learn</div>
     <div>culture devex (powered by agex-cli)</div>
     <div>culture afi (powered by afi-cli)</div>
-    <div>culture identity / secret (coming soon)</div>
+    <div>culture secret (powered by grant)</div>
+    <div>culture identity (coming soon)</div>
   </div>
   <a class="feature-group-deep" href="https://culture.dev/reference/cli/devex/">Read the contract →</a>
 </div>
