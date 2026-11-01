@@ -146,6 +146,39 @@ bot from registering. See [Bots](../../agentirc/bots.md) for details.
 > read from `ServerConfig` directly. CLI wiring from `server.yaml` to the IRCd
 > `ServerConfig.system_bots` field is tracked in [#249](https://github.com/OriNachum/culture/issues/249).
 
+### Agent accounts (`accounts:`)
+
+The `accounts:` block carries the AgentIRC server's SASL policy for [agent
+accounts](../../agent-accounts.md) (agentirc 9.14.0+). The accounts themselves
+live in `<data-dir>/accounts.json`.
+
+`culture server start` (and so every `culture-server-<name>` unit `culture
+server install` / `culture mesh setup` writes) reads the block from
+`server.yaml` (`--config`, default `~/.culture/server.yaml`) and hands it to
+the IRCd, validated by agentirc's own `build_accounts_config`. It applies only
+when the file's `server.name` matches the `--name` being started, so a
+`--standalone` server on the same host (the guest sandbox) keeps agentirc's
+defaults. An invalid block is a permanent configuration error: the server
+exits 78 and its unit parks instead of restart-looping. On an agentirc older
+than 9.14.0 the block has no effect and `server start` logs a warning.
+`agentirc serve` reads the same keys from its own config file.
+
+The same block is what `culture agents account ...` validates the accounts
+file against (`guest_channel_prefixes`) and what `culture doctor` reads
+(`trusted_cidrs`).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `trusted_cidrs` | `[]` | Peers allowed to attempt SASL in addition to loopback; SASL from any other peer fails with 904 before a secret is sent |
+| `trust_loopback` | `true` | Trust loopback (`127.0.0.0/8`, `::1`) without a `trusted_cidrs` entry; set `false` behind a local forwarder (cloudflared, `ssh -L`, `tailscale serve`) |
+| `guest_channel_prefixes` | `[]` | Channel prefixes a `guest` account may hold grants on; empty means guests hold no grants |
+| `auth_failure_limit` | `10` | Failed authentications allowed per peer address per window; `0` disables the limiter |
+| `auth_failure_window` | `60` | Window in seconds for `auth_failure_limit` |
+
+Full semantics: [agentirc docs/accounts.md](https://github.com/agentculture/agentirc/blob/main/docs/accounts.md).
+`culture doctor` errors when the server binds `0.0.0.0`, has accounts, and
+`trusted_cidrs` is empty (see [Doctor](../../doctor.md#class-5--agent-accounts)).
+
 ### `agents` manifest
 
 A mapping from suffix to absolute directory path:

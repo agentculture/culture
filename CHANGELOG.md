@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.13.0] - 2026-11-01
+
+### Added
+
+- Agent accounts (culture#506 Phase B): `culture agents account activate <nick>` gives a registered agent a reserved, credential-gated nick on its home agentirc server. It runs an ordered flow with full rollback: preflight (server data dir, local persisting server, installed unit, cultureagent >= 0.16.0 for culture-owned agents), mint a secret into grant as a hidden secret, wrap the agent's unit in `grant run --inject CULTURE_AGENT_SECRET=<name> --`, publish the account to `<data_dir>/accounts.json`, restart, and verify the agent reconnects. External residents publish only with `--owner-ready`. See docs/agent-accounts.md
+- `culture agents account revoke|rotate|disable|show|list` and `unarchive`; archive suspends the account and disables the unit; delete/unregister revoke the secret and keep the nick reserved (tombstone)
+- `culture agents start` injects an active account's secret from grant in-process; the runner exits 78 on a permanent SASL refusal
+- `culture doctor` class 5 (agent accounts): unwrapped or stale-wrapped units, cultureagent/agentirc below their SASL versions, a 0.0.0.0-bound server with accounts but no trusted CIDRs; registered agents without an account are informational and never change `ok` or the exit code
+- `--data-dir` on `agents install`, `mesh setup`, `mesh update`, `doctor` and the account verbs; the server's data dir is resolved from the running server or its unit
+
+### Changed
+
+- `culture agents register` is unchanged by accounts: activation is explicit and opt-in
+- Agent units list `RestartPreventExitStatus=78 64` so an authentication refusal or a missing grant secret stops the unit instead of crash-looping
+- Tests can't reach the host's grant store, accounts directory or user units (autouse guard)
+- `culture server start` applies the `server.yaml` `accounts:` block (`trusted_cidrs`, `trust_loopback`, `guest_channel_prefixes`, `auth_failure_limit`, `auth_failure_window`) to the IRCd, built with agentirc's own `build_accounts_config`, when the file's `server.name` matches `--name` (new `--config` flag). An invalid block exits 78; on agentirc older than 9.14.0 the block is ignored with a warning. `culture doctor` and the account verbs read the same block
+- Tests that need agentirc >= 9.14.0 or cultureagent >= 0.16.0 carry the `requires_agentirc_accounts` / `requires_cultureagent_sasl` markers and skip on older versions until the pins move
+
+### Fixed
+
+- culture no longer writes an `accounts.json` agentirc would reject as a whole file (which silently froze every later revoke, suspend and rotate): every write is checked with agentirc's `parse_accounts` (with the server's `guest_channel_prefixes`) when available and always with culture's mirror of its rules (printable-ASCII nicks, no case-only duplicates, guest grants only inside the guest sandbox). A guest account with grants and no configured prefixes is refused
+- `culture agents account disable` and `revoke` roll the unit back (original `ExecStart`, restarted if it was running) when the account change fails; `remove`/`revoke` check that the grant entry is culture's before writing anything
+- Wrapping a legacy or hand-edited unit without a `RestartPreventExitStatus=` line adds one so it parks on grant's exit 64 after a revoke instead of restarting every 5 s; unwrapping restores the unit byte-for-byte
+- Account commands print the grant entry name via `grant_entry_name` (never the secret value), clearing CodeQL `py/clear-text-logging-sensitive-data`
+
 ## [14.12.0] - 2026-11-01
 
 ### Added

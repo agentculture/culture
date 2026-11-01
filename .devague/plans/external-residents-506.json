@@ -5,7 +5,7 @@
   "schema_version": 5,
   "status": "exported",
   "created": "2026-10-31T23:10:15Z",
-  "updated": "2026-10-31T23:23:27Z",
+  "updated": "2026-11-01T02:02:20Z",
   "targets": [
     {
       "id": "c1",
@@ -774,6 +774,14 @@
       "task_id": null,
       "resolved": false,
       "resolution": ""
+    },
+    {
+      "id": "r3",
+      "text": "culture pins cultureagent~=0.13.0 while cultureagent main is 0.15.2; requiring the SASL-capable 0.16.0 in t16 also pulls in the unreviewed 0.14/0.15 changes, so the full culture suite and mesh agents must be re-validated on 0.16 before the pin moves",
+      "kind": "unknown_nonblocking",
+      "task_id": "t16",
+      "resolved": true,
+      "resolution": "Validated at test level: culture's full suite (2173 passed) runs green with the cultureagent integration branch (main 0.15.2 + 0.16 SASL work) installed; the pin moves to ~=0.16.0 in the Phase B PR. Live mesh re-validation happens at deploy, after the PRs merge (d4)"
     }
   ],
   "obligations": []

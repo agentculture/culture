@@ -3,6 +3,17 @@ import argparse
 
 import pytest
 
+from culture_core import accounts
+
+
+@pytest.fixture(autouse=True)
+def _isolated_sasl_env(tmp_path, monkeypatch):
+    """register must never touch accounts (opt-in, culture#506 d7); isolate the
+    grant store and data dir anyway so a regression can't reach the host."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GRANT_HOME", str(tmp_path / "home" / "grant"))
+    monkeypatch.setattr(accounts, "installed_version", lambda d: accounts.MIN_CULTUREAGENT_SASL)
+
 
 def test_register_current_dir(tmp_path, monkeypatch):
     """Register with no path uses cwd."""

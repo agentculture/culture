@@ -1,0 +1,590 @@
+{
+  "plan_slug": "external-residents-506",
+  "schema_version": 2,
+  "created": "2026-10-31T23:29:45Z",
+  "updated": "2026-11-01T02:40:37Z",
+  "deviations": [
+    {
+      "id": "d1",
+      "what": "t5's shushu grep criterion exempts frozen design records (docs/specs, docs/plans, docs/superpowers, including this spec and plan and the 2026-05-05 org-ecosystem-registry docs); README and the live docs name grant",
+      "task_ref": "t5",
+      "reason": "Those records describe history, including the shushu-to-grant move itself, and rewriting them would falsify it. The criterion was written without anticipating them. The user approved the exemption on 2026-11-01",
+      "affects": [],
+      "origin": "user",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 1
+    },
+    {
+      "id": "d2",
+      "what": "Wave 2 tasks (t2, t3, t8) start as soon as their own dependencies merge (t1, t7) rather than after all of wave 1; t4 and t12 are still queued on colleague's single endpoint",
+      "task_ref": "t8",
+      "reason": "Colleague runs one task at a time, so waiting would idle wave 2 for its whole queue. Wave-2 files are disjoint from t4/t12 (t2 cli/agents.py, t3 cli/shared/display.py, t8 agentirc vs t4 resource_view.py, t12 cultureagent), so parallel still equals serial. The user said 'continue' after being told t8 could start early",
+      "affects": [
+        "t2",
+        "t3"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 2
+    },
+    {
+      "id": "d3",
+      "what": "message and read no longer refuse external agents: message sends its IRC DM as for any nick, and read keeps its generic 'not yet implemented' error. sleep, wake, learn and install still refuse",
+      "task_ref": "t2",
+      "reason": "agents message sends over IRC through the observer (cli/agents.py around line 1292), not the daemon socket; the criterion listed it with the IPC verbs because the scope exploration misclassified it. Refusing it would block operators from DMing Gwen. Decided via /assess (allow_both 0.82; P(refusal blocks legitimate use) = 0.97) under the user's standing goal",
+      "affects": [
+        "t2"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 3
+    },
+    {
+      "id": "d4",
+      "what": "t6's and t16's 'PR merged' and 'deployed live on spark' criteria move after human gate 3: PRs are opened only after /validate-delivery and /summarize-delivery, and merging and deploying wait for the user's review",
+      "task_ref": "t6",
+      "reason": "The user's standing goal orders validate and summarize before any PR, and merging is the user's own gate (gate 3), so the main session can't merge or deploy inside t6/t16. The delivery summary marks these criteria unverified/pending rather than done",
+      "affects": [
+        "t16"
+      ],
+      "origin": "user",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 4
+    },
+    {
+      "id": "d5",
+      "what": "t15 does not raise the cultureagent/agentirc pins in pyproject.toml; it adds the doctor and activation version checks against a named minimum-version constant. t16 sets both the pins and the constant once agentirc and cultureagent are released",
+      "task_ref": "t15",
+      "reason": "The SASL-capable cultureagent and the accounts-capable agentirc are unreleased until t16, so pinning them in t15 would break culture's lockfile and CI. Same end state, different task",
+      "affects": [
+        "t16"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 5
+    },
+    {
+      "id": "d6",
+      "what": "Two agentirc hardening tasks are added after t10, both blocking the release: h1 fixes C1 (unregistered connections acting as account nicks), H1 (read-grant bypass via HISTORY/BACKFILL/EVENTSUB/THREAD PROMOTE), H2 (speak-grant bypass via THREAD/TOPIC/EVENTPUB) and H3 (malformed accounts.json crashing startup or the watcher); h2 fixes M1-M7 (evicted sessions acting, slow-member revoke stall, secret sent before the trust check, local lockout, fail-open startup, squatter not evicted, nick case/lookalikes). Low findings L1-L4 become agentirc issues",
+      "task_ref": "t10",
+      "reason": "The independent security review found that the delivered agentirc code doesn't yet meet the confirmed spec's promises (c2/c23: no acting as an agent without its secret; c32: read/speak grants; the docs' malformed-file guarantee). Decided via /assess under the user's standing goal (critical_high_medium 0.81; block release 0.97)",
+      "affects": [
+        "t16"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 6
+    },
+    {
+      "id": "d7",
+      "what": "Account activation becomes explicit and opt-in: 'culture agents register' no longer creates an account (it behaves as before #506); 'culture agents account activate <nick>' runs the ordered flow (client-version check, mint, wrap unit, publish, restart, verify reconnect, full rollback on failure). Plus culture hardening task hc fixing the culture review's high findings H1-H5 and medium M1-M8, and a Phase A fix stopping mesh setup/update from installing units for external residents. This changes confirmed claim c17 and t14's 'register creates the account' criterion",
+      "task_ref": "t15",
+      "reason": "Independent review of the culture side: with the t16 pins in place, automatic activation on register publishes accounts before daemons hold their secret, leaves units wrapped around missing or mismatched secrets, collides secret names and exits 1 on every install, breaking the spec's no-flag-day / never-locked-out promise (c18, c42). Decided via /assess under the user's standing goal: opt_in_activate 0.97, fix high+medium 0.87",
+      "affects": [
+        "t14",
+        "t16"
+      ],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 7
+    },
+    {
+      "id": "d8",
+      "what": "culture Phase B's dependency pins (agentirc-cli>=9.14.0, cultureagent~=0.16.0) and their uv.lock refresh land as the last commit on the Phase B PR, after the agentirc and cultureagent PRs merge and publish; until then the Phase B PR is marked blocked on them",
+      "task_ref": "t16",
+      "reason": "Both siblings publish to PyPI on push to main, and uv lock can't resolve unpublished versions, so pinning before publish would commit pyproject.toml without a matching uv.lock (against the repo's rule) or bake local paths into the lock. The activation and doctor floors (MIN_CULTUREAGENT_SASL 0.16.0, MIN_AGENTIRC_ACCOUNTS 9.14.0) are already set",
+      "affects": [],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "acceptable",
+      "seq": 8
+    },
+    {
+      "id": "d9",
+      "what": "Post-PR review fixes before merge: agentirc#66 (EVENTSUB channel-list leak, channel-less EVENTPUB limited to operator/resident, ROOMINVITE gated by read, bounded rate-limiter map, throttled accounts stat), culture#514/#515 (server start passes the accounts: block to agentirc, culture validates accounts exactly as agentirc does, disable/revoke order with rollback, unit rewrite adds RestartPreventExitStatus), cultureagent#59 (no dead transport after a mid-SASL close on reconnect, 433 on reconnect is transient, SASL timeout fails the attempt, 902/906/907 handled, AUTHENTICATE chunking, future hygiene, public BaseDaemon refusal API, docs, changelog corrected)",
+      "task_ref": "t16",
+      "reason": "The user's /code-review of all four PRs found correctness and security bugs that would break the spec's promises in production (accounts policy never reaching the server, revokes silently frozen by a rejected file, guests broadcasting server-wide, agents parked by a transient nick collision or left offline). Fixed before merge under the user's standing goal; the channel-less EVENTPUB policy decided via /assess (operator_and_resident 0.83)",
+      "affects": [],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 26
+    }
+  ],
+  "evidence": [
+    {
+      "id": "e1",
+      "obligation_ref": "o1",
+      "test_ref": "culture tests/test_cli_agents.py::TestExternalResidents (start) + tests/test_success_signal_506.py::test_1_external_agent_in_status_within_5s_and_start_all_forks_none",
+      "behavior_text": "start --all on a manifest with one external and one claude agent forks exactly one child, prints 'spark-gwen: skipped \u2014 owned by gwen.service', never 'Started spark-gwen'; with only the external agent, 0 forks",
+      "contract_text": "c3: start skips backend: external agents and prints who owns their lifecycle, before any fork",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "12 TestExternalResidents tests + success-signal test 1 ran green (5/5 consecutive runs of the module) on Python 3.12 against the integration branches",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 9
+    },
+    {
+      "id": "e2",
+      "obligation_ref": "o2",
+      "test_ref": "culture tests/test_cli_agents.py::TestExternalResidents::test_stop_sends_no_signal_or_ipc_and_touches_no_pidfile, ::test_stop_all_stops_only_harness_agent",
+      "behavior_text": "stop on an external nick sends no signal or IPC, touches no pidfile, prints the owner line; --all stops only harness agents",
+      "contract_text": "c4: stop skips backend: external agents with the owner message",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "ran green in the 12-test TestExternalResidents selection",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 10
+    },
+    {
+      "id": "e3",
+      "obligation_ref": "o3",
+      "test_ref": "culture tests/test_status_external.py (10 tests, real agentirc)",
+      "behavior_text": "external row shows the PRESENCE LIST state within 5 s of publish (measured 0.006\u20130.011 s in the success-signal test); 'unknown' when the server is unreachable; harness rows byte-identical to a pre-change snapshot",
+      "contract_text": "c5: status shows an external agent's state from the live PRESENCE registry",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "10 tests against a real agentirc server ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 11
+    },
+    {
+      "id": "e4",
+      "obligation_ref": "o4",
+      "test_ref": "culture tests/test_residents_endpoint.py, tests/test_residents_cli.py",
+      "behavior_text": "every resident row carries backend (manifest backend or null); envelope unchanged; field order pinned",
+      "contract_text": "c6/c14: /residents.json and culture residents --json carry a backend field",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "60 tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 12
+    },
+    {
+      "id": "e5",
+      "obligation_ref": "o5",
+      "test_ref": "culture tests/test_cli_agents.py::TestExternalResidents (install, ipc, learn, message, read) + tests/test_setup_update_cli.py::test_install_mesh_services_skips_external_residents",
+      "behavior_text": "install writes no unit and refuses with the owner message; sleep/wake/learn refuse; --all skips; mesh setup writes no unit for an external resident; message reaches an external agent over IRC and read has no external special case (deviation d3)",
+      "contract_text": "c11: per-agent verbs that assume a culture-owned daemon refuse an external agent with the owner message",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "selection ran green; message/read behaviour is the d3-amended contract",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 13
+    },
+    {
+      "id": "e6",
+      "obligation_ref": "o6",
+      "test_ref": "agentirc tests/test_accounts_sasl.py, test_accounts_hardening.py, test_accounts_hardening_medium.py + culture tests/test_success_signal_506.py::test_2_every_nick_takeover_without_the_secret_is_refused_online_or_offline",
+      "behavior_text": "an account nick never gets 001 without SASL as exactly that account on CAP LS / bare CAP REQ / no-CAP paths; wrong, empty, revoked, suspended secrets get 904 and close; pre-registration commands get 451; case variants refused; 46/46 takeover attempts refused offline and online in the culture e2e test",
+      "contract_text": "c2: registered agent nicks are reserved and credential-gated at the IRC layer",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "148 agentirc tests + culture e2e test ran green against real servers and real TCP clients",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 14
+    },
+    {
+      "id": "e7",
+      "obligation_ref": "o8",
+      "test_ref": "agentirc tests/test_accounts_sasl.py -k 'no_account or peek' + full suite",
+      "behavior_text": "a nick with no account registers exactly as before; __peek observer nicks unaffected; full agentirc suite green (1037)",
+      "contract_text": "c18: no flag day \u2014 enforcement only once the server holds an account for the nick",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "3 targeted tests + full suite ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 15
+    },
+    {
+      "id": "e8",
+      "obligation_ref": "o9",
+      "test_ref": "agentirc tests/test_accounts_sasl.py (two linked servers, S2S recording)",
+      "behavior_text": "no account, secret, hash, grant or role data appears in any S2S line (base64 tokens decoded); the peer's RemoteClient carries no account",
+      "contract_text": "c19: reservation is home-server only; account data never crosses links",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "linked-pair test ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 16
+    },
+    {
+      "id": "e9",
+      "obligation_ref": "o10",
+      "test_ref": "agentirc tests/test_accounts_grants.py + test_accounts_hardening.py (read/speak paths) + culture tests/test_success_signal_506.py::test_3_join_outside_grants_refused_and_read_only_cannot_speak",
+      "behavior_text": "JOIN without a grant gets 474; read grant joins but PRIVMSG gets 404; speak delivers; DMs not gated; HISTORY/BACKFILL/EVENTSUB/THREAD/TOPIC/EVENTPUB respect grants",
+      "contract_text": "c32: channel grants are enforced by agentirc",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "grant tests + hardening + culture e2e test 3 ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 17
+    },
+    {
+      "id": "e10",
+      "obligation_ref": "o11",
+      "test_ref": "agentirc tests/test_accounts_grants.py (role cases)",
+      "behavior_text": "operator-only room verbs refused for resident and guest, allowed for operator; guest grants outside guest_channel_prefixes rejected at load; non-operator accounts not auto-opped",
+      "contract_text": "c33: roles gate what an account may do, enforced by agentirc",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 18
+    },
+    {
+      "id": "e11",
+      "obligation_ref": "o12",
+      "test_ref": "culture tests/test_agent_accounts_cli.py + tests/test_success_signal_506.py::test_4_revoke_closes_the_live_session_within_5s + agentirc tests/test_accounts_revoke.py",
+      "behavior_text": "account revoke closes the live session (measured 0.482\u20130.486 s incl. the CLI call, 5 runs); rotate makes the old secret fail and the new one connect; one audit line per change with no secret material",
+      "contract_text": "c34: revoke/rotate from the culture CLI with an audit log",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "culture CLI tests + e2e test 4 + agentirc revoke tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 19
+    },
+    {
+      "id": "e12",
+      "obligation_ref": "o15",
+      "test_ref": "culture tests/test_agent_account_activation.py, tests/test_account_activation_hardening.py",
+      "behavior_text": "units for active accounts wrap ExecStart in grant run --inject CULTURE_AGENT_SECRET=<name> -- with RestartPreventExitStatus=78 64; secrets never in argv, logs, ~/.culture or the audit log; activation rolls back byte-for-byte on failure",
+      "contract_text": "c17: secret lives in grant and reaches only its unit through grant run --inject",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "72 tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 20
+    },
+    {
+      "id": "e13",
+      "obligation_ref": "o16",
+      "test_ref": "culture tests/test_cli_secret.py",
+      "behavior_text": "culture secret list prints exactly what grant list prints; get on a hidden secret is refused exactly as grant refuses it; explain no longer marks secret coming soon (temp HOME)",
+      "contract_text": "c50: culture secret forwards to grant",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "8 tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "ae4b599"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 21
+    },
+    {
+      "id": "e14",
+      "obligation_ref": "o17",
+      "test_ref": "cultureagent tests/test_irc_transport_sasl.py",
+      "behavior_text": "SASL PLAIN before CAP END with a secret, unchanged without; 904/905/908, refused nick or no SASL \u2192 AuthenticationRefused and exit 78, no reconnect loop; plus a live probe against real agentirc 9.14 (right secret registers, wrong secret refused, account nick without secret refused, no-account unchanged)",
+      "contract_text": "c38: permanent exit on auth refusal",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "9 tests ran green on Python 3.12; cross-repo probe re-run after h1 and h2",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "cb605f5"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 22
+    },
+    {
+      "id": "e15",
+      "obligation_ref": "o18",
+      "test_ref": "agentirc tests/test_cap_registration_hold.py",
+      "behavior_text": "CAP LS holds 001 and SNICK until CAP END; no-CAP and bare-REQ clients register as before",
+      "contract_text": "c39: registration is held while CAP negotiation is open",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "7 tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 23
+    },
+    {
+      "id": "e16",
+      "obligation_ref": "o19",
+      "test_ref": "agentirc tests/test_accounts_revoke.py, tests/test_accounts_sighup.py",
+      "behavior_text": "failed auths logged with nick/peer/reason and no secret/payload/hash; per (address, account) limit; culture.auth.failures counted by reason only; live revoke within 5 s",
+      "contract_text": "c44: failed-auth logging, rate limit and telemetry",
+      "evidence_type": "integration",
+      "strength": "execution",
+      "strength_basis": "19 tests ran green",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "c042738"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 24
+    },
+    {
+      "id": "e17",
+      "obligation_ref": "o20",
+      "test_ref": "cultureagent tests/test_base_daemon_secret.py",
+      "behavior_text": "with CULTURE_AGENT_SECRET set, after daemon construction os.environ lacks it, the transport got it, and a child subprocess prints None; without it sasl_secret is None",
+      "contract_text": "c49: daemon removes its secret from the environment at startup",
+      "evidence_type": "automated",
+      "strength": "execution",
+      "strength_basis": "3 tests ran green; all 5 backend daemons reach BaseDaemon.__init__ before spawning (checked by reading)",
+      "outcome": "pass",
+      "run": {
+        "timestamp": "2026-11-01T02:11:32Z",
+        "commit": "cb605f5"
+      },
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false,
+      "seq": 25
+    }
+  ],
+  "deltas": [
+    {
+      "id": "b1",
+      "kind": "amended",
+      "behavior_text": "culture agents message/read treat an external agent like any nick (an IRC DM), instead of refusing it as c11's criterion listed",
+      "caused_by": [
+        "d3"
+      ],
+      "evidence_refs": [
+        "e5"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b2",
+      "kind": "amended",
+      "behavior_text": "culture agents register no longer creates an account; activation is the explicit, opt-in 'culture agents account activate' with preflight, rollback and verification (changes c17 and t14's 'register creates the account')",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [
+        "e11",
+        "e12"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b3",
+      "kind": "added",
+      "behavior_text": "agentirc replies 451 to every command sent before registration except CAP/NICK/USER/PASS/PING/PONG/AUTHENTICATE/QUIT (and EVENT*/BACKFILL keep EVENTERR :not-registered), for all clients; a pre-registration QUIT emits no event",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [
+        "e6"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b4",
+      "kind": "added",
+      "behavior_text": "agentirc requires printable-ASCII local nicks and refuses (432) a nick that matches an account nick under ASCII case-fold without being equal to it",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [
+        "e6"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b5",
+      "kind": "added",
+      "behavior_text": "agentirc no longer auto-ops non-operator account sessions as a channel's first joiner",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [
+        "e10"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b6",
+      "kind": "added",
+      "behavior_text": "agentirc fails closed on an unreadable accounts.json: nicks recovered from the raw file stay reserved; if none can be recovered at startup, all local registrations are refused until the file is fixed",
+      "caused_by": [
+        "d6"
+      ],
+      "evidence_refs": [
+        "e6"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b7",
+      "kind": "added",
+      "behavior_text": "a correct SASL login reclaims the nick from any other local holder (the evicted session sees ERROR; peers get one SQUITUSER)",
+      "caused_by": [
+        "c2"
+      ],
+      "evidence_refs": [
+        "e6"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b8",
+      "kind": "added",
+      "behavior_text": "culture agents unarchive; archive suspends the account and disables the agent's unit; delete/unregister uninstall an account-holding agent's unit",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [
+        "e11"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b9",
+      "kind": "added",
+      "behavior_text": "agent units carry RestartPreventExitStatus=78 64, and culture's own runner exits 78 on a permanent SASL refusal",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [
+        "e12"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    },
+    {
+      "id": "b10",
+      "kind": "added",
+      "behavior_text": "culture mesh setup/update never install a unit for an external resident",
+      "caused_by": [
+        "d7"
+      ],
+      "evidence_refs": [
+        "e5"
+      ],
+      "origin": "llm",
+      "status": "proposed",
+      "superseded": false
+    }
+  ],
+  "supersessions": []
+}

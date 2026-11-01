@@ -118,6 +118,109 @@ TEST_LINK_PASSWORD = "testlink123"
 # call rather than passing a parameter (per python:S7483).
 RECV_TIMEOUT_SECONDS = 2.0
 
+
+# ---------------------------------------------------------------------------
+# Version-gated markers (culture#506 Phase B, deviation d8).
+#
+# Until the dependency pins move to agentirc-cli >= 9.14 / cultureagent >=
+# 0.16, CI installs the released agentirc 9.13 (AUTHENTICATE -> 421) and an
+# older cultureagent. Tests that need the new server/client features carry
+# ``@pytest.mark.requires_agentirc_accounts`` / ``requires_cultureagent_sasl``
+# and skip cleanly there; with the new versions installed they run for real.
+# ---------------------------------------------------------------------------
+
+AGENTIRC_ACCOUNTS_FLOOR = "9.14.0"
+CULTUREAGENT_SASL_FLOOR = "0.16.0"
+
+
+def installed_version(dist: str) -> str | None:
+    """Installed version of distribution *dist*, or None."""
+    from importlib import metadata
+
+    try:
+        return metadata.version(dist)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def module_available(name: str) -> bool:
+    """True if module *name* can be imported (without importing it)."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+def _below(have: str | None, floor: str) -> bool:
+    from packaging.version import InvalidVersion, Version
+
+    if have is None:
+        return True
+    try:
+        return Version(have) < Version(floor)
+    except InvalidVersion:
+        return True
+
+
+def agentirc_accounts_gap(version_of=None, has_module=None) -> str | None:
+    """Why the installed agentirc can't run account tests, or None if it can."""
+    version_of = version_of or installed_version
+    has_module = has_module or module_available
+    if not has_module("agentirc.accounts"):
+        return f"agentirc.accounts is missing (needs agentirc-cli >= {AGENTIRC_ACCOUNTS_FLOOR})"
+    have = version_of("agentirc-cli")
+    if _below(have, AGENTIRC_ACCOUNTS_FLOOR):
+        return f"agentirc-cli {have} is below {AGENTIRC_ACCOUNTS_FLOOR}"
+    return None
+
+
+def cultureagent_sasl_gap(version_of=None) -> str | None:
+    """Why the installed cultureagent can't run SASL tests, or None if it can."""
+    have = (version_of or installed_version)("cultureagent")
+    if _below(have, CULTUREAGENT_SASL_FLOOR):
+        return f"cultureagent {have} is below {CULTUREAGENT_SASL_FLOOR}"
+    return None
+
+
+VERSION_GATES = {
+    "requires_agentirc_accounts": "agentirc_accounts_gap",
+    "requires_cultureagent_sasl": "cultureagent_sasl_gap",
+}
+
+
+def version_gate_skip_reason(item) -> str | None:
+    """Skip reason for *item* under the version gates (gate functions are
+    looked up at call time so tests can monkeypatch the probes)."""
+    for marker, probe in VERSION_GATES.items():
+        if item.get_closest_marker(marker) is None:
+            continue
+        reason = globals()[probe]()
+        if reason:
+            return f"{marker}: {reason}"
+    return None
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        f"requires_agentirc_accounts: needs agentirc-cli >= {AGENTIRC_ACCOUNTS_FLOOR} "
+        "(agentirc.accounts, SASL AUTHENTICATE); skipped on older agentirc",
+    )
+    config.addinivalue_line(
+        "markers",
+        f"requires_cultureagent_sasl: needs cultureagent >= {CULTUREAGENT_SASL_FLOOR}; "
+        "skipped on older cultureagent",
+    )
+
+
+def pytest_runtest_setup(item):
+    reason = version_gate_skip_reason(item)
+    if reason:
+        pytest.skip(reason)
+
+
 _BOTS_DIR_MANAGER = "culture_core.bots.bot_manager.BOTS_DIR"
 _BOTS_DIR_CONFIG = "culture_core.bots.config.BOTS_DIR"
 _BOTS_DIR_BOT = "culture_core.bots.bot.BOTS_DIR"
@@ -554,6 +657,52 @@ def _canary_snapshot() -> dict[Path, tuple[float, int] | None]:
         except FileNotFoundError:
             snap[p] = None
     return snap
+
+
+# The real home at collection time (before any test patches $HOME).
+_HOST_HOME = Path.home()
+
+
+@pytest.fixture(autouse=True)
+def _host_secret_store_guard(tmp_path_factory, monkeypatch):
+    """Keep every test away from the host's grant store and account files.
+
+    culture#506 accounts mint hidden secrets into grant (per-OS-user store,
+    ``$GRANT_HOME`` or ``~/.local/share/grant``) and write agentirc's
+    ``accounts.json`` under ``~/.culture/data`` by default. A test that forgot
+    to isolate once wrote both on a live host (lapse l11). Default both to a
+    per-test temp dir; tests that set their own ``GRANT_HOME``/``data_dir``
+    still win because they patch after this fixture runs.
+    """
+    root = tmp_path_factory.mktemp("host-guard")
+    monkeypatch.setenv("GRANT_HOME", str(root / "grant"))
+    try:
+        import culture_core.accounts as _accounts
+    except ImportError:  # pragma: no cover - module absent on old branches
+        return
+    monkeypatch.setattr(_accounts, "DEFAULT_DATA_DIR", str(root / "culture-data"))
+    # The server data-dir probe reads the host's live server pidfile
+    # (PID_DIR is fixed at import time, not $HOME-relative) and its installed
+    # unit; a host server started with --data-dir would point a test at real
+    # data. Default to "not found" so the guarded DEFAULT_DATA_DIR wins.
+    if hasattr(_accounts, "_probe_server_argv"):
+        monkeypatch.setattr(_accounts, "_probe_server_argv", lambda _name: None)
+    # Lifecycle verbs (archive, delete, account disable/revoke) stop, disable
+    # or uninstall `culture-agent-<nick>` units they find. A test that did not
+    # isolate $HOME must never see the host's real ~/.config/systemd/user (the
+    # host runs culture-agent-spark-* units): keep HOME-relative semantics for
+    # tests that set HOME, and a temp dir otherwise.
+    import culture_core.persistence as _persistence
+
+    unit_root = root / "systemd-user"
+
+    def _guarded_systemd_user_dir():
+        home = Path.home()
+        if home == _HOST_HOME:
+            return unit_root
+        return home / ".config" / "systemd" / "user"
+
+    monkeypatch.setattr(_persistence, "_systemd_user_dir", _guarded_systemd_user_dir)
 
 
 @pytest.fixture(autouse=True)

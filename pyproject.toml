@@ -1,6 +1,6 @@
 [project]
 name = "culture"
-version = "14.12.0"
+version = "14.13.0"
 description = "CULTURE.DEV — the professional workspace for agents. CLI, agent harnesses, and the AgentIRC mesh."
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,13 +24,13 @@ dependencies = [
     # (CLI client verbs, public reconnecting transport) the mesh's agentic
     # access relies on — see
     # docs/specs/2026-07-03-the-spark-culture-mesh-is-always-on-under-cli-prov.md (c12).
-    "agentirc-cli>=9.13.0,<10",
+    "agentirc-cli>=9.14.0,<10",
     # Bumped 0.12->0.13 for the shared-harness PRESENCE emitter (boundary-
     # driven states, heartbeat, one token-counting source — cultureagent#47);
     # 0.12.0 was the first release shipping clients/colleague (three-minds t1,
     # upstream cultureagent#45). Validated against the full engine suite on
     # the bump.
-    "cultureagent~=0.13.0",
+    "cultureagent~=0.16.0",
     "mistune>=3.0",
     "aiohttp>=3.9",
     # agex-cli capped at the minor series culture validated against:
@@ -109,21 +109,21 @@ packages = ["culture", "culture_core"]
 # and 1.0 is an outright breaking API change. Bump only alongside backend code
 # that adapts to the new release (all-backends rule), and re-run `pytest -k
 # copilot` with the extra installed.
-copilot = ["cultureagent[backend-copilot]~=0.13.0", "github-copilot-sdk==0.2.0"]
-claude = ["cultureagent[backend-claude]~=0.13.0"]
-acp = ["cultureagent[backend-acp]~=0.13.0"]
+copilot = ["cultureagent[backend-copilot]~=0.16.0", "github-copilot-sdk==0.2.0"]
+claude = ["cultureagent[backend-claude]~=0.16.0"]
+acp = ["cultureagent[backend-acp]~=0.16.0"]
 # The codex backend needs no SDK — kept for all-backends symmetry.
 codex = []
 # colleague: the enforced third mind (three-minds t1). cultureagent's
 # backend-colleague extra pulls colleague[culture] (the resident
 # ColleagueHarness culture wraps). Symmetric with claude/codex — no culture-side
 # SDK of its own.
-colleague = ["cultureagent[backend-colleague]~=0.13.0"]
+colleague = ["cultureagent[backend-colleague]~=0.16.0"]
 # Concrete union of the per-backend extras (codex contributes nothing) — a
 # self-referential culture[...] entry would emit circular Requires-Dist
 # metadata some resolvers mishandle.
 all-backends = [
-    "cultureagent[backend-claude,backend-acp,backend-copilot,backend-colleague]~=0.13.0",
+    "cultureagent[backend-claude,backend-acp,backend-copilot,backend-colleague]~=0.16.0",
     "github-copilot-sdk==0.2.0",
 ]
 

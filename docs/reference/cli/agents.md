@@ -30,12 +30,12 @@ dispatched through culture's own argparse tree.
 | `read` | Read an agent's message history |
 | `learn` | Print the agent onboarding prompt |
 | `register` | Add a `culture.yaml` agent to `~/.culture/server.yaml` |
-| `unregister` | Remove an agent from the manifest |
+| `unregister` | Remove an agent from the manifest; revokes its account (nick stays reserved) and uninstalls its unit |
 | `rename` | Rename an agent in the manifest |
 | `assign` | Reassign an agent to a different server |
-| `archive` | Stop + soft-remove an agent |
-| `unarchive` | Restore an archived agent |
-| `delete` | Permanently remove an agent from the manifest |
+| `archive` | Stop + soft-remove an agent; suspends its account and disables its unit |
+| `unarchive` | Restore an archived agent; reactivates a suspended account |
+| `delete` | Permanently remove an agent from the manifest; revokes its account (nick stays reserved) and uninstalls its unit |
 | `migrate` | Migrate agents from the legacy `agents.yaml` format |
 
 ```bash
