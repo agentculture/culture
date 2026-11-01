@@ -50,12 +50,12 @@ def external_presence_states(agents, server_config) -> dict[str, str]:
     if not nicks:
         return {}
     if server_config is None:
-        return {nick: "unknown" for nick in nicks}
+        return dict.fromkeys(nicks, "unknown")
     try:
         residents = asyncio.run(fetch_residents_async(server_config))
     except Exception as exc:  # unreachable, unsupported (421), timeout...
         logger.debug("presence lookup failed: %s", exc)
-        return {nick: "unknown" for nick in nicks}
+        return dict.fromkeys(nicks, "unknown")
     by_nick = {r.nick: (r.state or "unknown") for r in residents}
     return {nick: by_nick.get(nick, "offline") for nick in nicks}
 
