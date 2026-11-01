@@ -1517,20 +1517,25 @@ class TestExternalResidents:
             agent_mod._cmd_learn(_args(nick="spark-gwen"))
         assert "owned by gwen.service" in exc.value.message
 
-    def test_message_refuses_without_observer(self, monkeypatch):
-        cfg, _ = _external_cfg()
-        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
-        monkeypatch.setattr(agent_mod, "get_observer", lambda _c: pytest.fail("observer"))
-        with pytest.raises(CultureError) as exc:
-            agent_mod._cmd_message(_args(target="spark-gwen", text="hi"))
-        assert "owned by gwen.service" in exc.value.message
+    def test_message_reaches_external_agent_over_irc(self, monkeypatch, capsys):
+        # message is an IRC DM via the observer, not IPC: external residents
+        # are messaged like any nick (deviation d3, culture#506).
+        sent = []
 
-    def test_read_refuses(self, monkeypatch):
-        cfg, _ = _external_cfg()
-        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        class _Obs:
+            async def send_message(self, target, text):
+                sent.append((target, text))
+
+        monkeypatch.setattr(agent_mod, "get_observer", lambda _c: _Obs())
+        agent_mod._cmd_message(_args(target="spark-gwen", text="hi"))
+        assert sent == [("spark-gwen", "hi")]
+        assert "Sent to spark-gwen" in capsys.readouterr().out
+
+    def test_read_has_no_external_special_case(self):
         with pytest.raises(CultureError) as exc:
             agent_mod._cmd_read(_args(target="spark-gwen", limit=5))
-        assert "owned by gwen.service" in exc.value.message
+        assert "not yet implemented" in exc.value.message
+        assert "owned by" not in exc.value.message
 
     def test_external_not_a_daemon_backend(self):
         assert "external" not in agent_mod._BACKEND_DAEMON_FACTORIES

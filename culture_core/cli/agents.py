@@ -1285,18 +1285,14 @@ def _cmd_message(args: argparse.Namespace) -> None:
     # unconditionally; if the target nick is unknown to the server, the
     # IRC ``401 NOSUCHNICK`` numeric propagates through the observer
     # rather than being short-circuited by stale config. (#333 item 11.)
-    external = load_config_or_default(args.config).get_agent(args.target)
-    if external is not None and is_external(external):
-        raise _external_verb_error(external, "message")
+    # External residents (culture#506) are messaged like any nick: this is a
+    # plain IRC DM through the observer, never the target's daemon socket.
     observer = get_observer(args.config)
     asyncio.run(observer.send_message(args.target, args.text))
     print(f"Sent to {args.target}")
 
 
 def _cmd_read(args: argparse.Namespace) -> None:
-    external = load_config_or_default(args.config).get_agent(args.target)
-    if external is not None and is_external(external):
-        raise _external_verb_error(external, "read")
     raise CultureError(
         EXIT_USER_ERROR,
         "DM history is not yet implemented — the server does not store direct message history",
