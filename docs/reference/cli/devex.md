@@ -61,14 +61,14 @@ culture just routes.
 ### Sibling and upcoming namespaces
 
 [`culture afi`](./afi/) is registered as of culture 8.1, riding the
-same passthrough plumbing as devex. Two more namespaces are listed as
-`(coming soon)` in `culture explain` output and will gain full
-handlers in future releases:
+same passthrough plumbing as devex. `culture identity` is still listed
+as `(coming soon)` in `culture explain` output and will gain a full
+handler in a future release; `culture secret` is live:
 
 - **`culture identity`** — Identity management across the mesh. Will
   wrap a standalone `zehut-cli` (Hebrew: "identity").
-- **`culture secret`** — Secret management. Will wrap a standalone
-  `shushu-cli`.
+- **`culture secret`** — Secret management. Wraps the standalone `grant`
+  secrets manager (live; see [secret](../../secret.md)).
 
 CULTURE.DEV uses English for its first-class nouns; the underlying CLIs keep
 their brand names. `culture explain` is the always-current source of

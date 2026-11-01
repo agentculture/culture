@@ -118,6 +118,7 @@ _NAMESPACES = (
     "skills",
     "devex",
     "afi",
+    "secret",
 )
 
 # Nouns that delegate their real reference to a sibling binary. Listed in
@@ -127,6 +128,7 @@ _NAMESPACES = (
 _PASSTHROUGHS: dict[str, str] = {
     "devex": "agex",
     "afi": "afi",
+    "secret": "grant",
     "console": "irc-lens",
 }
 

@@ -126,6 +126,7 @@ class TestSerializeResidents:
             "token_budget",
             "budget_used_pct",
             "budget_warning",
+            "backend",
         ]
 
     def test_state_only_resident_serialises_with_nones(self):

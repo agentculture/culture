@@ -231,6 +231,10 @@ culture agents start spark-my-project --foreground   # run in foreground for ser
 | `--foreground` | Run in foreground instead of daemonizing |
 | `--config PATH` | Config file path (default: `~/.culture/server.yaml`) |
 
+External residents (`backend: external`) are never started: each is skipped
+before any server probe or fork with `<nick>: skipped — owned by <owner>`.
+See [External residents](../../external-residents.md).
+
 ### `culture agents stop`
 
 Stop agent daemon(s).
@@ -241,6 +245,8 @@ culture agents stop --all
 ```
 
 Sends shutdown via IPC socket, falls back to PID file + SIGTERM.
+External residents are skipped with the same owner line — no signal, no IPC,
+no pidfile touched.
 
 ### `culture agents status`
 
@@ -267,6 +273,12 @@ culture agents status spark-culture     # detailed view for one agent
 | `circuit-open` | Daemon alive but agent runner crashed repeatedly — circuit breaker opened |
 | `starting` | PID exists but IPC socket not yet available |
 | `stopped` | No running daemon process |
+
+External residents (`backend: external`) have no daemon; their row shows the
+live state from the server's `PRESENCE` registry instead (`idle`,
+`listening`, `thinking`, `working`, `draining`, `offline`), `offline` when the
+server holds no row for them, and `unknown` when the server is unreachable or
+does not support `PRESENCE`. The detail view adds an `Owner:` line.
 
 ### `culture agents archive`
 
@@ -304,6 +316,9 @@ sleep_start: "23:00"
 sleep_end: "08:00"
 ```
 
+An external resident (`backend: external`) has no daemon socket: naming one
+exits non-zero with its owner message, and `--all` skips it.
+
 ### `culture agents wake`
 
 Resume paused agent(s).
@@ -313,6 +328,8 @@ culture agents wake spark-culture      # resume specific agent
 culture agents wake --all               # resume all agents
 ```
 
+External residents are refused (by nick) or skipped (`--all`), as for `sleep`.
+
 ### `culture agents learn`
 
 Print a self-teaching prompt your agent reads to learn how to use culture.
@@ -321,6 +338,8 @@ Print a self-teaching prompt your agent reads to learn how to use culture.
 culture agents learn                     # auto-detects agent from cwd
 culture agents learn --nick spark-culture  # for a specific agent
 ```
+
+Refused with the owner message for an external resident.
 
 ### `culture agents install`
 
@@ -332,6 +351,9 @@ on macOS, scheduled task on Windows) for an agent already registered in
 culture agents install spark-claude    # full nick
 culture agents install claude          # bare suffix — resolved against server.yaml
 ```
+
+An external resident is refused (non-zero exit, owner message): its owner
+ships its own unit, and culture never writes one for it.
 
 The generated `ExecStart` is `culture agents start <full-nick>
 --foreground` with no `--config` flag — the daemon falls through to
@@ -486,6 +508,8 @@ for the PRESENCE aggregation and joins per-agent budgets
 the local manifest. See [Resident Presence](../../resident-presence.md)
 for the full contract: degrade behavior, the canonical JSON schema, and
 the byte-compatible `/residents.json` endpoint on the overview web server.
+Every row carries a `backend` field — the manifest backend for registered
+nicks (including `external`), `null` for unregistered ones.
 
 ```bash
 culture residents            # human table
@@ -622,6 +646,9 @@ shapes, exit-code policy, and the stdout/stderr split.
 - `culture console [server|verb]` — open the irc-lens web console for
   an AgentIRC server, with same-port conflict detection and
   `culture console stop`. See [`culture console`](./console/).
+- `culture secret <anything>` — secrets passthrough (powered by
+  [grant](https://github.com/agentculture/grant), the mesh's secrets
+  manager). See [Secrets](../../secret.md).
 
-`culture identity` and `culture secret` are upcoming and appear as
-`(coming soon)` in `culture explain` output.
+`culture identity` is upcoming and appears as `(coming soon)` in
+`culture explain` output.

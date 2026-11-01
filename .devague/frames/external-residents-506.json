@@ -1,0 +1,1518 @@
+{
+  "slug": "external-residents-506",
+  "title": "external residents (#506)",
+  "schema_version": 6,
+  "status": "exported",
+  "created": "2026-10-31T22:34:10Z",
+  "updated": "2026-11-01T00:43:09Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "Culture recognises external residents: an agent registered with backend: external appears in culture agents status and /residents.json with presence from its live connection, while culture agents start/stop leave its lifecycle to the process that owns it",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "Every behaviour in the announcement is exercised by a test against a real agentirc instance (no server mocks, per culture CLAUDE.md testing rules)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c2",
+      "kind": "requirement",
+      "text": "agentirc keeps agent accounts (nick, secret hash, role, channel grants, revoked flag) and refuses registration of an account's nick until SASL PLAIN authenticates against it. Today _handle_nick checks only the system- prefix, the <server>- prefix and live collision (client.py:461-486), and the only ownership checks are room-owner checks (skills/rooms.py:334,478). culture is the admin surface that writes accounts from the manifest. agentirc and cultureagent (shared irc_transport.py:135-136 sends SASL) are sibling hand-offs",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "A client without the credential can't register a reserved nick, whether the real agent is online or offline. A client with the correct credential always can",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h19",
+          "text": "Connecting as an account's nick without SASL, or with the wrong secret or a revoked one, is refused before registration completes, whether the real agent is online or offline",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q1",
+          "text": "Is offline nick reservation for spark-gwen in v1, or a follow-up? It needs three repos: agentirc must enforce it in _handle_nick (client PASS is currently consumed by the S2S sniff, ircd.py:713), culture must supply the reserved nicks plus a credential, and the external client must send that credential",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "In v1, credential-backed: every registered agent's nick (harness or external) is reserved, as human nicks are, and connecting under it needs that agent's credential. No -r- infix and no namespace scheme"
+        },
+        {
+          "id": "q6",
+          "text": "How does a client send its credential on the wire? SASL PLAIN through CAP (agentirc already negotiates CAP; CAP END is a no-op in v1), or reworking the client PASS that ircd.py:713 currently reads as a server-link handshake?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "SASL PLAIN through CAP negotiation"
+        },
+        {
+          "id": "q11",
+          "text": "agentirc has no TLS (no ssl/tls anywhere in the installed package), so SASL PLAIN secrets travel in cleartext. spark binds localhost, but thor binds 0.0.0.0 (EKP cutover record). Should agentirc refuse SASL from non-loopback peers unless their address is in a configured trusted-CIDR list (e.g. the tailnet), or is TLS in scope?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "agentirc accepts SASL only from loopback or configured trusted CIDRs (e.g. the tailnet) and refuses it elsewhere; no TLS in this change"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Nick enforcement lives in the agentirc dependency, not culture: agentirc/client.py _handle_nick checks only the 'system-' prefix, the '<server>-' prefix and live collision (nick in server.clients); culture_core/agentirc only re-exports ServerConfig/LinkConfig/TelemetryConfig. Any offline nick reservation is a sibling hand-off to agentirc, with culture supplying the reserved-nick list",
+          "kind": "boundary",
+          "reason": "user decided q1: reservation is in v1, credential-backed, for all agents"
+        },
+        {
+          "text": "Registered agent nicks are reserved and credential-gated at the IRC layer. agentirc rejects registration of a reserved nick without its credential (today _handle_nick checks only the system- prefix, the <server>- prefix and live collision, client.py:461-486, and a client PASS is read as a server-link handshake, ircd.py:713). culture mints a credential per registered agent and supplies the server with the reserved-nick list plus credential hashes. Every client sends its credential: cultureagent's shared irc_transport.py:135-136 for harness agents, embodiment's daemon for Gwen. The agentirc, cultureagent and embodiment parts are sibling hand-offs",
+          "kind": "requirement",
+          "reason": "accounts decision: the nick check becomes an account check"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "kind": "requirement",
+      "text": "culture agents start (and --all) skips backend: external agents and prints who owns their lifecycle, before any fork: today _run_multi_agents forks a child per agent that dies in _resolve_daemon_factory (cli/agents.py:797-819) with 'unknown agent backend' after the parent already printed 'Started'",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "culture agents start --all on a manifest with one external and one claude agent forks exactly one child and prints the external agent's owner",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q2",
+          "text": "Spell it as backend: external, or as a separate field (e.g. lifecycle/owner: <systemd unit>) so the start/stop owner message can name the unit that owns it?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "backend: external, plus an optional owner: field (e.g. owner: gwen.service) that the start/stop/install refusal message names"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c4",
+      "kind": "requirement",
+      "text": "culture agents stop skips backend: external agents with the same owner message: stop_agent (cli/shared/process.py:21) only knows the agent IPC socket and the agent-<nick> pidfile, neither of which an external process has",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "culture agents stop <external-nick> sends no signal, touches no pidfile, prints the owner and exits 0",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c5",
+      "kind": "requirement",
+      "text": "culture agents status shows an external agent's state from the live PRESENCE registry (PRESENCE LIST, as resource_view._query_presence_wire already does), not from agent_process_status (cli/shared/display.py:18-31), which reads only the pidfile + IPC socket and would always print 'stopped'",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "With the server down, status prints 'unknown' for external agents and is unchanged for harness agents. With it up, the external row's state equals its PRESENCE LIST state",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q3",
+          "text": "When the IRC server is unreachable, should status print an external agent as 'unknown' rather than 'stopped'? And when the server is up, should the presence row's state replace the running/stopped column or appear alongside it?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "status prints 'unknown' for an external agent when the server is unreachable; when reachable, the presence state replaces running/stopped"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c6",
+      "kind": "assumption",
+      "text": "/residents.json needs no culture change to list an external resident: fetch_residents_async (resource_view.py:329-349) lists every nick in agentirc's PRESENCE registry and apply_budgets only joins the manifest for budget fields, so a manifest-less or external nick is still listed",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [
+        {
+          "id": "q4",
+          "text": "Should /residents.json gain a backend (or kind) field so consumers can tell external residents from harness-run ones? It would be appended to _RESIDENT_FIELDS (resource_view.py:107); irc-lens ignores extra keys",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "yes: append backend to _RESIDENT_FIELDS (resource_view.py:107) so /residents.json and culture residents --json carry it"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c7",
+      "kind": "assumption",
+      "text": "The external process carries the presence contract itself: agentirc creates a row only on a PRESENCE :<json> publish (agentirc skills/presence.py:250) and flips it offline only on QUIT or a TCP close from a +A/+C client (skills/presence.py:108-120) - so Gwen's daemon must set user mode +A and publish PRESENCE (idle at minimum) to appear and to go offline correctly",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [
+        {
+          "id": "q5",
+          "text": "Does Gwen's daemon already set +A and publish PRESENCE? If not, that is a hand-off brief to embodiment, not culture work",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "culture sends embodiment a hand-off brief: Gwen's daemon must set +A and publish PRESENCE; no culture work"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c8",
+      "kind": "boundary",
+      "text": "config.py needs no schema change: AgentConfig.backend is a free str (config.py:93), _parse_agent_entry keeps it verbatim, and culture agents register (cli/agents.py:1339) does no backend check - backend: external already loads and registers today",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h11",
+          "text": "No change to AgentConfig's fields beyond adding the optional owner: string",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c9",
+      "kind": "boundary",
+      "text": "The all-backends parity guard is not in play: external is not in TARGET_BACKENDS (devtools/backend_parity.py:55-61) and the change must not edit the bodies of _create_claude/codex/colleague_daemon; no culture_core/clients/external/ dir is created",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "The backend-parity CI job passes on the PR without any '# backend-specific:' marker",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c10",
+      "kind": "non_goal",
+      "text": "No new IRC verbs: SASL uses the standard IRCv3 CAP/AUTHENTICATE commands, and account admin is culture-side. The only harness change is SASL in cultureagent's shared transport (one change covers every backend). Model, prompt and turn behaviour stay unchanged",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h23",
+          "text": "The backend-parity job passes, and the cultureagent diff touches only clients/shared/ transport code",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "No harness changes and no new IRC verbs (issue 506 'Not asked for'): PRESENCE already exists in agentirc, and harness-run agents' start/stop/status behaviour is unchanged",
+          "kind": "non_goal",
+          "reason": "the accounts decision puts SASL in cultureagent's shared transport, which contradicted 'no harness changes'"
+        }
+      ]
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "Every other per-agent verb that assumes a culture-owned daemon refuses an external agent with the owner message instead of failing obscurely: install (would write a crashing culture-agent-<nick> systemd unit via persistence.install_service, cli/agents.py:1439), and the IPC verbs sleep/wake/learn/message/read (_resolve_ipc_targets, cli/agents.py:1126)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "culture agents install <external-nick> writes no systemd unit, and every IPC verb refuses with the owner message instead of a socket error",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c12",
+      "kind": "decision",
+      "text": "External residents are declared as backend: external with an optional owner: field naming the process/unit that owns their lifecycle",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c13",
+      "kind": "decision",
+      "text": "culture agents status shows an external agent as 'unknown' when the IRC server is unreachable, otherwise its PRESENCE state",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c14",
+      "kind": "decision",
+      "text": "/residents.json and culture residents --json gain a backend field",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c15",
+      "kind": "decision",
+      "text": "The presence contract for Gwen (+A user mode, PRESENCE publish) is embodiment's work, delivered as a culture hand-off brief",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c16",
+      "kind": "decision",
+      "text": "Every registered agent (harness-run or external) holds a reserved nick, the way humans hold theirs in irc-lens (nickname_holders + hashed agent_credentials, irc-lens access_store.py). Claiming it needs a per-agent credential. No -r- infix or namespace scheme",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c17",
+      "kind": "requirement",
+      "text": "culture agents register creates the agent's mesh account, mints its secret with grant.generate.random_secret, stores it as a hidden grant secret named after the nick (e.g. CULTURE_AGENT_SPARK_GWEN), and writes only its SHA-256 hash into the account. Units culture generates (persistence.install_service, persistence.py:295) wrap ExecStart in grant run --inject CULTURE_AGENT_SECRET=<name> --. An external owner (Gwen's unit, the sbx/ask units) wraps its own ExecStart the same way",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "The plaintext credential appears once, in a 0600 file. culture's state and logs hold only its SHA-256 hash",
+          "status": "rejected",
+          "instruction": ""
+        },
+        {
+          "id": "h18",
+          "text": "No agent-readable path (any agent's working directory, ~/.culture/ agent files, env, logs, process args) ever contains a plaintext secret. Only CREDENTIALS_DIRECTORY of the agent's own unit does",
+          "status": "rejected",
+          "instruction": ""
+        },
+        {
+          "id": "h34",
+          "text": "The only places an agent's plaintext secret exists are the OS user's grant store and, briefly, that agent's daemon environment before startup removes it",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q7",
+          "text": "Where does the agent-side credential live: a 0600 file under ~/.culture/ (works for headless systemd user units), or the OS keychain that culture_core/credentials.py uses for link passwords?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "0600 file under ~/.culture/ (e.g. ~/.culture/credentials/<nick>)"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "culture agents register mints one credential per agent nick and stores only its hash in culture's state, following irc-lens's agent_credentials pattern (plaintext returned once, SHA-256 stored). It writes the plaintext to a 0600 file the agent's process can read. culture agents start passes it to harness daemons through the shared daemon config (_make_backend_config, cli/agents.py:645), not through per-backend factories. An external owner (Gwen's unit) reads the same file",
+          "kind": "requirement",
+          "reason": "accounts + LoadCredential decision"
+        },
+        {
+          "text": "culture agents register creates the agent's mesh account and mints its secret (plaintext shown once, SHA-256 stored, as irc-lens agent_credentials does). Units culture generates (persistence.install_service, the [Service] block at persistence.py:295) get a LoadCredential= line for that secret, and culture agents start reads it from CREDENTIALS_DIRECTORY and hands it to the shared transport. An external owner adds the same LoadCredential= line to its own unit",
+          "kind": "requirement",
+          "reason": "q10 resolved: grant replaces LoadCredential delivery"
+        }
+      ]
+    },
+    {
+      "id": "c18",
+      "kind": "requirement",
+      "text": "No flag day: agentirc enforces a nick only once the server holds a credential for it. Agents registered before this change keep connecting until they are re-registered or have a credential minted. culture doctor lists registered agents that have no credential",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "Upgrading the server and culture without re-registering leaves every existing agent connecting exactly as before",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c19",
+      "kind": "boundary",
+      "text": "Reservation is enforced only on the nick's home server. Every nick carries its <server>- prefix and agentirc already refuses a non-matching prefix (client.py:470-476), so credential tables are never federated across linked servers",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "No credential or reserved-nick data crosses a server link (no new SEVENT payload carries it)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c20",
+      "kind": "boundary",
+      "text": "Human nicks are not moved into agentirc in this change. Humans keep irc-lens's lens-side reservation (access_store.py nickname_holders), and irc-lens personal agents (pa_ nicks, agent_nick.py) keep their lens-issued credentials",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "irc-lens's nickname, agent_nick and access_store modules are unchanged by this work",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c21",
+      "kind": "audience",
+      "text": "Operators who run agents on the mesh, embodiment (Gwen's daemon, spark-gwen), and every harness agent whose nick can be squatted today while it is offline",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "spark-gwen and existing harness agents are the named users of every requirement",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q13",
+          "text": "Several agents on spark run outside the manifest as their own units: culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge (~/.config/systemd/user; ~/.culture/server.yaml has no sbx entries). They are natural backend: external residents and the intended guest-role holders. Should they be registered as accounts in this change, or stay unaccounted (legacy behaviour per c18)?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "yes: culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge are registered as backend: external accounts; the sbx agents get the guest role"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c22",
+      "kind": "before_state",
+      "text": "An agent whose process connects to IRC itself can't be a recognised resident. culture agents status always shows it stopped, start crashes a forked child on 'unknown agent backend', and any local process can take a registered agent's nick while it is offline",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h14",
+          "text": "Each before-state sentence is reproducible on main today",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c23",
+      "kind": "after_state",
+      "text": "Every registered agent is a mesh account with its own secret, role and channel grants, and connects only by authenticating with SASL. spark-gwen is registered with backend: external and an owner. It appears in culture agents status and /residents.json with its live presence and a backend field, and start, stop and install name its owner instead of acting. Nobody can connect as a registered agent without its secret. A revoked agent is cut off within seconds. An agent's secret lives in grant and reaches only its own unit through grant run --inject. culture secret wraps grant",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h15",
+          "text": "Each after-state sentence maps to a requirement claim with a test",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "spark-gwen is registered with backend: external and an owner. It appears in culture agents status and /residents.json with its live presence and a backend field. start, stop and install name its owner instead of acting. Nobody can connect as spark-gwen, or as any other registered agent, without that agent's credential",
+          "kind": "after_state",
+          "reason": "accounts decision"
+        },
+        {
+          "text": "Every registered agent is a mesh account with its own secret, role and channel grants, and connects only by authenticating with SASL. spark-gwen is registered with backend: external and an owner. It appears in culture agents status and /residents.json with its live presence and a backend field, and start, stop and install name its owner instead of acting. Nobody can connect as a registered agent without its secret. A revoked agent is cut off within seconds. An agent's secret reaches only its own unit through LoadCredential=",
+          "kind": "after_state",
+          "reason": "grant replaces LoadCredential"
+        }
+      ]
+    },
+    {
+      "id": "c24",
+      "kind": "why_it_matters",
+      "text": "Embodiment's design forbids a second model behind Gwen's nick, so she needs residency without a harness. More broadly, every agent's identity needs to be its own: a nick anyone can squat, a secret every agent can read, and no per-agent limit on channels mean a single compromised or confused agent can speak as any other",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h16",
+          "text": "The hand-off issue to embodiment cites this rationale",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Embodiment's design forbids a second model behind Gwen's nick, so she needs residency without a harness. A nick anyone can squat is also an identity gap for every resident: messages under a resident's name should come from that resident",
+          "kind": "why_it_matters",
+          "reason": "accounts decision"
+        }
+      ]
+    },
+    {
+      "id": "c25",
+      "kind": "success_signal",
+      "text": "In a scripted test against a throwaway agentirc: (1) an external agent appears in culture agents status within 5 s of its PRESENCE publish, and start --all forks 0 children for it; (2) 100% of attempts to take a registered nick without the right secret are refused, whether the agent is online or offline; (3) a JOIN outside the agent's grants is refused; (4) after revoke, the live session closes in 5 s or less. Live on spark after deploy, spark-gwen and the 3 harness agents all authenticate, and 0 plaintext secrets appear under ~/.culture/ or in any agent's environment",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h17",
+          "text": "The success signal is checked in a scripted test against a throwaway agentirc and live on spark after deploy",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "Registering spark-gwen as backend: external shows it in culture agents status within 5 s of its PRESENCE publish, and culture agents start --all forks 0 children for it. A raw client connecting as spark-gwen without the credential is refused (ERR_ERRONEUSNICKNAME or similar) 100% of the time, while the real daemon with the credential connects",
+          "kind": "success_signal",
+          "reason": "accounts decision"
+        }
+      ]
+    },
+    {
+      "id": "c26",
+      "kind": "decision",
+      "text": "Agents send their nick credential with SASL PLAIN through CAP. agentirc holds registration of a reserved nick until SASL succeeds",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c27",
+      "kind": "decision",
+      "text": "An agent's secret is a hidden grant secret (grant.store.set_secret(hidden=True), source 'culture agents register', rotation_howto naming culture's rotate verb) in the OS user's grant store (~/.local/share/grant/secrets.json, 0600). 'hidden' is a CLI contract and the file is plaintext on disk (grant explain hidden), so in v1 it is safe from accidental leaks but not from a determined same-uid agent. Per-agent Unix users (v2) use grant admin mode, sudo grant set --user <agent-user>, to put each secret in that agent's own store",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [
+        {
+          "id": "q10",
+          "text": "Probe 2026-11-01: LoadCredential= works on spark's user units (systemd 255), but its source file must be readable by the user manager, i.e. uid spark, the same uid as every agent. systemd-creds --user encrypt doesn't exist before 256, there is no full TPM, and system-scope encrypt needs root. So the 'store only the operator reads' can't hold for same-uid agents. Accept that in v1 (0600, outside working dirs: safe from leaks, not from a determined agent), or move agents to system units now?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "Use grant (agentculture/grant, PyPI grant 0.11.0, which replaces shushu) as the agent secret store, imported as a library by culture. It is a per-OS-user store, so the same-uid limit stands in v1, and per-agent Unix users (v2) get segregation through grant's admin mode (sudo grant set --user <agent-user>)"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "An agent's plaintext credential lives in a 0600 file under ~/.culture/ (e.g. ~/.culture/credentials/<nick>), readable by headless systemd user units",
+          "kind": "decision",
+          "reason": "superseded by the accounts + LoadCredential decision"
+        },
+        {
+          "text": "An agent's plaintext secret is delivered only through systemd LoadCredential= to that agent's own unit. culture keeps the issued secret in a root-of-trust store that only the operator reads (0600, outside any agent's working directory), never in an agent-readable path under ~/.culture/",
+          "kind": "decision",
+          "reason": "q10 resolved: grant is the store"
+        }
+      ]
+    },
+    {
+      "id": "c28",
+      "kind": "decision",
+      "text": "Hand-off brief to embodiment filed as agentculture/embodiment#121: presence contract (+A, PRESENCE publish) now; SASL PLAIN credential from ~/.culture/ once agentirc ships enforcement",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c29",
+      "kind": "decision",
+      "text": "Agents get mesh accounts with secrets: each registered agent (harness-run or external) has its own account carrying nick ownership, a secret, a role and channel grants, plus operator revoke/rotate with an audit log, mirroring irc-lens's users/grants/agent_credentials/audit model (access_store.py)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c30",
+      "kind": "decision",
+      "text": "Account scope in this change: nick ownership, revoke and rotate (audited), channel grants, roles",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c31",
+      "kind": "decision",
+      "text": "OS isolation v1: an agent's secret is a hidden secret in the OS user's grant store, injected only into that agent's own unit with grant run --inject and removed from the daemon's environment at startup. It is never in a shared file, a working dir, argv or a log. Per-agent Unix users (each with its own grant store, through grant admin mode) are a follow-up frame",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "OS isolation v1: the secret reaches only its own agent's process, through systemd LoadCredential= into that unit's CREDENTIALS_DIRECTORY, never through a shared file, env var or log. Per-agent Unix users are a follow-up frame",
+          "kind": "decision",
+          "reason": "superseded by c48 (grant)"
+        }
+      ]
+    },
+    {
+      "id": "c32",
+      "kind": "requirement",
+      "text": "Channel grants are enforced by agentirc: an authenticated agent account may JOIN and speak only in channels its grants allow, with grant levels mirroring irc-lens grants(email, resource_kind, resource, level). Grants are seeded from the agent's culture.yaml channels: list (config.py:94, default ['#general']), so existing agents keep their channels",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h20",
+          "text": "After the upgrade, every existing agent joins exactly the channels in its culture.yaml, and a JOIN outside its grants is refused with a numeric error",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q9",
+          "text": "What grant levels do agents get: read-only (join and listen) vs speak, or also channel-operator? And are DMs between agents ungated?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "read / speak; DMs open"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c33",
+      "kind": "requirement",
+      "text": "Roles live on the account and gate what it may do. culture sets the role at register time, and agentirc enforces it",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h21",
+          "text": "A role's permissions are enforced by agentirc, not just shown by culture: a test sends a role-forbidden command and gets refused",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q8",
+          "text": "Which roles exist and what does each gate? For example resident (normal agent), operator (may run admin and room-owner verbs), guest (sandbox agents, limited channels). Do irc-lens's human roles map onto the same set?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "resident / operator / guest"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c34",
+      "kind": "requirement",
+      "text": "Operators can revoke and rotate an agent's secret from the culture CLI. Revoking disconnects the live session and blocks reconnects. Rotating issues a new secret, updates the unit's credential and restarts the unit (or tells the external owner). Every account change (create, rotate, revoke, grant, role) is appended to an audit log keyed by account, never containing a secret",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h22",
+          "text": "After revoke, the agent's live session is closed within 5 s and every reconnect fails. After rotate, the old secret fails and the unit reconnects with the new one. The audit log has one line per change and no secret material",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c35",
+      "kind": "assumption",
+      "text": "Each server's culture writes accounts for its own <server>- nicks into that agentirc's data_dir, a local file the server reloads, rather than over IRC. This matches the home-server-only boundary (c19), and no account data crosses links",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c36",
+      "kind": "decision",
+      "text": "Agent roles are resident (works within its grants), operator (may also run admin and room-owner verbs) and guest (sandbox agents, limited to their sandbox channels)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c37",
+      "kind": "decision",
+      "text": "Channel grant levels are read (JOIN and listen) and speak (also send). Channel-op comes from the operator role. DMs aren't gated in this change",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c38",
+      "kind": "requirement",
+      "text": "On a SASL failure (904/905 or a refused nick) the shared transport stops reconnecting and the daemon exits with the permanent-failure status, so systemd stops restarting it. Today _reconnect (cultureagent clients/shared/irc_transport.py:271-283) retries forever with backoff capped at 60 s, so a revoked agent would hammer the server indefinitely",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h24",
+          "text": "A revoked agent makes at most one failed attempt, then its unit ends in a failed state with a log line naming the SASL failure",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c39",
+      "kind": "requirement",
+      "text": "agentirc must hold registration while CAP negotiation is open. Today _try_register (agentirc client.py:512-519) completes on NICK+USER, sends 001 and announces SNICK to linked peers immediately, so SASL can't gate anything until registration waits for CAP END. No SNICK for an account nick may go out before authentication succeeds",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h25",
+          "text": "A client that sends CAP LS, NICK and USER gets no 001 and no SNICK goes to peers until CAP END. A client that never sends CAP registers as today unless its nick is an account nick",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c40",
+      "kind": "boundary",
+      "text": "Reservation is an exact match on the account nick. culture's transient observer nicks (<server>-<agent>__peek<hex>, culture_core/observer.py), used by culture residents, /residents.json and overview, keep connecting without credentials, and PRESENCE LIST stays an unauthenticated read",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h27",
+          "text": "culture residents and /residents.json keep working unchanged with accounts enforced",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c41",
+      "kind": "requirement",
+      "text": "Agent lifecycle verbs carry the account: culture agents archive suspends it (the secret stops working, the nick stays reserved), delete and unregister revoke the secret but keep the nick reserved for that agent (a tombstone, like irc-lens nickname_holders), and re-register restores it. Today _cmd_archive/_cmd_delete/_cmd_unregister (cli/agents.py:1269,1313,1389) know nothing about accounts",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h28",
+          "text": "After archive the agent's secret fails while its nick stays refused to everyone else. After delete the nick stays refused. Re-register brings back a working account",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [
+        {
+          "id": "q12",
+          "text": "After delete, should the nick stay reserved forever (irc-lens's nickname_holders behaviour) or be released?",
+          "resolved": true,
+          "blocking": false,
+          "resolution": "nick stays reserved after delete (tombstone, like irc-lens nickname_holders); re-register restores it"
+        }
+      ],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c42",
+      "kind": "requirement",
+      "text": "Activation is ordered so no agent is locked out: mint secret, then install or update the unit with LoadCredential=, then confirm the agent's cultureagent supports SASL, then publish the account to agentirc. culture doctor flags culture-agent-*.service units that have an account but no LoadCredential= line. The units on spark today (~/.config/systemd/user/culture-agent-*.service) have none",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h26",
+          "text": "Activating accounts on a live spark mesh leaves zero agents disconnected for longer than one restart",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c43",
+      "kind": "requirement",
+      "text": "Rollback is per agent and immediate: culture agents account disable <nick> removes the account from agentirc's account file and the server reloads it, returning that nick to today's behaviour (c18). Downgrading cultureagent below its SASL version while an account is active is refused or flagged by culture doctor",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h29",
+          "text": "Disabling one agent's account restores its pre-change connect behaviour within one server reload and touches no other account",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c44",
+      "kind": "requirement",
+      "text": "agentirc logs every failed authentication (nick, peer address, reason, never the secret) and rate-limits failed attempts per peer address. The counts are exposed as culture.* telemetry so a brute force or a misconfigured agent is visible",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h30",
+          "text": "A burst of failed SASL attempts from one address is throttled, logged without secrets, and visible in a culture.* metric",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c45",
+      "kind": "decision",
+      "text": "agentirc accepts SASL only from loopback or a configured trusted-CIDR list (e.g. the tailnet) and refuses it from any other peer. No TLS in this change. A server bound to 0.0.0.0 (thor) must list its trusted CIDRs before its accounts are activated",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c46",
+      "kind": "decision",
+      "text": "A deleted agent's nick stays reserved (a tombstone like irc-lens nickname_holders), and re-registering the same agent gets it back",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c47",
+      "kind": "decision",
+      "text": "The unlisted units culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge are registered as backend: external accounts in this change, and the sbx agents get the guest role",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c48",
+      "kind": "decision",
+      "text": "Agent secrets live in grant, the mesh's secrets manager (agentculture/grant, PyPI grant, replacing shushu). culture imports it as a library rather than shelling out",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c49",
+      "kind": "requirement",
+      "text": "The daemon reads CULTURE_AGENT_SECRET once at startup and removes it from os.environ before connecting or spawning anything, so agent tool subprocesses (shell tools, SDK children) never inherit it. grant run --inject delivers it through the environment, and children inherit the environment by default",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h31",
+          "text": "A shell-tool subprocess started by any harness agent sees no CULTURE_AGENT_SECRET in its environment",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c50",
+      "kind": "requirement",
+      "text": "culture moves from shushu to grant. grant becomes a capped dependency (grant>=0.11,<0.12). culture secret, today an unimplemented 'coming soon' namespace in culture_core/cli/introspect.py _NAMESPACES, becomes a forward to grant through the culture_core/cli/_passthrough.py pattern (culture secret <verb> == grant <verb>). The docs that name shushu now name grant: README.md:38,63, docs/culture/vision.md:70, docs/reference/cli/devex.md:71",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h32",
+          "text": "grep -ri shushu over README.md and docs/ returns only historical CHANGELOG and doctor-example lines",
+          "status": "confirmed",
+          "instruction": ""
+        },
+        {
+          "id": "h33",
+          "text": "culture secret list prints the same names as grant list, culture explain no longer marks secret '(coming soon)', and culture secret get refuses hidden secrets exactly as grant does",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": [
+        {
+          "text": "culture declares grant as a capped dependency (grant>=0.11,<0.12, in line with the capped-deps rule), and the docs that still name shushu are updated to grant: README.md:38,63 (culture secret wrapping shushu), docs/culture/vision.md:70, docs/reference/cli/devex.md:71",
+          "kind": "requirement",
+          "reason": "user: move culture secret to grant instead of shushu while we touch it"
+        }
+      ]
+    },
+    {
+      "id": "c51",
+      "kind": "decision",
+      "text": "The agentirc and cultureagent parts of this spec (accounts, CAP-held registration, SASL, grants, roles, auth logging; SASL plus the permanent-failure exit and env scrub in the shared transport) are implemented directly by this session as PRs in those repos, not filed as hand-off issues. embodiment stays a hand-off (embodiment#121)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "Should irc-lens personal-agent credentials and human nicks eventually be checked by the same agentirc mechanism, so a raw IRC client can't take spark-ori either?",
+      "kind": "follow_up",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v2",
+      "text": "Per-agent Unix users (system units with User=agent-<name> or DynamicUser=) so agents running as the same user can't reach each other's /proc or credentials directory. LoadCredential= on user units shares one UID across every spark agent",
+      "kind": "follow_up",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    },
+    {
+      "id": "v3",
+      "text": "Account file reload racing an in-flight registration on agentirc (concurrency lens residual)",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    }
+  ],
+  "scope_entries": [
+    {
+      "id": "s1",
+      "surface": "agentirc client.py _handle_nick + ircd.py PASS sniff",
+      "finding": "Nick check is system- prefix, <server>- prefix, live collision only (client.py:461-486); no offline reservation, no client credential path (PASS is S2S-only, ircd.py:713); culture_core/agentirc is a re-export forward",
+      "seeds": [
+        "c2",
+        "q1"
+      ]
+    },
+    {
+      "id": "s2",
+      "surface": "culture_core/cli/agents.py start path",
+      "finding": "_resolve_agents_to_start/_get_active_agents filter only archived; _run_multi_agents forks each agent and the child dies in _resolve_daemon_factory (797-819) for unknown backends after 'Started' prints",
+      "seeds": [
+        "c3",
+        "q2"
+      ]
+    },
+    {
+      "id": "s3",
+      "surface": "culture_core/cli/shared/process.py stop_agent",
+      "finding": "stop tries IPC socket then agent-<nick> pidfile SIGTERM; external process has neither",
+      "seeds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "s4",
+      "surface": "culture_core/cli/shared/display.py agent_process_status",
+      "finding": "status derives running/starting/stopped solely from pidfile + IPC socket; never queries IRC or systemd",
+      "seeds": [
+        "c5",
+        "q3"
+      ]
+    },
+    {
+      "id": "s5",
+      "surface": "culture_core/resource_view.py + overview/renderer_web.py /residents.json",
+      "finding": "resident rows come from PRESENCE LIST; manifest joined only for budgets; no backend field in _RESIDENT_FIELDS (107-120); irc-lens consumer validates only the envelope",
+      "seeds": [
+        "c6",
+        "q4"
+      ]
+    },
+    {
+      "id": "s6",
+      "surface": "agentirc skills/presence.py",
+      "finding": "registry rows created only on PRESENCE publish (250); offline flip only on QUIT or TCP close of +A/+C clients (108-120); observe-only, never gates connections",
+      "seeds": [
+        "c7",
+        "q5"
+      ]
+    },
+    {
+      "id": "s7",
+      "surface": "culture_core/config.py",
+      "finding": "backend is free str (93); unknown keys go to extras; register does no backend check (agents.py:1339)",
+      "seeds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "s8",
+      "surface": "culture_core/devtools/backend_parity.py",
+      "finding": "enforced set = TARGET_BACKENDS (claude/codex/colleague) gated on clients/<b>/ dirs; external never enforced; only _create_<enforced>_daemon bodies count as touches",
+      "seeds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "s9",
+      "surface": "issue 506 'Not asked for' + protocol/extensions/presence.md",
+      "finding": "issue excludes harness changes, new verbs, harness-agent changes; PRESENCE verb already shipped (cultureagent 0.13.0 emitter)",
+      "seeds": [
+        "c10"
+      ]
+    },
+    {
+      "id": "s10",
+      "surface": "culture_core/cli/agents.py install + IPC verbs",
+      "finding": "install writes culture-agent-<nick> unit running 'agents start --foreground' which would crash for external and could clash with owner unit; sleep/wake/learn/message/read need the agent IPC socket",
+      "seeds": [
+        "c11"
+      ]
+    },
+    {
+      "id": "s11",
+      "surface": "../embodiment/culture.yaml",
+      "finding": "embodiment already registers suffix embodiment with backend colleague; spark-gwen would be a second agents entry in the same file (resolve_agents supports lists)",
+      "seeds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "s12",
+      "surface": "challenge pass / security lens: systemd LoadCredential probe (systemd-run --user, systemd-creds)",
+      "finding": "LoadCredential works in user units (/run/user/1000/credentials/<unit>, 0400 spark); the source and CREDENTIALS_DIRECTORY are both readable by uid spark; encrypted creds unavailable on systemd 255 / no TPM",
+      "seeds": [
+        "c27",
+        "q10"
+      ]
+    },
+    {
+      "id": "s13",
+      "surface": "challenge pass / security lens: agentirc transport (grep ssl|tls in installed agentirc)",
+      "finding": "no TLS support; SASL PLAIN is cleartext on the wire; server.yaml host is localhost on spark, 0.0.0.0 on thor",
+      "seeds": [
+        "c2",
+        "q11"
+      ]
+    },
+    {
+      "id": "s14",
+      "surface": "challenge pass / failure-mode lens: cultureagent irc_transport._reconnect",
+      "finding": "reconnect loop retries forever on OSError with 1..60s backoff; no permanent-failure path for auth refusal",
+      "seeds": [
+        "c38"
+      ]
+    },
+    {
+      "id": "s15",
+      "surface": "challenge pass / adjacent-systems lens: agentirc client.py _try_register / _handle_cap",
+      "finding": "registration completes on NICK+USER regardless of CAP; SNICK relayed to links at once; CAP END is a no-op",
+      "seeds": [
+        "c39"
+      ]
+    },
+    {
+      "id": "s16",
+      "surface": "challenge pass / adjacent-systems lens: culture_core/observer.py + resource_view._query_presence_wire",
+      "finding": "observers register transient <agent>__peek nicks without auth; must not be caught by reservation",
+      "seeds": [
+        "c40"
+      ]
+    },
+    {
+      "id": "s17",
+      "surface": "challenge pass / lifecycle lens: culture agents archive/delete/unregister",
+      "finding": "no account handling in these verbs; irc-lens keeps nicks reserved after removal",
+      "seeds": [
+        "c41"
+      ]
+    },
+    {
+      "id": "s18",
+      "surface": "challenge pass / migration lens: ~/.config/systemd/user/culture-agent-*.service",
+      "finding": "existing generated units lack LoadCredential=; publishing an account before the unit and client are ready locks the agent out",
+      "seeds": [
+        "c42"
+      ]
+    },
+    {
+      "id": "s19",
+      "surface": "challenge pass / reversibility lens: c18 no-flag-day + account file reload (c35)",
+      "finding": "removing an account is the rollback; a client downgrade is the lockout path",
+      "seeds": [
+        "c43"
+      ]
+    },
+    {
+      "id": "s20",
+      "surface": "challenge pass / observability lens: agentirc auth path (none exists today)",
+      "finding": "no auth logging or rate limit to reuse; new",
+      "seeds": [
+        "c44"
+      ]
+    },
+    {
+      "id": "s21",
+      "surface": "challenge pass / overlooked-actors lens: ~/.config/systemd/user + culture_core/sandbox/agent.py",
+      "finding": "sandbox/ask/bridge agents are unmanifested units; guest role has no current holder in the manifest",
+      "seeds": [
+        "c21",
+        "q13"
+      ]
+    },
+    {
+      "id": "s22",
+      "surface": "challenge pass / concurrency lens: agentirc presence registry + account reload",
+      "finding": "clean pass: the registry is in-memory and lost on server restart, but every client re-publishes after reconnect (o13 for Gwen, the cultureagent emitter for harness agents); residual risk only if the account reload races a live registration",
+      "seeds": []
+    },
+    {
+      "id": "s23",
+      "surface": "challenge pass / distributed-state lens: server links (c19)",
+      "finding": "clean pass: account data stays home-server-only; a linked server can't verify a remote agent's auth and trusts the link, which matches today's S2S trust model",
+      "seeds": []
+    },
+    {
+      "id": "s24",
+      "surface": "challenge pass / security lens: grant 0.11.0 (grant learn/explain, grant.store, grant doctor)",
+      "finding": "per-OS-user store at ~/.local/share/grant/secrets.json (0600, plaintext); hidden is a CLI contract only; get_value raises HiddenError for hidden secrets, so they are consumed only through grant run --inject (env); admin mode (sudo, setuid-fork) writes into another user's store, the v2 path",
+      "seeds": [
+        "c27",
+        "c49"
+      ]
+    }
+  ],
+  "lapses": [
+    {
+      "id": "l1",
+      "code": "assumption-for-measurement",
+      "what": "F3 asserts a revoked agent would reconnect forever. Read: _reconnect retries only on OSError. Not traced: whether a server-side refusal (an error numeric or a closed socket during registration) reaches _reconnect, or instead leaves the transport registered-but-dead",
+      "skipped_check": "trace cultureagent irc_transport on ERROR/close during registration",
+      "refs": [
+        "challenge pass / failure-mode lens: irc_transport._reconnect"
+      ],
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "l2",
+      "code": "control-absent",
+      "what": "t5 task agent ran only 6 test files, not the full suite; regressions elsewhere (e.g. namespace enumerations) unchecked by the agent",
+      "skipped_check": "full culture test suite on agent/er506-t5",
+      "refs": [
+        "t5"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l3",
+      "code": "grader-unverified",
+      "what": "t5 task agent did not execute the example commands in docs/secret.md; only set/get/list are exercised by tests",
+      "skipped_check": "run docs/secret.md examples",
+      "refs": [
+        "t5"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l4",
+      "code": "assumption-for-measurement",
+      "what": "t7 did not measure whether a client that sends CAP LS and never CAP END is eventually dropped; observed only 1.5 s. Unregistered connections may live forever (a pre-existing gap for clients that never send USER, now also reachable through CAP LS)",
+      "skipped_check": "observe the unregistered-connection lifetime against the ping reaper",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l5",
+      "code": "control-absent",
+      "what": "t7 bumped agentirc's version by hand rather than with the repo's /version-bump skill, and ran no code review",
+      "skipped_check": "agentirc /version-bump skill; code review of the client.py diff",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l6",
+      "code": "provenance-missing",
+      "what": "agentirc after merging t7: 1 failure in the first of 11 full-suite runs; its test name was not captured (ran without -rf). Not reproduced in 10 further full runs or 15 stress runs of the t7-related files. Accepted as a flake on that evidence",
+      "skipped_check": "capture the failing test id on the first after-merge run",
+      "refs": [
+        "t7"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l7",
+      "code": "control-absent",
+      "what": "t2 wrote its implementation before its tests (TDD red step not first); it recovered by running the new tests red against the original agents.py",
+      "skipped_check": "write failing tests before implementing",
+      "refs": [
+        "t2"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l8",
+      "code": "control-absent",
+      "what": "t8's real-network trusted-peer tests skip on hosts with no bindable non-loopback IPv4 (CI may lack one); the always-running deterministic test patches Client.host, so CI may prove the trust rule only with a patched address",
+      "skipped_check": "a non-patched untrusted-peer test that always runs",
+      "refs": [
+        "t8"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l9",
+      "code": "control-absent",
+      "what": "t8 did not update [tool.citation] entries for the vendored client.py/ircd.py or run cite check, and ran pylint/bandit on only part of the changed files",
+      "skipped_check": "cite check; pylint/bandit over all changed files",
+      "refs": [
+        "t8"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "l10",
+      "code": "instrument-changed-mid-series",
+      "what": "Worktree venvs were created with Python 3.13 (uv default) while CI runs 3.12; under 3.13, asyncio removes Unix server socket files on close, so socket tests fail in cleanup. The 'pre-existing' failures reported by t2, t3, t11 and t13 (test_channel_cli IPC routing; cultureagent skill_client/socket_server) are this artifact, not baseline breakage. Main-checkout gates ran on the repo's own venv",
+      "skipped_check": "pin worktree venvs to the CI Python (uv sync --python 3.12)",
+      "refs": [
+        "t2 t3 t11 t13"
+      ],
+      "origin": "llm",
+      "status": "proposed"
+    }
+  ],
+  "obligations": [
+    {
+      "id": "o1",
+      "claim_id": "c3",
+      "seam": "culture agents start CLI (cli/agents.py _resolve_agents_to_start / _run_multi_agents)",
+      "behavior": "For a backend: external agent: forks 0 children, writes no agent-<nick> pidfile, prints 'owned by <owner>', exits 0. Harness agents in the same --all run still start",
+      "source_text": "culture agents start (and --all) skips backend: external agents and prints who owns their lifecycle, before any fork: today _run_multi_agents forks a child per agent that dies in _resolve_daemon_factory (cli/agents.py:797-819) with 'unknown agent backend' after the parent already printed 'Started'",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o2",
+      "claim_id": "c4",
+      "seam": "culture agents stop CLI (cli/shared/process.py stop_agent)",
+      "behavior": "For a backend: external agent: sends no signal, sends no IPC, touches no pidfile, prints 'owned by <owner>', exits 0",
+      "source_text": "culture agents stop skips backend: external agents with the same owner message: stop_agent (cli/shared/process.py:21) only knows the agent IPC socket and the agent-<nick> pidfile, neither of which an external process has",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o3",
+      "claim_id": "c5",
+      "seam": "culture agents status (cli/shared/display.py) <-> agentirc PRESENCE LIST",
+      "behavior": "An external agent's row shows its PRESENCE state when the server answers, and 'unknown' when it is unreachable. Harness agent rows are byte-identical to before",
+      "source_text": "culture agents status shows an external agent's state from the live PRESENCE registry (PRESENCE LIST, as resource_view._query_presence_wire already does), not from agent_process_status (cli/shared/display.py:18-31), which reads only the pidfile + IPC socket and would always print 'stopped'",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o4",
+      "claim_id": "c6",
+      "seam": "/residents.json + culture residents --json (resource_view._RESIDENT_FIELDS)",
+      "behavior": "Every resident row carries a backend field: the manifest backend for registered nicks, null for unregistered ones. The envelope {supported, generated_at, residents} is unchanged",
+      "source_text": "/residents.json needs no culture change to list an external resident: fetch_residents_async (resource_view.py:329-349) lists every nick in agentirc's PRESENCE registry and apply_budgets only joins the manifest for budget fields, so a manifest-less or external nick is still listed",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o5",
+      "claim_id": "c11",
+      "seam": "culture agents install + IPC verbs (sleep/wake/learn/message/read)",
+      "behavior": "For an external agent: install writes no systemd unit, and each IPC verb exits non-zero with the owner message rather than a socket error",
+      "source_text": "Every other per-agent verb that assumes a culture-owned daemon refuses an external agent with the owner message instead of failing obscurely: install (would write a crashing culture-agent-<nick> systemd unit via persistence.install_service, cli/agents.py:1439), and the IPC verbs sleep/wake/learn/message/read (_resolve_ipc_targets, cli/agents.py:1126)",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o6",
+      "claim_id": "c2",
+      "seam": "agentirc client registration (CAP/AUTHENTICATE/NICK, client.py _handle_nick)",
+      "behavior": "NICK of an account's nick without successful SASL PLAIN, or with a wrong or revoked secret, never gets 001 RPL_WELCOME. With the right secret it gets 001. This holds whether or not the real agent is connected",
+      "source_text": "agentirc keeps agent accounts (nick, secret hash, role, channel grants, revoked flag) and refuses registration of an account's nick until SASL PLAIN authenticates against it. Today _handle_nick checks only the system- prefix, the <server>- prefix and live collision (client.py:461-486), and the only ownership checks are room-owner checks (skills/rooms.py:334,478). culture is the admin surface that writes accounts from the manifest. agentirc and cultureagent (shared irc_transport.py:135-136 sends SASL) are sibling hand-offs",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o7",
+      "claim_id": "c17",
+      "seam": "culture-generated systemd unit + agent start (persistence.install_service, )",
+      "behavior": "The generated unit contains LoadCredential=<nick-secret>:<operator store path>. The agent reads its secret only from $CREDENTIALS_DIRECTORY. No plaintext secret appears in the working dir, env, argv, ~/.culture agent files or logs",
+      "source_text": "culture agents register creates the agent's mesh account and mints its secret (plaintext shown once, SHA-256 stored, as irc-lens agent_credentials does). Units culture generates (persistence.install_service, the [Service] block at persistence.py:295) get a LoadCredential= line for that secret, and culture agents start reads it from CREDENTIALS_DIRECTORY and hands it to the shared transport. An external owner adds the same LoadCredential= line to its own unit",
+      "origin": "llm",
+      "status": "rejected"
+    },
+    {
+      "id": "o8",
+      "claim_id": "c18",
+      "seam": "agentirc account table <-> legacy agents",
+      "behavior": "A nick with no account registers exactly as on agentirc today (prefix + collision checks only). Upgrading server and culture without re-registering changes no existing agent's connect, join or speak behaviour",
+      "source_text": "No flag day: agentirc enforces a nick only once the server holds a credential for it. Agents registered before this change keep connecting until they are re-registered or have a credential minted. culture doctor lists registered agents that have no credential",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o9",
+      "claim_id": "c19",
+      "seam": "agentirc server link (SEVENT relay)",
+      "behavior": "No account, secret hash, grant or role field is carried in any S2S message",
+      "source_text": "Reservation is enforced only on the nick's home server. Every nick carries its <server>- prefix and agentirc already refuses a non-matching prefix (client.py:470-476), so credential tables are never federated across linked servers",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o10",
+      "claim_id": "c32",
+      "seam": "agentirc JOIN / PRIVMSG to channels",
+      "behavior": "JOIN to a channel with no grant is refused with a numeric error. A read-only grant joins but its PRIVMSG to the channel is refused. Grants are seeded from culture.yaml channels:. DMs aren't gated",
+      "source_text": "Channel grants are enforced by agentirc: an authenticated agent account may JOIN and speak only in channels its grants allow, with grant levels mirroring irc-lens grants(email, resource_kind, resource, level). Grants are seeded from the agent's culture.yaml channels: list (config.py:94, default ['#general']), so existing agents keep their channels",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o11",
+      "claim_id": "c33",
+      "seam": "agentirc role check on admin / room-owner verbs",
+      "behavior": "A resident or guest account sending an operator-only verb is refused. An operator account succeeds. A guest can't be granted a channel outside its sandbox",
+      "source_text": "Roles live on the account and gate what it may do. culture sets the role at register time, and agentirc enforces it",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o12",
+      "claim_id": "c34",
+      "seam": "culture agents revoke/rotate CLI + agentirc session + audit log",
+      "behavior": "Revoke closes the live session within 5 s and refuses every reconnect. Rotate makes the old secret fail and the restarted unit connect. The audit log gains exactly one line per account change, containing no secret material",
+      "source_text": "Operators can revoke and rotate an agent's secret from the culture CLI. Revoking disconnects the live session and blocks reconnects. Rotating issues a new secret, updates the unit's credential and restarts the unit (or tells the external owner). Every account change (create, rotate, revoke, grant, role) is appended to an audit log keyed by account, never containing a secret",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o13",
+      "claim_id": "c7",
+      "seam": "embodiment Gwen daemon <-> agentirc (hand-off, embodiment#121)",
+      "behavior": "After 001, Gwen sets user mode +A and publishes PRESENCE with a valid state. Her row turns offline on QUIT or a dropped TCP connection",
+      "source_text": "The external process carries the presence contract itself: agentirc creates a row only on a PRESENCE :<json> publish (agentirc skills/presence.py:250) and flips it offline only on QUIT or a TCP close from a +A/+C client (skills/presence.py:108-120) - so Gwen's daemon must set user mode +A and publish PRESENCE (idle at minimum) to appear and to go offline correctly",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o14",
+      "claim_id": "c17",
+      "seam": "culture-generated systemd unit + agent start (persistence.install_service, $CREDENTIALS_DIRECTORY)",
+      "behavior": "The generated unit contains LoadCredential=<nick-secret>:<operator store path>. The agent reads its secret only from $CREDENTIALS_DIRECTORY. No plaintext secret appears in the working dir, env, argv, ~/.culture agent files or logs",
+      "source_text": "culture agents register creates the agent's mesh account and mints its secret (plaintext shown once, SHA-256 stored, as irc-lens agent_credentials does). Units culture generates (persistence.install_service, the [Service] block at persistence.py:295) get a LoadCredential= line for that secret, and culture agents start reads it from CREDENTIALS_DIRECTORY and hands it to the shared transport. An external owner adds the same LoadCredential= line to its own unit",
+      "origin": "llm",
+      "status": "rejected"
+    },
+    {
+      "id": "o15",
+      "claim_id": "c17",
+      "seam": "culture-generated systemd unit + grant store (grant.store, grant run --inject)",
+      "behavior": "The generated ExecStart is wrapped in grant run --inject CULTURE_AGENT_SECRET=<hidden secret name> --. The secret exists only in the grant store and, briefly, in the daemon process environment before it is removed. No plaintext appears in the working dir, ~/.culture, argv, logs or any child process environment",
+      "source_text": "culture agents register creates the agent's mesh account, mints its secret with grant.generate.random_secret, stores it as a hidden grant secret named after the nick (e.g. CULTURE_AGENT_SPARK_GWEN), and writes only its SHA-256 hash into the account. Units culture generates (persistence.install_service, persistence.py:295) wrap ExecStart in grant run --inject CULTURE_AGENT_SECRET=<name> --. An external owner (Gwen's unit, the sbx/ask units) wraps its own ExecStart the same way",
+      "origin": "llm",
+      "status": "approved"
+    },
+    {
+      "id": "o16",
+      "claim_id": "c50",
+      "seam": "culture secret CLI forward (culture_core/cli/_passthrough.py -> grant)",
+      "behavior": "Every grant verb is reachable as culture secret <verb> with identical argv, exit code, stdout and stderr. Hidden-secret refusals and admin mode behave as in grant itself",
+      "source_text": "culture moves from shushu to grant. grant becomes a capped dependency (grant>=0.11,<0.12). culture secret, today an unimplemented 'coming soon' namespace in culture_core/cli/introspect.py _NAMESPACES, becomes a forward to grant through the culture_core/cli/_passthrough.py pattern (culture secret <verb> == grant <verb>). The docs that name shushu now name grant: README.md:38,63, docs/culture/vision.md:70, docs/reference/cli/devex.md:71",
+      "origin": "llm",
+      "status": "approved"
+    }
+  ]
+}
