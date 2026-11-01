@@ -292,6 +292,11 @@ def _install_mesh_services(
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
+        if getattr(agent, "type", None) == "external":
+            # External residents own their lifecycle (culture#506): culture
+            # never writes a unit for them.
+            print(f"  Skipped {full_nick} — external resident, owned by its own process")
+            continue
         # No --config: defer to `culture agents start`'s argparse default
         # (DEFAULT_CONFIG = ~/.culture/server.yaml — the manifest the rest
         # of the CLI treats as source of truth). Pinning a per-workdir
@@ -566,6 +571,8 @@ def _restart_mesh_services(
 
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
+        if getattr(agent, "type", None) == "external":
+            continue  # external residents own their unit (culture#506)
         # See _install_mesh_services for the rationale behind omitting
         # --config; this restart path mirrors that contract.
         agent_cmd = [

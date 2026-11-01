@@ -402,3 +402,28 @@ def test_resolve_rebuilds_from_agents_yaml_preserving_links(tmp_path):
     assert result.server.port == 7000
     assert len(result.server.links) == 1
     assert result.server.links[0].name == "thor"
+
+
+def test_install_mesh_services_skips_external_residents(capsys):
+    """mesh setup never writes a unit for an external resident (culture#506):
+    its own process (e.g. gwen.service) owns its lifecycle."""
+    from culture_core.cli.mesh import _install_mesh_services
+
+    mesh = MeshConfig(
+        server=MeshServerConfig(name="spark", host="127.0.0.1", port=6667),
+        agents=[
+            MeshAgentConfig(nick="claude", workdir="/home/u/work"),
+            MeshAgentConfig(nick="gwen", type="external", workdir="/home/u/emb"),
+        ],
+    )
+    with (
+        patch("culture_core.persistence.install_service") as mock_install,
+        patch(f"{_MESH_MOD}.build_server_start_cmd", return_value=["culture", "server", "start"]),
+    ):
+        _install_mesh_services(mesh, "spark", "/usr/bin/culture", "/etc/mesh.yaml")
+
+    agent_units = [
+        c[0] for c in _captured_install_calls(mock_install) if c[0].startswith("culture-agent-")
+    ]
+    assert agent_units == ["culture-agent-spark-claude"]
+    assert "Skipped spark-gwen" in capsys.readouterr().out
