@@ -120,8 +120,9 @@ def test_no_shushu_left_in_readme_or_docs():
         rel = f.relative_to(root).as_posix()
         if rel in allowed:
             continue
-        # frozen design records (specs/plans) name shushu historically
-        if rel.startswith(("docs/superpowers/", "docs/specs/", "docs/plans/")):
+        # frozen design records (specs/plans/delivery records) name shushu
+        # historically (deviation d1)
+        if rel.startswith(("docs/superpowers/", "docs/specs/", "docs/plans/", "docs/deliveries/")):
             continue
         if re.search("shushu", f.read_text(), re.IGNORECASE):
             offenders.append(rel)

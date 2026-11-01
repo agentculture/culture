@@ -87,6 +87,7 @@ host come from `server.yaml`):
 | `<nick>'s unit injects an account secret but its account is <state>/removed` | error | `culture agents account activate <nick>` (or `culture agents install <nick>` to go back to legacy) |
 | `installed cultureagent <v> is below 0.16.0, the first release with SASL support` (only when accounts exist) | error | `uv tool install --upgrade 'cultureagent>=0.16.0'` |
 | `installed agentirc <v> is below 9.14.0 ...` (only when accounts exist) | error | `uv tool install --upgrade 'agentirc-cli>=9.14.0'` |
+| `invalid accounts: block: ...` (server.yaml `accounts:` fails agentirc's validation; the server would refuse to start) | error | fix the `accounts:` block in `server.yaml` |
 | `server binds 0.0.0.0 and has accounts but accounts.trusted_cidrs is empty` | error | add the mesh range under `accounts: trusted_cidrs:`, or bind a specific interface |
 | `registered agent <nick> has no account` | info | `culture agents account activate <nick>` (accounts are opt-in) |
 

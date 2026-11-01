@@ -341,6 +341,7 @@ def welcomed(lines):
     return any(" 001 " in x for x in lines)
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_revoke_closes_live_session_within_5s(env, tmp_path, ircd):
     register(env, tmp_path, "gwen")
@@ -351,6 +352,7 @@ async def test_revoke_closes_live_session_within_5s(env, tmp_path, ircd):
     assert elapsed is not None and elapsed < 5.0
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_rotate_old_secret_fails_new_works(env, tmp_path, ircd):
     register(env, tmp_path, "gwen")
@@ -364,6 +366,7 @@ async def test_rotate_old_secret_fails_new_works(env, tmp_path, ircd):
     assert welcomed(lines), lines
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 @pytest.mark.parametrize("how", ["archive", "delete", "unregister"])
 async def test_nick_stays_reserved(env, tmp_path, ircd, how):
@@ -391,6 +394,7 @@ async def test_nick_stays_reserved(env, tmp_path, ircd, how):
     assert welcomed(lines), lines
 
 
+@pytest.mark.requires_agentirc_accounts
 @pytest.mark.asyncio
 async def test_disable_returns_legacy_without_touching_others(env, tmp_path, ircd):
     register(env, tmp_path, "gwen")

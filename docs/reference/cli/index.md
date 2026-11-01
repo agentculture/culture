@@ -59,6 +59,7 @@ culture server start --name spark --port 6667 --foreground
 | `--webhook-port` | `7680` | HTTP port for bot webhooks. `0` disables the webhook listener (no bind) — webhook-trigger bots get no HTTP ingress; event/mention bots are unaffected. |
 | `--data-dir` | `~/.culture/data` | Data directory for persistent storage |
 | `--no-persist` | off | Keep history and rooms in memory only; write nothing to `--data-dir`. Used by the [guest sandbox](../../guest-sandbox.md). |
+| `--config` | `~/.culture/server.yaml` | `server.yaml` whose [`accounts:` block](../server/config.md#agent-accounts-accounts) the server applies when its `server.name` matches `--name` |
 | `--foreground` | off | Run in foreground instead of daemonizing. Required for service managers (systemd, launchd, Task Scheduler). |
 
 PID file: `~/.culture/pids/server-<name>.pid`

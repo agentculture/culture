@@ -40,6 +40,28 @@ use the same resolution and also take `--data-dir`. A server's culture only
 writes its own `<server>-` nicks; other servers' records in the same file are
 carried through every write unchanged.
 
+## What culture refuses to write
+
+AgentIRC validates `accounts.json` as a whole: one bad record and it rejects
+the file and keeps its last good table, which would silently freeze every
+later revoke, suspend or rotate. So before every write culture checks the
+complete document, other servers' records included, and refuses the write
+(`account error: ...`, nothing changed) instead of writing a file the server
+would reject:
+
+- with agentirc's own parser (`agentirc.accounts.parse_accounts`) when the
+  installed agentirc ships it, using the server's
+  `accounts.guest_channel_prefixes` from `server.yaml`;
+- and always with culture's mirror of its rules (the only check on an older
+  agentirc): nicks are printable ASCII without spaces; no two nicks differ
+  only by letter case; a `guest` account holds grants only on channels that
+  start with one of `accounts.guest_channel_prefixes`.
+
+With no prefixes configured a guest can hold no grants at all, so making an
+account with `channels:` a guest (`set_role(nick, "guest")`, or minting with
+`role="guest"`) is refused until `guest_channel_prefixes` covers those
+channels.
+
 ## Secret names
 
 `CULTURE_AGENT_<NICK>_<TAG>`: `<NICK>` is the nick upper-cased with every
@@ -49,6 +71,9 @@ limit), `<TAG>` the first 10 hex digits of sha256 of the exact nick. So
 share a secret. The grant record's `purpose` names the exact nick; culture
 refuses to overwrite (or delete) a secret whose source/purpose show it belongs
 to someone else.
+
+The commands print the grant entry's *name* (never its value) so you can find
+it with `culture secret list`.
 
 ## Activation
 
@@ -130,7 +155,11 @@ account is published, so the owner restarts after the second run.
   `uv tool install grant`. The secret reaches only the daemon child.
   `cultureagent` and culture's own runner exit 78 on a permanent SASL
   refusal, and `grant run` exits 64 when the secret is missing; both park
-  the unit instead of restart-looping.
+  the unit instead of restart-looping. Wrapping a legacy or hand-edited unit
+  whose `RestartPreventExitStatus=` line is missing adds one under `ExecStart`
+  (a hand-edited line gets exit status `64` appended), behind a
+  `# culture account wrap; original RestartPreventExitStatus: ...` comment;
+  unwrapping restores the original unit byte-for-byte.
 - **`culture agents start`** (outside a unit): when the agent has an active
   account, the secret is read from grant in-process and handed to that
   daemon only (each forked agent gets its own). An inactive account or a
@@ -149,7 +178,10 @@ unwrapped.
   tombstone (mints a fresh secret).
 - `revoke` - stop the agent's unit, then tombstone the account (secret
   deleted, nick reserved, any live session closes within 5 s). The unit stays
-  wrapped; `activate` is the whole recovery.
+  wrapped; `activate` is the whole recovery. If the revoke fails (for example
+  an unreadable `accounts.json`, or a grant entry under culture's name that
+  belongs to someone else) nothing is written and a unit that was running is
+  started again.
 - `rotate` - mint a new secret (the old one fails; role, grants, state are
   kept). If the file write fails, grant gets the old secret back. A
   culture-owned agent's installed unit is restarted; with no unit, the
@@ -158,7 +190,9 @@ unwrapped.
   up the new secret from grant").
 - `disable` - remove the entry and its secret and put the agent back on the
   legacy path: a running unit is stopped, unwrapped, and started again
-  without the inject. Per-agent; other accounts are untouched.
+  without the inject. Per-agent; other accounts are untouched. If removing
+  the account fails, the unit is rolled back (original `ExecStart`,
+  byte-for-byte) and started again if it was running.
 - `show <nick>` / `list` - role, state and grants only.
 
 Every write of `accounts.json` (and the grant write that goes with it) holds an

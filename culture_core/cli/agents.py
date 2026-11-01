@@ -1641,6 +1641,25 @@ def _account_data_dir(args: argparse.Namespace, config: ServerConfig):
     ).path
 
 
+def _account_prefixes(args: argparse.Namespace) -> tuple[str, ...]:
+    """The server's guest sandbox (server.yaml ``accounts.guest_channel_prefixes``).
+
+    Read with the same loader ``culture server start`` uses, so the accounts
+    file culture writes is validated against the prefixes the server enforces.
+    """
+    from culture_core import accounts_policy
+
+    try:
+        block = accounts_policy.load_accounts_block(getattr(args, "config", None))
+    except accounts_policy.AccountsPolicyError as exc:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"account error: {exc}",
+            "fix the 'accounts:' block in server.yaml (see docs/reference/server/config.md)",
+        ) from exc
+    return block.guest_channel_prefixes
+
+
 def _account_error(exc: Exception) -> CultureError:
     return CultureError(
         EXIT_USER_ERROR,
@@ -1688,6 +1707,7 @@ def _account_activate(config: ServerConfig, agent: AgentConfig, args: argparse.N
             external=external,
             owner_ready=getattr(args, "owner_ready", False),
             unit=None if external else _account_unit_ops(config, args),
+            guest_channel_prefixes=_account_prefixes(args),
         )
     except accounts.ActivationError as exc:
         raise CultureError(
@@ -1698,25 +1718,27 @@ def _account_activate(config: ServerConfig, agent: AgentConfig, args: argparse.N
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
 
-    name = res.secret_name
+    # The grant entry's *name* (never its value) is derived from the nick
+    # alone, so the hint below carries nothing secret.
+    entry = accounts.grant_entry_name(nick)
     kept = "existing secret kept" if res.reused else "new secret minted"
     owner = agent.owner or "the owning process"
     if res.pending_owner:
         print(
-            f"Account secret ready for {nick} ({kept}; stored in grant as {name}; never "
+            f"Account secret ready for {nick} ({kept}; stored in grant as {entry}; never "
             "printed). The account is NOT published yet."
         )
         print("Next:")
         print(
             f"  1. make {owner} run under: grant run --inject "
-            f"CULTURE_AGENT_SECRET={name} -- <its command>  (do not restart it yet)"
+            f"CULTURE_AGENT_SECRET={entry} -- <its command>  (do not restart it yet)"
         )
         print(f"  2. culture agents account activate {nick} --owner-ready")
         print(f"  3. restart {owner} so it authenticates with the secret")
         return
-    print(f"Account active: {nick} ({kept}; stored in grant as {name}; never printed)")
+    print(f"Account active: {nick} ({kept}; stored in grant as {entry}; never printed)")
     if external:
-        print(f"Now restart {owner} so it picks up the secret from grant ({name})")
+        print(f"Now restart {owner} so it picks up the secret from grant ({entry})")
     else:
         print(f"culture-agent-{nick}: wrapped with the grant inject, restarted and reconnected")
 
@@ -1737,9 +1759,16 @@ def _account_apply(args: argparse.Namespace, config: ServerConfig, nick: str, ac
         rec = accounts.find(nick, server_name, data_dir) if data_dir else None
         if rec is None:
             return
+        prefixes = _account_prefixes(args)
         if action == "suspended":
             if rec.state == "active":
-                accounts.set_state(nick, server_name, "suspended", data_dir=data_dir)
+                accounts.set_state(
+                    nick,
+                    server_name,
+                    "suspended",
+                    data_dir=data_dir,
+                    guest_channel_prefixes=prefixes,
+                )
                 print(f"Account suspended: {nick} (nick stays reserved)")
         elif action == "revoked":
             # The agent is leaving the manifest: its unit could only crash-loop
@@ -1748,10 +1777,12 @@ def _account_apply(args: argparse.Namespace, config: ServerConfig, nick: str, ac
             svc = f"culture-agent-{nick}"
             if _unit_installed(nick) and persistence.uninstall_service(svc):
                 print(f"Uninstalled {svc} (its account is being revoked)")
-            accounts.revoke(nick, server_name, data_dir=data_dir)
+            accounts.revoke(nick, server_name, data_dir=data_dir, guest_channel_prefixes=prefixes)
             print(f"Account revoked: {nick} (secret deleted; nick stays reserved)")
         elif action == "restore" and rec.state == "suspended":
-            accounts.set_state(nick, server_name, "active", data_dir=data_dir)
+            accounts.set_state(
+                nick, server_name, "active", data_dir=data_dir, guest_channel_prefixes=prefixes
+            )
             print(f"Account restored: {nick}")
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
@@ -1805,27 +1836,37 @@ def _cmd_account(args: argparse.Namespace) -> None:
             grants = ", ".join(f"{c}={lv}" for c, lv in sorted(rec.grants.items())) or "none"
             print(f"{rec.nick}: role={rec.role} state={rec.state} grants={grants}")
         elif verb == "revoke":
-            _account_revoke(config, nick, data_dir)
+            _account_revoke(config, nick, data_dir, _account_prefixes(args))
         elif verb == "disable":
-            _account_disable(config, nick, data_dir)
+            _account_disable(config, nick, data_dir, _account_prefixes(args))
         elif verb == "rotate":
-            _account_rotate(config, nick, data_dir)
+            _account_rotate(config, nick, data_dir, _account_prefixes(args))
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
 
 
-def _account_revoke(config: ServerConfig, nick: str, data_dir) -> None:
+def _account_revoke(config: ServerConfig, nick: str, data_dir, prefixes=()) -> None:
     """Tombstone the account and stop the agent's unit.
 
     Stopping first means the live session isn't evicted into a reconnect
     that would be refused; the stopped unit stays wrapped, so a later
-    ``account activate`` (fresh secret) is the whole recovery.
+    ``account activate`` (fresh secret) is the whole recovery. If the
+    revoke itself fails nothing changed, so a unit that was running is
+    started again.
     """
     from culture_core import accounts, persistence
 
     svc = f"culture-agent-{nick}"
+    was_active = _unit_installed(nick) and persistence.service_active_state(svc) == "active"
     stopped = persistence.stop_service(svc)
-    accounts.revoke(nick, config.server.name, data_dir=data_dir)
+    try:
+        accounts.revoke(
+            nick, config.server.name, data_dir=data_dir, guest_channel_prefixes=prefixes
+        )
+    except Exception:
+        if was_active:
+            persistence.start_service(svc)
+        raise
     print(f"Account revoked: {nick} (secret deleted; nick stays reserved)")
     if stopped:
         print(f"Stopped {svc}; reactivate with 'culture agents account activate {nick}'")
@@ -1834,20 +1875,31 @@ def _account_revoke(config: ServerConfig, nick: str, data_dir) -> None:
         print(f"{nick} is {owner_message(agent)}: stop it; its secret no longer works")
 
 
-def _account_disable(config: ServerConfig, nick: str, data_dir) -> None:
+def _account_disable(config: ServerConfig, nick: str, data_dir, prefixes=()) -> None:
     """Remove the account and put the agent back on the legacy path.
 
     stop -> unwrap the unit -> remove entry + secret -> start again (only if
     it was running), so the daemon never reconnects with the dropped secret.
+    If removing the account fails, the unit is rolled back (original
+    ExecStart, byte-for-byte) and started again if it was running.
     """
     from culture_core import accounts, persistence
 
     svc = f"culture-agent-{nick}"
     was_active = _unit_installed(nick) and persistence.service_active_state(svc) == "active"
+    original_unit = persistence.read_unit(svc)
     if was_active:
         persistence.stop_service(svc)
-    unwrapped = persistence.unwrap_installed_unit(svc, accounts.secret_name(nick))
-    accounts.remove(nick, config.server.name, data_dir=data_dir)
+    try:
+        unwrapped = persistence.unwrap_installed_unit(svc, accounts.grant_entry_name(nick))
+        accounts.remove(
+            nick, config.server.name, data_dir=data_dir, guest_channel_prefixes=prefixes
+        )
+    except Exception:
+        persistence.restore_unit(svc, original_unit)
+        if was_active:
+            persistence.start_service(svc)
+        raise
     print(f"Account disabled: {nick} (nick returns to legacy behaviour)")
     if unwrapped:
         print(f"{svc}: grant inject removed from ExecStart")
@@ -1862,19 +1914,19 @@ def _account_disable(config: ServerConfig, nick: str, data_dir) -> None:
         )
 
 
-def _account_rotate(config: ServerConfig, nick: str, data_dir) -> None:
+def _account_rotate(config: ServerConfig, nick: str, data_dir, prefixes=()) -> None:
     from culture_core import accounts
     from culture_core.persistence import restart_service
 
-    accounts.rotate(nick, config.server.name, data_dir=data_dir)
+    accounts.rotate(nick, config.server.name, data_dir=data_dir, guest_channel_prefixes=prefixes)
     agent = config.get_agent(nick)
-    name = accounts.secret_name(nick)
-    print(f"Rotated: {nick} (old secret no longer works; new one stored in grant as {name})")
+    entry = accounts.grant_entry_name(nick)  # the entry's name, derived from the nick
+    print(f"Rotated: {nick} (old secret no longer works; new one stored in grant as {entry})")
     if agent is not None and is_external(agent):
         owner = agent.owner or "its owner"
         print(
             f"{nick} is {owner_message(agent)}: restart {owner} so it picks up "
-            f"the new secret from grant ({name})"
+            f"the new secret from grant ({entry})"
         )
     elif restart_service(f"culture-agent-{nick}"):
         print(f"Restarted culture-agent-{nick}")
