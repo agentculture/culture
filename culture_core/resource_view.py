@@ -79,11 +79,13 @@ class Resident:
     """One row of the resource view.
 
     The first nine fields mirror the per-resident record the server
-    aggregation returns (protocol/extensions/presence.md). The last three
-    are culture-side derived fields, joined from the local manifest's
-    ``AgentConfig.token_budget`` / ``token_budget_warn_pct`` when the nick
-    matches a registered agent — ``None`` when no budget is configured or
-    (for the spend-derived pair) when the resident sent no token counters.
+    aggregation returns (protocol/extensions/presence.md). The last four
+    are culture-side derived fields, joined from the local manifest when
+    the nick matches a registered agent — ``None`` otherwise. The budget
+    trio derives from ``AgentConfig.token_budget`` / ``token_budget_warn_pct``
+    (``None`` when no budget is configured or, for the spend-derived pair,
+    when the resident sent no token counters); ``backend`` is the
+    manifest's ``AgentConfig.backend``.
     """
 
     nick: str
@@ -99,6 +101,7 @@ class Resident:
     token_budget: int | None = None
     budget_used_pct: float | None = None
     budget_warning: bool | None = None
+    backend: str | None = None
 
 
 # Canonical per-resident key order of the serialized payload. This IS the
@@ -117,6 +120,7 @@ _RESIDENT_FIELDS: tuple[str, ...] = (
     "token_budget",
     "budget_used_pct",
     "budget_warning",
+    "backend",
 )
 
 
@@ -183,10 +187,11 @@ def _resident_from_wire(record: dict) -> Resident:
 
 
 def apply_budgets(residents: Iterable[Resident], agents: Iterable[AgentConfig]) -> None:
-    """Join local-manifest budget config onto fetched residents, by nick.
+    """Join local-manifest config onto fetched residents, by nick.
 
-    For each resident whose nick matches a registered agent with a
-    ``token_budget`` configured:
+    Every resident whose nick matches a registered agent gets its manifest
+    ``backend`` joined on (external or harness alike). In addition, when
+    that agent has a ``token_budget`` configured:
 
     * ``token_budget`` is copied over;
     * ``budget_used_pct`` = (tokens_in + tokens_out) / budget * 100, rounded
@@ -212,6 +217,7 @@ def apply_budgets(residents: Iterable[Resident], agents: Iterable[AgentConfig]) 
         agent = by_nick.get(resident.nick)
         if agent is None:
             continue
+        resident.backend = agent.backend
         budget = agent.token_budget
         if not isinstance(budget, int) or isinstance(budget, bool) or budget < 1:
             continue  # unset, or an unsanitized value — see docstring
