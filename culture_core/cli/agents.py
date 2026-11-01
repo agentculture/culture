@@ -65,6 +65,7 @@ from .shared.constants import (
     NO_AGENTS_MSG,
 )
 from .shared.display import print_agent_detail, print_agents_overview, print_bot_listing
+from .shared.external import is_external, owner_message
 from .shared.ipc import agent_socket_path, get_observer, ipc_request
 from .shared.process import stop_agent
 
@@ -550,7 +551,31 @@ def _resolve_agents_to_start(config, args) -> list:
             NO_AGENTS_MSG,
             "run 'culture agents create' to add an agent, then 'culture agents start --all'",
         )
-    return agents
+    return _skip_external(agents)
+
+
+def _skip_external(agents: list) -> list:
+    """Drop external residents, printing who owns each (culture#506).
+
+    An external agent's own process holds its IRC connection, so culture
+    never forks, signals or installs it. Runs before any probe or fork.
+    """
+    kept = []
+    for agent in agents:
+        if is_external(agent):
+            print(f"{agent.nick}: skipped — {owner_message(agent)}")
+        else:
+            kept.append(agent)
+    return kept
+
+
+def _external_verb_error(agent, verb: str) -> CultureError:
+    """Error for a lifecycle/IPC verb aimed at an external resident."""
+    return CultureError(
+        EXIT_USER_ERROR,
+        f"{agent.nick}: cannot {verb} an external agent — {owner_message(agent)}",
+        "manage it through its owner (e.g. its systemd unit), not culture",
+    )
 
 
 def _probe_server_connection(host: str, port: int, server_name: str) -> None:
@@ -622,6 +647,8 @@ def _cmd_start(args: argparse.Namespace) -> None:
         with tracer.start_as_current_span("culture.cli.agents.start") as span:
             span.set_attribute("culture.cli.mode", "foreground" if foreground else "background")
             agents = _resolve_agents_to_start(config, args)
+            if not agents:
+                return  # everything selected is external — nothing to start
             span.set_attribute("culture.agent.nicks", [a.nick for a in agents])
             span.set_attribute(
                 "culture.agent.backends",
@@ -908,7 +935,12 @@ def _run_multi_agents(config: DaemonConfig, agents: list[AgentConfig]) -> None:
 
 
 def _resolve_agents_to_stop(config, args) -> list:
-    """Resolve which agents should be stopped, or raise with an error."""
+    """Resolve which agents should be stopped (external residents skipped)."""
+    return _skip_external(_select_agents_to_stop(config, args))
+
+
+def _select_agents_to_stop(config, args) -> list:
+    """Resolve the raw stop selection, or raise with an error."""
     if args.all:
         return config.agents
     if args.nick:
@@ -1141,9 +1173,11 @@ def _resolve_ipc_targets(config, args, command_name: str) -> list:
             "the following arguments are required: <nick> or --all",
         )
     if args.all:
-        return config.agents
+        return _skip_external(config.agents)
     for a in config.agents:
         if a.nick == args.nick:
+            if is_external(a):
+                raise _external_verb_error(a, command_name)
             return [a]
     _argparse_error(
         f"culture agents {command_name}",
@@ -1215,6 +1249,9 @@ def _cmd_learn(args: argparse.Namespace) -> None:
             None,
         )
 
+    if agent and is_external(agent):
+        raise _external_verb_error(agent, "learn")
+
     kwargs = {"server": config.server.name, "directory": cwd}
     if agent:
         kwargs.update(
@@ -1248,6 +1285,8 @@ def _cmd_message(args: argparse.Namespace) -> None:
     # unconditionally; if the target nick is unknown to the server, the
     # IRC ``401 NOSUCHNICK`` numeric propagates through the observer
     # rather than being short-circuited by stale config. (#333 item 11.)
+    # External residents (culture#506) are messaged like any nick: this is a
+    # plain IRC DM through the observer, never the target's daemon socket.
     observer = get_observer(args.config)
     asyncio.run(observer.send_message(args.target, args.text))
     print(f"Sent to {args.target}")
@@ -1443,6 +1482,9 @@ def _cmd_install(args: argparse.Namespace) -> None:
     config = load_config_or_default(args.config)
     suffix = _resolve_manifest_suffix(config, args.nick)
     full_nick = f"{config.server.name}-{suffix}"
+    resident = config.get_agent(full_nick)
+    if resident is not None and is_external(resident):
+        raise _external_verb_error(resident, "install")
 
     culture_cmd = [sys.executable, "-m", "culture_core"]
     # No --config: defer to `culture agents start`'s argparse default

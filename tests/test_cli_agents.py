@@ -1414,3 +1414,128 @@ class TestCmdUnregister:
         assert exc.value.code == 1
         assert "not registered" in exc.value.message
         assert exc.value.remediation
+
+
+# ---------------------------------------------------------------------------
+# External residents (culture#506): culture leaves their lifecycle to the owner
+# ---------------------------------------------------------------------------
+
+
+def _external_cfg(owner: str | None = "gwen.service"):
+    ext = _make_agent(suffix="gwen", backend="external", owner=owner)
+    return _make_config(ext, _make_agent(suffix="ada")), ext
+
+
+class TestExternalResidents:
+    def test_start_all_forks_only_harness_agent(self, monkeypatch, capsys):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config", lambda _p: cfg)
+        probes = []
+        monkeypatch.setattr(agent_mod, "_probe_server_connection", lambda *a: probes.append(a))
+        forks, pids = [], []
+        monkeypatch.setattr(agent_mod.os, "fork", lambda: forks.append(1) or 4242)
+        monkeypatch.setattr(agent_mod, "write_pid", lambda *a: pids.append(a))
+
+        agent_mod._cmd_start(_args(all=True, nick=None, foreground=False))
+
+        out = capsys.readouterr().out
+        assert len(forks) == 1
+        assert pids == []  # parent never writes pidfiles; child path not taken
+        assert "spark-gwen: skipped — owned by gwen.service" in out
+        assert "Started spark-ada (PID 4242)" in out
+        assert "Started spark-gwen" not in out
+
+    def test_start_only_external_forks_nothing_and_skips_probe(self, monkeypatch, capsys):
+        cfg, _ = _external_cfg(owner=None)
+        monkeypatch.setattr(agent_mod, "load_config", lambda _p: cfg)
+        monkeypatch.setattr(agent_mod, "_probe_server_connection", lambda *a: pytest.fail("probed"))
+        monkeypatch.setattr(agent_mod.os, "fork", lambda: pytest.fail("forked"))
+        monkeypatch.setattr(agent_mod, "write_pid", lambda *a: pytest.fail("pidfile"))
+
+        agent_mod._cmd_start(_args(all=False, nick="spark-gwen", foreground=False))
+
+        out = capsys.readouterr().out
+        assert "spark-gwen: skipped — owned by an external process" in out
+        assert "Started" not in out
+
+    def test_stop_sends_no_signal_or_ipc_and_touches_no_pidfile(self, monkeypatch, capsys):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda n: pytest.fail("stop_agent"))
+        monkeypatch.setattr(agent_mod.os, "kill", lambda *a: pytest.fail("signal"))
+        monkeypatch.setattr(agent_mod, "ipc_request", lambda *a, **k: pytest.fail("ipc"))
+        monkeypatch.setattr(agent_mod, "remove_pid", lambda *a: pytest.fail("pidfile"))
+
+        agent_mod._cmd_stop(_args(all=False, nick="spark-gwen"))
+
+        assert "spark-gwen: skipped — owned by gwen.service" in capsys.readouterr().out
+
+    def test_stop_all_stops_only_harness_agent(self, monkeypatch):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        stopped = []
+        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        agent_mod._cmd_stop(_args(all=True, nick=None))
+        assert stopped == ["spark-ada"]
+
+    def test_install_writes_no_unit(self, monkeypatch):
+        cfg, _ = _external_cfg()
+        cfg.manifest["gwen"] = "/tmp/dir"
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        import culture_core.persistence as persistence
+
+        monkeypatch.setattr(
+            persistence, "install_service", lambda *a, **k: pytest.fail("installed")
+        )
+        with pytest.raises(CultureError) as exc:
+            agent_mod._cmd_install(_args(nick="spark-gwen"))
+        assert exc.value.code == EXIT_USER_ERROR
+        assert "owned by gwen.service" in exc.value.message
+
+    @pytest.mark.parametrize("verb", ["sleep", "wake"])
+    def test_ipc_verbs_refuse_without_socket(self, monkeypatch, verb):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        monkeypatch.setattr(agent_mod, "ipc_request", lambda *a, **k: pytest.fail("ipc"))
+        with pytest.raises(CultureError) as exc:
+            getattr(agent_mod, f"_cmd_{verb}")(_args(nick="spark-gwen", all=False))
+        assert exc.value.code == EXIT_USER_ERROR
+        assert "owned by gwen.service" in exc.value.message
+
+    def test_ipc_all_skips_external(self, monkeypatch):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        sent = []
+        monkeypatch.setattr(agent_mod, "_send_ipc", lambda a, *r: sent.append(a.nick))
+        agent_mod._cmd_sleep(_args(nick=None, all=True))
+        assert sent == ["spark-ada"]
+
+    def test_learn_refuses(self, monkeypatch):
+        cfg, _ = _external_cfg()
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        with pytest.raises(CultureError) as exc:
+            agent_mod._cmd_learn(_args(nick="spark-gwen"))
+        assert "owned by gwen.service" in exc.value.message
+
+    def test_message_reaches_external_agent_over_irc(self, monkeypatch, capsys):
+        # message is an IRC DM via the observer, not IPC: external residents
+        # are messaged like any nick (deviation d3, culture#506).
+        sent = []
+
+        class _Obs:
+            async def send_message(self, target, text):
+                sent.append((target, text))
+
+        monkeypatch.setattr(agent_mod, "get_observer", lambda _c: _Obs())
+        agent_mod._cmd_message(_args(target="spark-gwen", text="hi"))
+        assert sent == [("spark-gwen", "hi")]
+        assert "Sent to spark-gwen" in capsys.readouterr().out
+
+    def test_read_has_no_external_special_case(self):
+        with pytest.raises(CultureError) as exc:
+            agent_mod._cmd_read(_args(target="spark-gwen", limit=5))
+        assert "not yet implemented" in exc.value.message
+        assert "owned by" not in exc.value.message
+
+    def test_external_not_a_daemon_backend(self):
+        assert "external" not in agent_mod._BACKEND_DAEMON_FACTORIES
