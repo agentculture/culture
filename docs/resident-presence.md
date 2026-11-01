@@ -266,7 +266,8 @@ residents page (t8) — is produced by the one canonical serializer,
       "last_refresh": "2026-07-07T11:59:30Z",
       "token_budget": 1000,
       "budget_used_pct": 100.0,
-      "budget_warning": true
+      "budget_warning": true,
+      "backend": "claude"
     }
   ]
 }
@@ -282,7 +283,7 @@ Top-level fields:
 
 Per-resident fields — the first nine mirror the server aggregation record
 (see [protocol/extensions/presence.md](../protocol/extensions/presence.md));
-the last three are culture-side derived fields joined from the local
+the last four are culture-side derived fields joined from the local
 manifest:
 
 | Field | Type | Description |
@@ -299,3 +300,4 @@ manifest:
 | `token_budget` | integer or null | The agent's configured `token_budget` (culture.yaml), when the nick matches a registered agent; null when no budget is configured. |
 | `budget_used_pct` | number or null | Spend as a percent of `token_budget`, one decimal; null when no budget is configured **or** the resident reported no token counters (spend unknowable — never a false alarm). |
 | `budget_warning` | boolean or null | `true` once `budget_used_pct` reaches `token_budget_warn_pct` (inclusive); `false` below it; null whenever `budget_used_pct` is null. **Warn-only** — nothing acts on it in v1. |
+| `backend` | string or null | The agent's manifest `backend` (`AgentConfig.backend`) when the nick matches a registered agent — external or harness alike; null for unregistered nicks. Appended last, after the budget trio. |

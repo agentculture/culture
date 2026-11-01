@@ -28,10 +28,12 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
+from culture_core.config import AgentConfig
 from culture_core.overview.renderer_web import _make_overview_handler
 from culture_core.resource_view import (
     PresenceUnsupportedError,
     Resident,
+    apply_budgets,
     serialize_residents,
     to_json,
 )
@@ -61,6 +63,63 @@ def _fixture_residents() -> list[Resident]:
         ),
         Resident(nick="thor-codex", server="thor", state="idle"),
     ]
+
+
+def _agent(nick: str, backend: str) -> AgentConfig:
+    agent = AgentConfig(suffix=nick.split("-", 1)[1] if "-" in nick else nick, backend=backend)
+    agent.nick = nick
+    return agent
+
+
+# Manifest join (apply_budgets): the manifest backend for registered nicks —
+# external AND harness alike — null otherwise.
+def test_backend_joined_for_registered_nicks_only():
+    residents = [
+        Resident(nick="spark-gwen", state="idle"),  # registered external
+        Resident(nick="spark-claude", state="working"),  # registered harness
+        Resident(nick="other-bolt", state="idle"),  # unregistered
+    ]
+    apply_budgets(residents, [_agent("spark-gwen", "external"), _agent("spark-claude", "claude")])
+    assert residents[0].backend == "external"
+    assert residents[1].backend == "claude"
+    assert residents[2].backend is None
+
+
+# /residents.json: every row carries a backend key (appended last), and the
+# envelope {supported, generated_at, residents} is unchanged.
+def test_endpoint_backend_key_for_external_harness_and_unregistered(overview_server):
+    def _fetch():
+        residents = [
+            Resident(nick="spark-gwen", server="spark", state="idle"),
+            Resident(nick="spark-claude", server="spark", state="working"),
+            Resident(nick="other-bolt", server="thor", state="idle"),
+        ]
+        apply_budgets(
+            residents,
+            [_agent("spark-gwen", "external"), _agent("spark-claude", "claude")],
+        )
+        return residents
+
+    port = overview_server(fetch=_fetch)
+    status, headers, body = _get(port)
+    assert status == 200
+    assert headers["Content-Type"] == "application/json"
+    payload = json.loads(body)
+    # Envelope unchanged: same keys, same order.
+    assert list(payload) == ["supported", "generated_at", "residents"]
+    assert payload["supported"] is True
+    by_nick = {r["nick"]: r for r in payload["residents"]}
+    assert set(by_nick) == {"spark-gwen", "spark-claude", "other-bolt"}
+    # Registered external nick, registered harness nick, unregistered nick.
+    assert by_nick["spark-gwen"]["backend"] == "external"
+    assert by_nick["spark-claude"]["backend"] == "claude"
+    assert by_nick["other-bolt"]["backend"] is None
+    # Appended as the LAST per-resident key on every row.
+    for rec in payload["residents"]:
+        assert list(rec)[-1] == "backend"
+    # Byte-compatible with the one canonical serializer over the same rows.
+    expected = to_json(serialize_residents(_fetch(), True, now=FIXED_NOW))
+    assert body == expected.encode()
 
 
 def _free_port() -> int:
