@@ -980,6 +980,39 @@ def test_h3_refused_login_exits_78(monkeypatch, at_start):
     assert ei.value.code == 78 and daemon.stopped
 
 
+class _PublicApiRefusingDaemon:
+    """cultureagent >= 0.16 shape: public refusal API, no ``_transport``."""
+
+    def __init__(self):
+        self.stopped = False
+        self._refused = asyncio.Event()
+        self.auth_refusal = None
+
+    def set_stop_event(self, ev):
+        self.ev = ev
+
+    async def start(self):
+        self.auth_refusal = "bad_secret"  # refused on a later reconnect
+        self._refused.set()
+
+    async def wait_auth_refused(self):
+        await self._refused.wait()
+        return self.auth_refusal
+
+    async def stop(self):
+        self.stopped = True
+
+
+def test_h3_refused_login_exits_78_via_public_api(monkeypatch):
+    daemon = _PublicApiRefusingDaemon()
+    monkeypatch.setattr(agent_mod, "_resolve_daemon_factory", lambda b: lambda c, a: daemon)
+    with pytest.raises(CultureError) as ei:
+        asyncio.run(agent_mod._run_single_agent(SimpleNamespace(), agent()))
+    assert ei.value.code == 78
+    assert daemon.stopped
+    assert not hasattr(daemon, "_transport")
+
+
 def test_h3_doctor_flags_wrapped_unit_without_active_account(units):
     write_unit(units, "spark-gwen", wrapped_secret=accounts.secret_name("spark-gwen"))
     cfg = ServerConfig(server=ServerConnConfig(name=SERVER), agents=[agent()])

@@ -966,20 +966,42 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
         except RuntimeError:
             signal.signal(sig, lambda *_: stop_event.set())
 
-    # cultureagent sets ``transport.auth_refused`` when the server refuses
-    # the SASL login on a reconnect (account revoked/re-keyed): exit 78 so
-    # the unit parks instead of restart-looping (culture#506).
-    refused = getattr(getattr(daemon, "_transport", None), "auth_refused", None)
+    # When the server refuses the SASL login on a reconnect (account revoked
+    # or re-keyed), exit 78 so the unit parks instead of restart-looping
+    # (culture#506). cultureagent >= 0.16 exposes this publicly as
+    # ``daemon.wait_auth_refused()`` / ``daemon.auth_refusal``.
+    refusal_waiter = _auth_refusal_waiter(daemon)
     waiters = [asyncio.ensure_future(stop_event.wait())]
-    if isinstance(refused, asyncio.Event):
-        waiters.append(asyncio.ensure_future(refused.wait()))
+    if refusal_waiter is not None:
+        waiters.append(asyncio.ensure_future(refusal_waiter))
     await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
     for w in waiters:
         w.cancel()
     logger.info("Shutting down %s", agent.nick)
     await daemon.stop()
+    refusal = _auth_refusal_of(daemon)
+    if refusal is not None:
+        raise _auth_refused(agent, refusal)
+
+
+def _auth_refusal_waiter(daemon):
+    """Coroutine that completes when the server refuses the login, or None."""
+    if hasattr(daemon, "wait_auth_refused"):
+        return daemon.wait_auth_refused()
+    # Fallback for cultureagent < 0.16 builds that only expose the transport.
+    refused = getattr(getattr(daemon, "_transport", None), "auth_refused", None)
+    return refused.wait() if isinstance(refused, asyncio.Event) else None
+
+
+def _auth_refusal_of(daemon):
+    """The recorded permanent refusal, or None."""
+    if hasattr(daemon, "wait_auth_refused"):
+        return getattr(daemon, "auth_refusal", None)
+    transport = getattr(daemon, "_transport", None)
+    refused = getattr(transport, "auth_refused", None)
     if isinstance(refused, asyncio.Event) and refused.is_set():
-        raise _auth_refused(agent, getattr(daemon._transport, "refusal", "SASL refused"))
+        return getattr(transport, "refusal", None) or "SASL refused"
+    return None
 
 
 async def _stop_quietly(daemon) -> None:
