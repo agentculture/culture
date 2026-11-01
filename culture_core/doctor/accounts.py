@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
-from culture_core import accounts
+from culture_core import accounts, accounts_policy
 from culture_core.doctor.model import Finding
 from culture_core.persistence import _systemd_user_dir, exec_start_has_inject
 
@@ -42,7 +40,7 @@ def check_agent_units(config, records, unit_dir: Path | None = None) -> list[Fin
         if not path.is_file():
             continue
         rec = by_nick.get(nick)
-        wrapped = exec_start_has_inject(path.read_text(), accounts.secret_name(nick))
+        wrapped = exec_start_has_inject(path.read_text(), accounts.grant_entry_name(nick))
         if rec is None or rec.state != "active":
             if wrapped:
                 state = rec.state if rec else "removed"
@@ -68,7 +66,7 @@ def check_agent_units(config, records, unit_dir: Path | None = None) -> list[Fin
                 nick,
                 str(path),
                 f"{nick} has an account but its unit lacks the grant inject wrapper "
-                f"(`grant run --inject CULTURE_AGENT_SECRET={accounts.secret_name(nick)} --`); "
+                f"(`grant run --inject CULTURE_AGENT_SECRET={accounts.grant_entry_name(nick)} --`); "
                 "the daemon would start without its secret",
                 f"culture agents account activate {nick}  # or: culture agents install {nick}",
             )
@@ -155,16 +153,6 @@ def check_missing_accounts(config, records) -> list[Finding]:
     ]
 
 
-def _raw_server_yaml(config_path: str | None) -> dict:
-    if not config_path or not Path(config_path).is_file():
-        return {}
-    try:
-        raw = yaml.safe_load(Path(config_path).read_text()) or {}
-    except yaml.YAMLError:
-        return {}
-    return raw if isinstance(raw, dict) else {}
-
-
 def check_accounts(
     config,
     config_path: str | None = None,
@@ -186,8 +174,19 @@ def check_accounts(
                 "fix or remove the file; agents without a record connect the legacy way",
             )
         ]
-    raw = _raw_server_yaml(config_path)
-    cidrs = (raw.get("accounts") or {}).get("trusted_cidrs") or []
+    try:
+        cidrs = accounts_policy.load_accounts_block(config_path).trusted_cidrs
+    except accounts_policy.AccountsPolicyError as exc:
+        return [
+            Finding(
+                5,
+                "error",
+                "accounts",
+                str(config_path),
+                f"invalid accounts: block: {exc}",
+                "fix the 'accounts:' block in server.yaml; the server refuses to start with it",
+            )
+        ]
     findings = check_agent_units(config, records, unit_dir)
     findings += check_client_version(records, version_of)
     findings += check_server_version(records, version_of)

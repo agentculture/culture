@@ -31,10 +31,12 @@ import threading
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Iterable, Mapping, Protocol
 
 from grant import store as grant_store
 from grant.generate import random_secret
+
+from culture_core.accounts_policy import MIN_AGENTIRC_ACCOUNTS
 
 try:  # POSIX only; Windows runs without the cross-process lock
     import fcntl
@@ -45,21 +47,30 @@ ACCOUNTS_VERSION = 1
 ROLES = ("resident", "operator", "guest")
 STATES = ("active", "suspended", "revoked")
 GRANT_LEVELS = ("read", "speak")
-SECRET_PREFIX = "CULTURE_AGENT_"
+# Prefix of every grant entry culture mints for an account. (Kept out of
+# ``secret*``-named symbols on the print path: the entry *name* is not secret,
+# but CodeQL taints anything derived from a ``secret*`` name.)
+_GRANT_NAME_PREFIX = "CULTURE_AGENT_"
+SECRET_PREFIX = _GRANT_NAME_PREFIX
 SECRET_SOURCE = "culture agents account"
 ACTIVATE_VERB = "culture agents account activate"
 ROTATE_VERB = "culture agents account rotate"
 DEFAULT_DATA_DIR = "~/.culture/data"
 # Version floors for SASL accounts (deviation d5: t16 sets the real pins).
 MIN_CULTUREAGENT_SASL = "0.16.0"
-MIN_AGENTIRC_ACCOUNTS = "9.14.0"
 ACCOUNTS_FILENAME = "accounts.json"
 AUDIT_FILENAME = "accounts-audit.jsonl"
 LOCK_FILENAME = ".accounts.lock"
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 # grant names: ^[A-Z_][A-Z0-9_]{0,63}$ -> at most 64 characters.
 _GRANT_NAME_MAX = 64
-_SECRET_TAG_LEN = 10
+_NAME_TAG_LEN = 10
+# agentirc's whole-file rules (agentirc.accounts.parse_accounts), mirrored for
+# an agentirc that does not ship the parser: printable-ASCII nicks without
+# spaces, no two nicks differing only by (ASCII) letter case, and guest grants
+# only inside accounts.guest_channel_prefixes.
+_ACCOUNT_NICK_RE = re.compile(r"^[\x21-\x7e]+$")
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 
 
 class AccountError(Exception):
@@ -97,8 +108,8 @@ def audit_path(data_dir: str | Path | None = None) -> Path:
     return _dir(data_dir) / AUDIT_FILENAME
 
 
-def secret_name(nick: str) -> str:
-    """grant secret name for a nick (injective).
+def grant_entry_name(nick: str) -> str:
+    """Name of the grant entry holding a nick's account secret (injective).
 
     ``CULTURE_AGENT_<readable>_<tag>``: *readable* is the nick upper-cased
     with every other character mapped to ``_`` (truncated to fit), *tag* the
@@ -107,14 +118,18 @@ def secret_name(nick: str) -> str:
     secret.  Always a valid grant name (``^[A-Z_][A-Z0-9_]{0,63}$``).
     """
     if not nick:
-        raise AccountError("empty nick has no secret name")
+        raise AccountError("empty nick has no grant entry name")
     readable = re.sub(r"[^A-Z0-9]", "_", nick.upper())
-    tag = hashlib.sha256(nick.encode("utf-8")).hexdigest()[:_SECRET_TAG_LEN].upper()
-    room = _GRANT_NAME_MAX - len(SECRET_PREFIX) - 1 - len(tag)
-    name = f"{SECRET_PREFIX}{readable[:room]}_{tag}"
+    tag = hashlib.sha256(nick.encode("utf-8")).hexdigest()[:_NAME_TAG_LEN].upper()
+    room = _GRANT_NAME_MAX - len(_GRANT_NAME_PREFIX) - 1 - len(tag)
+    name = f"{_GRANT_NAME_PREFIX}{readable[:room]}_{tag}"
     if not grant_store.NAME_RE.match(name):  # pragma: no cover - by construction
-        raise AccountError(f"nick {nick!r} cannot be mapped to a valid grant secret name")
+        raise AccountError(f"nick {nick!r} cannot be mapped to a valid grant entry name")
     return name
+
+
+# The historical name; prefer grant_entry_name on any path that prints.
+secret_name = grant_entry_name
 
 
 def secret_purpose(nick: str) -> str:
@@ -133,7 +148,8 @@ def _check_own(nick: str, server_name: str) -> None:
         )
 
 
-def _validate_record(rec: AccountRecord) -> None:
+def _validate_record(rec: AccountRecord, guest_channel_prefixes: Iterable[str] = ()) -> None:
+    _check_nick(rec.nick)
     if rec.role not in ROLES:
         raise AccountError(f"invalid role {rec.role!r} (expected one of {ROLES})")
     if rec.state not in STATES:
@@ -141,6 +157,83 @@ def _validate_record(rec: AccountRecord) -> None:
     if not _HASH_RE.match(rec.secret_sha256):
         raise AccountError(f"invalid secret hash for {rec.nick!r}")
     _validate_grants(rec.grants)
+    _check_guest_sandbox(rec.nick, rec.role, rec.grants, guest_channel_prefixes)
+
+
+def _check_nick(nick: object) -> None:
+    if not isinstance(nick, str) or not _ACCOUNT_NICK_RE.match(nick):
+        raise AccountError(
+            f"account nick {nick!r} must be printable ASCII without spaces "
+            "(agentirc rejects the whole accounts file otherwise)"
+        )
+
+
+def _check_guest_sandbox(
+    nick: str, role: object, grants: object, guest_channel_prefixes: Iterable[str]
+) -> None:
+    """A ``guest`` may only hold grants on ``accounts.guest_channel_prefixes``."""
+    if role != "guest" or not isinstance(grants, dict):
+        return
+    prefixes = tuple(guest_channel_prefixes)
+    allowed = (
+        f"channels starting with {', '.join(prefixes)}"
+        if prefixes
+        else "no channels (none configured)"
+    )
+    for chan in grants:
+        if not prefixes or not str(chan).startswith(prefixes):
+            raise AccountError(
+                f"guest account {nick}: grant on {chan!r} is outside the guest sandbox "
+                f"(server.yaml accounts.guest_channel_prefixes allows {allowed}); guests "
+                "can't hold grants outside their sandbox prefixes"
+            )
+
+
+def _check_document(entries: list[dict], guest_channel_prefixes: Iterable[str]) -> None:
+    """culture's mirror of agentirc's whole-file rules over every record."""
+    prefixes = tuple(guest_channel_prefixes)
+    seen: dict[str, str] = {}
+    for entry in entries:
+        nick = entry.get("nick")
+        _check_nick(nick)
+        folded = nick.translate(_ASCII_LOWER)
+        if folded in seen:
+            rule = (
+                "a duplicate nick"
+                if seen[folded] == nick
+                else "two nicks differing only by letter case"
+            )
+            raise AccountError(f"accounts file would hold {rule}: {seen[folded]!r} and {nick!r}")
+        seen[folded] = nick
+        _check_guest_sandbox(nick, entry.get("role"), entry.get("grants") or {}, prefixes)
+
+
+def _agentirc_parse_accounts():
+    """agentirc's own accounts-file parser, or None on an agentirc without it."""
+    try:
+        from agentirc.accounts import parse_accounts
+    except ImportError:
+        return None
+    return parse_accounts
+
+
+def validate_document(payload: dict, guest_channel_prefixes: Iterable[str] = ()) -> None:
+    """Refuse an accounts document AgentIRC would reject as a whole file.
+
+    AgentIRC keeps its last good table when a reload fails, so a rejected
+    file would silently freeze every later revoke/suspend/rotate. culture's
+    mirror rules run first (clear messages, and the only check on an agentirc
+    without ``parse_accounts``); agentirc's parser then has the last word.
+    """
+    prefixes = tuple(guest_channel_prefixes)
+    _check_document(payload["accounts"], prefixes)
+    parser = _agentirc_parse_accounts()
+    if parser is None:
+        return
+    try:
+        parser(payload, prefixes)
+    except ValueError as exc:
+        raise AccountError(f"agentirc would reject the accounts file: {exc}") from exc
 
 
 def _validate_grants(grants: Mapping[str, str]) -> None:
@@ -244,28 +337,35 @@ def _write_file(path: Path, payload: dict) -> None:
 
 
 def save(
-    records: list[AccountRecord], server_name: str, data_dir: str | Path | None = None
+    records: list[AccountRecord],
+    server_name: str,
+    data_dir: str | Path | None = None,
+    *,
+    guest_channel_prefixes: Iterable[str] = (),
 ) -> Path:
     """Validate this server's *records*, then atomically rewrite the file.
 
     *records* is the complete set of ``<server_name>-`` accounts; records of
     other servers already in the file are carried through unchanged (M2).
+    The whole resulting document is checked with :func:`validate_document`
+    (against the server's ``guest_channel_prefixes``) before anything is
+    written: a file AgentIRC would reject is refused, never written.
     """
+    prefixes = tuple(guest_channel_prefixes)
     seen: set[str] = set()
     for rec in records:
         _check_own(rec.nick, server_name)
         if rec.nick in seen:
             raise AccountError(f"duplicate nick {rec.nick!r}")
         seen.add(rec.nick)
-        _validate_record(rec)
+        _validate_record(rec, prefixes)
     prefix = f"{server_name}-"
     path = accounts_path(data_dir)
     with _locked(data_dir):
         foreign = [a for a in _read_raw(data_dir) if not str(a.get("nick", "")).startswith(prefix)]
-        _write_file(
-            path,
-            {"version": ACCOUNTS_VERSION, "accounts": foreign + [asdict(r) for r in records]},
-        )
+        payload = {"version": ACCOUNTS_VERSION, "accounts": foreign + [asdict(r) for r in records]}
+        validate_document(payload, prefixes)
+        _write_file(path, payload)
     return path
 
 
@@ -367,15 +467,17 @@ def _rekey(
     server_name: str,
     data_dir: str | Path | None,
     action: str,
+    *,
+    guest_channel_prefixes: Iterable[str] = (),
 ) -> AccountRecord:
     """New secret into grant, then save; a failed save restores the old secret."""
     prior = _owned_grant_record(rec.nick)
     secret = random_secret()
     rec.secret_sha256 = hash_secret(secret)
-    _validate_record(rec)
+    _validate_record(rec, guest_channel_prefixes)
     _put_secret(rec.nick, secret)
     try:
-        save(records, server_name, data_dir)
+        save(records, server_name, data_dir, guest_channel_prefixes=guest_channel_prefixes)
     except BaseException:
         _restore_secret(rec.nick, prior)
         raise
@@ -387,7 +489,7 @@ def _rekey(
             "role": rec.role,
             "grants": rec.grants,
             "state": rec.state,
-            "secret_name": secret_name(rec.nick),
+            "secret_name": grant_entry_name(rec.nick),
         },
     )
     return rec
@@ -399,6 +501,7 @@ def mint(
     *,
     role: str = "resident",
     data_dir: str | Path | None = None,
+    guest_channel_prefixes: Iterable[str] = (),
 ) -> AccountRecord:
     """Create or rotate the account for ``<server>-<suffix>`` (store-level).
 
@@ -421,10 +524,23 @@ def mint(
             rec = AccountRecord(nick=nick, secret_sha256="0" * 64, role=role, grants=grants)
             records.append(rec)
             action = "create"
-        return _rekey(records, rec, server_name, data_dir, action)
+        return _rekey(
+            records,
+            rec,
+            server_name,
+            data_dir,
+            action,
+            guest_channel_prefixes=guest_channel_prefixes,
+        )
 
 
-def rotate(nick: str, server_name: str, data_dir: str | Path | None = None) -> AccountRecord:
+def rotate(
+    nick: str,
+    server_name: str,
+    data_dir: str | Path | None = None,
+    *,
+    guest_channel_prefixes: Iterable[str] = (),
+) -> AccountRecord:
     """Re-key an existing (non-revoked) account; role, grants and state are kept."""
     _check_own(nick, server_name)
     with _locked(data_dir):
@@ -434,7 +550,14 @@ def rotate(nick: str, server_name: str, data_dir: str | Path | None = None) -> A
             raise AccountError(
                 f"account {nick} is revoked; reactivate it with '{ACTIVATE_VERB} {nick}'"
             )
-        return _rekey(records, rec, server_name, data_dir, "rotate")
+        return _rekey(
+            records,
+            rec,
+            server_name,
+            data_dir,
+            "rotate",
+            guest_channel_prefixes=guest_channel_prefixes,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -674,13 +797,17 @@ def secret_for_start(nick: str, server_name: str, data_dir: str | Path | None = 
 
 
 def _restore_entry(
-    nick: str, server_name: str, data_dir: str | Path | None, prior: AccountRecord | None
+    nick: str,
+    server_name: str,
+    data_dir: str | Path | None,
+    prior: AccountRecord | None,
+    guest_channel_prefixes: Iterable[str] = (),
 ) -> None:
     with _locked(data_dir):
         records = [r for r in _own_records(server_name, data_dir) if r.nick != nick]
         if prior is not None:
             records.append(prior)
-        save(records, server_name, data_dir)
+        save(records, server_name, data_dir, guest_channel_prefixes=guest_channel_prefixes)
         _audit("activate-rollback", nick, data_dir, {"restored": prior is not None})
 
 
@@ -693,6 +820,7 @@ def activate(
     external: bool = False,
     owner_ready: bool = False,
     unit: UnitOps | None = None,
+    guest_channel_prefixes: Iterable[str] = (),
 ) -> ActivationResult:
     """Ordered, explicit account activation with full rollback.
 
@@ -746,7 +874,7 @@ def activate(
         errors: list[str] = []
         if state["published"]:
             try:
-                _restore_entry(nick, server_name, data_dir, prior_entry)
+                _restore_entry(nick, server_name, data_dir, prior_entry, guest_channel_prefixes)
             except Exception as e:  # noqa: BLE001 - report, keep undoing
                 errors.append(f"accounts entry: {e}")
         if state["wrapped"]:
@@ -819,8 +947,9 @@ def activate(
                 rec = existing
             rec.secret_sha256 = hash_secret(secret)
             rec.state = "active"
-            _validate_record(rec)
-            save(records, server_name, data_dir)  # atomic: written whole or not at all
+            _validate_record(rec, guest_channel_prefixes)
+            # atomic: written whole or not at all, and only if agentirc accepts it
+            save(records, server_name, data_dir, guest_channel_prefixes=guest_channel_prefixes)
             state["published"] = True
             _audit(
                 "activate",
@@ -865,15 +994,17 @@ def activate(
 # ---------------------------------------------------------------------------
 
 
-def _mutate(nick: str, server_name: str, data_dir, action: str, apply) -> AccountRecord:
+def _mutate(
+    nick: str, server_name: str, data_dir, action: str, apply, *, prefixes: Iterable[str] = ()
+) -> AccountRecord:
     _check_own(nick, server_name)
     with _locked(data_dir):
         records = _own_records(server_name, data_dir)
         rec = _find(records, nick)
         before = asdict(rec)
         apply(rec)
-        _validate_record(rec)
-        save(records, server_name, data_dir)
+        _validate_record(rec, prefixes)
+        save(records, server_name, data_dir, guest_channel_prefixes=prefixes)
         after = asdict(rec)
         changes = {
             k: {"from": before[k], "to": after[k]}
@@ -884,41 +1015,80 @@ def _mutate(nick: str, server_name: str, data_dir, action: str, apply) -> Accoun
     return rec
 
 
-def set_state(nick: str, server_name: str, state: str, data_dir=None) -> AccountRecord:
+def set_state(
+    nick: str, server_name: str, state: str, data_dir=None, *, guest_channel_prefixes=()
+) -> AccountRecord:
     if state not in STATES:
         raise AccountError(f"invalid state {state!r} (expected one of {STATES})")
-    return _mutate(nick, server_name, data_dir, "set_state", lambda r: setattr(r, "state", state))
-
-
-def set_role(nick: str, server_name: str, role: str, data_dir=None) -> AccountRecord:
-    if role not in ROLES:
-        raise AccountError(f"invalid role {role!r} (expected one of {ROLES})")
-    return _mutate(nick, server_name, data_dir, "set_role", lambda r: setattr(r, "role", role))
-
-
-def set_grants(
-    nick: str, server_name: str, grants: Mapping[str, str], data_dir=None
-) -> AccountRecord:
-    _validate_grants(grants)
     return _mutate(
-        nick, server_name, data_dir, "set_grants", lambda r: setattr(r, "grants", dict(grants))
+        nick,
+        server_name,
+        data_dir,
+        "set_state",
+        lambda r: setattr(r, "state", state),
+        prefixes=guest_channel_prefixes,
     )
 
 
-def remove(nick: str, server_name: str, data_dir=None) -> AccountRecord:
-    """Delete the account and its grant secret; returns the removed record."""
+def set_role(
+    nick: str, server_name: str, role: str, data_dir=None, *, guest_channel_prefixes=()
+) -> AccountRecord:
+    """Change the role; ``guest`` is refused while any grant lies outside the
+    server's ``guest_channel_prefixes`` (agentirc would reject the file)."""
+    if role not in ROLES:
+        raise AccountError(f"invalid role {role!r} (expected one of {ROLES})")
+    return _mutate(
+        nick,
+        server_name,
+        data_dir,
+        "set_role",
+        lambda r: setattr(r, "role", role),
+        prefixes=guest_channel_prefixes,
+    )
+
+
+def set_grants(
+    nick: str,
+    server_name: str,
+    grants: Mapping[str, str],
+    data_dir=None,
+    *,
+    guest_channel_prefixes=(),
+) -> AccountRecord:
+    _validate_grants(grants)
+    return _mutate(
+        nick,
+        server_name,
+        data_dir,
+        "set_grants",
+        lambda r: setattr(r, "grants", dict(grants)),
+        prefixes=guest_channel_prefixes,
+    )
+
+
+def remove(
+    nick: str, server_name: str, data_dir=None, *, guest_channel_prefixes=()
+) -> AccountRecord:
+    """Delete the account and its grant secret; returns the removed record.
+
+    The grant entry's ownership is checked before anything is written, so a
+    foreign entry under culture's name refuses the whole operation.
+    """
     _check_own(nick, server_name)
     with _locked(data_dir):
         records = _own_records(server_name, data_dir)
         rec = _find(records, nick)
+        _owned_grant_record(nick)
         records.remove(rec)
-        save(records, server_name, data_dir)
+        save(records, server_name, data_dir, guest_channel_prefixes=guest_channel_prefixes)
         _delete_secret(nick)
         _audit("remove", nick, data_dir, {"role": rec.role, "state": rec.state})
     return rec
 
 
-def revoke(nick: str, server_name: str, data_dir=None) -> AccountRecord:
+def revoke(
+    nick: str, server_name: str, data_dir=None, *, guest_channel_prefixes=()
+) -> AccountRecord:
     """Revoke the account but keep a tombstone entry.
 
     The grant secret is deleted and the state becomes ``revoked``; the entry
@@ -928,8 +1098,14 @@ def revoke(nick: str, server_name: str, data_dir=None) -> AccountRecord:
     """
     _check_own(nick, server_name)
     with _locked(data_dir):
+        _owned_grant_record(nick)  # refuse before writing, not after
         rec = _mutate(
-            nick, server_name, data_dir, "revoke", lambda r: setattr(r, "state", "revoked")
+            nick,
+            server_name,
+            data_dir,
+            "revoke",
+            lambda r: setattr(r, "state", "revoked"),
+            prefixes=guest_channel_prefixes,
         )
         _delete_secret(nick)
     return rec
@@ -939,12 +1115,14 @@ __all__ = [
     "AccountError",
     "AccountRecord",
     "ActivationError",
+    "MIN_AGENTIRC_ACCOUNTS",
     "ActivationResult",
     "ServerDataDir",
     "UnitOps",
     "activate",
     "activation_data_dir",
     "find",
+    "grant_entry_name",
     "inject_secret_for",
     "is_local_host",
     "load",
@@ -959,4 +1137,5 @@ __all__ = [
     "set_grants",
     "set_role",
     "set_state",
+    "validate_document",
 ]

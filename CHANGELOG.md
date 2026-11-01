@@ -19,6 +19,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `culture agents register` is unchanged by accounts: activation is explicit and opt-in
 - Agent units list `RestartPreventExitStatus=78 64` so an authentication refusal or a missing grant secret stops the unit instead of crash-looping
 - Tests can't reach the host's grant store, accounts directory or user units (autouse guard)
+- `culture server start` applies the `server.yaml` `accounts:` block (`trusted_cidrs`, `trust_loopback`, `guest_channel_prefixes`, `auth_failure_limit`, `auth_failure_window`) to the IRCd, built with agentirc's own `build_accounts_config`, when the file's `server.name` matches `--name` (new `--config` flag). An invalid block exits 78; on agentirc older than 9.14.0 the block is ignored with a warning. `culture doctor` and the account verbs read the same block
+- Tests that need agentirc >= 9.14.0 or cultureagent >= 0.16.0 carry the `requires_agentirc_accounts` / `requires_cultureagent_sasl` markers and skip on older versions until the pins move
+
+### Fixed
+
+- culture no longer writes an `accounts.json` agentirc would reject as a whole file (which silently froze every later revoke, suspend and rotate): every write is checked with agentirc's `parse_accounts` (with the server's `guest_channel_prefixes`) when available and always with culture's mirror of its rules (printable-ASCII nicks, no case-only duplicates, guest grants only inside the guest sandbox). A guest account with grants and no configured prefixes is refused
+- `culture agents account disable` and `revoke` roll the unit back (original `ExecStart`, restarted if it was running) when the account change fails; `remove`/`revoke` check that the grant entry is culture's before writing anything
+- Wrapping a legacy or hand-edited unit without a `RestartPreventExitStatus=` line adds one so it parks on grant's exit 64 after a revoke instead of restarting every 5 s; unwrapping restores the unit byte-for-byte
+- Account commands print the grant entry name via `grant_entry_name` (never the secret value), clearing CodeQL `py/clear-text-logging-sensitive-data`
 
 ## [14.12.0] - 2026-11-01
 

@@ -145,6 +145,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Keep history and rooms in memory only; write nothing to --data-dir",
     )
+    srv_start.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help=(
+            "server.yaml whose 'accounts:' block (agent-account SASL policy) the "
+            "server applies when its server.name matches --name (default: "
+            "~/.culture/server.yaml)"
+        ),
+    )
 
     srv_stop = server_sub.add_parser("stop", help="Stop the IRC server daemon")
     srv_stop.add_argument("--name", default=None, help=_SERVER_NAME_HELP)
@@ -489,7 +498,7 @@ def _maybe_set_default_server(name: str) -> None:
         write_default_server(name)
 
 
-def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> None:
+def _run_foreground(args: argparse.Namespace, pid_name: str, links: list, *, accounts=None) -> None:
     """Run the server in the foreground (blocking)."""
     write_pid(pid_name, os.getpid())
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -499,7 +508,15 @@ def _run_foreground(args: argparse.Namespace, pid_name: str, links: list) -> Non
     _maybe_set_default_server(args.name)
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
+            _run_server(
+                args.name,
+                args.host,
+                args.port,
+                links,
+                args.webhook_port,
+                _data_dir(args),
+                accounts=accounts,
+            )
         )
     finally:
         remove_pid(pid_name)
@@ -614,7 +631,9 @@ def _resolve_server_links(args: argparse.Namespace) -> list:
     return args.link
 
 
-def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> None:
+def _daemonize_server(
+    args: argparse.Namespace, pid_name: str, links: list, *, accounts=None
+) -> None:
     """Fork and set up the daemon child process for the server."""
     if sys.platform == "win32":
         raise CultureError(
@@ -665,7 +684,15 @@ def _daemonize_server(args: argparse.Namespace, pid_name: str, links: list) -> N
     exit_code = 0
     try:
         asyncio.run(
-            _run_server(args.name, args.host, args.port, links, args.webhook_port, _data_dir(args))
+            _run_server(
+                args.name,
+                args.host,
+                args.port,
+                links,
+                args.webhook_port,
+                _data_dir(args),
+                accounts=accounts,
+            )
         )
     except KeyboardInterrupt:
         # Clean shutdown path — Ctrl-C from foreground / SIGINT.
@@ -699,12 +726,56 @@ def _server_start(args: argparse.Namespace) -> None:
     _check_already_running(pid_name, args.name)
 
     links = _resolve_server_links(args)
+    accounts_config = _resolve_accounts_config(args)
 
     if getattr(args, "foreground", False):
-        _run_foreground(args, pid_name, links)
+        _run_foreground(args, pid_name, links, accounts=accounts_config)
         return
 
-    _daemonize_server(args, pid_name, links)
+    _daemonize_server(args, pid_name, links, accounts=accounts_config)
+
+
+def _resolve_accounts_config(args: argparse.Namespace):
+    """agentirc ``AccountsConfig`` from server.yaml's ``accounts:`` block, or None.
+
+    The block belongs to server.yaml's own server (``server.name``), so it is
+    applied only when that matches ``--name`` (a standalone sandbox started
+    from the same host keeps agentirc's defaults). Resolved in the parent,
+    before any fork, so an invalid block is a permanent configuration error
+    (exit 78) in both start modes. None (agentirc defaults) when there is no
+    block, or when the installed agentirc predates agent accounts — then a
+    present block is ignored with a warning.
+    """
+    from culture_core import accounts_policy
+
+    path = getattr(args, "config", None) or DEFAULT_CONFIG
+    try:
+        block = accounts_policy.load_accounts_block(path)
+        if not block.present:
+            return None
+        if block.server_name != args.name:
+            logger.info(
+                "accounts: block in %s belongs to server %r, not %r; not applied",
+                path,
+                block.server_name,
+                args.name,
+            )
+            return None
+        accounts_config = accounts_policy.server_accounts_config(block)
+    except accounts_policy.AccountsPolicyError as exc:
+        raise CultureError(
+            EXIT_DAEMON_PERMANENT,
+            f"invalid accounts: block: {exc}",
+            "fix the 'accounts:' block in server.yaml (see docs/reference/server/config.md)",
+        ) from exc
+    if accounts_config is None:
+        logger.warning(
+            "%s has an accounts: block but the installed agentirc does not support "
+            "agent accounts (needs agentirc-cli >= %s); ignoring it",
+            path,
+            accounts_policy.MIN_AGENTIRC_ACCOUNTS,
+        )
+    return accounts_config
 
 
 def _data_dir(args: argparse.Namespace) -> str:
@@ -719,8 +790,15 @@ async def _run_server(
     links: list | None = None,
     webhook_port: int = 7680,
     data_dir: str = "",
+    *,
+    accounts=None,
 ) -> None:
-    """Run the IRC server (called in the daemon child process)."""
+    """Run the IRC server (called in the daemon child process).
+
+    *accounts* is agentirc's ``AccountsConfig`` (server.yaml ``accounts:``,
+    see :func:`_resolve_accounts_config`); None keeps agentirc's defaults
+    (and works on an agentirc without agent accounts).
+    """
     from agentirc.config import ServerConfig
     from agentirc.ircd import IRCd
 
@@ -734,6 +812,7 @@ async def _run_server(
     # name; idempotent (importing culture_core.bots already installed it). See #445.
     culture_core.bots.install_system_bridge()
 
+    extra = {} if accounts is None else {"accounts": accounts}
     config = ServerConfig(
         name=name,
         host=host,
@@ -741,6 +820,7 @@ async def _run_server(
         webhook_port=webhook_port,
         links=links or [],
         data_dir=data_dir,
+        **extra,
     )
     ircd = IRCd(config)
     # `IRCd.start()` drives `BotManager.start()` itself (loads bots + system

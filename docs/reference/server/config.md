@@ -148,10 +148,24 @@ bot from registering. See [Bots](../../agentirc/bots.md) for details.
 
 ### Agent accounts (`accounts:`)
 
-The `accounts:` block is read by the AgentIRC server (agentirc 9.14.0+), not by
-culture; it carries server-side SASL policy for [agent
-accounts](../../agent-accounts.md). The accounts themselves live in
-`<data-dir>/accounts.json`.
+The `accounts:` block carries the AgentIRC server's SASL policy for [agent
+accounts](../../agent-accounts.md) (agentirc 9.14.0+). The accounts themselves
+live in `<data-dir>/accounts.json`.
+
+`culture server start` (and so every `culture-server-<name>` unit `culture
+server install` / `culture mesh setup` writes) reads the block from
+`server.yaml` (`--config`, default `~/.culture/server.yaml`) and hands it to
+the IRCd, validated by agentirc's own `build_accounts_config`. It applies only
+when the file's `server.name` matches the `--name` being started, so a
+`--standalone` server on the same host (the guest sandbox) keeps agentirc's
+defaults. An invalid block is a permanent configuration error: the server
+exits 78 and its unit parks instead of restart-looping. On an agentirc older
+than 9.14.0 the block has no effect and `server start` logs a warning.
+`agentirc serve` reads the same keys from its own config file.
+
+The same block is what `culture agents account ...` validates the accounts
+file against (`guest_channel_prefixes`) and what `culture doctor` reads
+(`trusted_cidrs`).
 
 | Key | Default | Description |
 |-----|---------|-------------|

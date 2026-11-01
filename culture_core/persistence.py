@@ -449,12 +449,16 @@ def is_grant_wrapped(command: list[str]) -> bool:
     )
 
 
-def _restart_prevent_status(command: list[str]) -> str:
+def _prevent_status(wrapped: bool) -> str:
     from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
 
-    if is_grant_wrapped(command):
+    if wrapped:
         return f"{EXIT_DAEMON_PERMANENT} {GRANT_RUN_FAILED}"
     return str(EXIT_DAEMON_PERMANENT)
+
+
+def _restart_prevent_status(command: list[str]) -> str:
+    return _prevent_status(is_grant_wrapped(command))
 
 
 def resolve_grant_bin(*, allow_dev_interpreter: bool | None = None) -> str:
@@ -535,14 +539,81 @@ def unit_exec_start(name: str, *, unit_dir: Path | None = None) -> list[str] | N
     return _exec_start_argv(path.read_text())
 
 
+_PREVENT_KEY = "RestartPreventExitStatus="
+# Written above a RestartPreventExitStatus= line culture changed while
+# wrapping a unit whose line was missing or hand-edited; carries the original
+# line (or "absent") so unwrapping restores the unit byte-for-byte.
+_PREVENT_MARK = "# culture account wrap; original RestartPreventExitStatus: "
+_PREVENT_ABSENT = "absent"
+
+
+def _find_prefixed(lines: list[str], prefix: str) -> int | None:
+    return next((i for i, line in enumerate(lines) if line.startswith(prefix)), None)
+
+
+def _park_on_grant_failure(lines: list[str], exec_index: int) -> None:
+    """Make a wrapped unit park on grant's exit 64 (in place).
+
+    A culture-built line (``78``) becomes ``78 64`` as before; a hand-edited
+    line gets `` 64`` appended and a missing line is added under ExecStart
+    (inside ``[Service]``) — both behind a marker naming the original.
+    """
+    if _find_prefixed(lines, _PREVENT_MARK) is not None:
+        return  # already handled by an earlier wrap (re-wrap for a new secret)
+    wrapped_status = _prevent_status(True)
+    idx = _find_prefixed(lines, _PREVENT_KEY)
+    if idx is None:
+        lines[exec_index + 1 : exec_index + 1] = [
+            f"{_PREVENT_MARK}{_PREVENT_ABSENT}\n",
+            f"{_PREVENT_KEY}{wrapped_status}\n",
+        ]
+        return
+    original = lines[idx].rstrip("\n")
+    tokens = original[len(_PREVENT_KEY) :].split()
+    if str(GRANT_RUN_FAILED) in tokens:
+        return
+    if tokens == _prevent_status(False).split():
+        lines[idx] = f"{_PREVENT_KEY}{wrapped_status}\n"
+        return
+    lines[idx : idx + 1] = [
+        f"{_PREVENT_MARK}{original}\n",
+        f"{original} {GRANT_RUN_FAILED}\n",
+    ]
+
+
+def _unpark(lines: list[str]) -> None:
+    """Undo :func:`_park_on_grant_failure` (in place)."""
+    mark = _find_prefixed(lines, _PREVENT_MARK)
+    if mark is not None:
+        original = lines[mark].rstrip("\n")[len(_PREVENT_MARK) :]
+        end = (
+            mark + 2
+            if mark + 1 < len(lines) and lines[mark + 1].startswith(_PREVENT_KEY)
+            else mark + 1
+        )
+        lines[mark:end] = [] if original == _PREVENT_ABSENT else [f"{original}\n"]
+        return
+    idx = _find_prefixed(lines, _PREVENT_KEY)
+    if idx is not None and lines[idx].rstrip("\n") == f"{_PREVENT_KEY}{_prevent_status(True)}":
+        lines[idx] = f"{_PREVENT_KEY}{_prevent_status(False)}\n"
+
+
 def _rewrite_unit(path: Path, argv: list[str]) -> None:
-    """Replace ExecStart with *argv* and align RestartPreventExitStatus with it."""
+    """Replace ExecStart with *argv* and align RestartPreventExitStatus with it.
+
+    Wrapping makes the unit park on grant's exit 64 even when its
+    ``RestartPreventExitStatus=`` line is missing (legacy unit) or
+    hand-edited; unwrapping restores the original line(s) exactly.
+    """
     lines = path.read_text().splitlines(keepends=True)
-    for i, line in enumerate(lines):
-        if line.startswith("ExecStart="):
-            lines[i] = "ExecStart=" + " ".join(shlex.quote(a) for a in argv) + "\n"
-        elif line.startswith("RestartPreventExitStatus="):
-            lines[i] = f"RestartPreventExitStatus={_restart_prevent_status(argv)}\n"
+    exec_index = _find_prefixed(lines, "ExecStart=")
+    if exec_index is None:  # pragma: no cover - callers read ExecStart first
+        return
+    lines[exec_index] = "ExecStart=" + " ".join(shlex.quote(a) for a in argv) + "\n"
+    if is_grant_wrapped(argv):
+        _park_on_grant_failure(lines, exec_index)
+    else:
+        _unpark(lines)
     path.write_text("".join(lines))
     _run_cmd(["systemctl", "--user", "daemon-reload"])
 
@@ -606,6 +677,23 @@ def unwrap_installed_unit(
     if secret is not None and argv[3] != f"{INJECT_ENV_VAR}={secret}":
         return False
     _rewrite_unit(path, argv[5:])
+    return True
+
+
+def read_unit(name: str, *, unit_dir: Path | None = None) -> str | None:
+    """Text of the installed systemd unit *name*, or None (for :func:`restore_unit`)."""
+    path = _unit_path(name, unit_dir)
+    return path.read_text() if path is not None else None
+
+
+def restore_unit(name: str, text: str | None, *, unit_dir: Path | None = None) -> bool:
+    """Put back unit text saved by :func:`read_unit` (daemon-reload if it changed)."""
+    path = _unit_path(name, unit_dir)
+    if path is None or text is None:
+        return False
+    if path.read_text() != text:
+        path.write_text(text)
+        _run_cmd(["systemctl", "--user", "daemon-reload"])
     return True
 
 
