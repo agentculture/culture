@@ -200,7 +200,7 @@ def test_doctor_flags_registered_agents_without_account_including_external():
     assert all(f.severity == "info" and f.fix_hint for f in found)
 
 
-def test_run_doctor_wires_class5_and_exit_code(tmp_path):
+def test_run_doctor_wires_class5_and_exit_code(tmp_path, tmp_home):
     data = tmp_path / "data"
     accounts.save(_records("spark-gwen"), SERVER, data)
     cfgfile = tmp_path / "server.yaml"
@@ -218,12 +218,16 @@ def test_run_doctor_wires_class5_and_exit_code(tmp_path):
     assert not any(
         f.subject == "server" for f in dacc.check_accounts(cfg, str(cfgfile), data, tmp_path)
     )
+    # an active account whose installed unit lacks the wrapper: a class-5 error
+    # that doesn't depend on which cultureagent/agentirc the venv happens to hold
+    unit_dir = tmp_home / ".config" / "systemd" / "user"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "culture-agent-spark-gwen.service").write_text("[Service]\nExecStart=/x\n")
     report = run_doctor(
         cfg, root_override=str(tmp_path), config_path=str(cfgfile), data_dir=str(data)
     )
-    assert report.class5 and report.exit_code == (
-        1 if any(f.severity == "error" for f in report.class5) else 0
-    )
+    assert any(f.severity == "error" and f.subject == "spark-gwen" for f in report.class5)
+    assert report.exit_code == 1 and not report.ok
 
 
 def test_doctor_json_includes_class5(tmp_path, capsys, monkeypatch):
