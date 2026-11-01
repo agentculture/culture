@@ -71,6 +71,15 @@ from .shared.process import stop_agent
 
 logger = logging.getLogger("culture")
 
+_DATA_DIR_HELP = "Server data dir holding accounts.json (default: ~/.culture/data)"
+_ACCOUNT_VERBS = {
+    "revoke": "Revoke the account (secret deleted, nick stays reserved, live session closed)",
+    "rotate": "Mint a new secret (old one fails) and restart the agent's unit",
+    "disable": "Remove the account entirely (nick returns to legacy behaviour)",
+    "show": "Show an account's role, state and grants (never the secret)",
+    "list": "List this server's accounts",
+}
+
 NAME = "agents"
 
 # Verbs forwarded verbatim to steward.cli.main. Registered as thin REMAINDER
@@ -193,16 +202,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     archive_parser.add_argument("nick", help="Agent nick to archive")
     archive_parser.add_argument("--reason", default="", help="Reason for archiving")
     archive_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+    archive_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- unarchive ------------------------------------------------------------
     unarchive_parser = agent_sub.add_parser("unarchive", help="Restore an archived agent")
     unarchive_parser.add_argument("nick", help="Agent nick to unarchive")
     unarchive_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+    unarchive_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- delete ---------------------------------------------------------------
     delete_parser = agent_sub.add_parser("delete", help="Remove an agent from config entirely")
     delete_parser.add_argument("nick", help="Agent nick to delete")
     delete_parser.add_argument("--config", default=DEFAULT_CONFIG, help=_CONFIG_HELP)
+    delete_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- register -------------------------------------------------------------
     register_parser = agent_sub.add_parser("register", help="Register agent directory")
@@ -213,11 +225,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--suffix", default=None, help="Agent suffix (required for multi-agent culture.yaml)"
     )
     register_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
+    register_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- unregister -----------------------------------------------------------
     unregister_parser = agent_sub.add_parser("unregister", help="Unregister agent")
     unregister_parser.add_argument("target", help=_NICK_HELP)
     unregister_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
+    unregister_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
+
+    # -- account --------------------------------------------------------------
+    account_parser = agent_sub.add_parser(
+        "account", help="Manage agent accounts (revoke, rotate, disable, show, list)"
+    )
+    account_sub = account_parser.add_subparsers(dest="account_command")
+    for verb, vhelp in _ACCOUNT_VERBS.items():
+        vp = account_sub.add_parser(verb, help=vhelp)
+        if verb != "list":
+            vp.add_argument("nick", help=_NICK_HELP)
+        vp.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
+        vp.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- install --------------------------------------------------------------
     install_parser = agent_sub.add_parser(
@@ -258,7 +284,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def dispatch(args: argparse.Namespace) -> None:
     if not args.agents_command:
         print(
-            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|install|uninstall|migrate|doctor|show|overview}",
+            "Usage: culture agents {create|join|start|stop|status|rename|assign|sleep|wake|learn|message|read|archive|unarchive|delete|register|unregister|account|install|uninstall|migrate|doctor|show|overview}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -281,6 +307,7 @@ def dispatch(args: argparse.Namespace) -> None:
         "delete": _cmd_delete,
         "register": _cmd_register,
         "unregister": _cmd_unregister,
+        "account": _cmd_account,
         "install": _cmd_install,
         "uninstall": _cmd_uninstall,
         "migrate": _cmd_migrate,
@@ -1327,6 +1354,7 @@ def _cmd_archive(args: argparse.Namespace) -> None:
         stop_agent(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
+    _account_apply(args, config.server.name, args.nick, "suspended")
 
     print(f"Agent archived: {args.nick}")
     if args.reason:
@@ -1345,6 +1373,8 @@ def _cmd_unarchive(args: argparse.Namespace) -> None:
             "run 'culture agents status --all' to list archived agents",
         ) from exc
 
+    config = load_config_or_default(args.config)
+    _account_apply(args, config.server.name, args.nick, "restore")
     print(f"Agent unarchived: {args.nick}")
     print(f"\nStart with: culture agents start {args.nick}")
 
@@ -1367,6 +1397,7 @@ def _cmd_delete(args: argparse.Namespace) -> None:
         stop_agent(args.nick)
 
     remove_manifest_agent(args.config, args.nick)
+    _account_apply(args, config.server.name, args.nick, "revoked")
     print(f"Agent deleted: {args.nick}")
 
 
@@ -1423,6 +1454,7 @@ def _cmd_register(args: argparse.Namespace) -> None:
                 f"{agent.suffix}' if you want to move it here",
             ) from e
         print(f"Registered: {server_name}-{agent.suffix} at {directory}")
+        _account_register(agent, server_name, args)
 
 
 def _cmd_unregister(args: argparse.Namespace) -> None:
@@ -1441,7 +1473,142 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
             str(e),
             "run 'culture agents status' to list registered agents",
         ) from e
+    _account_apply(args, config.server.name, f"{prefix}{suffix}", "revoked")
     print(f"Unregistered: {prefix}{suffix}")
+
+
+# -----------------------------------------------------------------------
+# Accounts (culture#506): per-nick secrets AgentIRC authenticates with SASL
+# -----------------------------------------------------------------------
+
+
+def _account_data_dir(args: argparse.Namespace):
+    """``--data-dir`` if given, else the server default (~/.culture/data)."""
+    from culture_core import accounts
+
+    return getattr(args, "data_dir", None) or accounts.default_data_dir()
+
+
+def _account_error(exc: Exception) -> CultureError:
+    return CultureError(
+        EXIT_USER_ERROR,
+        f"account error: {exc}",
+        "check the accounts file under the server data dir (--data-dir)",
+    )
+
+
+def _account_register(agent: AgentConfig, server_name: str, args: argparse.Namespace) -> None:
+    """Create (or restore) the account for a registered agent."""
+    from culture_core import accounts
+
+    data_dir = _account_data_dir(args)
+    nick = f"{server_name}-{agent.suffix}"
+    try:
+        existed = accounts.find(nick, server_name, data_dir) is not None
+        rec = accounts.mint(agent, server_name, data_dir=data_dir)
+        if rec.state != "active":
+            accounts.set_state(nick, server_name, "active", data_dir=data_dir)
+    except accounts.AccountError as exc:
+        raise _account_error(exc) from exc
+    verb = "refreshed" if existed else "created"
+    print(
+        f"Account {verb}: {nick} (secret stored in grant as "
+        f"{accounts.secret_name(nick)}; never printed)"
+    )
+
+
+def _account_apply(args: argparse.Namespace, server_name: str, nick: str, action: str) -> None:
+    """Lifecycle hook: suspended / revoked / restore. No account is a no-op."""
+    from culture_core import accounts
+
+    data_dir = _account_data_dir(args)
+    try:
+        rec = accounts.find(nick, server_name, data_dir)
+        if rec is None:
+            return
+        if action == "suspended":
+            if rec.state == "active":
+                accounts.set_state(nick, server_name, "suspended", data_dir=data_dir)
+                print(f"Account suspended: {nick} (nick stays reserved)")
+        elif action == "revoked":
+            accounts.revoke(nick, server_name, data_dir=data_dir)
+            print(f"Account revoked: {nick} (secret deleted; nick stays reserved)")
+        elif action == "restore" and rec.state == "suspended":
+            accounts.set_state(nick, server_name, "active", data_dir=data_dir)
+            print(f"Account restored: {nick}")
+    except accounts.AccountError as exc:
+        raise _account_error(exc) from exc
+
+
+def _account_nick(config: ServerConfig, raw: str) -> str:
+    prefix = f"{config.server.name}-"
+    return raw if raw.startswith(prefix) else f"{prefix}{raw}"
+
+
+def _cmd_account(args: argparse.Namespace) -> None:
+    from culture_core import accounts
+
+    verb = getattr(args, "account_command", None)
+    if not verb:
+        print(f"Usage: culture agents account {{{'|'.join(_ACCOUNT_VERBS)}}}", file=sys.stderr)
+        sys.exit(1)
+    config = load_config_or_default(args.config)
+    server_name = config.server.name
+    data_dir = _account_data_dir(args)
+    try:
+        if verb == "list":
+            for rec in accounts.load(data_dir):
+                print(f"{rec.nick}\t{rec.role}\t{rec.state}")
+            return
+        nick = _account_nick(config, args.nick)
+        rec = accounts.find(nick, server_name, data_dir)
+        if rec is None:
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"no account for {nick}",
+                "create it with 'culture agents register <directory>'",
+            )
+        if verb == "show":
+            grants = ", ".join(f"{c}={lv}" for c, lv in sorted(rec.grants.items())) or "none"
+            print(f"{rec.nick}: role={rec.role} state={rec.state} grants={grants}")
+        elif verb == "revoke":
+            accounts.revoke(nick, server_name, data_dir=data_dir)
+            print(f"Account revoked: {nick} (live session closes within 5s; nick stays reserved)")
+        elif verb == "disable":
+            accounts.remove(nick, server_name, data_dir=data_dir)
+            print(f"Account disabled: {nick} (nick returns to legacy behaviour)")
+        elif verb == "rotate":
+            _account_rotate(config, nick, data_dir)
+    except accounts.AccountError as exc:
+        raise _account_error(exc) from exc
+
+
+def _account_rotate(config: ServerConfig, nick: str, data_dir) -> None:
+    from types import SimpleNamespace
+
+    from culture_core import accounts
+    from culture_core.persistence import restart_service
+
+    server_name = config.server.name
+    agent = config.get_agent(nick) or SimpleNamespace(
+        suffix=nick.removeprefix(f"{server_name}-"), channels=[]
+    )
+    accounts.mint(agent, server_name, data_dir=data_dir)
+    name = accounts.secret_name(nick)
+    print(f"Rotated: {nick} (old secret no longer works; new one stored in grant as {name})")
+    if isinstance(agent, AgentConfig) and is_external(agent):
+        owner = agent.owner or "its owner"
+        print(
+            f"{nick} is {owner_message(agent)}: restart {owner} so it picks up "
+            f"the new secret from grant ({name})"
+        )
+    elif restart_service(f"culture-agent-{nick}"):
+        print(f"Restarted culture-agent-{nick}")
+    else:
+        print(
+            f"No installed unit for {nick}: restart the running daemon "
+            f"(culture agents stop {nick} && culture agents start {nick}) to use the new secret"
+        )
 
 
 # -----------------------------------------------------------------------

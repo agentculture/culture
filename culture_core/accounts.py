@@ -302,3 +302,24 @@ def remove(nick: str, server_name: str, data_dir=None) -> AccountRecord:
         pass
     _audit("remove", nick, data_dir, {"role": rec.role, "state": rec.state})
     return rec
+
+
+def revoke(nick: str, server_name: str, data_dir=None) -> AccountRecord:
+    """Revoke the account but keep a tombstone entry.
+
+    The grant secret is deleted and the state becomes ``revoked``; the entry
+    stays in the accounts file so nobody else can take the nick.  Use
+    :func:`remove` to drop the entry (returns the nick to legacy behaviour).
+    """
+    _check_own(nick, server_name)
+    rec = _mutate(nick, server_name, data_dir, "revoke", lambda r: setattr(r, "state", "revoked"))
+    try:
+        grant_store.delete(secret_name(nick))
+    except grant_store.NotFoundError:
+        pass
+    return rec
+
+
+def find(nick: str, server_name: str, data_dir: str | Path | None = None) -> AccountRecord | None:
+    """Return the account for ``nick`` or None."""
+    return next((r for r in _own_records(server_name, data_dir) if r.nick == nick), None)
