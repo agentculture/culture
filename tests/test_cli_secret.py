@@ -49,8 +49,10 @@ def test_secret_list_matches_grant_list(env):
     assert _run("grant", ["set", "BETA", "v2"], env).returncode == 0
     expected = _run("grant", ["list"], env)
     got = _run("culture", ["list"], env)
-    assert expected.returncode == got.returncode == 0
-    assert "ALPHA" in expected.stdout and "BETA" in expected.stdout
+    assert expected.returncode == 0
+    assert got.returncode == 0
+    assert "ALPHA" in expected.stdout
+    assert "BETA" in expected.stdout
     assert got.stdout == expected.stdout
 
 
@@ -68,7 +70,8 @@ def test_secret_get_hidden_refused_like_grant(env):
 def test_secret_get_visible_value(env):
     _run("culture", ["set", "VIS", "hello"], env)
     got = _run("culture", ["get", "VIS"], env)
-    assert got.returncode == 0 and got.stdout.strip() == "hello"
+    assert got.returncode == 0
+    assert got.stdout.strip() == "hello"
 
 
 def test_explain_secret_not_coming_soon(env):

@@ -1487,8 +1487,9 @@ class TestExternalResidents:
         monkeypatch.setattr(
             persistence, "install_service", lambda *a, **k: pytest.fail("installed")
         )
+        args = _args(nick="spark-gwen")
         with pytest.raises(CultureError) as exc:
-            agent_mod._cmd_install(_args(nick="spark-gwen"))
+            agent_mod._cmd_install(args)
         assert exc.value.code == EXIT_USER_ERROR
         assert "owned by gwen.service" in exc.value.message
 
@@ -1497,8 +1498,10 @@ class TestExternalResidents:
         cfg, _ = _external_cfg()
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "ipc_request", lambda *a, **k: pytest.fail("ipc"))
+        handler = getattr(agent_mod, f"_cmd_{verb}")
+        args = _args(nick="spark-gwen", all=False)
         with pytest.raises(CultureError) as exc:
-            getattr(agent_mod, f"_cmd_{verb}")(_args(nick="spark-gwen", all=False))
+            handler(args)
         assert exc.value.code == EXIT_USER_ERROR
         assert "owned by gwen.service" in exc.value.message
 
@@ -1513,8 +1516,9 @@ class TestExternalResidents:
     def test_learn_refuses(self, monkeypatch):
         cfg, _ = _external_cfg()
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        args = _args(nick="spark-gwen")
         with pytest.raises(CultureError) as exc:
-            agent_mod._cmd_learn(_args(nick="spark-gwen"))
+            agent_mod._cmd_learn(args)
         assert "owned by gwen.service" in exc.value.message
 
     def test_message_reaches_external_agent_over_irc(self, monkeypatch, capsys):
@@ -1532,8 +1536,9 @@ class TestExternalResidents:
         assert "Sent to spark-gwen" in capsys.readouterr().out
 
     def test_read_has_no_external_special_case(self):
+        args = _args(target="spark-gwen", limit=5)
         with pytest.raises(CultureError) as exc:
-            agent_mod._cmd_read(_args(target="spark-gwen", limit=5))
+            agent_mod._cmd_read(args)
         assert "not yet implemented" in exc.value.message
         assert "owned by" not in exc.value.message
 
