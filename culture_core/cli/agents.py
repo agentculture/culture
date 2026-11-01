@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from culture_core.clients.copilot.config import AgentConfig as CopilotAgentConfig
 
 from culture_core.cli._errors import (
+    EXIT_DAEMON_PERMANENT,
     EXIT_ENV_ERROR,
     EXIT_USER_ERROR,
     CultureError,
@@ -71,12 +72,17 @@ from .shared.process import stop_agent
 
 logger = logging.getLogger("culture")
 
-_DATA_DIR_HELP = "Server data dir holding accounts.json (default: ~/.culture/data)"
+_DATA_DIR_HELP = (
+    "Server data dir holding accounts.json (default: the server's own, read from its "
+    "running process or installed unit; else ~/.culture/data)"
+)
 _ACCOUNT_VERBS = {
-    "revoke": "Revoke the account (secret deleted, nick stays reserved, live session closed)",
+    "revoke": "Revoke the account (secret deleted, nick stays reserved, unit stopped)",
     "rotate": "Mint a new secret (old one fails) and restart the agent's unit",
-    "disable": "Remove the account entirely (nick returns to legacy behaviour)",
-    "activate": "Ordered activation: mint, wrap the unit, check the client, then publish",
+    "disable": "Remove the account and unwrap the unit (nick returns to legacy behaviour)",
+    "activate": (
+        "Opt in: check, mint, wrap the unit, publish, restart and verify (rolls back on failure)"
+    ),
     "show": "Show an account's role, state and grants (never the secret)",
     "list": "List this server's accounts",
 }
@@ -226,7 +232,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--suffix", default=None, help="Agent suffix (required for multi-agent culture.yaml)"
     )
     register_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
-    register_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
 
     # -- unregister -----------------------------------------------------------
     unregister_parser = agent_sub.add_parser("unregister", help="Unregister agent")
@@ -236,7 +241,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     # -- account --------------------------------------------------------------
     account_parser = agent_sub.add_parser(
-        "account", help="Manage agent accounts (revoke, rotate, disable, show, list)"
+        "account", help="Manage agent accounts (activate, revoke, rotate, disable, show, list)"
     )
     account_sub = account_parser.add_subparsers(dest="account_command")
     for verb, vhelp in _ACCOUNT_VERBS.items():
@@ -245,6 +250,27 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             vp.add_argument("nick", help=_NICK_HELP)
         vp.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
         vp.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
+        if verb == "activate":
+            vp.add_argument(
+                "--owner-ready",
+                action="store_true",
+                help=(
+                    "External agents: publish the account (run this once the owner's "
+                    "unit injects the secret; restart the owner afterwards)"
+                ),
+            )
+            vp.add_argument(
+                "--verify-timeout",
+                type=float,
+                default=30.0,
+                metavar="SECONDS",
+                help="How long to wait for the restarted agent to reconnect (default: 30)",
+            )
+            vp.add_argument(
+                "--allow-dev-interpreter",
+                action="store_true",
+                help="Bake a grant binary from a dev/worktree virtualenv into the unit anyway",
+            )
 
     # -- install --------------------------------------------------------------
     install_parser = agent_sub.add_parser(
@@ -253,6 +279,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     install_parser.add_argument("nick", help=_NICK_HELP)
     install_parser.add_argument("--config", default=DEFAULT_SERVER_CONFIG, help=_CONFIG_HELP)
+    install_parser.add_argument("--data-dir", default=None, help=_DATA_DIR_HELP)
     install_parser.add_argument(
         "--allow-dev-interpreter",
         action="store_true",
@@ -641,6 +668,7 @@ def _start_foreground(config: DaemonConfig, agents: list[AgentConfig]) -> None:
             "or drop --foreground to start all agents in the background",
         )
     agent = agents[0]
+    _export_agent_secret(agent, config, single=True)
     print(f"Starting agent {agent.nick} in foreground...")
     asyncio.run(_run_single_agent(config, agent))
 
@@ -656,10 +684,49 @@ def _start_background(config: DaemonConfig, agents: list[AgentConfig]) -> None:
                 f"start agents individually, e.g. 'culture agents start {example}'",
             )
         agent = agents[0]
+        _export_agent_secret(agent, config, single=True)
         print(f"Starting agent {agent.nick}...")
         asyncio.run(_run_single_agent(config, agent))
     else:
         _run_multi_agents(config, agents)
+
+
+def _agent_secret_env(agent: AgentConfig, server_name: str, *, single: bool) -> dict[str, str]:
+    """``{CULTURE_AGENT_SECRET: <secret>}`` for an agent with an active account.
+
+    The daemon (cultureagent's BaseDaemon) pops ``CULTURE_AGENT_SECRET`` at
+    construction and presents it with SASL. A unit wrapped with
+    ``grant run --inject`` already set it for this single agent (*single*):
+    leave it. Otherwise the secret is read from grant in-process, so a
+    daemon started outside a unit (``culture agents start``) authenticates
+    too. No account -> ``{}`` (legacy). An inactive account or a missing /
+    mismatched grant secret raises a permanent (exit 78) error: the server
+    would refuse the login anyway.
+    """
+    from culture_core import accounts
+    from culture_core.persistence import INJECT_ENV_VAR
+
+    if getattr(agent, "backend", None) == "external" or not server_name:
+        return {}
+    if single and os.environ.get(INJECT_ENV_VAR):
+        return {}
+    try:
+        data_dir = accounts.resolve_server_data_dir(server_name).path
+        if data_dir is None:  # --no-persist server: reads no accounts file
+            return {}
+        secret = accounts.secret_for_start(agent.nick, server_name, data_dir)
+    except accounts.AccountError as exc:
+        raise CultureError(
+            EXIT_DAEMON_PERMANENT,
+            f"{agent.nick}: {exc}",
+            f"fix the account (culture agents account show {agent.nick}) and start again",
+        ) from exc
+    return {INJECT_ENV_VAR: secret} if secret else {}
+
+
+def _export_agent_secret(agent: AgentConfig, config, *, single: bool) -> None:
+    server_name = getattr(getattr(config, "server", None), "name", None)
+    os.environ.update(_agent_secret_env(agent, server_name, single=single))
 
 
 def _cmd_start(args: argparse.Namespace) -> None:
@@ -883,7 +950,13 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
     stop_event = asyncio.Event()
     daemon.set_stop_event(stop_event)
 
-    await daemon.start()
+    try:
+        await daemon.start()
+    except Exception as exc:
+        if type(exc).__name__ == "AuthenticationRefused":
+            await _stop_quietly(daemon)
+            raise _auth_refused(agent, exc) from exc
+        raise
     logger.info("Agent %s started (backend=%s)", agent.nick, backend)
 
     loop = asyncio.get_event_loop()
@@ -893,9 +966,36 @@ async def _run_single_agent(config: DaemonConfig, agent: AgentConfig) -> None:
         except RuntimeError:
             signal.signal(sig, lambda *_: stop_event.set())
 
-    await stop_event.wait()
+    # cultureagent sets ``transport.auth_refused`` when the server refuses
+    # the SASL login on a reconnect (account revoked/re-keyed): exit 78 so
+    # the unit parks instead of restart-looping (culture#506).
+    refused = getattr(getattr(daemon, "_transport", None), "auth_refused", None)
+    waiters = [asyncio.ensure_future(stop_event.wait())]
+    if isinstance(refused, asyncio.Event):
+        waiters.append(asyncio.ensure_future(refused.wait()))
+    await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+    for w in waiters:
+        w.cancel()
     logger.info("Shutting down %s", agent.nick)
     await daemon.stop()
+    if isinstance(refused, asyncio.Event) and refused.is_set():
+        raise _auth_refused(agent, getattr(daemon._transport, "refusal", "SASL refused"))
+
+
+async def _stop_quietly(daemon) -> None:
+    try:
+        await daemon.stop()
+    except Exception:  # noqa: BLE001 - already failing; the refusal is the error
+        logger.debug("daemon stop after refusal failed", exc_info=True)
+
+
+def _auth_refused(agent: AgentConfig, reason) -> CultureError:
+    return CultureError(
+        EXIT_DAEMON_PERMANENT,
+        f"{agent.nick}: the server refused the account login permanently ({reason})",
+        f"check the account (culture agents account show {agent.nick}); reactivate with "
+        f"'culture agents account activate {agent.nick}'",
+    )
 
 
 def _agent_daemon_child(config: DaemonConfig, agent: AgentConfig) -> None:
@@ -925,6 +1025,7 @@ def _agent_daemon_child(config: DaemonConfig, agent: AgentConfig) -> None:
 
     exit_code = 0
     try:
+        _export_agent_secret(agent, config, single=True)
         asyncio.run(_run_single_agent(config, agent))
     except KeyboardInterrupt:
         # Clean shutdown path — SIGINT.
@@ -954,6 +1055,12 @@ def _agent_daemon_child(config: DaemonConfig, agent: AgentConfig) -> None:
 
 def _run_multi_agents(config: DaemonConfig, agents: list[AgentConfig]) -> None:
     """Fork each agent into its own background process."""
+    from culture_core.persistence import INJECT_ENV_VAR
+
+    if len(agents) > 1:
+        # One inherited secret can't belong to several agents: each child
+        # reads its own from grant (_agent_daemon_child).
+        os.environ.pop(INJECT_ENV_VAR, None)
     for agent in agents:
         pid = os.fork()
         if pid == 0:
@@ -1355,7 +1462,8 @@ def _cmd_archive(args: argparse.Namespace) -> None:
         stop_agent(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
-    _account_apply(args, config.server.name, args.nick, "suspended")
+    _archive_unit(args.nick)
+    _account_apply(args, config, args.nick, "suspended")
 
     print(f"Agent archived: {args.nick}")
     if args.reason:
@@ -1375,9 +1483,32 @@ def _cmd_unarchive(args: argparse.Namespace) -> None:
         ) from exc
 
     config = load_config_or_default(args.config)
-    _account_apply(args, config.server.name, args.nick, "restore")
+    _account_apply(args, config, args.nick, "restore")
     print(f"Agent unarchived: {args.nick}")
-    print(f"\nStart with: culture agents start {args.nick}")
+    svc = f"culture-agent-{args.nick}"
+    if _unarchive_unit(args.nick):
+        print(f"\nStart with: systemctl --user start {svc}  (re-enabled for boot)")
+    else:
+        print(f"\nStart with: culture agents start {args.nick}")
+
+
+def _archive_unit(nick: str) -> None:
+    """Keep an archived agent's unit from starting (and crash-looping) at boot.
+
+    ``culture agents start`` refuses archived agents, so an enabled unit
+    would restart-loop on every boot. The unit file stays; unarchive
+    re-enables it.
+    """
+    from culture_core import persistence
+
+    if persistence.disable_service(f"culture-agent-{nick}"):
+        print(f"Disabled culture-agent-{nick} (unit kept; unarchive re-enables it)")
+
+
+def _unarchive_unit(nick: str) -> bool:
+    from culture_core import persistence
+
+    return persistence.enable_service(f"culture-agent-{nick}")
 
 
 def _cmd_delete(args: argparse.Namespace) -> None:
@@ -1398,7 +1529,7 @@ def _cmd_delete(args: argparse.Namespace) -> None:
         stop_agent(args.nick)
 
     remove_manifest_agent(args.config, args.nick)
-    _account_apply(args, config.server.name, args.nick, "revoked")
+    _account_apply(args, config, args.nick, "revoked")
     print(f"Agent deleted: {args.nick}")
 
 
@@ -1455,7 +1586,23 @@ def _cmd_register(args: argparse.Namespace) -> None:
                 f"{agent.suffix}' if you want to move it here",
             ) from e
         print(f"Registered: {server_name}-{agent.suffix} at {directory}")
-        _account_register(agent, server_name, args)
+        _note_existing_account(f"{server_name}-{agent.suffix}", server_name)
+
+
+def _note_existing_account(nick: str, server_name: str) -> None:
+    """Read-only hint after register: accounts are opt-in and never touched here."""
+    from culture_core import accounts
+
+    try:
+        data_dir = accounts.resolve_server_data_dir(server_name).path
+        rec = accounts.find(nick, server_name, data_dir) if data_dir else None
+    except accounts.AccountError:
+        return
+    if rec is not None and rec.state != "active":
+        print(
+            f"  note: {nick} has a {rec.state} account; it stays {rec.state} until you run "
+            f"'culture agents account activate {nick}'"
+        )
 
 
 def _cmd_unregister(args: argparse.Namespace) -> None:
@@ -1474,7 +1621,7 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
             str(e),
             "run 'culture agents status' to list registered agents",
         ) from e
-    _account_apply(args, config.server.name, f"{prefix}{suffix}", "revoked")
+    _account_apply(args, config, f"{prefix}{suffix}", "revoked")
     print(f"Unregistered: {prefix}{suffix}")
 
 
@@ -1483,11 +1630,15 @@ def _cmd_unregister(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
-def _account_data_dir(args: argparse.Namespace):
-    """``--data-dir`` if given, else the server default (~/.culture/data)."""
+def _account_data_dir(args: argparse.Namespace, config: ServerConfig):
+    """The server's data dir: ``--data-dir``, else what the server was started
+    with (running process / installed unit), else ``~/.culture/data``.
+    ``None`` for a ``--no-persist`` server (it reads no accounts file)."""
     from culture_core import accounts
 
-    return getattr(args, "data_dir", None) or accounts.default_data_dir()
+    return accounts.resolve_server_data_dir(
+        config.server.name, getattr(args, "data_dir", None)
+    ).path
 
 
 def _account_error(exc: Exception) -> CultureError:
@@ -1498,50 +1649,92 @@ def _account_error(exc: Exception) -> CultureError:
     )
 
 
-def _account_register(agent: AgentConfig, server_name: str, args: argparse.Namespace) -> None:
-    """Activate (create or restore) the account for a registered agent.
+def _account_unit_ops(config: ServerConfig, args: argparse.Namespace):
+    """systemd hooks the ordered activation drives (patched in tests)."""
+    from .shared.account_units import SystemdUnitOps
 
-    Goes through :func:`accounts.activate` so the accounts file is published
-    only after the secret is minted, the unit is wrapped and the installed
-    cultureagent can speak SASL; a failed step leaves the agent on the legacy
-    path (never locked out) and is reported with how to retry.
-    """
+    return SystemdUnitOps(
+        host=config.server.host,
+        port=config.server.port,
+        server_name=config.server.name,
+        verify_timeout=getattr(args, "verify_timeout", 30.0),
+        allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+    )
+
+
+def _account_activate(config: ServerConfig, agent: AgentConfig, args: argparse.Namespace) -> None:
+    """``culture agents account activate``: the one opt-in, ordered path."""
     from culture_core import accounts
-    from culture_core.persistence import wrap_installed_unit
 
-    data_dir = _account_data_dir(args)
-    nick = f"{server_name}-{agent.suffix}"
+    server_name = config.server.name
+    nick = agent.nick
+    external = is_external(agent)
     try:
-        existed = accounts.find(nick, server_name, data_dir) is not None
-        accounts.activate(
+        data_dir = accounts.activation_data_dir(
+            server_name, config.server.host, getattr(args, "data_dir", None)
+        )
+    except accounts.AccountError as exc:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"cannot activate {nick}: {exc}",
+            "run this on the server's host against a server that persists to a data dir "
+            "(pass --data-dir if it is not detected)",
+        ) from exc
+    try:
+        res = accounts.activate(
             agent,
             server_name,
             data_dir=data_dir,
-            external=is_external(agent),
-            update_unit=lambda n, secret: wrap_installed_unit(f"culture-agent-{n}", secret),
+            external=external,
+            owner_ready=getattr(args, "owner_ready", False),
+            unit=None if external else _account_unit_ops(config, args),
         )
     except accounts.ActivationError as exc:
         raise CultureError(
             EXIT_USER_ERROR,
-            f"{exc} ({nick} keeps connecting without an account until fixed)",
-            f"fix the failing step, then run 'culture agents account activate {nick}'",
+            f"{nick}: {exc}",
+            f"fix the failing step, then rerun 'culture agents account activate {nick}'",
         ) from exc
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
-    verb = "refreshed" if existed else "created"
-    print(
-        f"Account {verb}: {nick} (secret stored in grant as "
-        f"{accounts.secret_name(nick)}; never printed)"
-    )
+
+    name = res.secret_name
+    kept = "existing secret kept" if res.reused else "new secret minted"
+    owner = agent.owner or "the owning process"
+    if res.pending_owner:
+        print(
+            f"Account secret ready for {nick} ({kept}; stored in grant as {name}; never "
+            "printed). The account is NOT published yet."
+        )
+        print("Next:")
+        print(
+            f"  1. make {owner} run under: grant run --inject "
+            f"CULTURE_AGENT_SECRET={name} -- <its command>  (do not restart it yet)"
+        )
+        print(f"  2. culture agents account activate {nick} --owner-ready")
+        print(f"  3. restart {owner} so it authenticates with the secret")
+        return
+    print(f"Account active: {nick} ({kept}; stored in grant as {name}; never printed)")
+    if external:
+        print(f"Now restart {owner} so it picks up the secret from grant ({name})")
+    else:
+        print(f"culture-agent-{nick}: wrapped with the grant inject, restarted and reconnected")
 
 
-def _account_apply(args: argparse.Namespace, server_name: str, nick: str, action: str) -> None:
+def _unit_installed(nick: str) -> bool:
+    from culture_core import persistence
+
+    return persistence.service_installed(f"culture-agent-{nick}")
+
+
+def _account_apply(args: argparse.Namespace, config: ServerConfig, nick: str, action: str) -> None:
     """Lifecycle hook: suspended / revoked / restore. No account is a no-op."""
-    from culture_core import accounts
+    from culture_core import accounts, persistence
 
-    data_dir = _account_data_dir(args)
+    server_name = config.server.name
     try:
-        rec = accounts.find(nick, server_name, data_dir)
+        data_dir = _account_data_dir(args, config)
+        rec = accounts.find(nick, server_name, data_dir) if data_dir else None
         if rec is None:
             return
         if action == "suspended":
@@ -1549,6 +1742,12 @@ def _account_apply(args: argparse.Namespace, server_name: str, nick: str, action
                 accounts.set_state(nick, server_name, "suspended", data_dir=data_dir)
                 print(f"Account suspended: {nick} (nick stays reserved)")
         elif action == "revoked":
+            # The agent is leaving the manifest: its unit could only crash-loop
+            # (agents start can't resolve it, and grant run fails on the
+            # deleted secret), so remove it with the account.
+            svc = f"culture-agent-{nick}"
+            if _unit_installed(nick) and persistence.uninstall_service(svc):
+                print(f"Uninstalled {svc} (its account is being revoked)")
             accounts.revoke(nick, server_name, data_dir=data_dir)
             print(f"Account revoked: {nick} (secret deleted; nick stays reserved)")
         elif action == "restore" and rec.state == "suspended":
@@ -1572,13 +1771,8 @@ def _cmd_account(args: argparse.Namespace) -> None:
         sys.exit(1)
     config = load_config_or_default(args.config)
     server_name = config.server.name
-    data_dir = _account_data_dir(args)
     try:
-        if verb == "list":
-            for rec in accounts.load(data_dir):
-                print(f"{rec.nick}\t{rec.role}\t{rec.state}")
-            return
-        nick = _account_nick(config, args.nick)
+        nick = _account_nick(config, args.nick) if verb != "list" else ""
         if verb == "activate":
             agent = config.get_agent(nick)
             if agent is None:
@@ -1587,44 +1781,96 @@ def _cmd_account(args: argparse.Namespace) -> None:
                     f"{nick} is not a registered agent",
                     "register it first: culture agents register <directory>",
                 )
-            _account_register(agent, server_name, args)
+            _account_activate(config, agent, args)
+            return
+        data_dir = _account_data_dir(args, config)
+        if data_dir is None:
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"server {server_name} runs with --no-persist: it has no accounts file",
+                "pass --data-dir to manage a different server's accounts",
+            )
+        if verb == "list":
+            for rec in accounts.load(data_dir):
+                print(f"{rec.nick}\t{rec.role}\t{rec.state}")
             return
         rec = accounts.find(nick, server_name, data_dir)
         if rec is None:
             raise CultureError(
                 EXIT_USER_ERROR,
                 f"no account for {nick}",
-                "create it with 'culture agents register <directory>'",
+                f"activate one with 'culture agents account activate {nick}'",
             )
         if verb == "show":
             grants = ", ".join(f"{c}={lv}" for c, lv in sorted(rec.grants.items())) or "none"
             print(f"{rec.nick}: role={rec.role} state={rec.state} grants={grants}")
         elif verb == "revoke":
-            accounts.revoke(nick, server_name, data_dir=data_dir)
-            print(f"Account revoked: {nick} (live session closes within 5s; nick stays reserved)")
+            _account_revoke(config, nick, data_dir)
         elif verb == "disable":
-            accounts.remove(nick, server_name, data_dir=data_dir)
-            print(f"Account disabled: {nick} (nick returns to legacy behaviour)")
+            _account_disable(config, nick, data_dir)
         elif verb == "rotate":
             _account_rotate(config, nick, data_dir)
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
 
 
-def _account_rotate(config: ServerConfig, nick: str, data_dir) -> None:
-    from types import SimpleNamespace
+def _account_revoke(config: ServerConfig, nick: str, data_dir) -> None:
+    """Tombstone the account and stop the agent's unit.
 
+    Stopping first means the live session isn't evicted into a reconnect
+    that would be refused; the stopped unit stays wrapped, so a later
+    ``account activate`` (fresh secret) is the whole recovery.
+    """
+    from culture_core import accounts, persistence
+
+    svc = f"culture-agent-{nick}"
+    stopped = persistence.stop_service(svc)
+    accounts.revoke(nick, config.server.name, data_dir=data_dir)
+    print(f"Account revoked: {nick} (secret deleted; nick stays reserved)")
+    if stopped:
+        print(f"Stopped {svc}; reactivate with 'culture agents account activate {nick}'")
+    agent = config.get_agent(nick)
+    if agent is not None and is_external(agent):
+        print(f"{nick} is {owner_message(agent)}: stop it; its secret no longer works")
+
+
+def _account_disable(config: ServerConfig, nick: str, data_dir) -> None:
+    """Remove the account and put the agent back on the legacy path.
+
+    stop -> unwrap the unit -> remove entry + secret -> start again (only if
+    it was running), so the daemon never reconnects with the dropped secret.
+    """
+    from culture_core import accounts, persistence
+
+    svc = f"culture-agent-{nick}"
+    was_active = _unit_installed(nick) and persistence.service_active_state(svc) == "active"
+    if was_active:
+        persistence.stop_service(svc)
+    unwrapped = persistence.unwrap_installed_unit(svc, accounts.secret_name(nick))
+    accounts.remove(nick, config.server.name, data_dir=data_dir)
+    print(f"Account disabled: {nick} (nick returns to legacy behaviour)")
+    if unwrapped:
+        print(f"{svc}: grant inject removed from ExecStart")
+    if was_active:
+        persistence.start_service(svc)
+        print(f"Restarted {svc} without an account")
+    agent = config.get_agent(nick)
+    if agent is not None and is_external(agent):
+        print(
+            f"{nick} is {owner_message(agent)}: drop CULTURE_AGENT_SECRET from its unit "
+            "and restart it"
+        )
+
+
+def _account_rotate(config: ServerConfig, nick: str, data_dir) -> None:
     from culture_core import accounts
     from culture_core.persistence import restart_service
 
-    server_name = config.server.name
-    agent = config.get_agent(nick) or SimpleNamespace(
-        suffix=nick.removeprefix(f"{server_name}-"), channels=[]
-    )
-    accounts.mint(agent, server_name, data_dir=data_dir)
+    accounts.rotate(nick, config.server.name, data_dir=data_dir)
+    agent = config.get_agent(nick)
     name = accounts.secret_name(nick)
     print(f"Rotated: {nick} (old secret no longer works; new one stored in grant as {name})")
-    if isinstance(agent, AgentConfig) and is_external(agent):
+    if agent is not None and is_external(agent):
         owner = agent.owner or "its owner"
         print(
             f"{nick} is {owner_message(agent)}: restart {owner} so it picks up "
@@ -1691,20 +1937,24 @@ def _cmd_install(args: argparse.Namespace) -> None:
     # After=/Wants= the server unit so a reboot brings the mesh up
     # server-first (durable mesh, docs/durable-mesh.md). The server name
     # resolves from the same config the agent's nick resolves from.
-    from culture_core import accounts
-
     path = install_service(
         svc,
         agent_cmd,
         f"culture-core agents {full_nick}",
         after=f"culture-server-{config.server.name}.service",
         allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
-        # Agents with an account run under `grant run --inject` (culture#506).
-        inject_secret=accounts.inject_secret_for(
-            full_nick, config.server.name, _account_data_dir(args)
-        ),
+        # Agents with an active account run under `grant run --inject`
+        # (culture#506); the accounts file is the server's own (M5).
+        inject_secret=_inject_secret_for(args, config, full_nick),
     )
     print(f"Installed {svc} → {path}")
+
+
+def _inject_secret_for(args: argparse.Namespace, config: ServerConfig, nick: str):
+    from culture_core import accounts
+
+    data_dir = _account_data_dir(args, config)
+    return accounts.inject_secret_for(nick, config.server.name, data_dir) if data_dir else None
 
 
 def _cmd_uninstall(args: argparse.Namespace) -> None:

@@ -292,6 +292,15 @@ class IRCObserver:
             self._parse_who_line,
         )
 
+    async def whois(self, nick: str) -> bool:
+        """True if the server currently has a registered client named *nick*."""
+        found = await self._irc_query(
+            f"WHOIS {nick}",
+            {"318"},
+            lambda msg: msg.params[1] if msg.command == "311" and len(msg.params) > 1 else None,
+        )
+        return nick in found
+
     async def send_message(self, target: str, text: str) -> None:
         """Send a PRIVMSG to a channel or nick, then disconnect.
 

@@ -41,18 +41,23 @@ def test_grant_store_is_under_tmp_home(tmp_home):
 
 
 def test_secret_name_mapping():
-    assert accounts.secret_name("spark-gwen") == "CULTURE_AGENT_SPARK_GWEN"
+    name = accounts.secret_name("spark-gwen")
+    tag = hashlib.sha256(b"spark-gwen").hexdigest()[:10].upper()
+    assert name == f"CULTURE_AGENT_SPARK_GWEN_{tag}"
+    long = accounts.secret_name("spark-" + "x" * 60)  # truncated, still unique + valid
+    assert len(long) <= 64 and grant_store.NAME_RE.match(long)
     with pytest.raises(accounts.AccountError):
-        accounts.secret_name("spark-" + "x" * 60)
+        accounts.secret_name("")
 
 
 def test_mint_stores_hidden_secret_and_writes_hash_only(data_dir):
     rec = accounts.mint(cfg(), "spark", data_dir=data_dir)
     assert rec.nick == "spark-gwen"
-    name = "CULTURE_AGENT_SPARK_GWEN"
+    name = accounts.secret_name("spark-gwen")
     r = grant_store.get_record(name)
     assert r.hidden is True
-    assert r.source == "culture agents register"
+    assert r.source == "culture agents account"
+    assert r.purpose == "AgentIRC account secret for spark-gwen"
     assert "culture agents account rotate spark-gwen" in r.rotation_howto
     secret = r.value
     raw = (data_dir / "accounts.json").read_text()
@@ -87,7 +92,7 @@ def test_only_own_server_nicks(data_dir):
     assert not (data_dir / "accounts.json").exists()
 
 
-def test_foreign_nicks_not_preserved(data_dir):
+def test_foreign_nicks_preserved(data_dir):
     data_dir.mkdir()
     (data_dir / "accounts.json").write_text(
         json.dumps(
@@ -106,7 +111,7 @@ def test_foreign_nicks_not_preserved(data_dir):
         )
     )
     accounts.mint(cfg(), "spark", data_dir=data_dir)
-    assert [r.nick for r in accounts.load(data_dir)] == ["spark-gwen"]
+    assert [r.nick for r in accounts.load(data_dir)] == ["thor-x", "spark-gwen"]
 
 
 def test_mutators_and_remove(data_dir):
@@ -117,7 +122,7 @@ def test_mutators_and_remove(data_dir):
     assert removed.nick == "spark-gwen"
     assert accounts.load(data_dir) == []
     with pytest.raises(grant_store.NotFoundError):
-        grant_store.get_record("CULTURE_AGENT_SPARK_GWEN")
+        grant_store.get_record(accounts.secret_name("spark-gwen"))
 
 
 def test_invalid_input_never_writes_file(data_dir):
@@ -139,7 +144,7 @@ def test_invalid_input_never_writes_file(data_dir):
 
 def test_audit_log_one_line_per_change_no_secrets(data_dir):
     accounts.mint(cfg(), "spark", data_dir=data_dir)
-    secret = grant_store.get_record("CULTURE_AGENT_SPARK_GWEN").value
+    secret = grant_store.get_record(accounts.secret_name("spark-gwen")).value
     digest = json.loads((data_dir / "accounts.json").read_text())["accounts"][0]["secret_sha256"]
     accounts.set_state("spark-gwen", "spark", "revoked", data_dir)
     accounts.remove("spark-gwen", "spark", data_dir)

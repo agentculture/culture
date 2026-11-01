@@ -556,6 +556,10 @@ def _canary_snapshot() -> dict[Path, tuple[float, int] | None]:
     return snap
 
 
+# The real home at collection time (before any test patches $HOME).
+_HOST_HOME = Path.home()
+
+
 @pytest.fixture(autouse=True)
 def _host_secret_store_guard(tmp_path_factory, monkeypatch):
     """Keep every test away from the host's grant store and account files.
@@ -574,6 +578,28 @@ def _host_secret_store_guard(tmp_path_factory, monkeypatch):
     except ImportError:  # pragma: no cover - module absent on old branches
         return
     monkeypatch.setattr(_accounts, "DEFAULT_DATA_DIR", str(root / "culture-data"))
+    # The server data-dir probe reads the host's live server pidfile
+    # (PID_DIR is fixed at import time, not $HOME-relative) and its installed
+    # unit; a host server started with --data-dir would point a test at real
+    # data. Default to "not found" so the guarded DEFAULT_DATA_DIR wins.
+    if hasattr(_accounts, "_probe_server_argv"):
+        monkeypatch.setattr(_accounts, "_probe_server_argv", lambda _name: None)
+    # Lifecycle verbs (archive, delete, account disable/revoke) stop, disable
+    # or uninstall `culture-agent-<nick>` units they find. A test that did not
+    # isolate $HOME must never see the host's real ~/.config/systemd/user (the
+    # host runs culture-agent-spark-* units): keep HOME-relative semantics for
+    # tests that set HOME, and a temp dir otherwise.
+    import culture_core.persistence as _persistence
+
+    unit_root = root / "systemd-user"
+
+    def _guarded_systemd_user_dir():
+        home = Path.home()
+        if home == _HOST_HOME:
+            return unit_root
+        return home / ".config" / "systemd" / "user"
+
+    monkeypatch.setattr(_persistence, "_systemd_user_dir", _guarded_systemd_user_dir)
 
 
 @pytest.fixture(autouse=True)

@@ -66,6 +66,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Remove auto-start entries and stop services",
     )
+    setup_parser.add_argument(
+        "--data-dir",
+        default=None,
+        help=(
+            "Server data dir holding accounts.json (default: the server's own, read from "
+            "its running process or installed unit; else ~/.culture/data)"
+        ),
+    )
 
     # -- update ---------------------------------------------------------------
     update_parser = mesh_sub.add_parser("update", help="Upgrade and restart the mesh")
@@ -90,6 +98,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=_UPGRADE_TIMEOUT_SECONDS,
         metavar="SECONDS",
         help=f"Max seconds to wait for the package upgrade (default: {_UPGRADE_TIMEOUT_SECONDS})",
+    )
+    update_parser.add_argument(
+        "--data-dir",
+        default=None,
+        help=(
+            "Server data dir holding accounts.json (default: the server's own, read from "
+            "its running process or installed unit; else ~/.culture/data)"
+        ),
     )
 
     # -- console (deprecated) --------------------------------------------------
@@ -271,8 +287,21 @@ def _store_mesh_credentials(mesh) -> None:
                 )
 
 
+def _account_inject(full_nick: str, server_name: str, data_dir: str | None):
+    """grant secret to wrap the agent's unit with: active accounts only, read
+    from the server's own data dir (culture#506 M5)."""
+    from culture_core import accounts
+
+    resolved = accounts.resolve_server_data_dir(server_name, data_dir).path
+    return accounts.inject_secret_for(full_nick, server_name, resolved) if resolved else None
+
+
 def _install_mesh_services(
-    mesh, server_name: str, culture_bin: "list[str] | str", config_path: str
+    mesh,
+    server_name: str,
+    culture_bin: "list[str] | str",
+    config_path: str,
+    data_dir: str | None = None,
 ) -> None:
     """Install auto-start service entries for the server and all agents.
 
@@ -280,7 +309,6 @@ def _install_mesh_services(
     ``[sys.executable, "-m", "culture_core"]``) or a legacy bare binary
     string (e.g. ``"/usr/bin/culture"``).
     """
-    from culture_core import accounts
     from culture_core.persistence import install_service
 
     culture_cmd: list[str] = [culture_bin] if isinstance(culture_bin, str) else list(culture_bin)
@@ -317,7 +345,7 @@ def _install_mesh_services(
             agent_cmd,
             f"culture-core agents {full_nick}",
             after=f"{svc_name}.service",
-            inject_secret=accounts.inject_secret_for(full_nick, server_name),
+            inject_secret=_account_inject(full_nick, server_name, data_dir),
         )
         print(f"  Installed {agent_svc} → {path}")
 
@@ -363,7 +391,9 @@ def _cmd_setup(args: argparse.Namespace) -> None:
     _store_mesh_credentials(mesh)
 
     culture_cmd = [sys.executable, "-m", "culture_core"]
-    _install_mesh_services(mesh, server_name, culture_cmd, args.config)
+    _install_mesh_services(
+        mesh, server_name, culture_cmd, args.config, getattr(args, "data_dir", None)
+    )
 
     print(f"\nSetup complete for mesh node '{server_name}'.")
     print("Services installed. Start with your service manager or reboot.")
@@ -535,7 +565,12 @@ def _restart_single_service(svc_name: str, fallback_cmd: list[str], restart_serv
 
 
 def _restart_mesh_services(
-    mesh, server_name: str, culture_bin: "list[str] | str", config_path: str, dry_run: bool
+    mesh,
+    server_name: str,
+    culture_bin: "list[str] | str",
+    config_path: str,
+    dry_run: bool,
+    data_dir: str | None = None,
 ) -> bool:
     """Stop agents and server, regenerate service entries, then restart everything.
 
@@ -561,7 +596,6 @@ def _restart_mesh_services(
     print(f"  Stopping server {server_name}...")
     server_stop_by_name(server_name)
 
-    from culture_core import accounts
     from culture_core.persistence import install_service, restart_service
 
     server_cmd = build_server_start_cmd(mesh, culture_cmd, config_path)
@@ -587,7 +621,7 @@ def _restart_mesh_services(
             agent_cmd,
             f"culture-core agents {full_nick}",
             after=f"culture-server-{server_name}.service",
-            inject_secret=accounts.inject_secret_for(full_nick, server_name),
+            inject_secret=_account_inject(full_nick, server_name, data_dir),
         )
 
     server_svc = f"culture-server-{server_name}"
@@ -707,7 +741,14 @@ def _restart_from_config(args, culture_bin):
                 "'culture agents create', then rerun: culture mesh update",
             ) from None
     failed = []
-    if not _restart_mesh_services(mesh, mesh.server.name, culture_bin, args.config, args.dry_run):
+    if not _restart_mesh_services(
+        mesh,
+        mesh.server.name,
+        culture_bin,
+        args.config,
+        args.dry_run,
+        getattr(args, "data_dir", None),
+    ):
         failed.append(mesh.server.name)
     return failed
 
