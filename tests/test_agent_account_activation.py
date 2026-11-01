@@ -171,7 +171,9 @@ def test_doctor_skips_external_units_and_agents_without_account(tmp_path):
 def test_doctor_flags_old_cultureagent_only_when_accounts_exist():
     old = lambda d: "0.15.2"  # noqa: E731
     found = dacc.check_client_version(_records("spark-gwen"), old)
-    assert len(found) == 1 and "0.15.2" in found[0].message and "0.16.0" in found[0].message
+    assert len(found) == 1
+    assert "0.15.2" in found[0].message
+    assert "0.16.0" in found[0].message
     assert "cultureagent>=0.16.0" in found[0].fix_hint
     assert dacc.check_client_version([], old) == []
     assert dacc.check_client_version(_records("spark-gwen"), lambda d: "0.16.0") == []
@@ -179,14 +181,16 @@ def test_doctor_flags_old_cultureagent_only_when_accounts_exist():
 
 def test_doctor_flags_old_agentirc():
     found = dacc.check_server_version(_records("spark-gwen"), lambda d: "9.13.0")
-    assert len(found) == 1 and "9.14.0" in found[0].fix_hint
+    assert len(found) == 1
+    assert "9.14.0" in found[0].fix_hint
     assert dacc.check_server_version(_records("spark-gwen"), lambda d: "9.14.0") == []
 
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::"])
 def test_doctor_flags_open_bind_without_trusted_cidrs(host):
     found = dacc.check_open_bind(_records("spark-gwen"), host, [])
-    assert len(found) == 1 and "trusted_cidrs" in found[0].message
+    assert len(found) == 1
+    assert "trusted_cidrs" in found[0].message
     assert "trusted_cidrs" in found[0].fix_hint
     assert dacc.check_open_bind(_records("spark-gwen"), host, ["100.64.0.0/10"]) == []
     assert dacc.check_open_bind([], host, []) == []
@@ -227,7 +231,8 @@ def test_run_doctor_wires_class5_and_exit_code(tmp_path, tmp_home):
         cfg, root_override=str(tmp_path), config_path=str(cfgfile), data_dir=str(data)
     )
     assert any(f.severity == "error" and f.subject == "spark-gwen" for f in report.class5)
-    assert report.exit_code == 1 and not report.ok
+    assert report.exit_code == 1
+    assert not report.ok
 
 
 def test_doctor_json_includes_class5(tmp_path, capsys, monkeypatch):
@@ -235,8 +240,9 @@ def test_doctor_json_includes_class5(tmp_path, capsys, monkeypatch):
 
     cfg = tmp_path / "server.yaml"
     save_server_config(cfg, _cfg())
+    args = argparse.Namespace(config=str(cfg), root=str(tmp_path), json=True, fix=False)
     with pytest.raises(SystemExit):
-        dispatch(argparse.Namespace(config=str(cfg), root=str(tmp_path), json=True, fix=False))
+        dispatch(args)
     assert "class5" in json.loads(capsys.readouterr().out)
 
 

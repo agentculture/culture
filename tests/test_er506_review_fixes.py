@@ -135,8 +135,9 @@ def test_server_start_invalid_block_is_a_permanent_error(tmp_path):
     cfg = write_server_yaml(
         tmp_path / "server.yaml", accounts_block={"guest_channel_prefixes": ["sbx-"]}
     )
+    args = start_args(cfg)
     with pytest.raises(CultureError) as exc:
-        srv_mod._resolve_accounts_config(start_args(cfg))
+        srv_mod._resolve_accounts_config(args)
     assert exc.value.code == EXIT_DAEMON_PERMANENT
     assert "guest_channel_prefixes" in exc.value.message
 
@@ -186,8 +187,9 @@ def test_doctor_open_bind_uses_policy_loader(tmp_path, monkeypatch):
 
 def test_mint_guest_without_prefixes_is_refused(tmp_path):
     data = tmp_path / "data"
+    cfg = agent()
     with pytest.raises(accounts.AccountError, match="guest_channel_prefixes"):
-        accounts.mint(agent(), SERVER, role="guest", data_dir=data)
+        accounts.mint(cfg, SERVER, role="guest", data_dir=data)
     assert not (data / "accounts.json").exists()
     assert grant_names() == []
 
@@ -244,15 +246,17 @@ def test_agentirc_parser_has_the_last_word(tmp_path, monkeypatch):
         raise ValueError("accounts[0]: some future rule")
 
     monkeypatch.setattr(accounts, "_agentirc_parse_accounts", lambda: strict)
+    cfg, data = agent(), tmp_path / "data"
     with pytest.raises(accounts.AccountError, match="some future rule"):
-        accounts.mint(agent(), SERVER, data_dir=tmp_path / "data")
+        accounts.mint(cfg, SERVER, data_dir=data)
     assert grant_names() == []
 
 
 def test_mirror_rules_hold_without_agentirc_accounts(tmp_path, monkeypatch):
     monkeypatch.setattr(accounts, "_agentirc_parse_accounts", lambda: None)
+    cfg, data = agent(), tmp_path / "data"
     with pytest.raises(accounts.AccountError, match="guest_channel_prefixes"):
-        accounts.mint(agent(), SERVER, role="guest", data_dir=tmp_path / "data")
+        accounts.mint(cfg, SERVER, role="guest", data_dir=data)
 
 
 @pytest.mark.requires_agentirc_accounts
