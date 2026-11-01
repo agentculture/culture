@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from enum import Enum
@@ -423,6 +424,82 @@ _PLATFORM_INSTALLERS = {
 }
 
 
+INJECT_ENV_VAR = "CULTURE_AGENT_SECRET"
+
+
+def resolve_grant_bin() -> str:
+    """Absolute path of the ``grant`` binary (systemd units have a minimal PATH)."""
+    found = shutil.which("grant")
+    if not found:
+        from culture_core.cli._errors import EXIT_ENV_ERROR, CultureError
+
+        raise CultureError(
+            EXIT_ENV_ERROR,
+            "grant binary not found on PATH; cannot wrap the unit's ExecStart "
+            "for an agent with an account",
+            "install grant (e.g. 'uv tool install grant-cli') and re-run",
+        )
+    return os.path.abspath(found)
+
+
+def grant_wrap(command: list[str], secret: str, grant_bin: str | None = None) -> list[str]:
+    """``grant run --inject CULTURE_AGENT_SECRET=<secret> -- <command>``."""
+    return [
+        grant_bin or resolve_grant_bin(),
+        "run",
+        "--inject",
+        f"{INJECT_ENV_VAR}={secret}",
+        "--",
+        *command,
+    ]
+
+
+def exec_start_has_inject(unit_text: str, secret: str) -> bool:
+    """True if the unit's ExecStart carries the grant inject wrapper for *secret*."""
+    for line in unit_text.splitlines():
+        if line.startswith("ExecStart="):
+            try:
+                argv = shlex.split(line[len("ExecStart=") :])
+            except ValueError:
+                return False
+            token = f"{INJECT_ENV_VAR}={secret}"
+            return "run" in argv and "--inject" in argv and token in argv
+    return False
+
+
+def wrap_installed_unit(
+    name: str, secret: str, *, unit_dir: Path | None = None, grant_bin: str | None = None
+) -> bool | None:
+    """Rewrite an installed systemd unit's ExecStart with the grant wrapper.
+
+    Returns ``None`` when no unit is installed (nothing to update), ``True``
+    when rewritten (daemon-reload issued), ``False`` when already wrapped.
+    Linux/systemd only; other platforms return ``None``.
+    """
+    if unit_dir is None:
+        if get_platform() != "linux":
+            return None
+        unit_dir = _systemd_user_dir()
+    path = Path(unit_dir) / f"{name}.service"
+    if not path.is_file():
+        return None
+    text = path.read_text()
+    if exec_start_has_inject(text, secret):
+        return False
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.startswith("ExecStart="):
+            argv = shlex.split(line[len("ExecStart=") :])
+            wrapped = grant_wrap(argv, secret, grant_bin)
+            lines[i] = "ExecStart=" + " ".join(shlex.quote(a) for a in wrapped) + "\n"
+            break
+    else:
+        return None
+    path.write_text("".join(lines))
+    _run_cmd(["systemctl", "--user", "daemon-reload"])
+    return True
+
+
 def install_service(
     name: str,
     command: list[str],
@@ -430,6 +507,8 @@ def install_service(
     after: str | None = None,
     *,
     allow_dev_interpreter: bool | None = None,
+    inject_secret: str | None = None,
+    grant_bin: str | None = None,
 ) -> Path:
     """Generate and install a platform-specific auto-start entry.
 
@@ -437,6 +516,10 @@ def install_service(
     ``After=``/``Wants=``); platforms without an ordering primitive
     (launchd, Windows scheduled tasks) accept and ignore it — their
     retry loops absorb a dependency that isn't up yet.
+
+    *inject_secret* (a grant secret name) wraps ExecStart as
+    ``grant run --inject CULTURE_AGENT_SECRET=<name> -- <cmd>`` so the agent's
+    account secret reaches only the daemon process (culture#506).
 
     *allow_dev_interpreter* engages the interpreter-provenance guard on
     ``command[0]`` (the interpreter baked into ExecStart):
@@ -464,6 +547,10 @@ def install_service(
     installer = _PLATFORM_INSTALLERS.get(platform)
     if installer is None:
         raise RuntimeError(f"Unsupported platform: {platform}")
+    if inject_secret:
+        # Agent has an account: grant injects CULTURE_AGENT_SECRET into the
+        # daemon only. The interpreter guard above ran on the bare command.
+        command = grant_wrap(command, inject_secret, grant_bin)
     return installer(name, command, description, after=after)
 
 

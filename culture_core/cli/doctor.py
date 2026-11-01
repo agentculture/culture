@@ -43,6 +43,7 @@ def _emit_json(report, registered=None) -> None:
         "class2": [asdict(f) for f in report.class2],
         "class3": [asdict(f) for f in report.class3],
         "class4": [asdict(f) for f in report.class4],
+        "class5": [asdict(f) for f in report.class5],
         "ok": report.ok,
         "exit_code": report.exit_code,
         # Always present so CI consumers see a stable schema; populated only
@@ -63,6 +64,7 @@ def _render_human(report) -> None:
         ("Unregistered repos (class 2, warning)", report.class2, "•"),
         ("Suffix collisions (class 3)", report.class3, "⚠"),
         ("Service health (class 4)", report.class4, "✗"),
+        ("Agent accounts (class 5)", report.class5, "✗"),
     ]
     for label, findings, icon in sections:
         if not findings:
@@ -82,7 +84,7 @@ def dispatch(args):
         sys.exit(2)
 
     config = load_config_or_default(args.config)
-    report = run_doctor(config, root_override=args.root)  # diagnose only
+    report = run_doctor(config, root_override=args.root, config_path=args.config)  # diagnose only
 
     # Run the opt-in fix BEFORE emitting, so --json can fold the registered
     # pairs into the payload instead of printing trailing lines that would

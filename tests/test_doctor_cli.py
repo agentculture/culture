@@ -14,6 +14,12 @@ from culture_core.cli.doctor import dispatch
 
 
 @pytest.fixture(autouse=True)
+def _isolated_home(tmp_path, monkeypatch):
+    """Class-5 account checks read ~/.culture/data: never the host's real one."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+
+@pytest.fixture(autouse=True)
 def _no_real_service_probe(monkeypatch):
     """Keep dispatch hermetic: never probe this host's real systemd units.
 
@@ -58,7 +64,7 @@ def _write_culture_yaml(directory, suffix):
         yaml.dump({"suffix": suffix, "backend": "claude"}, f)
 
 
-def test_clean_exits_zero(tmp_path, capsys):
+def test_clean_exits_zero(tmp_path, capsys, monkeypatch):
     """A clean workspace with one valid registered repo exits 0."""
     server_yaml = tmp_path / "server.yaml"
     ws = tmp_path / "ws"
@@ -68,6 +74,15 @@ def test_clean_exits_zero(tmp_path, capsys):
     _write_culture_yaml(str(culture_dir), "culture")
 
     _write_server_yaml(server_yaml, manifest={"culture": str(culture_dir)})
+    from culture_core import accounts
+
+    monkeypatch.setattr(accounts, "installed_version", lambda d: "99.0")
+    # a registered agent without an account is a class-5 warning, so give it one
+    accounts.save(
+        [accounts.AccountRecord(nick="spark-culture", secret_sha256="c" * 64)],
+        "spark",
+        tmp_path / "home" / ".culture" / "data",
+    )
 
     with pytest.raises(SystemExit) as e:
         dispatch(_args(server_yaml, root=ws))

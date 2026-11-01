@@ -39,6 +39,18 @@ def tmp_home(tmp_path, monkeypatch):
     return home
 
 
+@pytest.fixture(autouse=True)
+def sasl_capable_client(monkeypatch):
+    """The dev venv may hold a pre-SASL cultureagent; the floor is exercised
+    explicitly in tests/test_agent_account_activation.py."""
+    real = accounts.installed_version
+    monkeypatch.setattr(
+        accounts,
+        "installed_version",
+        lambda d: accounts.MIN_CULTUREAGENT_SASL if d == "cultureagent" else real(d),
+    )
+
+
 @pytest.fixture
 def env(tmp_path):
     """server.yaml + data dir + helper to create agent dirs."""
