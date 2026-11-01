@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-31T22:34:10Z",
-  "updated": "2026-11-01T02:14:32Z",
+  "updated": "2026-11-01T05:21:58Z",
   "claims": [
     {
       "id": "c1",
@@ -341,7 +341,7 @@
     {
       "id": "c17",
       "kind": "requirement",
-      "text": "culture agents register creates the agent's mesh account, mints its secret with grant.generate.random_secret, stores it as a hidden grant secret named after the nick (e.g. CULTURE_AGENT_SPARK_GWEN), and writes only its SHA-256 hash into the account. Units culture generates (persistence.install_service, persistence.py:295) wrap ExecStart in grant run --inject CULTURE_AGENT_SECRET=<name> --. An external owner (Gwen's unit, the sbx/ask units) wraps its own ExecStart the same way",
+      "text": "Account activation is explicit and opt-in: culture agents register is unchanged, and culture agents account activate <nick> runs the ordered flow (preflight, mint a hidden grant secret named after the nick, wrap the agent's unit in grant run --inject CULTURE_AGENT_SECRET=<name> --, publish only the SHA-256 hash to agentirc's accounts file, restart, verify it reconnects) with full rollback on any failure. External owners wrap their own unit the same way and the account publishes with --owner-ready",
       "origin": "llm",
       "status": "confirmed",
       "honesty_conditions": [
@@ -385,6 +385,11 @@
           "text": "culture agents register creates the agent's mesh account and mints its secret (plaintext shown once, SHA-256 stored, as irc-lens agent_credentials does). Units culture generates (persistence.install_service, the [Service] block at persistence.py:295) get a LoadCredential= line for that secret, and culture agents start reads it from CREDENTIALS_DIRECTORY and hands it to the shared transport. An external owner adds the same LoadCredential= line to its own unit",
           "kind": "requirement",
           "reason": "q10 resolved: grant replaces LoadCredential delivery"
+        },
+        {
+          "text": "culture agents register creates the agent's mesh account, mints its secret with grant.generate.random_secret, stores it as a hidden grant secret named after the nick (e.g. CULTURE_AGENT_SPARK_GWEN), and writes only its SHA-256 hash into the account. Units culture generates (persistence.install_service, persistence.py:295) wrap ExecStart in grant run --inject CULTURE_AGENT_SECRET=<name> --. An external owner (Gwen's unit, the sbx/ask units) wraps its own ExecStart the same way",
+          "kind": "requirement",
+          "reason": "d7 accepted by the user 2026-11-01: activation is explicit and opt-in"
         }
       ]
     },
@@ -1020,6 +1025,18 @@
       "id": "c51",
       "kind": "decision",
       "text": "The agentirc and cultureagent parts of this spec (accounts, CAP-held registration, SASL, grants, roles, auth logging; SASL plus the permanent-failure exit and env scrub in the shared transport) are implemented directly by this session as PRs in those repos, not filed as hand-off issues. embodiment stays a hand-off (embodiment#121)",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "",
+      "revisions": []
+    },
+    {
+      "id": "c52",
+      "kind": "decision",
+      "text": "The user accepted deviation d7 on 2026-11-01: accounts are activated explicitly with culture agents account activate; register does not create an account",
       "origin": "user",
       "status": "confirmed",
       "honesty_conditions": [],

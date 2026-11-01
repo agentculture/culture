@@ -3,10 +3,12 @@
 plan: `external-residents-506` · run: `partial` · date: `2026-10-31`
 baseline: `devague summary skeleton`
 
-Run status is `partial` because every code task merged into its integration
-branch and passed its tests, but nothing is released, merged to `main` or
-deployed yet (deviation `d4`). Live behaviour on spark is therefore
-**unverified**.
+Run status is `complete` for culture's side. Every plan task merged, was
+released and is deployed. The live success signal passed 10/10, and all
+four harness agents on spark hold accounts. What remains is outside this
+run: Gwen's side (embodiment#121), the sandbox agents (culture#517,
+`d11`), and the follow-ups listed below. `d7` was accepted by the user and the spec
+re-exported.
 
 ## Intent
 
@@ -61,7 +63,7 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t3` | delivered | `status` shows the PRESENCE state, `unknown` if the server is unreachable, `offline` if the agent never published; the detail view has an `Owner:` line; harness rows are byte-identical. Phase A |
 | `t4` | delivered | `backend` field on every resident row (null for unregistered nicks); schema table updated. Colleague hit its step cap; its work was recovered from its branch and verified. Phase A |
 | `t5` | delivered | `grant>=0.11,<0.12` dependency; `culture secret` forwards to grant; docs name grant instead of shushu (frozen records exempt, `d1`); two wrong doc examples fixed. Phase A |
-| `t6` | partial | `docs/external-residents.md`, a docs-coverage audit with every gap closed, 14.12.0 with changelog, and the mesh fix (no units for external residents). **Not done:** PR merge, deploy, live registration of spark-gwen and the sbx/ask/bridge units (`d4`) |
+| `t6` | delivered (amended) | `docs/external-residents.md`, a docs-coverage audit with every gap closed, 14.12.0 with changelog, the mesh fix (no units for external residents), #514 merged, deployed on spark, spark-gwen and spark-ask registered as external residents. sbx-ask/sbx-bolt out of scope (`d11`, culture#517) |
 | `t7` | delivered | agentirc holds `001`/`SNICK` after `CAP LS` until `CAP END`; 9.14.0 |
 | `t8` | delivered | agentirc `accounts.py` (file and reload), SASL PLAIN, trusted peers, nick reclaim, no account data over links; hardened further by `h1`/`h2` (`d6`) |
 | `t9` | delivered | read/speak grants on JOIN/PRIVMSG/NOTICE; operator-only room verbs; guest channel prefixes; extended by `h1` to HISTORY/BACKFILL/EVENTSUB/THREAD/TOPIC/EVENTPUB |
@@ -71,9 +73,9 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t13` | delivered | `culture_core/accounts.py`: hidden grant secrets, the agentirc accounts-file format, audit log; later hardened by `hc` (`d7`) |
 | `t14` | delivered (amended) | `account revoke/rotate/disable/show/list`, `unarchive`, lifecycle hooks. **register no longer creates an account** (`d7`) |
 | `t15` | delivered (amended) | grant-wrapped units, `RestartPreventExitStatus=78 64`, doctor class 5; activation reworked into opt-in `account activate` with rollback (`d7`); pins deferred (`d5`, `d8`); host secret-store test guard |
-| `t16` | partial | releases prepared (agentirc 9.14.0, cultureagent 0.16.0, culture 14.13.0, all with changelogs); end-to-end success-signal test `tests/test_success_signal_506.py`. **Not done:** publishing, raising the pins plus the uv.lock refresh (`d8`), rollout on spark, the live success signal (`d4`) |
+| `t16` | delivered (amended) | agentirc 9.14.0, cultureagent 0.16.0, culture 14.13.0 published; pins (`d8`); deployed on spark; live success signal 10/10; all four harness agents hold accounts (`e18`–`e23`). Gwen's authentication waits on embodiment's side (embodiment#121, obligation `o13`) |
 
-16 of 16 plan tasks accounted for: 14 delivered (two of them amended), 2
+16 of 16 plan tasks accounted for: 16 delivered (four of them amended), 0
 partial, 0 dropped, 0 blocked.
 
 Three tasks were added outside the plan (`d6`, `d7`):
@@ -268,8 +270,81 @@ same four outcomes. A full suite passing after a fix is execution-level
 evidence. The filed evidence `e1`–`e17` predates this round and still
 reflects the earlier heads.
 
+## Live deploy (2026-11-01, after the user approved merge and deploy)
+
+**Merged and published:**
+
+| PR | Release |
+|----|---------|
+| agentirc#66 | agentirc-cli 9.14.0 |
+| cultureagent#59 | cultureagent 0.16.0 |
+| culture#514 | culture 14.12.0 |
+| culture#515 | culture 14.13.0, including the d8 pin commit |
+
+**Pin commit.** The culture suite ran green against the *published* agentirc
+9.14.0 and cultureagent 0.16.0: 2225 passed, 1 skipped (Playwright). All
+version-marked tests ran.
+
+**Deployed on spark:**
+
+- Ran `uv tool install --force --refresh --python 3.12
+  'culture[all-backends]==14.13.0'`.
+- Restarted, in order: both servers, all four harness agents, the sandbox
+  agents, the codex bridge and the console.
+- Every unit is active.
+- The four harness agents show `idle` in `culture residents` (PRESENCE over
+  9.14).
+- The console answers HTTP 200.
+- The spark server listens on `127.0.0.1:6667`, so no trusted CIDRs are
+  needed for local agents.
+
+**Live success signal, 10/10.** Run against a throwaway external account
+`spark-probe` (secret injected with `grant run`, never printed), which was
+removed afterwards (evidence `e18`–`e21`):
+
+| Check | Result |
+|---|---|
+| External PRESENCE shows in `status` | 0.16 s |
+| `start` forks nothing and names the owner | ✓ |
+| Takeovers without the secret, agent online | 12/12 refused |
+| The real session is unaffected | ✓ |
+| JOIN outside grants | 474 |
+| Revoke closes the live session | 0.84 s, including the CLI |
+| After revoke | old secret refused, nick stays reserved |
+
+**Canary account: spark-colleague** (/assess `probe_then_one_canary` 0.61,
+canary `spark-colleague` 0.81; evidence `e22`):
+
+- Activation wrapped its unit, restarted it and verified it reconnected.
+- Its child processes don't have the secret.
+- A no-SASL takeover of its nick is refused with "SASL authentication
+  required".
+
+**Rollout completed** (`d11`, /assess `activate_sequentially_now` 0.88,
+after the canary ran for about 20 min with no restarts, errors or real-agent
+auth failures; evidence `e23`):
+
+- `spark-agentirc`, `spark-associate` and `spark-culture` were activated one
+  at a time.
+- Each was wrapped, restarted, reconnected and showed in `culture residents`.
+- A no-SASL takeover of each nick is refused.
+- All four harness agents now connect only with SASL.
+
+**External residents registered** (`d10`):
+
+| Nick | Owner | Status |
+|---|---|---|
+| `spark-gwen` | `embodiment-gwen.service` | `offline` until it publishes PRESENCE (embodiment#121) |
+| `spark-ask` | `culture-ask-spark.service` | `offline` until it publishes PRESENCE |
+
+`cultureagent-codex-bridge` was dropped: it is an HTTP bridge, not a
+resident. `sbx-ask` and `sbx-bolt` were deferred: they live on the sbx
+server's manifest.
+
 ## Remaining Work / Follow-up
 
+- **Done 2026-11-01:** the four PRs are merged in order and deployed
+  (see Live deploy). The original list follows for reference.
 - **Open the four PRs, then merge in order** (`d8`):
   1. agentirc `feat/agent-accounts` → publishes 9.14.0;
   2. cultureagent `feat/sasl-auth` → publishes 0.16.0;
@@ -282,9 +357,13 @@ reflects the earlier heads.
   - Register spark-gwen and culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge as `backend: external` with `owner:`; sbx agents get the guest role.
   - Activate accounts agent by agent with `culture agents account activate`, keeping `account disable` ready as rollback.
   - Verify the success signal live.
+- **Done:** all four harness agents hold accounts (`e23`).
+- **sbx-ask / sbx-bolt:** out of scope (`d11`). The sandbox server runs
+  `--no-persist` with no manifest; follow-up is culture#517.
 - **thor**, which is bound to `0.0.0.0`: set `accounts.trusted_cidrs` (or bind the tailnet or loopback) before any account there is activated.
 - **embodiment#121:** Gwen's `+A` and PRESENCE now; SASL with `grant run --inject` once agentirc 9.14 is live. Obligation `o13` stays unchecked until then.
-- **Spec amendment.** Re-export the spec with claim c17 (and t14's criterion) amended to the opt-in activation of `d7`, once the user accepts it.
+- **Spec amendment: done.** The user accepted `d7` on 2026-11-01; claim
+  c17 is amended to opt-in activation and the spec is re-exported (c52).
 - **Adjudication (the user).** Confirm or reject evidence `e1`–`e17`, deltas `b1`–`b10` and lapses `l2`–`l11`.
 - **Follow-up issues.**
   - agentirc#65: rate-limiter bound, CAP LS unicode crash, unregistered-connection reaping, reload signature.

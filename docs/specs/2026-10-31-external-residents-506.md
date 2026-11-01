@@ -28,7 +28,7 @@
   - honesty: With the server down, status prints 'unknown' for external agents and is unchanged for harness agents. With it up, the external row's state equals its PRESENCE LIST state
 - Every other per-agent verb that assumes a culture-owned daemon refuses an external agent with the owner message instead of failing obscurely: install (would write a crashing culture-agent-<nick> systemd unit via persistence.`install_service`, cli/agents.py:1439), and the IPC verbs sleep/wake/learn/message/read (`_resolve_ipc_targets`, cli/agents.py:1126)
   - honesty: culture agents install <external-nick> writes no systemd unit, and every IPC verb refuses with the owner message instead of a socket error
-- culture agents register creates the agent's mesh account, mints its secret with grant.generate.`random_secret`, stores it as a hidden grant secret named after the nick (e.g. `CULTURE_AGENT_SPARK_GWEN`), and writes only its SHA-256 hash into the account. Units culture generates (persistence.`install_service`, persistence.py:295) wrap ExecStart in grant run --inject `CULTURE_AGENT_SECRET`=<name> --. An external owner (Gwen's unit, the sbx/ask units) wraps its own ExecStart the same way
+- Account activation is explicit and opt-in: culture agents register is unchanged, and culture agents account activate <nick> runs the ordered flow (preflight, mint a hidden grant secret named after the nick, wrap the agent's unit in grant run --inject `CULTURE_AGENT_SECRET`=<name> --, publish only the SHA-256 hash to agentirc's accounts file, restart, verify it reconnects) with full rollback on any failure. External owners wrap their own unit the same way and the account publishes with --owner-ready
   - honesty: The only places an agent's plaintext secret exists are the OS user's grant store and, briefly, that agent's daemon environment before startup removes it
 - No flag day: agentirc enforces a nick only once the server holds a credential for it. Agents registered before this change keep connecting until they are re-registered or have a credential minted. culture doctor lists registered agents that have no credential
   - honesty: Upgrading the server and culture without re-registering leaves every existing agent connecting exactly as before
@@ -162,6 +162,7 @@
 - The unlisted units culture-ask-sbx, culture-bolt-sbx, culture-ask-spark and cultureagent-codex-bridge are registered as backend: external accounts in this change, and the sbx agents get the guest role
 - Agent secrets live in grant, the mesh's secrets manager (agentculture/grant, PyPI grant, replacing shushu). culture imports it as a library rather than shelling out
 - The agentirc and cultureagent parts of this spec (accounts, CAP-held registration, SASL, grants, roles, auth logging; SASL plus the permanent-failure exit and env scrub in the shared transport) are implemented directly by this session as PRs in those repos, not filed as hand-off issues. embodiment stays a hand-off (embodiment#121)
+- The user accepted deviation d7 on 2026-11-01: accounts are activated explicitly with culture agents account activate; register does not create an account
 
 ## Hard questions
 
