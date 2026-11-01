@@ -280,6 +280,7 @@ def _install_mesh_services(
     ``[sys.executable, "-m", "culture_core"]``) or a legacy bare binary
     string (e.g. ``"/usr/bin/culture"``).
     """
+    from culture_core import accounts
     from culture_core.persistence import install_service
 
     culture_cmd: list[str] = [culture_bin] if isinstance(culture_bin, str) else list(culture_bin)
@@ -311,6 +312,7 @@ def _install_mesh_services(
             agent_cmd,
             f"culture-core agents {full_nick}",
             after=f"{svc_name}.service",
+            inject_secret=accounts.inject_secret_for(full_nick, server_name),
         )
         print(f"  Installed {agent_svc} → {path}")
 
@@ -554,6 +556,7 @@ def _restart_mesh_services(
     print(f"  Stopping server {server_name}...")
     server_stop_by_name(server_name)
 
+    from culture_core import accounts
     from culture_core.persistence import install_service, restart_service
 
     server_cmd = build_server_start_cmd(mesh, culture_cmd, config_path)
@@ -577,6 +580,7 @@ def _restart_mesh_services(
             agent_cmd,
             f"culture-core agents {full_nick}",
             after=f"culture-server-{server_name}.service",
+            inject_secret=accounts.inject_secret_for(full_nick, server_name),
         )
 
     server_svc = f"culture-server-{server_name}"

@@ -32,6 +32,9 @@ SECRET_PREFIX = "CULTURE_AGENT_"
 SECRET_SOURCE = "culture agents register"
 ROTATE_VERB = "culture agents account rotate"
 DEFAULT_DATA_DIR = "~/.culture/data"
+# Version floors for SASL accounts (deviation d5: t16 sets the real pins).
+MIN_CULTUREAGENT_SASL = "0.16.0"
+MIN_AGENTIRC_ACCOUNTS = "9.14.0"
 ACCOUNTS_FILENAME = "accounts.json"
 AUDIT_FILENAME = "accounts-audit.jsonl"
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -199,19 +202,11 @@ def _find(records: list[AccountRecord], nick: str) -> AccountRecord:
     raise AccountError(f"no account for {nick!r}")
 
 
-def mint(
-    agent_config: Any,
-    server_name: str,
-    *,
-    role: str = "resident",
-    data_dir: str | Path | None = None,
-) -> AccountRecord:
-    """Create or rotate the account for ``<server>-<suffix>``.
-
-    The secret goes to grant (hidden); only its sha256 reaches the accounts
-    file.  New accounts get ``speak`` on every ``channels:`` entry; an existing
-    account keeps its role/grants/state across a rotation.
-    """
+def _stage(
+    agent_config: Any, server_name: str, role: str, data_dir: str | Path | None
+) -> tuple[list[AccountRecord], AccountRecord, bool]:
+    """Write the secret to grant and return ``(records, rec, existed)`` WITHOUT
+    saving the accounts file (the "publish" step)."""
     nick = f"{server_name}-{agent_config.suffix}"
     _check_own(nick, server_name)
     name = secret_name(nick)
@@ -240,13 +235,156 @@ def mint(
         purpose=f"AgentIRC account secret for {nick}",
         rotation_howto=f"{ROTATE_VERB} {nick}",
     )
+    return records, rec, existing is not None
+
+
+def _publish(
+    records: list[AccountRecord],
+    rec: AccountRecord,
+    server_name: str,
+    data_dir: str | Path | None,
+    existed: bool,
+) -> None:
     save(records, server_name, data_dir)
     _audit(
-        "rotate" if existing else "create",
-        nick,
+        "rotate" if existed else "create",
+        rec.nick,
         data_dir,
-        {"role": rec.role, "grants": rec.grants, "state": rec.state, "secret_name": name},
+        {
+            "role": rec.role,
+            "grants": rec.grants,
+            "state": rec.state,
+            "secret_name": secret_name(rec.nick),
+        },
     )
+
+
+def mint(
+    agent_config: Any,
+    server_name: str,
+    *,
+    role: str = "resident",
+    data_dir: str | Path | None = None,
+) -> AccountRecord:
+    """Create or rotate the account for ``<server>-<suffix>`` (mint + publish).
+
+    The secret goes to grant (hidden); only its sha256 reaches the accounts
+    file.  New accounts get ``speak`` on every ``channels:`` entry; an existing
+    account keeps its role/grants/state across a rotation.  First-time
+    activation should go through :func:`activate`, which orders the publish
+    last so a failed step can never lock an agent out.
+    """
+    records, rec, existed = _stage(agent_config, server_name, role, data_dir)
+    _publish(records, rec, server_name, data_dir, existed)
+    return rec
+
+
+class ActivationError(AccountError):
+    """An activation step failed; ``step`` names it; nothing was published."""
+
+    def __init__(self, step: str, message: str):
+        super().__init__(step, message)
+        self.step = step
+        self.message = message
+
+    def __str__(self) -> str:
+        return f"activation step '{self.step}' failed: {self.message}; accounts file unchanged"
+
+
+def installed_version(dist: str) -> str | None:
+    from importlib import metadata
+
+    try:
+        return metadata.version(dist)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def version_at_least(have: str | None, floor: str) -> bool:
+    from packaging.version import InvalidVersion, Version
+
+    if have is None:
+        return False
+    try:
+        return Version(have) >= Version(floor)
+    except InvalidVersion:
+        return False
+
+
+def client_version_problem(version_of=None) -> str | None:
+    """Return a message if the installed cultureagent cannot speak SASL."""
+    have = (version_of or installed_version)("cultureagent")
+    if version_at_least(have, MIN_CULTUREAGENT_SASL):
+        return None
+    return (
+        f"installed cultureagent {have or '(not installed)'} is below "
+        f"{MIN_CULTUREAGENT_SASL}, the first release with SASL support"
+    )
+
+
+def inject_secret_for(nick: str, server_name: str, data_dir: str | Path | None = None):
+    """grant secret name to inject into the nick's unit, or None (no account)."""
+    return secret_name(nick) if find(nick, server_name, data_dir) is not None else None
+
+
+def activate(
+    agent_config: Any,
+    server_name: str,
+    *,
+    role: str = "resident",
+    data_dir: str | Path | None = None,
+    external: bool = False,
+    update_unit=None,
+    version_of=None,
+) -> AccountRecord:
+    """Ordered account activation (culture#506): mint -> unit -> client check -> publish.
+
+    1. mint the secret into grant (staged; the accounts file is NOT touched);
+    2. ``update_unit(nick, secret_name)`` wraps the agent's installed unit
+       with the grant inject (skipped for ``external`` residents, which never
+       get a culture unit; also skipped when ``update_unit`` is None);
+    3. the installed cultureagent must be >= ``MIN_CULTUREAGENT_SASL``;
+    4. only then publish the entry to the accounts file agentirc enforces.
+
+    Any earlier failure raises :class:`ActivationError` and the accounts file
+    is left as it was, so the agent keeps connecting the legacy way and is
+    never locked out.  An already-active account keeps its grant secret
+    (rotate is a separate verb) unless grant no longer holds it.
+    """
+    nick = f"{server_name}-{agent_config.suffix}"
+    name = secret_name(nick)
+    try:
+        existing = find(nick, server_name, data_dir)
+        have_secret = existing is not None
+        if have_secret:
+            try:
+                grant_store.get_record(name)
+            except Exception:  # secret missing/unreadable in grant -> re-mint
+                have_secret = False
+        if have_secret:
+            records = _own_records(server_name, data_dir)
+            rec = _find(records, nick)
+            existed = True
+        else:
+            records, rec, existed = _stage(agent_config, server_name, role, data_dir)
+    except Exception as exc:
+        raise ActivationError("mint", str(exc)) from exc
+
+    if not external and update_unit is not None:
+        try:
+            update_unit(nick, name)
+        except Exception as exc:
+            raise ActivationError("unit", str(exc)) from exc
+
+    problem = client_version_problem(version_of)
+    if problem:
+        raise ActivationError("client-version", problem)
+
+    rec.state = "active"
+    try:
+        _publish(records, rec, server_name, data_dir, existed)
+    except Exception as exc:
+        raise ActivationError("publish", str(exc)) from exc
     return rec
 
 

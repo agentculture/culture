@@ -12,6 +12,12 @@ from culture_core.doctor import run_doctor
 
 
 @pytest.fixture(autouse=True)
+def _isolated_home(tmp_path, monkeypatch):
+    """Class-5 account checks read ~/.culture/data: never the host's real one."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+
+@pytest.fixture(autouse=True)
 def _no_real_service_probe(monkeypatch):
     """Keep run_doctor hermetic: never probe this host's real systemd units.
 

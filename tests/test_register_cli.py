@@ -3,6 +3,17 @@ import argparse
 
 import pytest
 
+from culture_core import accounts
+
+
+@pytest.fixture(autouse=True)
+def _isolated_sasl_env(tmp_path, monkeypatch):
+    """register also activates an account: keep it off the host's real
+    ~/.culture/data and grant store, and pretend a SASL-capable client."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GRANT_HOME", str(tmp_path / "home" / "grant"))
+    monkeypatch.setattr(accounts, "installed_version", lambda d: accounts.MIN_CULTUREAGENT_SASL)
+
 
 def test_register_current_dir(tmp_path, monkeypatch):
     """Register with no path uses cwd."""

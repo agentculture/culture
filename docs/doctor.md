@@ -60,10 +60,27 @@ repo, falling back to the git root of the current directory. It is never a
 hardcoded path, so relocating the workspace (e.g. `~/git` -> `~/git2`) moves the
 scan root with it. Use `--root` to point elsewhere.
 
+### Class 5 — Agent accounts
+
+Checks for [agent accounts](agent-accounts.md) (accounts file under
+`~/.culture/data`; the trusted CIDRs and bind host come from `server.yaml`):
+
+| Finding | Severity | Fix hint |
+|---|---|---|
+| `<nick> has an account but its unit lacks the grant inject wrapper` | error | `culture agents account activate <nick>` |
+| `installed cultureagent <v> is below 0.16.0, the first release with SASL support` (only when accounts exist) | error | `uv tool install --upgrade 'cultureagent>=0.16.0'` |
+| `installed agentirc <v> is below 9.14.0 ...` (only when accounts exist) | error | `uv tool install --upgrade 'agentirc-cli>=9.14.0'` |
+| `server binds 0.0.0.0 and has accounts but accounts.trusted_cidrs is empty` | error | add the mesh range under `accounts: trusted_cidrs:`, or bind a specific interface |
+| `registered agent <nick> has no account` | warning | `culture agents account activate <nick>` |
+
+External residents are checked for an account but never for a unit (they have
+none). Class-5 errors fail the exit code; the warning does not. `--json`
+carries them as `class5`.
+
 ## Exit code
 
 `culture doctor` exits `0` only when there are **zero** class-1 and **zero**
-class-3 findings. Class-2 (unregistered) findings are warning-only and never
+class-3 findings (and no class-4/class-5 errors). Class-2 (unregistered) findings are warning-only and never
 change the exit code. So a non-zero exit means genuine breakage — a broken
 registration or a suffix collision — which makes the command a reliable gate:
 

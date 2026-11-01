@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from culture_core.config import ServerConfig
+from culture_core.doctor.accounts import check_accounts
 from culture_core.doctor.checks import (
     check_registrations,
     check_services,
@@ -19,6 +20,8 @@ def run_doctor(
     config: ServerConfig,
     root_override: str | None = None,
     cwd: str | None = None,
+    config_path: str | None = None,
+    data_dir: str | None = None,
 ) -> DoctorReport:
     """Run the full culture doctor diagnostic pass (read-only).
 
@@ -36,5 +39,6 @@ def run_doctor(
     report.class2 = check_unregistered(config, discovered)
     report.class3 = check_suffix_collisions(config, discovered)
     report.class4 = check_services()
+    report.class5 = check_accounts(config, config_path=config_path, data_dir=data_dir)
 
     return report

@@ -76,6 +76,7 @@ _ACCOUNT_VERBS = {
     "revoke": "Revoke the account (secret deleted, nick stays reserved, live session closed)",
     "rotate": "Mint a new secret (old one fails) and restart the agent's unit",
     "disable": "Remove the account entirely (nick returns to legacy behaviour)",
+    "activate": "Ordered activation: mint, wrap the unit, check the client, then publish",
     "show": "Show an account's role, state and grants (never the secret)",
     "list": "List this server's accounts",
 }
@@ -1498,16 +1499,33 @@ def _account_error(exc: Exception) -> CultureError:
 
 
 def _account_register(agent: AgentConfig, server_name: str, args: argparse.Namespace) -> None:
-    """Create (or restore) the account for a registered agent."""
+    """Activate (create or restore) the account for a registered agent.
+
+    Goes through :func:`accounts.activate` so the accounts file is published
+    only after the secret is minted, the unit is wrapped and the installed
+    cultureagent can speak SASL; a failed step leaves the agent on the legacy
+    path (never locked out) and is reported with how to retry.
+    """
     from culture_core import accounts
+    from culture_core.persistence import wrap_installed_unit
 
     data_dir = _account_data_dir(args)
     nick = f"{server_name}-{agent.suffix}"
     try:
         existed = accounts.find(nick, server_name, data_dir) is not None
-        rec = accounts.mint(agent, server_name, data_dir=data_dir)
-        if rec.state != "active":
-            accounts.set_state(nick, server_name, "active", data_dir=data_dir)
+        accounts.activate(
+            agent,
+            server_name,
+            data_dir=data_dir,
+            external=is_external(agent),
+            update_unit=lambda n, secret: wrap_installed_unit(f"culture-agent-{n}", secret),
+        )
+    except accounts.ActivationError as exc:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"{exc} ({nick} keeps connecting without an account until fixed)",
+            f"fix the failing step, then run 'culture agents account activate {nick}'",
+        ) from exc
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
     verb = "refreshed" if existed else "created"
@@ -1561,6 +1579,16 @@ def _cmd_account(args: argparse.Namespace) -> None:
                 print(f"{rec.nick}\t{rec.role}\t{rec.state}")
             return
         nick = _account_nick(config, args.nick)
+        if verb == "activate":
+            agent = config.get_agent(nick)
+            if agent is None:
+                raise CultureError(
+                    EXIT_USER_ERROR,
+                    f"{nick} is not a registered agent",
+                    "register it first: culture agents register <directory>",
+                )
+            _account_register(agent, server_name, args)
+            return
         rec = accounts.find(nick, server_name, data_dir)
         if rec is None:
             raise CultureError(
@@ -1663,12 +1691,18 @@ def _cmd_install(args: argparse.Namespace) -> None:
     # After=/Wants= the server unit so a reboot brings the mesh up
     # server-first (durable mesh, docs/durable-mesh.md). The server name
     # resolves from the same config the agent's nick resolves from.
+    from culture_core import accounts
+
     path = install_service(
         svc,
         agent_cmd,
         f"culture-core agents {full_nick}",
         after=f"culture-server-{config.server.name}.service",
         allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+        # Agents with an account run under `grant run --inject` (culture#506).
+        inject_secret=accounts.inject_secret_for(
+            full_nick, config.server.name, _account_data_dir(args)
+        ),
     )
     print(f"Installed {svc} → {path}")
 
