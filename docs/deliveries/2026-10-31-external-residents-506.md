@@ -7,7 +7,8 @@ Run status is `complete` for culture's side. Every plan task merged, was
 released and is deployed. The live success signal passed 10/10, and all
 four harness agents on spark hold accounts. What remains is outside this
 run: Gwen's side (embodiment#121), the sandbox agents (culture#517,
-`d11`), and the spec re-export for `d7`, which waits on the user.
+`d11`), and the follow-ups listed below. `d7` was accepted by the user and the spec
+re-exported.
 
 ## Intent
 
@@ -361,7 +362,8 @@ server's manifest.
   `--no-persist` with no manifest; follow-up is culture#517.
 - **thor**, which is bound to `0.0.0.0`: set `accounts.trusted_cidrs` (or bind the tailnet or loopback) before any account there is activated.
 - **embodiment#121:** Gwen's `+A` and PRESENCE now; SASL with `grant run --inject` once agentirc 9.14 is live. Obligation `o13` stays unchecked until then.
-- **Spec amendment.** Re-export the spec with claim c17 (and t14's criterion) amended to the opt-in activation of `d7`, once the user accepts it.
+- **Spec amendment: done.** The user accepted `d7` on 2026-11-01; claim
+  c17 is amended to opt-in activation and the spec is re-exported (c52).
 - **Adjudication (the user).** Confirm or reject evidence `e1`–`e17`, deltas `b1`–`b10` and lapses `l2`–`l11`.
 - **Follow-up issues.**
   - agentirc#65: rate-limiter bound, CAP LS unicode crash, unregistered-connection reaping, reload signature.
