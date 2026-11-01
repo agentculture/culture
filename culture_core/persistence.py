@@ -515,11 +515,14 @@ def grant_wrap(
     ]
 
 
+_EXEC_KEY = "ExecStart="
+
+
 def _exec_start_argv(unit_text: str) -> list[str] | None:
     for line in unit_text.splitlines():
-        if line.startswith("ExecStart="):
+        if line.startswith(_EXEC_KEY):
             try:
-                return shlex.split(line[len("ExecStart=") :])
+                return shlex.split(line[len(_EXEC_KEY) :])
             except ValueError:
                 return None
     return None
@@ -533,7 +536,7 @@ def exec_start_has_inject(unit_text: str, secret: str) -> bool:
 
 def unit_exec_start(name: str, *, unit_dir: Path | None = None) -> list[str] | None:
     """ExecStart argv of the installed systemd unit *name*, or None."""
-    path = Path(unit_dir or _systemd_user_dir()) / f"{name}.service"
+    path = _unit_file(name, unit_dir or _systemd_user_dir())
     if not path.is_file():
         return None
     return _exec_start_argv(path.read_text())
@@ -586,6 +589,11 @@ def _unpark(lines: list[str]) -> None:
     mark = _find_prefixed(lines, _PREVENT_MARK)
     if mark is not None:
         original = lines[mark].rstrip("\n")[len(_PREVENT_MARK) :]
+        if original != _PREVENT_ABSENT and not original.startswith(_PREVENT_KEY):
+            _refuse_unit_content(
+                f"its wrap marker would restore {original!r}, which is not a "
+                f"{_PREVENT_KEY} line"
+            )
         end = (
             mark + 2
             if mark + 1 < len(lines) and lines[mark + 1].startswith(_PREVENT_KEY)
@@ -605,17 +613,66 @@ def _rewrite_unit(path: Path, argv: list[str]) -> None:
     ``RestartPreventExitStatus=`` line is missing (legacy unit) or
     hand-edited; unwrapping restores the original line(s) exactly.
     """
+    if any(_UNIT_LINE_BREAKERS.intersection(arg) for arg in argv):
+        _refuse_unit_content(
+            "its ExecStart argument contains a line break or NUL, which would "
+            "inject extra directives into the unit"
+        )
     lines = path.read_text().splitlines(keepends=True)
-    exec_index = _find_prefixed(lines, "ExecStart=")
+    exec_index = _find_prefixed(lines, _EXEC_KEY)
     if exec_index is None:  # pragma: no cover - callers read ExecStart first
         return
-    lines[exec_index] = "ExecStart=" + " ".join(shlex.quote(a) for a in argv) + "\n"
+    lines[exec_index] = _EXEC_KEY + " ".join(shlex.quote(a) for a in argv) + "\n"
     if is_grant_wrapped(argv):
         _park_on_grant_failure(lines, exec_index)
     else:
         _unpark(lines)
-    path.write_text("".join(lines))
+    with path.open("w") as fh:
+        fh.write("".join(lines))
     _run_cmd(["systemctl", "--user", "daemon-reload"])
+
+
+# Characters that would end a unit-file line early (letting a value smuggle a
+# new directive into the unit) or that systemd rejects outright.
+_UNIT_LINE_BREAKERS = frozenset("\n\r\0")
+
+
+def _refuse_unit_content(reason: str) -> None:
+    from culture_core.cli._errors import EXIT_ENV_ERROR, CultureError
+
+    raise CultureError(
+        EXIT_ENV_ERROR,
+        f"refusing to rewrite the systemd unit: {reason}",
+        "inspect the unit file by hand (it looks hand-edited or tampered with), "
+        "restore its ExecStart/RestartPreventExitStatus lines, then re-run",
+    )
+
+
+def _unit_file(name: str, unit_dir: Path | str) -> Path:
+    """``<unit_dir>/<name>.service``, confined to *unit_dir*.
+
+    *name* is derived from an agent nick, which comes from config file
+    content (culture.yaml / server.yaml / the accounts file). A name carrying
+    a path separator or ``..`` must never make culture read, rewrite or
+    restore a file outside the systemd user directory, so it has to be a
+    plain unit identifier and the joined path must stay directly inside
+    *unit_dir* (checked lexically — a unit the operator symlinked in with
+    ``systemctl --user link`` is still followed, as before).
+    """
+    base = Path(unit_dir)
+    path = base / f"{name}.service"
+    if not _UNIT_IDENT_RE.fullmatch(name) or os.path.normpath(path.parent) != os.path.normpath(
+        base
+    ):
+        from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"invalid systemd unit name {name!r}: it must be a plain unit name "
+            f"(letters, digits, '-_.@:') that stays inside {base}",
+            "check the agent nick in culture.yaml / ~/.culture/server.yaml",
+        )
+    return path
 
 
 def _unit_path(name: str, unit_dir: Path | None) -> Path | None:
@@ -623,7 +680,7 @@ def _unit_path(name: str, unit_dir: Path | None) -> Path | None:
         if get_platform() != "linux":
             return None
         unit_dir = _systemd_user_dir()
-    path = Path(unit_dir) / f"{name}.service"
+    path = _unit_file(name, unit_dir)
     return path if path.is_file() else None
 
 

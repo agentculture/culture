@@ -433,6 +433,72 @@ def test_rewrap_for_a_new_secret_does_not_stack_markers(units):
 
 
 # ---------------------------------------------------------------------------
+# 4b. unit paths / unit content derived from file content stay confined
+#     (SonarCloud pythonsecurity:S2083 on persistence._rewrite_unit)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../outside",
+        "culture-agent-../../outside",
+        "culture-agent-spark/../../outside",
+        "/abs/outside",
+        "culture-agent-x\n",
+        "",
+    ],
+)
+def test_unit_helpers_refuse_names_that_escape_the_unit_dir(units, tmp_path, name):
+    victim = tmp_path / "outside.service"
+    victim.write_text("[Service]\nExecStart=/bin/true\n")
+    before = victim.read_text()
+    helpers = [
+        lambda: persistence.wrap_installed_unit(name, "N", grant_bin=GRANT),
+        lambda: persistence.unwrap_installed_unit(name, "N"),
+        lambda: persistence.read_unit(name),
+        lambda: persistence.restore_unit(name, "x"),
+        lambda: persistence.unit_exec_start(name),
+    ]
+    for call in helpers:
+        with pytest.raises(CultureError, match="invalid systemd unit name") as exc:
+            call()
+        assert exc.value.code == 1
+    assert victim.read_text() == before
+    assert units.calls == []
+
+
+def test_unwrap_refuses_a_marker_that_would_restore_another_directive(units):
+    unit = write_unit(units, "spark-gwen")
+    _strip_prevent(unit)
+    name = accounts.secret_name("spark-gwen")
+    persistence.wrap_installed_unit("culture-agent-spark-gwen", name, grant_bin=GRANT)
+    tampered = unit.read_text().replace(
+        "original RestartPreventExitStatus: absent",
+        "original RestartPreventExitStatus: ExecStartPre=/bin/sh -c evil",
+    )
+    assert tampered != unit.read_text()
+    unit.write_text(tampered)
+    calls_before = list(units.calls)
+    with pytest.raises(CultureError, match="not a RestartPreventExitStatus= line") as exc:
+        persistence.unwrap_installed_unit("culture-agent-spark-gwen", name)
+    assert exc.value.code == 2
+    assert unit.read_text() == tampered
+    assert units.calls == calls_before
+
+
+@pytest.mark.parametrize("bad", ["a\nExecStartPre=/bin/evil", "a\rb", "a\0b"])
+def test_rewrite_refuses_argv_that_would_inject_unit_lines(units, bad):
+    unit = write_unit(units, "spark-gwen")
+    before = unit.read_text()
+    argv = ["/usr/bin/python3", bad]
+    with pytest.raises(CultureError, match="line break or NUL"):
+        persistence._rewrite_unit(unit, argv)
+    assert unit.read_text() == before
+    assert units.calls == []
+
+
+# ---------------------------------------------------------------------------
 # 5. nothing derived from a secret* name reaches print
 # ---------------------------------------------------------------------------
 
