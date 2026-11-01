@@ -39,39 +39,41 @@ def check_agent_units(config, records, unit_dir: Path | None = None) -> list[Fin
         path = unit_dir / f"culture-agent-{nick}.service"
         if not path.is_file():
             continue
-        rec = by_nick.get(nick)
-        wrapped = exec_start_has_inject(path.read_text(), accounts.grant_entry_name(nick))
-        if rec is None or rec.state != "active":
-            if wrapped:
-                state = rec.state if rec else "removed"
-                findings.append(
-                    Finding(
-                        5,
-                        "error",
-                        nick,
-                        str(path),
-                        f"{nick}'s unit injects an account secret but its account is {state}; "
-                        "the unit will park on a missing secret or a refused login",
-                        f"culture agents account activate {nick}  "
-                        f"# or, to go back to legacy: culture agents install {nick}",
-                    )
-                )
-            continue
-        if wrapped:
-            continue
-        findings.append(
-            Finding(
-                5,
-                "error",
-                nick,
-                str(path),
-                f"{nick} has an account but its unit lacks the grant inject wrapper "
-                f"(`grant run --inject CULTURE_AGENT_SECRET={accounts.grant_entry_name(nick)} --`); "
-                "the daemon would start without its secret",
-                f"culture agents account activate {nick}  # or: culture agents install {nick}",
-            )
-        )
+        finding = _unit_drift(nick, path, by_nick.get(nick))
+        if finding is not None:
+            findings.append(finding)
     return findings
+
+
+def _unit_drift(nick: str, path: Path, rec) -> Finding | None:
+    """The drift finding for one installed culture-owned unit, or None."""
+    wrapped = exec_start_has_inject(path.read_text(), accounts.grant_entry_name(nick))
+    if rec is None or rec.state != "active":
+        if not wrapped:
+            return None
+        state = rec.state if rec else "removed"
+        return Finding(
+            5,
+            "error",
+            nick,
+            str(path),
+            f"{nick}'s unit injects an account secret but its account is {state}; "
+            "the unit will park on a missing secret or a refused login",
+            f"culture agents account activate {nick}  "
+            f"# or, to go back to legacy: culture agents install {nick}",
+        )
+    if wrapped:
+        return None
+    return Finding(
+        5,
+        "error",
+        nick,
+        str(path),
+        f"{nick} has an account but its unit lacks the grant inject wrapper "
+        f"(`grant run --inject CULTURE_AGENT_SECRET={accounts.grant_entry_name(nick)} --`); "
+        "the daemon would start without its secret",
+        f"culture agents account activate {nick}  # or: culture agents install {nick}",
+    )
 
 
 def check_client_version(records, version_of=None) -> list[Finding]:

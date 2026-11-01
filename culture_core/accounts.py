@@ -519,7 +519,7 @@ def mint(
         rec = next((r for r in records if r.nick == nick), None)
         action = "rotate"
         if rec is None:
-            grants = {c: "speak" for c in (getattr(agent_config, "channels", None) or [])}
+            grants = dict.fromkeys(getattr(agent_config, "channels", None) or [], "speak")
             _validate_grants(grants)
             rec = AccountRecord(nick=nick, secret_sha256="0" * 64, role=role, grants=grants)
             records.append(rec)
@@ -843,6 +843,32 @@ def activate(
     agent comes back exactly as before.
     """
     nick = f"{server_name}-{agent_config.suffix}"
+    name = _activation_preflight(nick, server_name, role)
+    if not external:
+        _preflight_unit(nick, unit)
+
+    run = _Activation(nick, name, server_name, data_dir, unit, guest_channel_prefixes)
+    with _locked(data_dir):
+        records, existing, reused, secret = run.step("mint", lambda: run.mint(server_name))
+        if external and not owner_ready:
+            return ActivationResult(nick, name, reused, published=False, pending_owner=True)
+        if not external:
+            run.wrap_unit()
+        rec = run.step(
+            "publish",
+            lambda: run.publish(agent_config, role, records, existing, secret, reused),
+        )
+
+    result = ActivationResult(nick, name, reused, published=True, record=rec)
+    if external:
+        return result
+    # restart + verify run outside the lock: they can take a while
+    run.restart_and_verify()
+    return result
+
+
+def _activation_preflight(nick: str, server_name: str, role: str) -> str:
+    """Step 1 (all agents): the nick is ours and the role valid; the secret name."""
     try:
         _check_own(nick, server_name)
         name = secret_name(nick)
@@ -850,143 +876,170 @@ def activate(
             raise AccountError(f"invalid role {role!r} (expected one of {ROLES})")
     except AccountError as exc:
         raise ActivationError("preflight", str(exc)) from exc
+    return name
 
-    if not external:
-        if unit is None:
-            raise ActivationError(
-                "preflight", f"no service manager available to wrap {nick}'s unit"
-            )
-        if not unit.exists(nick):
-            raise ActivationError(
-                "preflight",
-                f"{nick} has no installed unit, so nothing would hand the daemon its "
-                f"secret; install it first (culture agents install {nick}) and rerun",
-            )
-        problem = client_version_problem(lambda _dist: unit.client_version(nick))
-        if problem:
-            raise ActivationError("preflight", f"the agent's unit runs {problem}")
 
-    state = {"minted": False, "wrapped": False, "published": False, "restarted": False}
+def _preflight_unit(nick: str, unit: UnitOps | None) -> None:
+    """Step 1 (culture-owned): an installed unit running a SASL-capable client."""
+    if unit is None:
+        raise ActivationError("preflight", f"no service manager available to wrap {nick}'s unit")
+    if not unit.exists(nick):
+        raise ActivationError(
+            "preflight",
+            f"{nick} has no installed unit, so nothing would hand the daemon its "
+            f"secret; install it first (culture agents install {nick}) and rerun",
+        )
+    problem = client_version_problem(lambda _dist: unit.client_version(nick))
+    if problem:
+        raise ActivationError("preflight", f"the agent's unit runs {problem}")
+
+
+def _undo(errors: list[str], label: str, action) -> None:
+    """Run one rollback *action*; record its exception (or returned problem)."""
+    try:
+        problem = action()
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"{label}: {e}")
+        return
+    if problem:
+        errors.append(problem)
+
+
+@dataclass
+class _Activation:
+    """Steps 2-6 of :func:`activate` and what they did, for the rollback."""
+
+    nick: str
+    name: str
+    server_name: str
+    data_dir: str | Path | None
+    unit: UnitOps | None
+    guest_channel_prefixes: Iterable[str]
+    minted: bool = False
+    wrapped: bool = False
+    published: bool = False
+    restarted: bool = False
     prior_entry: AccountRecord | None = None
-    prior_secret = None
+    prior_secret: Any = None
 
-    def fail(step: str, exc_or_msg) -> ActivationError:
+    def step(self, step: str, action):
+        """Run *action*; on any exception roll back and raise ``ActivationError``."""
+        try:
+            return action()
+        except Exception as exc:
+            raise self.fail(step, exc) from exc
+
+    def fail(self, step: str, exc_or_msg) -> ActivationError:
+        """Undo the earlier steps in reverse; the error names *step*."""
         errors: list[str] = []
-        if state["published"]:
-            try:
-                _restore_entry(nick, server_name, data_dir, prior_entry, guest_channel_prefixes)
-            except Exception as e:  # noqa: BLE001 - report, keep undoing
-                errors.append(f"accounts entry: {e}")
-        if state["wrapped"]:
-            try:
-                unit.unwrap(nick, name)
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"unit ExecStart: {e}")
-        if state["minted"]:
-            try:
-                _restore_secret(nick, prior_secret)
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"grant secret {name}: {e}")
-        if state["restarted"]:
-            try:
-                if not unit.restart(nick):
-                    errors.append(f"restart of {nick}'s unit after rollback")
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"restart after rollback: {e}")
+        if self.published:
+            _undo(errors, "accounts entry", self._restore_entry)
+        if self.wrapped:
+            _undo(errors, "unit ExecStart", self._unwrap)
+        if self.minted:
+            _undo(errors, f"grant secret {self.name}", self._restore_secret)
+        if self.restarted:
+            _undo(errors, "restart after rollback", self._restart_again)
         return ActivationError(step, str(exc_or_msg), errors)
 
-    with _locked(data_dir):
-        # -- 2. mint ---------------------------------------------------------
-        try:
-            records = _own_records(server_name, data_dir)
-            existing = next((r for r in records if r.nick == nick), None)
-            if existing is not None:
-                prior_entry = replace(existing, grants=dict(existing.grants))
-            prior_secret = _owned_grant_record(nick)
-            reused = prior_secret is not None and (
-                existing is None
-                or (
-                    existing.state != "revoked"
-                    and hash_secret(prior_secret.value) == existing.secret_sha256
-                )
+    def _restore_entry(self) -> None:
+        _restore_entry(
+            self.nick,
+            self.server_name,
+            self.data_dir,
+            self.prior_entry,
+            self.guest_channel_prefixes,
+        )
+
+    def _unwrap(self) -> None:
+        self.unit.unwrap(self.nick, self.name)
+
+    def _restore_secret(self) -> None:
+        _restore_secret(self.nick, self.prior_secret)
+
+    def _restart_again(self) -> str | None:
+        if not self.unit.restart(self.nick):
+            return f"restart of {self.nick}'s unit after rollback"
+        return None
+
+    # -- 2. mint ---------------------------------------------------------------
+    def mint(self, server_name: str):
+        """Mint a secret, or reuse culture's one matching the published hash."""
+        records = _own_records(server_name, self.data_dir)
+        existing = next((r for r in records if r.nick == self.nick), None)
+        if existing is not None:
+            self.prior_entry = replace(existing, grants=dict(existing.grants))
+        self.prior_secret = _owned_grant_record(self.nick)
+        reused = self.prior_secret is not None and (
+            existing is None
+            or (
+                existing.state != "revoked"
+                and hash_secret(self.prior_secret.value) == existing.secret_sha256
             )
-            if reused:
-                secret = prior_secret.value
-            else:
-                secret = random_secret()
-                state["minted"] = True
-                _put_secret(nick, secret)
-        except Exception as exc:
-            raise fail("mint", exc) from exc
+        )
+        if reused:
+            secret = self.prior_secret.value
+        else:
+            secret = random_secret()
+            self.minted = True
+            _put_secret(self.nick, secret)
+        return records, existing, reused, secret
 
-        if external and not owner_ready:
-            return ActivationResult(nick, name, reused, published=False, pending_owner=True)
-
-        # -- 3. unit ---------------------------------------------------------
-        if not external:
-            try:
-                wrapped = unit.wrap(nick, name)
-            except Exception as exc:
-                raise fail("unit", exc) from exc
-            if wrapped is None:
-                raise fail(
-                    "unit",
-                    f"{nick}'s unit could not be wrapped with the grant inject (no systemd "
-                    "unit found; launchd/Windows units are not wrapped in place)",
-                )
-            state["wrapped"] = wrapped is True
-
-        # -- 4. publish ------------------------------------------------------
-        try:
-            if existing is None:
-                grants = {c: "speak" for c in (getattr(agent_config, "channels", None) or [])}
-                _validate_grants(grants)
-                rec = AccountRecord(nick=nick, secret_sha256="0" * 64, role=role, grants=grants)
-                records.append(rec)
-            else:
-                rec = existing
-            rec.secret_sha256 = hash_secret(secret)
-            rec.state = "active"
-            _validate_record(rec, guest_channel_prefixes)
-            # atomic: written whole or not at all, and only if agentirc accepts it
-            save(records, server_name, data_dir, guest_channel_prefixes=guest_channel_prefixes)
-            state["published"] = True
-            _audit(
-                "activate",
-                nick,
-                data_dir,
-                {
-                    "secret": "reused" if reused else "minted",
-                    "state": {"from": prior_entry.state if prior_entry else None, "to": "active"},
-                    "role": rec.role,
-                    "grants": rec.grants,
-                    "secret_name": name,
-                },
+    # -- 3. unit -----------------------------------------------------------------
+    def wrap_unit(self) -> None:
+        wrapped = self.step("unit", lambda: self.unit.wrap(self.nick, self.name))
+        if wrapped is None:
+            raise self.fail(
+                "unit",
+                f"{self.nick}'s unit could not be wrapped with the grant inject (no systemd "
+                "unit found; launchd/Windows units are not wrapped in place)",
             )
-        except Exception as exc:
-            raise fail("publish", exc) from exc
+        self.wrapped = wrapped is True
 
-    result = ActivationResult(nick, name, reused, published=True, record=rec)
-    if external:
-        return result
+    # -- 4. publish --------------------------------------------------------------
+    def publish(self, agent_config, role, records, existing, secret, reused) -> AccountRecord:
+        if existing is None:
+            grants = dict.fromkeys(getattr(agent_config, "channels", None) or [], "speak")
+            _validate_grants(grants)
+            rec = AccountRecord(nick=self.nick, secret_sha256="0" * 64, role=role, grants=grants)
+            records.append(rec)
+        else:
+            rec = existing
+        rec.secret_sha256 = hash_secret(secret)
+        rec.state = "active"
+        _validate_record(rec, self.guest_channel_prefixes)
+        # atomic: written whole or not at all, and only if agentirc accepts it
+        save(
+            records,
+            self.server_name,
+            self.data_dir,
+            guest_channel_prefixes=self.guest_channel_prefixes,
+        )
+        self.published = True
+        prior_state = self.prior_entry.state if self.prior_entry else None
+        _audit(
+            "activate",
+            self.nick,
+            self.data_dir,
+            {
+                "secret": "reused" if reused else "minted",
+                "state": {"from": prior_state, "to": "active"},
+                "role": rec.role,
+                "grants": rec.grants,
+                "secret_name": self.name,
+            },
+        )
+        return rec
 
-    # -- 5. restart (outside the lock: it can take a while) --------------------
-    state["restarted"] = True
-    try:
-        ok = unit.restart(nick)
-    except Exception as exc:
-        raise fail("restart", exc) from exc
-    if not ok:
-        raise fail("restart", f"restarting culture-agent-{nick} failed or timed out")
-
-    # -- 6. verify ---------------------------------------------------------------
-    try:
-        problem = unit.verify(nick)
-    except Exception as exc:
-        raise fail("verify", exc) from exc
-    if problem:
-        raise fail("verify", problem)
-    return result
+    # -- 5. restart, 6. verify ---------------------------------------------------
+    def restart_and_verify(self) -> None:
+        self.restarted = True
+        ok = self.step("restart", lambda: self.unit.restart(self.nick))
+        if not ok:
+            raise self.fail("restart", f"restarting culture-agent-{self.nick} failed or timed out")
+        problem = self.step("verify", lambda: self.unit.verify(self.nick))
+        if problem:
+            raise self.fail("verify", problem)
 
 
 # ---------------------------------------------------------------------------
