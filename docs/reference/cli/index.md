@@ -302,19 +302,29 @@ culture agents unarchive spark-claude
 ### `culture agents account`
 
 Manage the SASL account behind an agent nick (see
-[Agent Accounts](../../agent-accounts.md)). `register` creates it, `archive`
-suspends it, `delete`/`unregister` revoke it (tombstone keeps the nick
+[Agent Accounts](../../agent-accounts.md)). Accounts are opt-in: `register`
+never creates one; `account activate` is the only way in. `archive` suspends
+an account, `delete`/`unregister` revoke it (tombstone keeps the nick
 reserved). Secrets are never printed.
 
 ```bash
-culture agents account revoke spark-gwen    # live session closes within 5 s
+culture agents install spark-claude                    # activation needs the unit first
+culture agents account activate spark-claude           # check, mint, wrap, publish, restart, verify
+culture agents account activate spark-gwen             # external: mint + owner instructions only
+culture agents account activate spark-gwen --owner-ready  # external: publish, then restart the owner
+culture agents account revoke spark-gwen    # stop the unit; live session closes within 5 s
 culture agents account rotate spark-gwen    # new secret, old one fails; restarts the unit
-culture agents account disable spark-gwen   # drop the entry: legacy behaviour
+culture agents account disable spark-gwen   # drop the entry, unwrap the unit: legacy behaviour
 culture agents account show spark-gwen      # role, state, grants
 culture agents account list
 ```
 
-All verbs take `--config` and `--data-dir` (default `~/.culture/data`).
+`activate` rolls every step back on failure and exits non-zero naming the
+step. Its flags: `--owner-ready`, `--verify-timeout SECONDS` (default 30),
+`--allow-dev-interpreter` (accept a `grant` from a dev virtualenv). All verbs
+take `--config` and `--data-dir`; without `--data-dir` the data dir is the
+server's own (from its running process or installed unit, else
+`~/.culture/data`).
 
 ### `culture agents sleep`
 
@@ -368,6 +378,10 @@ on macOS, scheduled task on Windows) for an agent already registered in
 culture agents install spark-claude    # full nick
 culture agents install claude          # bare suffix — resolved against server.yaml
 ```
+
+An agent with an *active* [account](../../agent-accounts.md) gets its
+`ExecStart` wrapped with `grant run --inject` (the accounts file is the
+server's own; `--data-dir` overrides).
 
 An external resident is refused (non-zero exit, owner message): its owner
 ships its own unit, and culture never writes one for it.
@@ -555,6 +569,7 @@ services (systemd on Linux, launchd on macOS, Task Scheduler on Windows).
 culture mesh setup                           # use ~/.culture/mesh.yaml
 culture mesh setup --config /path/mesh.yaml  # custom config path
 culture mesh setup --uninstall               # remove services and stop processes
+culture mesh setup --data-dir ~/.culture/data  # accounts file to read (default: the server's)
 ```
 
 | Flag | Default | Description |
@@ -573,6 +588,7 @@ Upgrade the `culture` package and restart all running servers.
 culture mesh update                          # upgrade package + restart everything
 culture mesh update --dry-run                # preview steps without executing
 culture mesh update --skip-upgrade           # restart only, skip package upgrade
+culture mesh update --data-dir ~/.culture/data  # accounts file to read (default: the server's)
 culture mesh update --upgrade-timeout 1800   # allow up to 30 min for the upgrade
 culture mesh update --config /path/mesh.yaml
 ```
@@ -633,6 +649,7 @@ agents doctor` (agent alignment). Full reference: [Doctor](../../doctor.md).
 culture doctor            # report drift; exit non-zero on real breakage
 culture doctor --json     # machine-readable, for CI
 culture doctor --fix      # register unregistered repos (opt-in)
+culture doctor --data-dir ~/.culture/data-sbx  # class-5 account checks against this data dir
 ```
 
 ## Configuration
