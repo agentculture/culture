@@ -212,6 +212,62 @@ was real, every ~1 s). `l2`–`l11` are pending approval and are not cited as
 evidence. `l10` (Python 3.13 in worktrees) and `l11` (host pollution, cleaned)
 are the material ones for the reviewer.
 
+## Post-PR review round (`d9`)
+
+After the PRs opened, the user's `/code-review` of all four found 20
+issues. All of them are fixed on the PR branches before merge, as deviation
+`d9`.
+
+**agentirc#66:**
+
+- Channel-less events are scoped for accounts; QUIT channel lists are
+  filtered.
+- `EVENTPUB *` is allowed for operators and residents only (/assess
+  `operator_and_resident` 0.83).
+- ROOMINVITE is read-gated with an anti-probe reply.
+- The rate limiter is a bounded LRU, which also closes agentirc#65 L1.
+- Lookups no longer stat the file. Reloads happen only from the watcher,
+  SIGHUP and registration, so a grant or role change reaches connected
+  sessions within about 1 s.
+
+**cultureagent#59:**
+
+- No dead transport after a mid-SASL close on reconnect.
+- A 433 is transient (150 s grace).
+- Backoff doubles until a `001`.
+- A SASL timeout or a 906 is a failed attempt; a 902 is permanent; a 907
+  proceeds.
+- AUTHENTICATE payloads are chunked at 400 bytes.
+- No orphaned futures.
+- New public API: `BaseDaemon.auth_refusal` and `wait_auth_refused()`.
+- New `docs/sasl.md`; the CHANGELOG "Fixed" entry is now true.
+
+**culture#514/#515:**
+
+- `culture server start` passes the `accounts:` block to agentirc
+  (new `--config`).
+- culture validates every accounts.json write exactly as agentirc does,
+  including agentirc's own parser when it is installed.
+- `disable` and `revoke` roll back their unit changes on failure.
+- A wrapped unit always gets `RestartPreventExitStatus` including 64.
+- The CodeQL clear-text-logging alerts are fixed.
+- Tests that need agentirc 9.14 or cultureagent 0.16 skip on CI's older
+  versions until the d8 pin commit.
+- The runner uses cultureagent's public refusal API.
+
+Suites after the round, on Python 3.12 with the integration branches:
+
+| Repo | Passed | Skipped | Failed |
+|------|--------|---------|--------|
+| culture Phase B | 2215 | 1 | 0 |
+| agentirc | 1061 | 0 | 0 |
+| cultureagent | 1586 | 13 | 0 |
+
+The cross-repo SASL probe was re-run after each repo's fixes, with the
+same four outcomes. A full suite passing after a fix is execution-level
+evidence. The filed evidence `e1`–`e17` predates this round and still
+reflects the earlier heads.
+
 ## Remaining Work / Follow-up
 
 - **Open the four PRs, then merge in order** (`d8`):

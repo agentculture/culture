@@ -2,7 +2,7 @@
   "plan_slug": "external-residents-506",
   "schema_version": 2,
   "created": "2026-10-31T23:29:45Z",
-  "updated": "2026-11-01T02:15:11Z",
+  "updated": "2026-11-01T02:40:37Z",
   "deviations": [
     {
       "id": "d1",
@@ -105,6 +105,17 @@
       "status": "approved",
       "classification": "acceptable",
       "seq": 8
+    },
+    {
+      "id": "d9",
+      "what": "Post-PR review fixes before merge: agentirc#66 (EVENTSUB channel-list leak, channel-less EVENTPUB limited to operator/resident, ROOMINVITE gated by read, bounded rate-limiter map, throttled accounts stat), culture#514/#515 (server start passes the accounts: block to agentirc, culture validates accounts exactly as agentirc does, disable/revoke order with rollback, unit rewrite adds RestartPreventExitStatus), cultureagent#59 (no dead transport after a mid-SASL close on reconnect, 433 on reconnect is transient, SASL timeout fails the attempt, 902/906/907 handled, AUTHENTICATE chunking, future hygiene, public BaseDaemon refusal API, docs, changelog corrected)",
+      "task_ref": "t16",
+      "reason": "The user's /code-review of all four PRs found correctness and security bugs that would break the spec's promises in production (accounts policy never reaching the server, revokes silently frozen by a rejected file, guests broadcasting server-wide, agents parked by a transient nick collision or left offline). Fixed before merge under the user's standing goal; the channel-less EVENTPUB policy decided via /assess (operator_and_resident 0.83)",
+      "affects": [],
+      "origin": "llm",
+      "status": "approved",
+      "classification": "needs-follow-up",
+      "seq": 26
     }
   ],
   "evidence": [
