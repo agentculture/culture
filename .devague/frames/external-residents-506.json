@@ -4,7 +4,7 @@
   "schema_version": 6,
   "status": "exported",
   "created": "2026-10-31T22:34:10Z",
-  "updated": "2026-11-01T01:15:28Z",
+  "updated": "2026-11-01T02:14:32Z",
   "claims": [
     {
       "id": "c1",
@@ -1524,6 +1524,42 @@
       "source_text": "culture moves from shushu to grant. grant becomes a capped dependency (grant>=0.11,<0.12). culture secret, today an unimplemented 'coming soon' namespace in culture_core/cli/introspect.py _NAMESPACES, becomes a forward to grant through the culture_core/cli/_passthrough.py pattern (culture secret <verb> == grant <verb>). The docs that name shushu now name grant: README.md:38,63, docs/culture/vision.md:70, docs/reference/cli/devex.md:71",
       "origin": "llm",
       "status": "approved"
+    },
+    {
+      "id": "o17",
+      "claim_id": "c38",
+      "seam": "cultureagent shared transport (irc_transport.py, main_runner.py)",
+      "behavior": "On 904/905/908, a refused nick while holding a secret, a server without SASL PLAIN or a sasl NAK, the transport stops reconnecting and the runner exits 78",
+      "source_text": "On a SASL failure (904/905 or a refused nick) the shared transport stops reconnecting and the daemon exits with the permanent-failure status, so systemd stops restarting it. Today _reconnect (cultureagent clients/shared/irc_transport.py:271-283) retries forever with backoff capped at 60 s, so a revoked agent would hammer the server indefinitely",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o18",
+      "claim_id": "c39",
+      "seam": "agentirc registration (client.py _try_register/_handle_cap)",
+      "behavior": "After CAP LS, no 001 and no SNICK until CAP END; a client that never sends CAP registers as before",
+      "source_text": "agentirc must hold registration while CAP negotiation is open. Today _try_register (agentirc client.py:512-519) completes on NICK+USER, sends 001 and announces SNICK to linked peers immediately, so SASL can't gate anything until registration waits for CAP END. No SNICK for an account nick may go out before authentication succeeds",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o19",
+      "claim_id": "c44",
+      "seam": "agentirc auth path (accounts.py, client.py, metrics)",
+      "behavior": "Every failed auth logs nick, peer and reason without secret material; failures are rate-limited per (address, account); culture.auth.failures counts them by reason",
+      "source_text": "agentirc logs every failed authentication (nick, peer address, reason, never the secret) and rate-limits failed attempts per peer address. The counts are exposed as culture.* telemetry so a brute force or a misconfigured agent is visible",
+      "origin": "llm",
+      "status": "proposed"
+    },
+    {
+      "id": "o20",
+      "claim_id": "c49",
+      "seam": "cultureagent BaseDaemon startup",
+      "behavior": "CULTURE_AGENT_SECRET is read once and removed from os.environ before connecting or spawning; child processes never see it",
+      "source_text": "The daemon reads CULTURE_AGENT_SECRET once at startup and removes it from os.environ before connecting or spawning anything, so agent tool subprocesses (shell tools, SDK children) never inherit it. grant run --inject delivers it through the environment, and children inherit the environment by default",
+      "origin": "llm",
+      "status": "proposed"
     }
   ]
 }
