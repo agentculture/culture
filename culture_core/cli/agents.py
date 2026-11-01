@@ -1837,8 +1837,7 @@ def _cmd_account(args: argparse.Namespace) -> None:
                 "pass --data-dir to manage a different server's accounts",
             )
         if verb == "list":
-            for rec in accounts.load(data_dir):
-                print(f"{rec.nick}\t{rec.role}\t{rec.state}")
+            _account_list(data_dir)
             return
         rec = accounts.find(nick, server_name, data_dir)
         if rec is None:
@@ -1850,6 +1849,13 @@ def _cmd_account(args: argparse.Namespace) -> None:
         _account_record_verb(verb, config, nick, rec, data_dir, args)
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
+
+
+def _account_list(data_dir) -> None:
+    from culture_core import accounts
+
+    for rec in accounts.load(data_dir):
+        print(f"{rec.nick}\t{rec.role}\t{rec.state}")
 
 
 def _registered_agent(config: ServerConfig, nick: str):
