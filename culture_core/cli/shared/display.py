@@ -8,8 +8,11 @@ import logging
 import os
 
 from culture_core.pidfile import is_process_alive, read_pid, remove_pid
+from culture_core.resource_view import fetch_residents_async
 
 from .constants import BOT_CONFIG_FILE
+from .external import is_external as _is_external_agent
+from .external import owner_message
 from .ipc import agent_socket_path, ipc_request
 
 logger = logging.getLogger("culture")
@@ -27,6 +30,34 @@ def agent_process_status(agent) -> tuple[str, int | None]:
     if pid:
         remove_pid(pid_name)
     return "stopped", None
+
+
+def is_external(agent) -> bool:
+    """External-resident check tolerant of duck-typed agents lacking ``backend``."""
+    return hasattr(agent, "backend") and _is_external_agent(agent)
+
+
+def external_presence_states(agents, server_config) -> dict[str, str]:
+    """Map each external agent's nick to its live presence state.
+
+    One ``PRESENCE LIST`` query for the whole call, and none at all when
+    *agents* holds no external resident. A server that cannot be reached, has
+    no PRESENCE surface (421), or no *server_config* yields ``unknown`` for
+    every external nick; a reachable server with no row for a registered
+    external agent (it never published) yields ``offline``.
+    """
+    nicks = [a.nick for a in agents if is_external(a)]
+    if not nicks:
+        return {}
+    if server_config is None:
+        return {nick: "unknown" for nick in nicks}
+    try:
+        residents = asyncio.run(fetch_residents_async(server_config))
+    except Exception as exc:  # unreachable, unsupported (421), timeout...
+        logger.debug("presence lookup failed: %s", exc)
+        return {nick: "unknown" for nick in nicks}
+    by_nick = {r.nick: (r.state or "unknown") for r in residents}
+    return {nick: by_nick.get(nick, "offline") for nick in nicks}
 
 
 def _print_running_detail(agent, args, pid) -> None:
@@ -52,12 +83,28 @@ def _print_running_detail(agent, args, pid) -> None:
         print("  Activity:   unknown (daemon may need restart)")
 
 
-def print_agent_detail(agent, config_path: str, args: argparse.Namespace) -> None:
-    """Print detailed status for a single agent, including live IPC activity query."""
-    status, pid = agent_process_status(agent)
+def print_agent_detail(
+    agent, config_path: str, args: argparse.Namespace, server_config=None
+) -> None:
+    """Print detailed status for a single agent, including live IPC activity query.
+
+    External residents have no pidfile/IPC socket; their state comes from the
+    server's PRESENCE registry (via *server_config*) instead.
+    """
+    external = is_external(agent)
+    if external:
+        status = external_presence_states([agent], server_config)[agent.nick]
+        pid = None
+    else:
+        status, pid = agent_process_status(agent)
     print(agent.nick)
 
-    if status == "running":
+    if external:
+        print(f"  Status:     {status}")
+        print("  PID:        -")
+        print("  Activity:   -")
+        print(f"  Owner:      {owner_message(agent)}")
+    elif status == "running":
         _print_running_detail(agent, args, pid)
     else:
         print(f"  Status:     {status}")
@@ -92,9 +139,18 @@ def _fetch_ipc_data(agent) -> dict | None:
 
 
 def _agent_overview_row(
-    agent, show_activity: bool, show_archived_marker: bool
+    agent,
+    show_activity: bool,
+    show_archived_marker: bool,
+    external_states: dict[str, str] | None = None,
 ) -> tuple[str, str, str, str]:
     """Build (nick, status, pid_str, activity) for one agent row."""
+    if is_external(agent):
+        base_status = (external_states or {}).get(agent.nick, "unknown")
+        status = _format_agent_status(
+            base_status, getattr(agent, "archived", False), show_archived_marker
+        )
+        return agent.nick, status, "-", "-"
     base_status, pid = agent_process_status(agent)
     activity = "-"
     if base_status == "running":
@@ -113,9 +169,13 @@ def _agent_overview_row(
 
 
 def print_agents_overview(
-    agents: list, show_activity: bool, show_archived_marker: bool = False
+    agents: list,
+    show_activity: bool,
+    show_archived_marker: bool = False,
+    server_config=None,
 ) -> None:
     """Print a table of all agents with status, PID, and optionally activity."""
+    external_states = external_presence_states(agents, server_config)
     if show_activity:
         print(f"{'NICK':<30} {'STATUS':<12} {'PID':<10} {'ACTIVITY'}")
         print("-" * 72)
@@ -125,7 +185,7 @@ def print_agents_overview(
 
     for agent in agents:
         nick, status, pid_str, activity = _agent_overview_row(
-            agent, show_activity, show_archived_marker
+            agent, show_activity, show_archived_marker, external_states
         )
         if show_activity:
             print(f"{nick:<30} {status:<12} {pid_str:<10} {activity}")

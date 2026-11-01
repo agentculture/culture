@@ -901,7 +901,7 @@ class TestCmdStatus:
         monkeypatch.setattr(
             agent_mod,
             "print_agents_overview",
-            lambda agents, full, show_archived_marker: called_with.append(len(agents)),
+            lambda agents, full, show_archived_marker, **_kw: called_with.append(len(agents)),
         )
         monkeypatch.setattr(agent_mod, "print_bot_listing", lambda **kw: None)
 
