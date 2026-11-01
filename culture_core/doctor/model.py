@@ -10,7 +10,7 @@ class Finding:
     """A single drift finding from the doctor scan."""
 
     drift_class: int  # 1, 2, 3, or 4
-    severity: str  # 'error' or 'warning'
+    severity: str  # 'error', 'warning' or 'info' (class 5: never fails the report)
     subject: str  # agent nick or suffix, repo dir name, or service name
     path: str
     message: str
@@ -29,7 +29,10 @@ class DoctorReport:
 
     @property
     def ok(self) -> bool:
-        return not (self.class1 or self.class2 or self.class3 or self.class4 or self.class5)
+        # Class-5 info/warnings (e.g. "registered agent has no account":
+        # accounts are opt-in) never make the report not-ok (culture#506).
+        class5 = [f for f in self.class5 if f.severity == "error"]
+        return not (self.class1 or self.class2 or self.class3 or self.class4 or class5)
 
     @property
     def exit_code(self) -> int:

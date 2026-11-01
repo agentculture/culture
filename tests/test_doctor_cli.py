@@ -80,7 +80,8 @@ def test_clean_exits_zero(tmp_path, capsys, monkeypatch):
     # conftest's host guard redirects DEFAULT_DATA_DIR; this test writes the
     # account under its own isolated HOME, so point the default back there.
     monkeypatch.setattr(accounts, "DEFAULT_DATA_DIR", "~/.culture/data")
-    # a registered agent without an account is a class-5 warning, so give it one
+    # a registered agent without an account is only class-5 info; give it one
+    # anyway so the run covers an agent that has an account
     accounts.save(
         [accounts.AccountRecord(nick="spark-culture", secret_sha256="c" * 64)],
         "spark",

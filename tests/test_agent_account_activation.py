@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
-from types import SimpleNamespace
 
 import pytest
-from grant import store as grant_store
 
 from culture_core import accounts, persistence
 from culture_core.cli import agents as agent_mod
@@ -60,7 +58,7 @@ def test_install_service_wraps_execstart_with_grant_inject(tmp_path, monkeypatch
         GRANT,
         "run",
         "--inject",
-        "CULTURE_AGENT_SECRET=CULTURE_AGENT_SPARK_GWEN",
+        f"CULTURE_AGENT_SECRET={secret}",
         "--",
         "/usr/bin/python",
         "-m",
@@ -81,7 +79,9 @@ def test_install_service_without_inject_is_unwrapped(tmp_path, monkeypatch):
     assert _exec_start(path.read_text()) == ["/usr/bin/python", "-m", "x"]
 
 
-def test_grant_bin_resolved_absolute_or_clear_error(monkeypatch):
+def test_grant_bin_resolved_absolute_or_clear_error(tmp_path, monkeypatch):
+    # no grant next to the interpreter -> PATH fallback
+    monkeypatch.setattr(persistence.sys, "executable", str(tmp_path / "python"))
     monkeypatch.setattr(persistence.shutil, "which", lambda n: "/x/grant")
     assert persistence.resolve_grant_bin() == "/x/grant"
     monkeypatch.setattr(persistence.shutil, "which", lambda n: None)
@@ -109,7 +109,7 @@ def test_agents_install_wraps_when_account_exists(tmp_path, monkeypatch):
         nick="gwen", config=str(cfg), data_dir=str(data), allow_dev_interpreter=True
     )
     agent_mod._cmd_install(args)
-    assert seen["inject_secret"] == "CULTURE_AGENT_SPARK_GWEN"
+    assert seen["inject_secret"] == accounts.secret_name("spark-gwen")
     # an agent with no account is not wrapped
     args.data_dir = str(tmp_path / "empty")
     agent_mod._cmd_install(args)
@@ -120,7 +120,7 @@ def test_wrap_installed_unit_rewrites_once(tmp_path, monkeypatch):
     monkeypatch.setattr(persistence, "_run_cmd", lambda *a, **k: True)
     unit = tmp_path / "culture-agent-spark-gwen.service"
     unit.write_text("[Service]\nExecStart=/usr/bin/python -m culture_core\nRestart=on-failure\n")
-    name = "CULTURE_AGENT_SPARK_GWEN"
+    name = accounts.secret_name("spark-gwen")
     kw = {"unit_dir": tmp_path, "grant_bin": GRANT}
     assert persistence.wrap_installed_unit("culture-agent-spark-gwen", name, **kw) is True
     assert _exec_start(unit.read_text())[:5] == [
@@ -150,7 +150,8 @@ def test_doctor_flags_unit_without_inject_wrapper(tmp_path):
         "[Service]\nExecStart=/usr/bin/python -m x\n"
     )
     (tmp_path / "culture-agent-spark-ok.service").write_text(
-        f"[Service]\nExecStart={GRANT} run --inject CULTURE_AGENT_SECRET=CULTURE_AGENT_SPARK_OK -- /usr/bin/python\n"
+        f"[Service]\nExecStart={GRANT} run --inject "
+        f"CULTURE_AGENT_SECRET={accounts.secret_name('spark-ok')} -- /usr/bin/python\n"
     )
     cfg = _cfg(agent("gwen"), agent("ok"))
     found = dacc.check_agent_units(cfg, _records("spark-gwen", "spark-ok"), tmp_path)
@@ -196,7 +197,7 @@ def test_doctor_flags_registered_agents_without_account_including_external():
     cfg = _cfg(agent("gwen"), agent("ext", "external"), agent("has"))
     found = dacc.check_missing_accounts(cfg, _records("spark-has"))
     assert sorted(f.subject for f in found) == ["spark-ext", "spark-gwen"]
-    assert all(f.severity == "warning" and f.fix_hint for f in found)
+    assert all(f.severity == "info" and f.fix_hint for f in found)
 
 
 def test_run_doctor_wires_class5_and_exit_code(tmp_path):
@@ -236,115 +237,5 @@ def test_doctor_json_includes_class5(tmp_path, capsys, monkeypatch):
 
 
 # -- ordered activation ------------------------------------------------------
-
-
-def _grant_has(name):
-    try:
-        grant_store.get_record(name)
-        return True
-    except Exception:
-        return False
-
-
-def _ok(_d):
-    return accounts.MIN_CULTUREAGENT_SASL
-
-
-def test_activation_runs_mint_unit_clientcheck_then_publish(tmp_path):
-    data = tmp_path / "data"
-    order = []
-
-    def update_unit(nick, secret):
-        order.append("unit")
-        # mint already happened, publish has not
-        assert _grant_has(secret)
-        assert accounts.find(nick, SERVER, data) is None
-
-    def version_of(dist):
-        order.append("client")
-        assert accounts.find("spark-gwen", SERVER, data) is None
-        return accounts.MIN_CULTUREAGENT_SASL
-
-    rec = accounts.activate(
-        agent(), SERVER, data_dir=data, update_unit=update_unit, version_of=version_of
-    )
-    assert order == ["unit", "client"]
-    assert rec.state == "active"
-    assert accounts.find("spark-gwen", SERVER, data) is not None
-
-
-def test_activation_refuses_publish_when_unit_step_fails(tmp_path):
-    data = tmp_path / "data"
-
-    def boom(nick, secret):
-        raise RuntimeError("grant binary not found")
-
-    with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, update_unit=boom, version_of=_ok)
-    assert ei.value.step == "unit"
-    assert not accounts.accounts_path(data).exists()
-
-
-def test_activation_refuses_publish_when_client_too_old(tmp_path):
-    data = tmp_path / "data"
-    with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, version_of=lambda d: "0.15.2")
-    assert ei.value.step == "client-version"
-    assert "0.16.0" in str(ei.value)
-    assert not accounts.accounts_path(data).exists()
-
-
-def test_activation_refuses_publish_when_mint_fails(tmp_path, monkeypatch):
-    data = tmp_path / "data"
-
-    def bad(**k):
-        raise grant_store.StoreError("disk")
-
-    monkeypatch.setattr(accounts.grant_store, "set_secret", bad)
-    with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, version_of=_ok)
-    assert ei.value.step == "mint"
-    assert not accounts.accounts_path(data).exists()
-
-
-def test_activation_skips_unit_for_external_residents(tmp_path):
-    called = []
-    accounts.activate(
-        agent("ext", "external"),
-        SERVER,
-        data_dir=tmp_path / "d",
-        external=True,
-        update_unit=lambda n, s: called.append(n),
-        version_of=_ok,
-    )
-    assert called == []
-
-
-def test_reactivation_keeps_existing_secret_and_state(tmp_path):
-    data = tmp_path / "data"
-    first = accounts.activate(agent(), SERVER, data_dir=data, version_of=_ok)
-    again = accounts.activate(agent(), SERVER, data_dir=data, version_of=_ok)
-    assert again.secret_sha256 == first.secret_sha256
-
-
-def test_register_goes_through_ordered_activation(tmp_path, monkeypatch):
-    """register leaves the agent with no account (legacy) when a step fails."""
-    cfg = tmp_path / "server.yaml"
-    save_server_config(cfg, ServerConfig(server=ServerConnConfig(name=SERVER)))
-    d = tmp_path / "agent-gwen"
-    d.mkdir()
-    (d / "culture.yaml").write_text("suffix: gwen\nbackend: claude\n")
-    data = tmp_path / "data"
-    monkeypatch.setattr(accounts, "installed_version", lambda d: "0.15.2")
-    args = argparse.Namespace(path=str(d), suffix=None, config=str(cfg), data_dir=str(data))
-    with pytest.raises(CultureError, match="client-version"):
-        agent_mod._cmd_register(args)
-    assert accounts.find("spark-gwen", SERVER, data) is None
-    # fix the step, then the activate verb publishes
-    monkeypatch.setattr(accounts, "installed_version", _ok)
-    agent_mod._cmd_account(
-        argparse.Namespace(
-            account_command="activate", nick="gwen", config=str(cfg), data_dir=str(data)
-        )
-    )
-    assert accounts.find("spark-gwen", SERVER, data).state == "active"
+# Superseded by the opt-in, rolled-back activation (deviation d7): see
+# tests/test_account_activation_hardening.py.

@@ -8,8 +8,8 @@ from culture_core import accounts
 
 @pytest.fixture(autouse=True)
 def _isolated_sasl_env(tmp_path, monkeypatch):
-    """register also activates an account: keep it off the host's real
-    ~/.culture/data and grant store, and pretend a SASL-capable client."""
+    """register must never touch accounts (opt-in, culture#506 d7); isolate the
+    grant store and data dir anyway so a regression can't reach the host."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("GRANT_HOME", str(tmp_path / "home" / "grant"))
     monkeypatch.setattr(accounts, "installed_version", lambda d: accounts.MIN_CULTUREAGENT_SASL)

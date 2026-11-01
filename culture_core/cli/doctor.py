@@ -27,6 +27,14 @@ def register(subparsers):
     )
     p.add_argument("--json", action="store_true", help="Emit findings as JSON")
     p.add_argument(
+        "--data-dir",
+        default=None,
+        help=(
+            "Server data dir holding accounts.json (default: the server's own, read from "
+            "its running process or installed unit; else ~/.culture/data)"
+        ),
+    )
+    p.add_argument(
         "--fix",
         "--register",
         dest="fix",
@@ -58,6 +66,10 @@ def _emit_json(report, registered=None) -> None:
 def _render_human(report) -> None:
     if report.ok:
         print("✓ culture doctor: no drift detected")
+        for f in report.class5:  # info/warnings only (e.g. agents without an account)
+            print(f"  i {f.subject}: {f.message}")
+            if f.fix_hint:
+                print(f"      opt in: {f.fix_hint}")
         return
     sections = [
         ("Broken registrations (class 1)", report.class1, "✗"),
@@ -84,7 +96,12 @@ def dispatch(args):
         sys.exit(2)
 
     config = load_config_or_default(args.config)
-    report = run_doctor(config, root_override=args.root, config_path=args.config)  # diagnose only
+    report = run_doctor(  # diagnose only
+        config,
+        root_override=args.root,
+        config_path=args.config,
+        data_dir=getattr(args, "data_dir", None),
+    )
 
     # Run the opt-in fix BEFORE emitting, so --json can fold the registered
     # pairs into the payload instead of printing trailing lines that would

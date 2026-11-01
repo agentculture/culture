@@ -175,7 +175,11 @@ def classify_interpreter(
 
 
 def _enforce_durable_interpreter(
-    command: list[str], *, allow_dev_interpreter: bool, env: "dict[str, str] | None" = None
+    command: list[str],
+    *,
+    allow_dev_interpreter: bool,
+    env: "dict[str, str] | None" = None,
+    what: str = "interpreter",
 ) -> None:
     """Guard a provisioning command against baking a fragile interpreter.
 
@@ -198,13 +202,14 @@ def _enforce_durable_interpreter(
 
     if allow_dev_interpreter:
         logger.warning(
-            "Baking a dev-virtualenv interpreter into a service unit: %s "
+            "Baking a dev-virtualenv %s into a service unit: %s "
             "(--allow-dev-interpreter given; proceeding). If this venv is "
             "removed the unit's ExecStart dies and the service crash-loops.",
+            what,
             interpreter,
         )
         print(
-            "WARNING: baking a dev-virtualenv interpreter into the service "
+            f"WARNING: baking a dev-virtualenv {what} into the service "
             f"unit: {interpreter}\n"
             "         (--allow-dev-interpreter given; proceeding). If this "
             "venv is removed the ExecStart path dies and the service will "
@@ -218,7 +223,7 @@ def _enforce_durable_interpreter(
 
     raise CultureError(
         EXIT_USER_ERROR,
-        f"refusing to bake a fragile interpreter into the service unit: "
+        f"refusing to bake a fragile {what} into the service unit: "
         f"{interpreter} lives inside a project/worktree virtualenv "
         f"(.venv/venv), not an installed tool. If that checkout is removed the "
         f"unit's ExecStart points at a dead path and the service crash-loops "
@@ -274,11 +279,10 @@ def _run_cmd(args: list[str], timeout: float = DEFAULT_CMD_TIMEOUT) -> bool:
 def _build_systemd_unit(
     name: str, command: list[str], description: str, after: str | None = None
 ) -> str:
-    # Lazy import: keep this low-level module from pulling in the whole CLI
-    # package (culture_core.cli.__init__ imports every command group) at load.
-    from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
-
     exec_start = " ".join(shlex.quote(arg) for arg in command)
+    # EXIT_DAEMON_PERMANENT (+ grant's 64 for wrapped units); lazily imported
+    # inside the helper to keep this module out of the CLI import graph.
+    prevent = _restart_prevent_status(command)
     # After= orders this unit behind *after* (e.g. the server unit) and
     # Wants= pulls it in, so a reboot brings the mesh up server-first.
     # Wants (not Requires): a crashed server must not tear down agents
@@ -298,7 +302,7 @@ def _build_systemd_unit(
         f"ExecStart={exec_start}\n"
         f"Restart=on-failure\n"
         f"RestartSec=5\n"
-        f"RestartPreventExitStatus={EXIT_DAEMON_PERMANENT}\n"
+        f"RestartPreventExitStatus={prevent}\n"
         f"\n"
         f"[Install]\n"
         f"WantedBy=default.target\n"
@@ -345,12 +349,16 @@ def _build_windows_bat(command: list[str]) -> str:
     cmd_line = subprocess.list2cmdline(command)
     # Parity with systemd's RestartPreventExitStatus (#15): a permanent
     # daemon failure stops the retry loop instead of respawning forever.
+    grant_park = (
+        f"if %ERRORLEVEL% EQU {GRANT_RUN_FAILED} goto end\n" if is_grant_wrapped(command) else ""
+    )
     return (
         f"@echo off\n"
         f":loop\n"
         f"{cmd_line}\n"
         f"if %ERRORLEVEL% EQU 0 goto end\n"
         f"if %ERRORLEVEL% EQU {EXIT_DAEMON_PERMANENT} goto end\n"
+        f"{grant_park}"
         f"timeout /t 5\n"
         f"goto loop\n"
         f":end\n"
@@ -425,27 +433,76 @@ _PLATFORM_INSTALLERS = {
 
 
 INJECT_ENV_VAR = "CULTURE_AGENT_SECRET"
+# ``grant run`` exits 64 (grant's EXIT_USER_ERROR) when it cannot inject: the
+# secret is missing (revoked/disabled account) or the spec is malformed. A
+# restart never fixes that, so wrapped units park on it like on 78.
+GRANT_RUN_FAILED = 64
 
 
-def resolve_grant_bin() -> str:
-    """Absolute path of the ``grant`` binary (systemd units have a minimal PATH)."""
-    found = shutil.which("grant")
+def is_grant_wrapped(command: list[str]) -> bool:
+    """True if *command* is ``<grant> run --inject CULTURE_AGENT_SECRET=... -- ...``."""
+    return (
+        len(command) >= 5
+        and command[1:3] == ["run", "--inject"]
+        and command[3].startswith(f"{INJECT_ENV_VAR}=")
+        and command[4] == "--"
+    )
+
+
+def _restart_prevent_status(command: list[str]) -> str:
+    from culture_core.cli._errors import EXIT_DAEMON_PERMANENT
+
+    if is_grant_wrapped(command):
+        return f"{EXIT_DAEMON_PERMANENT} {GRANT_RUN_FAILED}"
+    return str(EXIT_DAEMON_PERMANENT)
+
+
+def resolve_grant_bin(*, allow_dev_interpreter: bool | None = None) -> str:
+    """Absolute path of the ``grant`` binary to bake into a unit.
+
+    ``grant`` is a culture dependency, so it is taken from the same
+    environment as the running interpreter (``uv tool install culture`` does
+    not put dependency scripts on PATH); PATH is only a fallback. The path
+    goes through the same provenance guard as the interpreter
+    (*allow_dev_interpreter*, see :func:`install_service`): a ``grant`` inside
+    a repo/worktree ``.venv`` dies with the checkout (the 2026-07-03 outage
+    class).
+    """
+    exe = "grant.exe" if sys.platform == "win32" else "grant"
+    sibling = Path(sys.executable).parent / exe
+    found = str(sibling) if sibling.is_file() else shutil.which("grant")
     if not found:
         from culture_core.cli._errors import EXIT_ENV_ERROR, CultureError
 
         raise CultureError(
             EXIT_ENV_ERROR,
-            "grant binary not found on PATH; cannot wrap the unit's ExecStart "
-            "for an agent with an account",
-            "install grant (e.g. 'uv tool install grant-cli') and re-run",
+            f"grant binary not found next to {sys.executable} or on PATH; cannot wrap "
+            "the unit's ExecStart for an agent with an account",
+            "reinstall culture so its 'grant' dependency is present "
+            "('uv tool install --reinstall culture'), or install it with "
+            "'uv tool install grant', then re-run",
         )
-    return os.path.abspath(found)
+    found = os.path.abspath(found)
+    if allow_dev_interpreter is not None:
+        _enforce_durable_interpreter(
+            [found],
+            allow_dev_interpreter=allow_dev_interpreter,
+            env=dict(os.environ),
+            what="grant binary",
+        )
+    return found
 
 
-def grant_wrap(command: list[str], secret: str, grant_bin: str | None = None) -> list[str]:
+def grant_wrap(
+    command: list[str],
+    secret: str,
+    grant_bin: str | None = None,
+    *,
+    allow_dev_interpreter: bool | None = None,
+) -> list[str]:
     """``grant run --inject CULTURE_AGENT_SECRET=<secret> -- <command>``."""
     return [
-        grant_bin or resolve_grant_bin(),
+        grant_bin or resolve_grant_bin(allow_dev_interpreter=allow_dev_interpreter),
         "run",
         "--inject",
         f"{INJECT_ENV_VAR}={secret}",
@@ -454,50 +511,148 @@ def grant_wrap(command: list[str], secret: str, grant_bin: str | None = None) ->
     ]
 
 
-def exec_start_has_inject(unit_text: str, secret: str) -> bool:
-    """True if the unit's ExecStart carries the grant inject wrapper for *secret*."""
+def _exec_start_argv(unit_text: str) -> list[str] | None:
     for line in unit_text.splitlines():
         if line.startswith("ExecStart="):
             try:
-                argv = shlex.split(line[len("ExecStart=") :])
+                return shlex.split(line[len("ExecStart=") :])
             except ValueError:
-                return False
-            token = f"{INJECT_ENV_VAR}={secret}"
-            return "run" in argv and "--inject" in argv and token in argv
-    return False
+                return None
+    return None
 
 
-def wrap_installed_unit(
-    name: str, secret: str, *, unit_dir: Path | None = None, grant_bin: str | None = None
-) -> bool | None:
-    """Rewrite an installed systemd unit's ExecStart with the grant wrapper.
+def exec_start_has_inject(unit_text: str, secret: str) -> bool:
+    """True if the unit's ExecStart carries the grant inject wrapper for *secret*."""
+    argv = _exec_start_argv(unit_text)
+    return bool(argv) and is_grant_wrapped(argv) and argv[3] == f"{INJECT_ENV_VAR}={secret}"
 
-    Returns ``None`` when no unit is installed (nothing to update), ``True``
-    when rewritten (daemon-reload issued), ``False`` when already wrapped.
-    Linux/systemd only; other platforms return ``None``.
-    """
+
+def unit_exec_start(name: str, *, unit_dir: Path | None = None) -> list[str] | None:
+    """ExecStart argv of the installed systemd unit *name*, or None."""
+    path = Path(unit_dir or _systemd_user_dir()) / f"{name}.service"
+    if not path.is_file():
+        return None
+    return _exec_start_argv(path.read_text())
+
+
+def _rewrite_unit(path: Path, argv: list[str]) -> None:
+    """Replace ExecStart with *argv* and align RestartPreventExitStatus with it."""
+    lines = path.read_text().splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.startswith("ExecStart="):
+            lines[i] = "ExecStart=" + " ".join(shlex.quote(a) for a in argv) + "\n"
+        elif line.startswith("RestartPreventExitStatus="):
+            lines[i] = f"RestartPreventExitStatus={_restart_prevent_status(argv)}\n"
+    path.write_text("".join(lines))
+    _run_cmd(["systemctl", "--user", "daemon-reload"])
+
+
+def _unit_path(name: str, unit_dir: Path | None) -> Path | None:
     if unit_dir is None:
         if get_platform() != "linux":
             return None
         unit_dir = _systemd_user_dir()
     path = Path(unit_dir) / f"{name}.service"
-    if not path.is_file():
+    return path if path.is_file() else None
+
+
+def wrap_installed_unit(
+    name: str,
+    secret: str,
+    *,
+    unit_dir: Path | None = None,
+    grant_bin: str | None = None,
+    allow_dev_interpreter: bool | None = None,
+) -> bool | None:
+    """Rewrite an installed systemd unit's ExecStart with the grant wrapper.
+
+    Returns ``None`` when no unit is installed (nothing to update), ``True``
+    when rewritten (daemon-reload issued; the running process is NOT
+    restarted), ``False`` when already wrapped. Linux/systemd only; other
+    platforms return ``None``. A unit wrapped for a different secret is
+    re-wrapped for *secret*.
+    """
+    path = _unit_path(name, unit_dir)
+    if path is None:
         return None
-    text = path.read_text()
-    if exec_start_has_inject(text, secret):
+    argv = _exec_start_argv(path.read_text())
+    if not argv:
+        return None
+    if exec_start_has_inject(path.read_text(), secret):
         return False
-    lines = text.splitlines(keepends=True)
-    for i, line in enumerate(lines):
-        if line.startswith("ExecStart="):
-            argv = shlex.split(line[len("ExecStart=") :])
-            wrapped = grant_wrap(argv, secret, grant_bin)
-            lines[i] = "ExecStart=" + " ".join(shlex.quote(a) for a in wrapped) + "\n"
-            break
-    else:
-        return None
-    path.write_text("".join(lines))
-    _run_cmd(["systemctl", "--user", "daemon-reload"])
+    if is_grant_wrapped(argv):
+        argv = argv[5:]
+    _rewrite_unit(
+        path, grant_wrap(argv, secret, grant_bin, allow_dev_interpreter=allow_dev_interpreter)
+    )
     return True
+
+
+def unwrap_installed_unit(
+    name: str, secret: str | None = None, *, unit_dir: Path | None = None
+) -> bool | None:
+    """Restore an installed unit's original (unwrapped) ExecStart.
+
+    Inverse of :func:`wrap_installed_unit`: ``None`` when no unit is
+    installed, ``True`` when the wrapper was removed (daemon-reload issued),
+    ``False`` when the unit was not wrapped (for *secret*, when given).
+    """
+    path = _unit_path(name, unit_dir)
+    if path is None:
+        return None
+    argv = _exec_start_argv(path.read_text())
+    if not argv or not is_grant_wrapped(argv):
+        return False
+    if secret is not None and argv[3] != f"{INJECT_ENV_VAR}={secret}":
+        return False
+    _rewrite_unit(path, argv[5:])
+    return True
+
+
+def service_active_state(name: str) -> str | None:
+    """systemd ``ActiveState`` of a user unit (``active``, ``failed``, ...), or None."""
+    if get_platform() != "linux":
+        return None
+    try:
+        out = subprocess.run(
+            ["systemctl", "--user", "show", "-p", "ActiveState", "--value", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=DEFAULT_CMD_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return out.stdout.strip() or None
+
+
+def _systemctl_unit(verb: list[str], name: str) -> bool:
+    """``systemctl --user <verb...> <name>`` for an installed unit (Linux only)."""
+    if get_platform() != "linux" or not (_systemd_user_dir() / f"{name}.service").exists():
+        return False
+    return _run_cmd(["systemctl", "--user", *verb, name])
+
+
+def stop_service(name: str) -> bool:
+    return _systemctl_unit(["stop"], name)
+
+
+def start_service(name: str) -> bool:
+    return _systemctl_unit(["start"], name)
+
+
+def disable_service(name: str) -> bool:
+    """Stop the unit and keep it from starting at boot (the file stays)."""
+    return _systemctl_unit(["disable", "--now"], name)
+
+
+def enable_service(name: str) -> bool:
+    return _systemctl_unit(["enable"], name)
+
+
+def service_installed(name: str) -> bool:
+    """True if a culture auto-start entry *name* is installed on this platform."""
+    return name in list_services()
 
 
 def install_service(
@@ -549,8 +704,11 @@ def install_service(
         raise RuntimeError(f"Unsupported platform: {platform}")
     if inject_secret:
         # Agent has an account: grant injects CULTURE_AGENT_SECRET into the
-        # daemon only. The interpreter guard above ran on the bare command.
-        command = grant_wrap(command, inject_secret, grant_bin)
+        # daemon only. The interpreter guard above ran on the bare command;
+        # the grant binary gets the same guard.
+        command = grant_wrap(
+            command, inject_secret, grant_bin, allow_dev_interpreter=allow_dev_interpreter
+        )
     return installer(name, command, description, after=after)
 
 

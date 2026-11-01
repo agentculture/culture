@@ -1,5 +1,8 @@
-"""Account CLI verbs and lifecycle (culture#506 t14).
+"""Account CLI verbs and lifecycle (culture#506 t14, opt-in per d7).
 
+Accounts are opt-in: ``register`` only adds the manifest entry and the
+``activate`` verb creates the account (its unit hooks are stubbed here; the
+ordering/rollback is covered in tests/test_account_activation_hardening.py).
 Unit tests drive the handlers with HOME/GRANT_HOME in tmp_path; the
 integration tests run a real AgentIRC (IRCd on a random port) and real TCP
 clients authenticating with SASL PLAIN.  Secrets are read from the temp grant
@@ -51,6 +54,33 @@ def sasl_capable_client(monkeypatch):
     )
 
 
+class StubUnitOps:
+    """A culture-owned agent whose unit wraps, restarts and reconnects fine."""
+
+    def exists(self, nick):
+        return True
+
+    def client_version(self, nick):
+        return accounts.MIN_CULTUREAGENT_SASL
+
+    def wrap(self, nick, name):
+        return True
+
+    def unwrap(self, nick, name):
+        return True
+
+    def restart(self, nick):
+        return True
+
+    def verify(self, nick):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def stub_unit_ops(monkeypatch):
+    monkeypatch.setattr(agent_mod, "_account_unit_ops", lambda config, args: StubUnitOps())
+
+
 @pytest.fixture
 def env(tmp_path):
     """server.yaml + data dir + helper to create agent dirs."""
@@ -75,9 +105,13 @@ def ns(env, **kw):
     return argparse.Namespace(config=str(cfg_path), data_dir=str(data_dir), **kw)
 
 
-def register(env, tmp_path, suffix, **kw):
+def register(env, tmp_path, suffix, activate=True, **kw):
+    """Register the agent and (by default) opt it in to an account."""
     d = make_agent(tmp_path, suffix, **kw)
-    agent_mod._cmd_register(ns(env, path=str(d), suffix=None))
+    cfg_path, _ = env
+    agent_mod._cmd_register(argparse.Namespace(config=str(cfg_path), path=str(d), suffix=None))
+    if activate:
+        agent_mod._cmd_account(ns(env, account_command="activate", nick=suffix, owner_ready=True))
 
 
 def secret_of(nick):
@@ -95,13 +129,18 @@ def account_cmd(env, verb, nick=None):
 # -- unit ------------------------------------------------------------------
 
 
-def test_register_creates_account_and_never_prints_secret(env, tmp_path, capsys):
+def test_register_alone_creates_no_account(env, tmp_path):
+    register(env, tmp_path, "gwen", activate=False)
+    assert account(env, "spark-gwen") is None
+
+
+def test_activate_creates_account_and_never_prints_secret(env, tmp_path, capsys):
     register(env, tmp_path, "gwen")
     rec = account(env, "spark-gwen")
     assert rec.state == "active" and rec.role == "resident"
     assert rec.grants == {"#general": "speak"}
     out = capsys.readouterr().out
-    assert "Account created: spark-gwen" in out
+    assert "Account active: spark-gwen" in out
     assert secret_of("spark-gwen") not in out
 
 
@@ -121,12 +160,16 @@ def test_delete_leaves_tombstone_and_drops_secret(env, tmp_path):
         grant_store.get_record(accounts.secret_name("spark-gwen"))
 
 
-def test_unregister_leaves_tombstone_and_reregister_restores(env, tmp_path):
+def test_unregister_leaves_tombstone_and_activate_restores(env, tmp_path):
     register(env, tmp_path, "gwen")
     old = account(env, "spark-gwen").secret_sha256
     agent_mod._cmd_unregister(ns(env, target="spark-gwen"))
     assert account(env, "spark-gwen").state == "revoked"
-    register(env, tmp_path, "gwen")
+    register(env, tmp_path, "gwen", activate=False)  # re-register: tombstone stays
+    assert account(env, "spark-gwen").state == "revoked"
+    agent_mod._cmd_account(  # explicit activation reactivates
+        ns(env, account_command="activate", nick="gwen", owner_ready=False)
+    )
     rec = account(env, "spark-gwen")
     assert rec.state == "active" and rec.secret_sha256 != old
     assert secret_of("spark-gwen")
@@ -339,7 +382,7 @@ async def test_nick_stays_reserved(env, tmp_path, ircd, how):
     # someone else without SASL cannot take the nick
     lines = await plain_register(ircd, "spark-gwen")
     assert not welcomed(lines), lines
-    # re-register restores
+    # unarchive / explicit re-activation restores
     if how == "archive":
         agent_mod._cmd_unarchive(ns(env, nick="spark-gwen"))
     else:

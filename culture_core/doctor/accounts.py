@@ -24,20 +24,42 @@ def _own_nicks(config) -> list[tuple[str, object]]:
 
 
 def check_agent_units(config, records, unit_dir: Path | None = None) -> list[Finding]:
-    """Agents with an account whose installed unit lacks the grant inject wrapper.
+    """Unit/account drift for culture-owned agents.
+
+    * an active account whose installed unit lacks the grant inject wrapper;
+    * a unit still wrapped although the account is gone or not active (it
+      would fail on a missing secret or a refused login and park).
 
     External residents never get a culture-generated unit and are skipped.
     """
     unit_dir = Path(unit_dir) if unit_dir else _systemd_user_dir()
-    by_nick = {r.nick for r in records}
+    by_nick = {r.nick: r for r in records}
     findings: list[Finding] = []
     for nick, agent in _own_nicks(config):
-        if nick not in by_nick or is_external(agent):
+        if is_external(agent):
             continue
         path = unit_dir / f"culture-agent-{nick}.service"
         if not path.is_file():
             continue
-        if exec_start_has_inject(path.read_text(), accounts.secret_name(nick)):
+        rec = by_nick.get(nick)
+        wrapped = exec_start_has_inject(path.read_text(), accounts.secret_name(nick))
+        if rec is None or rec.state != "active":
+            if wrapped:
+                state = rec.state if rec else "removed"
+                findings.append(
+                    Finding(
+                        5,
+                        "error",
+                        nick,
+                        str(path),
+                        f"{nick}'s unit injects an account secret but its account is {state}; "
+                        "the unit will park on a missing secret or a refused login",
+                        f"culture agents account activate {nick}  "
+                        f"# or, to go back to legacy: culture agents install {nick}",
+                    )
+                )
+            continue
+        if wrapped:
             continue
         findings.append(
             Finding(
@@ -113,15 +135,19 @@ def check_open_bind(records, host: str, trusted_cidrs: list[str]) -> list[Findin
 
 
 def check_missing_accounts(config, records) -> list[Finding]:
-    """Registered agents (external included) with no account."""
+    """Registered agents (external included) with no account: informational.
+
+    Accounts are opt-in (culture#506 d7), so this never fails the report.
+    """
     have = {r.nick for r in records}
     return [
         Finding(
             5,
-            "warning",
+            "info",
             nick,
             "",
-            f"registered agent {nick} has no account (connects without SASL)",
+            f"registered agent {nick} has no account (connects without SASL; accounts "
+            "are opt-in)",
             f"culture agents account activate {nick}",
         )
         for nick, _ in _own_nicks(config)

@@ -16,6 +16,13 @@ from culture_core.doctor.model import DoctorReport, Finding
 __all__ = ["run_doctor", "DoctorReport", "Finding"]
 
 
+def _server_data_dir(config: ServerConfig, data_dir: str | None):
+    """The server's own data dir (M5); None for a --no-persist server."""
+    from culture_core import accounts
+
+    return accounts.resolve_server_data_dir(config.server.name, data_dir).path
+
+
 def run_doctor(
     config: ServerConfig,
     root_override: str | None = None,
@@ -39,6 +46,10 @@ def run_doctor(
     report.class2 = check_unregistered(config, discovered)
     report.class3 = check_suffix_collisions(config, discovered)
     report.class4 = check_services()
-    report.class5 = check_accounts(config, config_path=config_path, data_dir=data_dir)
+    resolved = _server_data_dir(config, data_dir)
+    # A --no-persist server reads no accounts file: nothing to check.
+    report.class5 = (
+        check_accounts(config, config_path=config_path, data_dir=resolved) if resolved else []
+    )
 
     return report
