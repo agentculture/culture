@@ -1827,14 +1827,7 @@ def _cmd_account(args: argparse.Namespace) -> None:
     try:
         nick = _account_nick(config, args.nick) if verb != "list" else ""
         if verb == "activate":
-            agent = config.get_agent(nick)
-            if agent is None:
-                raise CultureError(
-                    EXIT_USER_ERROR,
-                    f"{nick} is not a registered agent",
-                    "register it first: culture agents register <directory>",
-                )
-            _account_activate(config, agent, args)
+            _account_activate(config, _registered_agent(config, nick), args)
             return
         data_dir = _account_data_dir(args, config)
         if data_dir is None:
@@ -1844,8 +1837,7 @@ def _cmd_account(args: argparse.Namespace) -> None:
                 "pass --data-dir to manage a different server's accounts",
             )
         if verb == "list":
-            for rec in accounts.load(data_dir):
-                print(f"{rec.nick}\t{rec.role}\t{rec.state}")
+            _account_list(data_dir)
             return
         rec = accounts.find(nick, server_name, data_dir)
         if rec is None:
@@ -1854,17 +1846,40 @@ def _cmd_account(args: argparse.Namespace) -> None:
                 f"no account for {nick}",
                 f"activate one with 'culture agents account activate {nick}'",
             )
-        if verb == "show":
-            grants = ", ".join(f"{c}={lv}" for c, lv in sorted(rec.grants.items())) or "none"
-            print(f"{rec.nick}: role={rec.role} state={rec.state} grants={grants}")
-        elif verb == "revoke":
-            _account_revoke(config, nick, data_dir, _account_prefixes(args))
-        elif verb == "disable":
-            _account_disable(config, nick, data_dir, _account_prefixes(args))
-        elif verb == "rotate":
-            _account_rotate(config, nick, data_dir, _account_prefixes(args))
+        _account_record_verb(verb, config, nick, rec, data_dir, args)
     except accounts.AccountError as exc:
         raise _account_error(exc) from exc
+
+
+def _account_list(data_dir) -> None:
+    from culture_core import accounts
+
+    for rec in accounts.load(data_dir):
+        print(f"{rec.nick}\t{rec.role}\t{rec.state}")
+
+
+def _registered_agent(config: ServerConfig, nick: str):
+    agent = config.get_agent(nick)
+    if agent is None:
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"{nick} is not a registered agent",
+            "register it first: culture agents register <directory>",
+        )
+    return agent
+
+
+def _account_record_verb(verb: str, config: ServerConfig, nick: str, rec, data_dir, args) -> None:
+    """``show`` / ``revoke`` / ``disable`` / ``rotate`` on an existing account."""
+    if verb == "show":
+        grants = ", ".join(f"{c}={lv}" for c, lv in sorted(rec.grants.items())) or "none"
+        print(f"{rec.nick}: role={rec.role} state={rec.state} grants={grants}")
+    elif verb == "revoke":
+        _account_revoke(config, nick, data_dir, _account_prefixes(args))
+    elif verb == "disable":
+        _account_disable(config, nick, data_dir, _account_prefixes(args))
+    elif verb == "rotate":
+        _account_rotate(config, nick, data_dir, _account_prefixes(args))
 
 
 def _account_revoke(config: ServerConfig, nick: str, data_dir, prefixes=()) -> None:

@@ -45,7 +45,8 @@ def test_secret_name_mapping():
     tag = hashlib.sha256(b"spark-gwen").hexdigest()[:10].upper()
     assert name == f"CULTURE_AGENT_SPARK_GWEN_{tag}"
     long = accounts.secret_name("spark-" + "x" * 60)  # truncated, still unique + valid
-    assert len(long) <= 64 and grant_store.NAME_RE.match(long)
+    assert len(long) <= 64
+    assert grant_store.NAME_RE.match(long)
     with pytest.raises(accounts.AccountError):
         accounts.secret_name("")
 
@@ -70,7 +71,8 @@ def test_mint_stores_hidden_secret_and_writes_hash_only(data_dir):
 
 def test_defaults_role_and_grants(data_dir):
     rec = accounts.mint(cfg(), "spark", data_dir=data_dir)
-    assert rec.role == "resident" and rec.state == "active"
+    assert rec.role == "resident"
+    assert rec.state == "active"
     assert rec.grants == {"#general": "speak", "#ops": "speak"}
 
 
@@ -85,10 +87,12 @@ def test_rotation_changes_hash_keeps_settings(data_dir):
 
 
 def test_only_own_server_nicks(data_dir):
+    agent_cfg = cfg()
     with pytest.raises(accounts.AccountError):
-        accounts.mint(cfg(), "", data_dir=data_dir)
+        accounts.mint(agent_cfg, "", data_dir=data_dir)
+    foreign = [accounts.AccountRecord("thor-x", "a" * 64)]
     with pytest.raises(accounts.AccountError):
-        accounts.save([accounts.AccountRecord("thor-x", "a" * 64)], "spark", data_dir=data_dir)
+        accounts.save(foreign, "spark", data_dir=data_dir)
     assert not (data_dir / "accounts.json").exists()
 
 
@@ -121,8 +125,9 @@ def test_mutators_and_remove(data_dir):
     removed = accounts.remove("spark-gwen", "spark", data_dir)
     assert removed.nick == "spark-gwen"
     assert accounts.load(data_dir) == []
+    name = accounts.secret_name("spark-gwen")
     with pytest.raises(grant_store.NotFoundError):
-        grant_store.get_record(accounts.secret_name("spark-gwen"))
+        grant_store.get_record(name)
 
 
 def test_invalid_input_never_writes_file(data_dir):
@@ -152,7 +157,8 @@ def test_audit_log_one_line_per_change_no_secrets(data_dir):
     assert [x["action"] for x in ls] == ["create", "set_state", "remove"]
     assert all(x["nick"] == "spark-gwen" and x["actor"] and x["ts"] for x in ls)
     text = accounts.audit_path(data_dir).read_text()
-    assert secret not in text and digest not in text
+    assert secret not in text
+    assert digest not in text
     assert ls[1]["changes"]["state"] == {"from": "active", "to": "revoked"}
 
 

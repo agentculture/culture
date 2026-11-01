@@ -142,5 +142,5 @@ class SystemdUnitOps:
         observer = IRCObserver(self.host, self.port, self.server_name)
         try:
             return asyncio.run(observer.whois(nick))
-        except (OSError, ConnectionError, asyncio.TimeoutError):
+        except OSError:  # covers ConnectionError and asyncio.TimeoutError (3.11+)
             return False

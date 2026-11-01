@@ -377,7 +377,8 @@ async def test_2_every_nick_takeover_without_the_secret_is_refused_online_or_off
     register(paths, tmp_path, "alpha")
     activate(paths, "alpha")
     rec = accounts.find(ALPHA, SERVER, paths[1])
-    assert rec is not None and rec.state == "active"
+    assert rec is not None
+    assert rec.state == "active"
     real = secret_of(ALPHA)
     # nearby-but-wrong secrets, including a prefix of the real one and its hash
     wrong_secrets = ["wrong", real[:-1], real + "x", rec.secret_sha256]
@@ -405,7 +406,8 @@ async def test_2_every_nick_takeover_without_the_secret_is_refused_online_or_off
         f"takeover attempts: offline={len(offline)} online={len(online)} "
         f"refused={len(all_results) - len(failures)}/{len(all_results)}"
     )
-    assert len(offline) >= MIN_ATTACKS and len(online) >= MIN_ATTACKS
+    assert len(offline) >= MIN_ATTACKS
+    assert len(online) >= MIN_ATTACKS
     assert not failures, failures  # 100% refused
     # no refused attempt leaked the secret back
     assert not any(real in x for _, _, _, d in all_results for x in d)

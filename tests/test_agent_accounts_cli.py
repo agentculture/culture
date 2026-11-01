@@ -137,7 +137,8 @@ def test_register_alone_creates_no_account(env, tmp_path):
 def test_activate_creates_account_and_never_prints_secret(env, tmp_path, capsys):
     register(env, tmp_path, "gwen")
     rec = account(env, "spark-gwen")
-    assert rec.state == "active" and rec.role == "resident"
+    assert rec.state == "active"
+    assert rec.role == "resident"
     assert rec.grants == {"#general": "speak"}
     out = capsys.readouterr().out
     assert "Account active: spark-gwen" in out
@@ -156,8 +157,9 @@ def test_delete_leaves_tombstone_and_drops_secret(env, tmp_path):
     register(env, tmp_path, "gwen")
     agent_mod._cmd_delete(ns(env, nick="spark-gwen"))
     assert account(env, "spark-gwen").state == "revoked"
+    name = accounts.secret_name("spark-gwen")
     with pytest.raises(grant_store.NotFoundError):
-        grant_store.get_record(accounts.secret_name("spark-gwen"))
+        grant_store.get_record(name)
 
 
 def test_unregister_leaves_tombstone_and_activate_restores(env, tmp_path):
@@ -171,7 +173,8 @@ def test_unregister_leaves_tombstone_and_activate_restores(env, tmp_path):
         ns(env, account_command="activate", nick="gwen", owner_ready=False)
     )
     rec = account(env, "spark-gwen")
-    assert rec.state == "active" and rec.secret_sha256 != old
+    assert rec.state == "active"
+    assert rec.secret_sha256 != old
     assert secret_of("spark-gwen")
 
 
@@ -198,8 +201,10 @@ def test_rotate_external_prints_owner_instruction(env, tmp_path, capsys):
     new = secret_of("spark-gwen")
     out = capsys.readouterr().out
     assert new != old
-    assert "gwen.service" in out and "restart" in out
-    assert new not in out and old not in out
+    assert "gwen.service" in out
+    assert "restart" in out
+    assert new not in out
+    assert old not in out
 
 
 def test_rotate_restarts_installed_unit(env, tmp_path, monkeypatch, capsys):
@@ -231,7 +236,8 @@ def test_show_and_list_never_print_secret(env, tmp_path, capsys):
     account_cmd(env, "show", "gwen")
     account_cmd(env, "list")
     out = capsys.readouterr().out
-    assert "spark-gwen" in out and "state=active" in out
+    assert "spark-gwen" in out
+    assert "state=active" in out
     assert secret_of("spark-gwen") not in out
     assert account(env, "spark-gwen").secret_sha256 not in out
 
@@ -349,7 +355,8 @@ async def test_revoke_closes_live_session_within_5s(env, tmp_path, ircd):
     assert welcomed(lines), lines
     account_cmd(env, "revoke", "gwen")
     elapsed = await wait_closed(c, 5.0)
-    assert elapsed is not None and elapsed < 5.0
+    assert elapsed is not None
+    assert elapsed < 5.0
 
 
 @pytest.mark.requires_agentirc_accounts
@@ -361,7 +368,8 @@ async def test_rotate_old_secret_fails_new_works(env, tmp_path, ircd):
     new = secret_of("spark-gwen")
     assert new != old
     _, lines = await sasl_login(ircd, "spark-gwen", old)
-    assert any(" 904 " in x for x in lines) and not welcomed(lines), lines
+    assert any(" 904 " in x for x in lines), lines
+    assert not welcomed(lines), lines
     _, lines = await sasl_login(ircd, "spark-gwen", new)
     assert welcomed(lines), lines
 
@@ -381,7 +389,8 @@ async def test_nick_stays_reserved(env, tmp_path, ircd, how):
     # the SASL secret fails (for delete/unregister the grant secret is gone,
     # but the old value must be rejected by the server too)
     _, lines = await sasl_login(ircd, "spark-gwen", secret)
-    assert any(" 904 " in x for x in lines) and not welcomed(lines), lines
+    assert any(" 904 " in x for x in lines), lines
+    assert not welcomed(lines), lines
     # someone else without SASL cannot take the nick
     lines = await plain_register(ircd, "spark-gwen")
     assert not welcomed(lines), lines

@@ -213,8 +213,9 @@ def test_h5_refuses_to_mint_over_a_secret_owned_by_another_nick(tmp_path, units)
         purpose="AgentIRC account secret for spark-GWEN",
     )
     write_unit(units, "spark-gwen")
+    cfg, fake = agent(), FakeUnit(units)
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, unit=FakeUnit(units))
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
     assert ei.value.step == "mint"
     assert grant_value(name) == "theirs"
     assert not accounts.accounts_path(data).exists()
@@ -240,9 +241,11 @@ def test_h1_full_order_wrap_publish_restart_verify(tmp_path, units):
 
     fake.restart = restart
     res = accounts.activate(agent(), SERVER, data_dir=data, unit=fake)
-    assert res.published and not res.pending_owner
+    assert res.published
+    assert not res.pending_owner
     assert steps(fake) == ["client", "wrap", "restart", "verify"]
-    assert seen["published"].state == "active" and seen["wrapped"]
+    assert seen["published"].state == "active"
+    assert seen["wrapped"]
     rec = accounts.find("spark-gwen", SERVER, data)
     assert rec.secret_sha256 == accounts.hash_secret(grant_value(res.secret_name))
     assert "64" in next(
@@ -253,8 +256,9 @@ def test_h1_full_order_wrap_publish_restart_verify(tmp_path, units):
 def test_h1_no_unit_installed_is_not_ready(tmp_path, units):
     data = tmp_path / "data"
     fake = FakeUnit(units)
+    cfg = agent()
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, unit=fake)
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
     assert ei.value.step == "preflight"
     assert "culture agents install spark-gwen" in str(ei.value)
     assert grant_names() == []
@@ -266,16 +270,18 @@ def test_h1_non_linux_wrap_returns_none_refuses(tmp_path, units, monkeypatch):
     write_unit(units, "spark-gwen")
     fake = FakeUnit(units)
     fake.wrap = lambda nick, name: None  # macOS/Windows: nothing rewritten
+    cfg = agent()
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, unit=fake)
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
     assert ei.value.step == "unit"
     assert grant_names() == []
     assert not accounts.accounts_path(data).exists()
 
 
 def test_h1_cli_requires_a_unit_object_for_culture_owned(tmp_path):
+    cfg, data = agent(), tmp_path / "d"
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=tmp_path / "d", unit=None)
+        accounts.activate(cfg, SERVER, data_dir=data, unit=None)
     assert ei.value.step == "preflight"
 
 
@@ -284,9 +290,11 @@ def test_h2_client_check_runs_before_any_mint_or_wrap(tmp_path, units):
     unit = write_unit(units, "spark-gwen")
     before = unit.read_text()
     fake = FakeUnit(units, client="0.15.2")
+    cfg = agent()
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, unit=fake)
-    assert ei.value.step == "preflight" and "0.16.0" in str(ei.value)
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
+    assert ei.value.step == "preflight"
+    assert "0.16.0" in str(ei.value)
     assert "wrap" not in steps(fake)
     assert unit.read_text() == before
     assert grant_names() == []
@@ -308,8 +316,9 @@ def test_h2_failure_after_wrap_restores_everything(tmp_path, units, monkeypatch,
             raise OSError("disk full")
 
         monkeypatch.setattr(accounts, "_write_file", boom)
+    cfg = agent()
     with pytest.raises(accounts.ActivationError) as ei:
-        accounts.activate(agent(), SERVER, data_dir=data, unit=fake)
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
     assert ei.value.step == fail_at
     assert unit.read_text() == before  # original ExecStart restored
     assert grant_names() == []  # minted secret removed
@@ -326,8 +335,9 @@ def test_h2_rollback_restores_previous_entry_and_secret(tmp_path, units):
     first = accounts.activate(agent(), SERVER, data_dir=data, unit=FakeUnit(units))
     secret = grant_value(first.secret_name)
     accounts.set_state("spark-gwen", SERVER, "suspended", data)
+    cfg, fake = agent(), FakeUnit(units, verify_error="x")
     with pytest.raises(accounts.ActivationError):
-        accounts.activate(agent(), SERVER, data_dir=data, unit=FakeUnit(units, verify_error="x"))
+        accounts.activate(cfg, SERVER, data_dir=data, unit=fake)
     rec = accounts.find("spark-gwen", SERVER, data)
     assert rec.state == "suspended"
     assert grant_value(first.secret_name) == secret
@@ -387,9 +397,11 @@ def test_h1_agents_start_without_account_is_legacy(tmp_path, monkeypatch):
 def test_h1_agents_start_refuses_inactive_account(tmp_path, units, monkeypatch, state):
     _activated(tmp_path, units, monkeypatch, state=state)
     monkeypatch.delenv("CULTURE_AGENT_SECRET", raising=False)
+    cfg = agent()
     with pytest.raises(CultureError) as ei:
-        agent_mod._agent_secret_env(agent(), SERVER, single=True)
-    assert ei.value.code == 78 and state in ei.value.message
+        agent_mod._agent_secret_env(cfg, SERVER, single=True)
+    assert ei.value.code == 78
+    assert state in ei.value.message
 
 
 def test_h1_background_child_gets_its_own_secret(tmp_path, units, monkeypatch):
@@ -417,8 +429,9 @@ def test_h1_background_child_gets_its_own_secret(tmp_path, units, monkeypatch):
         raise Exit
 
     monkeypatch.setattr(agent_mod.os, "_exit", fake_exit)
+    agent_cfg = agent()
     with pytest.raises(Exit):
-        agent_mod._agent_daemon_child(cfg, agent())
+        agent_mod._agent_daemon_child(cfg, agent_cfg)
     assert seen == {"secret": secret, "code": 0}
 
 
@@ -656,7 +669,8 @@ def test_m3_activate_remints_when_grant_value_does_not_match(tmp_path, units):
     rec = accounts.find("spark-gwen", SERVER, data)
     assert rec.secret_sha256 == accounts.hash_secret(grant_value(name))
     actions = [json.loads(x)["action"] for x in accounts.audit_path(data).read_text().splitlines()]
-    assert "rotate" not in actions and actions[-1] == "activate"
+    assert "rotate" not in actions
+    assert actions[-1] == "activate"
 
 
 def test_m3_activate_reuses_matching_secret(tmp_path, units):
@@ -665,7 +679,8 @@ def test_m3_activate_reuses_matching_secret(tmp_path, units):
     first = accounts.activate(agent(), SERVER, data_dir=data, unit=FakeUnit(units))
     value = grant_value(first.secret_name)
     again = accounts.activate(agent(), SERVER, data_dir=data, unit=FakeUnit(units))
-    assert again.reused and grant_value(first.secret_name) == value
+    assert again.reused
+    assert grant_value(first.secret_name) == value
 
 
 def test_m4_rotate_restores_old_secret_when_publish_fails(tmp_path, monkeypatch):
@@ -697,12 +712,15 @@ def test_m5_data_dir_from_server_argv(monkeypatch, tmp_path):
         lambda name: ["python", "-m", "culture_core", "server", "start", "--data-dir", "/srv/d"],
     )
     got = accounts.resolve_server_data_dir("sbx")
-    assert got.path == Path("/srv/d") and got.persist and got.source != "default"
+    assert got.path == Path("/srv/d")
+    assert got.persist
+    assert got.source != "default"
     monkeypatch.setattr(
         accounts, "_probe_server_argv", lambda name: ["x", "server", "start", "--no-persist"]
     )
     got = accounts.resolve_server_data_dir("sbx")
-    assert got.path is None and not got.persist
+    assert got.path is None
+    assert not got.persist
     monkeypatch.setattr(accounts, "_probe_server_argv", lambda name: ["x", "server", "start"])
     assert accounts.resolve_server_data_dir("sbx").path == accounts.default_data_dir()
     # an explicit --data-dir always wins
@@ -788,10 +806,12 @@ def test_m5_mesh_and_doctor_accept_data_dir():
 def test_m6_missing_account_is_informational():
     cfg = ServerConfig(server=ServerConnConfig(name=SERVER), agents=[agent()])
     found = dacc.check_missing_accounts(cfg, [])
-    assert found and all(f.severity == "info" for f in found)
+    assert found
+    assert all(f.severity == "info" for f in found)
     assert "culture agents account activate spark-gwen" in found[0].fix_hint
     report = DoctorReport(class5=found)
-    assert report.ok and report.exit_code == 0
+    assert report.ok
+    assert report.exit_code == 0
 
 
 def test_m6_doctor_cli_ok_on_fresh_install(tmp_path, capsys, monkeypatch):
@@ -803,14 +823,14 @@ def test_m6_doctor_cli_ok_on_fresh_install(tmp_path, capsys, monkeypatch):
     save_server_config(
         cfg_path, ServerConfig(server=ServerConnConfig(name=SERVER), manifest={"gwen": str(d)})
     )
+    args = argparse.Namespace(
+        config=str(cfg_path), root=str(tmp_path), json=True, fix=False, data_dir=None
+    )
     with pytest.raises(SystemExit) as e:
-        dispatch(
-            argparse.Namespace(
-                config=str(cfg_path), root=str(tmp_path), json=True, fix=False, data_dir=None
-            )
-        )
+        dispatch(args)
     payload = json.loads(capsys.readouterr().out)
-    assert e.value.code == 0 and payload["ok"] is True
+    assert e.value.code == 0
+    assert payload["ok"] is True
     assert payload["class5"][0]["severity"] == "info"
 
 
@@ -824,11 +844,13 @@ def test_m7_external_without_owner_ready_mints_but_does_not_publish(tmp_path, mo
     monkeypatch.setattr(accounts, "installed_version", lambda d: "0.1.0")  # irrelevant
     ext = agent("ext", "external", owner="gwen.service")
     res = accounts.activate(ext, SERVER, data_dir=data, external=True)
-    assert res.pending_owner and not res.published
+    assert res.pending_owner
+    assert not res.published
     assert accounts.find("spark-ext", SERVER, data) is None
     minted = grant_value(res.secret_name)
     res2 = accounts.activate(ext, SERVER, data_dir=data, external=True, owner_ready=True)
-    assert res2.published and res2.reused
+    assert res2.published
+    assert res2.reused
     assert grant_value(res.secret_name) == minted
     assert accounts.find("spark-ext", SERVER, data).secret_sha256 == accounts.hash_secret(minted)
 
@@ -840,7 +862,8 @@ def test_m7_external_cli_prints_owner_instructions(tmp_path, units, monkeypatch,
     acct(cfg_path, "activate", owner_ready=False)
     out = capsys.readouterr().out
     name = accounts.secret_name("spark-gwen")
-    assert f"CULTURE_AGENT_SECRET={name}" in out and "--owner-ready" in out
+    assert f"CULTURE_AGENT_SECRET={name}" in out
+    assert "--owner-ready" in out
     assert accounts.find("spark-gwen", SERVER, data) is None
     acct(cfg_path, "activate", owner_ready=True)
     out = capsys.readouterr().out
@@ -930,7 +953,9 @@ def test_account_unit_ops_verify_fails_fast_on_failed_unit(monkeypatch):
     monkeypatch.setattr(persistence, "service_active_state", lambda n: "failed")
     t0 = time.monotonic()
     err = ops.verify("spark-gwen")
-    assert err and "failed" in err and time.monotonic() - t0 < 3
+    assert err
+    assert "failed" in err
+    assert time.monotonic() - t0 < 3
 
 
 def test_secret_never_in_audit_or_output(tmp_path, units, monkeypatch, capsys):
@@ -975,9 +1000,11 @@ class _RefusingDaemon:
 def test_h3_refused_login_exits_78(monkeypatch, at_start):
     daemon = _RefusingDaemon(at_start)
     monkeypatch.setattr(agent_mod, "_resolve_daemon_factory", lambda b: lambda c, a: daemon)
+    run = agent_mod._run_single_agent(SimpleNamespace(), agent())  # a coroutine: runs below
     with pytest.raises(CultureError) as ei:
-        asyncio.run(agent_mod._run_single_agent(SimpleNamespace(), agent()))
-    assert ei.value.code == 78 and daemon.stopped
+        asyncio.run(run)
+    assert ei.value.code == 78
+    assert daemon.stopped
 
 
 class _PublicApiRefusingDaemon:
@@ -1006,8 +1033,9 @@ class _PublicApiRefusingDaemon:
 def test_h3_refused_login_exits_78_via_public_api(monkeypatch):
     daemon = _PublicApiRefusingDaemon()
     monkeypatch.setattr(agent_mod, "_resolve_daemon_factory", lambda b: lambda c, a: daemon)
+    run = agent_mod._run_single_agent(SimpleNamespace(), agent())  # a coroutine: runs below
     with pytest.raises(CultureError) as ei:
-        asyncio.run(agent_mod._run_single_agent(SimpleNamespace(), agent()))
+        asyncio.run(run)
     assert ei.value.code == 78
     assert daemon.stopped
     assert not hasattr(daemon, "_transport")
@@ -1019,7 +1047,8 @@ def test_h3_doctor_flags_wrapped_unit_without_active_account(units):
     revoked = [accounts.AccountRecord("spark-gwen", "a" * 64, state="revoked")]
     for records in ([], revoked):
         found = dacc.check_agent_units(cfg, records, units.dir)
-        assert len(found) == 1 and found[0].severity == "error"
+        assert len(found) == 1
+        assert found[0].severity == "error"
         assert "account activate spark-gwen" in found[0].fix_hint
 
 
