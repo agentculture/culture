@@ -63,7 +63,7 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t3` | delivered | `status` shows the PRESENCE state, `unknown` if the server is unreachable, `offline` if the agent never published; the detail view has an `Owner:` line; harness rows are byte-identical. Phase A |
 | `t4` | delivered | `backend` field on every resident row (null for unregistered nicks); schema table updated. Colleague hit its step cap; its work was recovered from its branch and verified. Phase A |
 | `t5` | delivered | `grant>=0.11,<0.12` dependency; `culture secret` forwards to grant; docs name grant instead of shushu (frozen records exempt, `d1`); two wrong doc examples fixed. Phase A |
-| `t6` | partial | `docs/external-residents.md`, a docs-coverage audit with every gap closed, 14.12.0 with changelog, and the mesh fix (no units for external residents). **Not done:** PR merge, deploy, live registration of spark-gwen and the sbx/ask/bridge units (`d4`) |
+| `t6` | delivered (amended) | `docs/external-residents.md`, a docs-coverage audit with every gap closed, 14.12.0 with changelog, the mesh fix (no units for external residents), #514 merged, deployed on spark, spark-gwen and spark-ask registered as external residents. sbx-ask/sbx-bolt out of scope (`d11`, culture#517) |
 | `t7` | delivered | agentirc holds `001`/`SNICK` after `CAP LS` until `CAP END`; 9.14.0 |
 | `t8` | delivered | agentirc `accounts.py` (file and reload), SASL PLAIN, trusted peers, nick reclaim, no account data over links; hardened further by `h1`/`h2` (`d6`) |
 | `t9` | delivered | read/speak grants on JOIN/PRIVMSG/NOTICE; operator-only room verbs; guest channel prefixes; extended by `h1` to HISTORY/BACKFILL/EVENTSUB/THREAD/TOPIC/EVENTPUB |
@@ -73,9 +73,9 @@ Quoted verbatim from the `devague summary` skeleton:
 | `t13` | delivered | `culture_core/accounts.py`: hidden grant secrets, the agentirc accounts-file format, audit log; later hardened by `hc` (`d7`) |
 | `t14` | delivered (amended) | `account revoke/rotate/disable/show/list`, `unarchive`, lifecycle hooks. **register no longer creates an account** (`d7`) |
 | `t15` | delivered (amended) | grant-wrapped units, `RestartPreventExitStatus=78 64`, doctor class 5; activation reworked into opt-in `account activate` with rollback (`d7`); pins deferred (`d5`, `d8`); host secret-store test guard |
-| `t16` | partial | releases prepared (agentirc 9.14.0, cultureagent 0.16.0, culture 14.13.0, all with changelogs); end-to-end success-signal test `tests/test_success_signal_506.py`. **Not done:** publishing, raising the pins plus the uv.lock refresh (`d8`), rollout on spark, the live success signal (`d4`) |
+| `t16` | delivered (amended) | agentirc 9.14.0, cultureagent 0.16.0, culture 14.13.0 published; pins (`d8`); deployed on spark; live success signal 10/10; all four harness agents hold accounts (`e18`–`e23`). Gwen's authentication waits on embodiment's side (embodiment#121, obligation `o13`) |
 
-16 of 16 plan tasks accounted for: 14 delivered (two of them amended), 2
+16 of 16 plan tasks accounted for: 16 delivered (four of them amended), 0
 partial, 0 dropped, 0 blocked.
 
 Three tasks were added outside the plan (`d6`, `d7`):
