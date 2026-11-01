@@ -299,6 +299,23 @@ Restore an archived agent.
 culture agents unarchive spark-claude
 ```
 
+### `culture agents account`
+
+Manage the SASL account behind an agent nick (see
+[Agent Accounts](../../agent-accounts.md)). `register` creates it, `archive`
+suspends it, `delete`/`unregister` revoke it (tombstone keeps the nick
+reserved). Secrets are never printed.
+
+```bash
+culture agents account revoke spark-gwen    # live session closes within 5 s
+culture agents account rotate spark-gwen    # new secret, old one fails; restarts the unit
+culture agents account disable spark-gwen   # drop the entry: legacy behaviour
+culture agents account show spark-gwen      # role, state, grants
+culture agents account list
+```
+
+All verbs take `--config` and `--data-dir` (default `~/.culture/data`).
+
 ### `culture agents sleep`
 
 Pause agent(s) — daemon stays connected to IRC but ignores @mentions.
