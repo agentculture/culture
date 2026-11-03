@@ -1,6 +1,10 @@
 """Tests for culture_core.pidfile — PID file management and process validation."""
 
 import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,7 +12,9 @@ import pytest
 
 from culture_core.pidfile import (
     is_culture_process,
+    is_overview_process,
     is_process_alive,
+    is_server_process,
     list_servers,
     read_default_server,
     read_pid,
@@ -199,6 +205,102 @@ class TestIsProcessAliveErrorPaths:
         """
         with patch("culture_core.pidfile.os.kill", side_effect=ProcessLookupError):
             assert is_process_alive(99999) is False
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
+class TestIsServerProcess:
+    """Uses real processes and threads: the failure is about what /proc reports."""
+
+    @staticmethod
+    def _spawn(*argv):
+        # Extra argv tokens land in sys.argv and are ignored by the sleep.
+        code = "import time; time.sleep(30)"
+        proc = subprocess.Popen([sys.executable, "-c", code, *argv])
+        deadline = time.monotonic() + 5
+        expected = argv[-1].encode()
+        path = Path(f"/proc/{proc.pid}/cmdline")
+        while expected not in path.read_bytes() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return proc
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("-m", "culture_core", "server", "start"),
+            ("/usr/local/bin/culture", "server", "start"),
+        ],
+    )
+    def test_true_for_culture_server(self, argv):
+        proc = self._spawn(*argv)
+        try:
+            assert is_server_process(proc.pid) is True
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_false_for_culture_agent(self):
+        proc = self._spawn("/usr/local/bin/culture", "agents", "start")
+        try:
+            assert is_server_process(proc.pid) is False
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_overview_accepts_overview_and_refuses_a_server(self):
+        overview = self._spawn("/usr/local/bin/culture", "mesh", "overview", "--serve")
+        server = self._spawn("/usr/local/bin/culture", "server", "start")
+        try:
+            assert is_overview_process(overview.pid) is True
+            assert is_overview_process(server.pid) is False
+        finally:
+            for proc in (overview, server):
+                proc.kill()
+                proc.wait()
+
+    def test_false_for_unrelated_process(self):
+        proc = self._spawn("server", "start")
+        try:
+            assert is_server_process(proc.pid) is False
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_false_for_thread_id_of_a_server(self):
+        """A reused PID can be a thread, whose /proc entry shows the owner's argv."""
+        ready = threading.Event()
+        stop = threading.Event()
+        tid = {}
+
+        def _run():
+            tid["value"] = threading.get_native_id()
+            ready.set()
+            stop.wait(5)
+
+        worker = threading.Thread(target=_run)
+        worker.start()
+        ready.wait(5)
+        try:
+            argv = b"culture\x00server\x00start\x00"
+            real_read_bytes = Path.read_bytes
+
+            def _read_bytes(path):
+                if str(path).endswith("/cmdline"):
+                    return argv
+                return real_read_bytes(path)
+
+            # Prove argv alone would pass, so the thread check is what refuses it.
+            with patch.object(Path, "read_bytes", _read_bytes):
+                assert is_server_process(os.getpid()) is True
+                assert is_server_process(tid["value"]) is False
+        finally:
+            stop.set()
+            worker.join()
+
+    def test_false_for_missing_pid(self):
+        proc = self._spawn("culture", "server", "start")
+        proc.kill()
+        proc.wait()
+        assert is_server_process(proc.pid) is False
 
 
 class TestDefaultServer:

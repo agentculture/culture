@@ -97,6 +97,39 @@ def is_culture_process(pid: int) -> bool:
         return False
 
 
+def _is_culture_role(pid: int, role: str) -> bool:
+    """True if *pid* is a thread-group leader running ``culture ... <role>``.
+
+    Stricter than :func:`is_culture_process`, for deciding whether a pidfile
+    is still valid after a reboot, when its PID may have been reused. A reused
+    PID can be a *thread* of another process, which ``os.kill(pid, 0)`` accepts
+    and ``/proc/<pid>/cmdline`` answers for, or a culture process doing another
+    job. Follows :func:`is_culture_process` on platforms without /proc (assumes
+    valid) and on read failures (fails closed).
+    """
+    if not os.path.isdir("/proc"):
+        return True
+    try:
+        status = Path(f"/proc/{pid}/status").read_text(errors="replace")
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    if f"\nTgid:\t{pid}\n" not in status:
+        return False
+    tokens = raw.decode(errors="replace").split("\x00")
+    return is_culture_process(pid) and role in tokens
+
+
+def is_server_process(pid: int) -> bool:
+    """Check whether the given PID is a running ``culture server`` process."""
+    return _is_culture_role(pid, "server")
+
+
+def is_overview_process(pid: int) -> bool:
+    """Check whether the given PID is a running ``culture mesh overview`` process."""
+    return _is_culture_role(pid, "overview")
+
+
 def is_process_alive(pid: int) -> bool:
     """Check whether a process with the given PID is alive."""
     try:

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.13.2] - 2026-11-03
+
+### Fixed
+
+- `culture server start` no longer refuses to run when a stale pidfile points at a reused PID: it now requires a real culture server process (thread-group leader with a `server` argv token), so a reboot cannot wedge the IRCd (#518).
+- `culture mesh overview --serve` no longer signals another process, including a running IRCd, when its old pidfile holds a reused PID (#518).
+
 ## [14.13.1] - 2026-11-01
 
 ### Changed

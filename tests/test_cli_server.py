@@ -94,6 +94,7 @@ def pids(monkeypatch):
     monkeypatch.setattr(
         srv_mod, "is_culture_process", lambda pid: pid in culture_set or not culture_set
     )
+    monkeypatch.setattr(srv_mod, "is_server_process", lambda pid: True)
     monkeypatch.setattr(srv_mod, "read_default_server", lambda: default_server["current"])
     # write_default_server and rename_pid are lazy-imported inside handlers —
     # patch them at the source so the lazy imports pick up the mock.
@@ -382,6 +383,15 @@ class TestCheckAlreadyRunning:
         pids.set_pid("server-spark", 4242, alive_seq=[False])
         srv_mod._check_already_running("server-spark", "spark")  # no raise
 
+    def test_ignores_pidfile_when_pid_was_reused(self, pids, monkeypatch, capsys):
+        """A reboot can hand the old PID to something else; start must proceed."""
+        pids.set_pid("server-spark", 4242, alive_seq=[True])
+        monkeypatch.setattr(srv_mod, "is_server_process", lambda pid: False)
+        srv_mod._check_already_running("server-spark", "spark")  # no raise
+        assert "stale pidfile" in capsys.readouterr().err
+        # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
+
 
 # ---------------------------------------------------------------------------
 # _resolve_server_links
@@ -457,7 +467,8 @@ class TestServerStop:
     def test_removes_stale_pid(self, pids, capsys):
         pids.set_pid("server-spark", 4242, alive_seq=[False])
         srv_mod._server_stop(_args(name="spark"))
-        assert "server-spark" in pids.removed
+        # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
         assert "stale PID" in capsys.readouterr().out
 
     def test_removes_non_culture_pid(self, pids, capsys):
@@ -467,7 +478,8 @@ class TestServerStop:
         pids.culture_set.add(9999)
         pids.set_pid("server-spark", 4242, alive_seq=[True], is_culture=False)
         srv_mod._server_stop(_args(name="spark"))
-        assert "server-spark" in pids.removed
+        # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
         assert "not a culture process" in capsys.readouterr().out
 
     def test_sigterm_success(self, monkeypatch, pids, fake_os_kill, capsys):
@@ -477,7 +489,8 @@ class TestServerStop:
         srv_mod._server_stop(_args(name="spark"))
 
         assert fake_os_kill.calls == [(4242, signal.SIGTERM)]
-        assert "server-spark" in pids.removed
+        # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
         assert "stopped" in capsys.readouterr().out
 
     def test_sigkill_escalation(self, monkeypatch, pids, fake_os_kill, capsys):
@@ -512,7 +525,8 @@ class TestServerStatus:
         pids.set_pid("server-spark", 4242, alive_seq=[False])
         srv_mod._server_status(_args(name="spark"))
         assert "stale PID" in capsys.readouterr().out
-        assert "server-spark" in pids.removed
+        # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
 
 
 # ---------------------------------------------------------------------------

@@ -254,6 +254,8 @@ class TestServerStartAlreadyRunningStaysTransient:
     def test_already_running_exits_1_not_78(self, isolated_cli_state, monkeypatch, capsys):
         name = "t2clirunning"
         write_pid(f"server-{name}", os.getpid())  # our own test process: genuinely alive
+        # pytest's argv isn't a culture server, so vouch for its identity here.
+        monkeypatch.setattr("culture_core.cli.server.is_server_process", lambda pid: True)
         monkeypatch.setattr(sys, "argv", ["culture", "server", "start", "--name", name])
         with pytest.raises(SystemExit) as exc:
             cli_main()

@@ -187,12 +187,36 @@ def test_stop_existing_overview_kills_previous(tmp_path, monkeypatch):
     import culture_core.overview.renderer_web as rweb
 
     monkeypatch.setattr(rweb, "is_process_alive", _fake_alive)
+    monkeypatch.setattr(rweb, "is_overview_process", lambda pid: True)
 
     _stop_existing_overview(pid_name)
 
     import signal
 
     assert (99999, signal.SIGTERM) in killed_pids, "SIGTERM should be sent"
+    assert not (tmp_path / f"{pid_name}.pid").exists()
+    assert not (tmp_path / f"{pid_name}.port").exists()
+
+
+def test_stop_existing_overview_never_signals_a_reused_pid(tmp_path, monkeypatch):
+    """A PID reused by an unrelated process is cleaned up, never signalled."""
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+
+    pid_name = "overview-reused"
+    (tmp_path / f"{pid_name}.pid").write_text("22222")
+    (tmp_path / f"{pid_name}.port").write_text("9999")
+
+    kills = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+
+    import culture_core.overview.renderer_web as rweb
+
+    monkeypatch.setattr(rweb, "is_process_alive", lambda pid: True)
+    monkeypatch.setattr(rweb, "is_overview_process", lambda pid: False)
+
+    _stop_existing_overview(pid_name)
+
+    assert kills == [], "No signals should be sent to an unrelated process"
     assert not (tmp_path / f"{pid_name}.pid").exists()
     assert not (tmp_path / f"{pid_name}.port").exists()
 

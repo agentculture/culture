@@ -51,6 +51,7 @@ from culture_core.cli._passthrough import _translate_exit
 from culture_core.pidfile import (
     is_culture_process,
     is_process_alive,
+    is_server_process,
     read_default_server,
     read_pid,
     remove_pid,
@@ -561,12 +562,23 @@ def _check_server_archived(args: argparse.Namespace) -> None:
 def _check_already_running(pid_name: str, name: str) -> None:
     """Raise if the server is already running."""
     existing = read_pid(pid_name)
-    if existing and is_process_alive(existing):
-        raise CultureError(
-            EXIT_USER_ERROR,
-            f"Server '{name}' is already running (PID {existing})",
-            f"stop it first with 'culture server stop --name {name}' " "if you want to restart it",
+    if not existing or not is_process_alive(existing):
+        return
+    if not is_server_process(existing):
+        # The pidfile outlived an unclean shutdown and its PID was reused. Leave
+        # the file for write_pid to overwrite: removing it here could delete the
+        # pidfile a concurrent start has just written.
+        print(
+            f"note: ignoring stale pidfile for server '{name}' "
+            f"(PID {existing} is not a culture server)",
+            file=sys.stderr,
         )
+        return
+    raise CultureError(
+        EXIT_USER_ERROR,
+        f"Server '{name}' is already running (PID {existing})",
+        f"stop it first with 'culture server stop --name {name}' " "if you want to restart it",
+    )
 
 
 def _mesh_config_error_line(exc: BaseException) -> str:

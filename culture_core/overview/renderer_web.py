@@ -23,6 +23,7 @@ import mistune
 
 from culture_core.config import ServerConfig, ServerConnConfig
 from culture_core.pidfile import (
+    is_overview_process,
     is_process_alive,
     read_pid,
     read_port,
@@ -151,7 +152,7 @@ def _terminate_process(pid, timeout=2.0):
 def _stop_existing_overview(pid_name: str) -> None:
     """Kill a previous overview instance if running, clean up its files."""
     existing_pid = read_pid(pid_name)
-    if existing_pid and is_process_alive(existing_pid):
+    if existing_pid and is_process_alive(existing_pid) and is_overview_process(existing_pid):
         existing_port = read_port(pid_name)
         if not _terminate_process(existing_pid):
             remove_pid(pid_name)
