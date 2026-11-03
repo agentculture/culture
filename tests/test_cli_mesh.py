@@ -757,6 +757,21 @@ class TestRestartMeshServices:
             mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
         )
 
+    def test_external_resident_never_blocks_or_gets_stopped(self, monkeypatch):
+        """An external resident owns its process, so mesh leaves it entirely alone."""
+        external = _StubAgent(nick="ext")
+        external.backend = "external"
+        mesh = _StubMesh(server=_StubServerCfg(name="spark"), agents=[external])
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(
+            mesh_mod,
+            "classify_pidfile",
+            lambda name, _pid: "unknown" if name == "agent-spark-ext" else "current",
+        )
+
+        assert mesh_mod._mesh_pidfiles_allow_teardown(mesh, "spark") is True
+        assert mesh_mod._managed_agents(mesh) == []
+
     def test_unknown_agent_reachable_over_ipc_allows_teardown(self, monkeypatch):
         """stop_agent tries IPC first, so an unknown pidfile alone mustn't block it."""
         monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)

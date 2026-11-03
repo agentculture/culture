@@ -91,9 +91,13 @@ class TestWriteReadRemove:
             "agent-bot.pid",
         }
 
-    def test_pidfile_stays_world_readable(self, pid_dir):
-        path = write_pid("server-spark", os.getpid())
-        assert path.stat().st_mode & 0o777 == 0o644
+    def test_pidfile_mode_follows_umask(self, pid_dir):
+        previous = os.umask(0o027)
+        try:
+            path = write_pid("server-spark", os.getpid())
+        finally:
+            os.umask(previous)
+        assert path.stat().st_mode & 0o777 == 0o640
 
 
 class TestIsProcessAlive:
@@ -568,6 +572,24 @@ class TestClassification:
 
             with patch.object(Path, "read_bytes", fail_stat):
                 assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_boot_id_visible_to_only_one_side_still_matches(self, pid_dir):
+        """A daemon started outside a sandbox stays current when read inside one."""
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-spark", proc.pid)
+            real_read_text = Path.read_text
+
+            def missing_boot(path, *args, **kwargs):
+                if str(path) == "/proc/sys/kernel/random/boot_id":
+                    raise FileNotFoundError
+                return real_read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", missing_boot):
+                assert classify_pidfile("server-spark") == "current"
         finally:
             proc.kill()
             proc.wait()

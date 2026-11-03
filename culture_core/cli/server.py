@@ -409,7 +409,7 @@ def _server_rename(args: argparse.Namespace) -> None:
         print(f"  Agent: {old_nick} → {new_nick}")
 
     server_pid = read_pid(f"server-{new_name}")
-    server_running = server_pid and classify_pidfile(f"server-{new_name}", server_pid) == "current"
+    server_running = server_pid and classify_pidfile(f"server-{new_name}", server_pid) != "stale"
 
     print()
     if server_running:

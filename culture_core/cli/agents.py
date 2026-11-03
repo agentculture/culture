@@ -642,7 +642,7 @@ def _probe_server_connection(host: str, port: int, server_name: str) -> None:
         conn.close()
     except OSError as exc:
         server_pid = read_pid(f"server-{server_name}")
-        if not server_pid or classify_pidfile(f"server-{server_name}", server_pid) != "current":
+        if not server_pid or classify_pidfile(f"server-{server_name}", server_pid) == "stale":
             remediation = f"start the server first: culture server start --name {server_name}"
         else:
             remediation = (

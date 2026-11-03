@@ -291,6 +291,7 @@ culture agents status spark-culture     # detailed view for one agent
 | `circuit-open` | Daemon alive but agent runner crashed repeatedly — circuit breaker opened |
 | `starting` | PID exists but IPC socket not yet available |
 | `stopped` | No running daemon process |
+| `unknown` | A live process holds the PID, but it can't be verified as this agent, for example after a rename. It isn't signalled, and its pidfile is left in place |
 
 External residents (`backend: external`) have no daemon; their row shows the
 live state from the server's `PRESENCE` registry instead (`idle`,

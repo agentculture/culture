@@ -630,7 +630,7 @@ def _running_server_argv(server_name: str) -> list[str] | None:
     from culture_core.pidfile import classify_pidfile, read_pid
 
     pid = read_pid(f"server-{server_name}")
-    if not pid or classify_pidfile(f"server-{server_name}", pid) != "current":
+    if not pid or classify_pidfile(f"server-{server_name}", pid) == "stale":
         return None
     try:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()

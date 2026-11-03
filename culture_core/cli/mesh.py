@@ -47,11 +47,17 @@ def _pidfile_allows_teardown(kind: str, name: str) -> bool:
     return False
 
 
+def _managed_agents(mesh) -> list:
+    """Agents this mesh stops: external residents are owned by their own process."""
+    return [agent for agent in mesh.agents if getattr(agent, "backend", "") != "external"]
+
+
 def _mesh_pidfiles_allow_teardown(mesh, server_name: str) -> bool:
     """Preflight every managed pidfile before changing any service."""
     checks = [_pidfile_allows_teardown("server", server_name)]
     checks.extend(
-        _pidfile_allows_teardown("agent", f"{server_name}-{agent.nick}") for agent in mesh.agents
+        _pidfile_allows_teardown("agent", f"{server_name}-{agent.nick}")
+        for agent in _managed_agents(mesh)
     )
     return all(checks)
 
@@ -401,7 +407,7 @@ def _uninstall_mesh(mesh, server_name: str) -> None:
             f"Cannot stop server '{server_name}'",
             "inspect its pidfile before uninstalling",
         )
-    for agent in mesh.agents:
+    for agent in _managed_agents(mesh):
         full_nick = f"{server_name}-{agent.nick}"
         if not stop_agent(full_nick):
             raise CultureError(
@@ -644,7 +650,7 @@ def _restart_mesh_services(
         return False
 
     stopped = []
-    for agent in mesh.agents:
+    for agent in _managed_agents(mesh):
         full_nick = f"{server_name}-{agent.nick}"
         print(f"  Stopping {full_nick}...")
         if not stop_agent(full_nick):

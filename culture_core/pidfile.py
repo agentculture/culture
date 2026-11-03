@@ -12,6 +12,7 @@ from pathlib import Path
 
 PID_DIR = os.path.expanduser("~/.culture/pids")
 PROC_DIR = "/proc"
+_NO_BOOT_ID = "no-boot-id"
 _CULTURE_LAUNCHERS = {"culture", "culture-core", "culture_core"}
 _CULTURE_MODULES = {"culture", "culture_core"}
 _AGENTIRC = "agentirc"
@@ -40,7 +41,9 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w") as stream:
             stream.write(content)
-        os.chmod(temp_path, 0o644)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(temp_path, 0o666 & ~umask)
         os.replace(temp_path, path)  # NOSONAR S2083: caller uses _safe_name
     except BaseException:
         temp_path.unlink(missing_ok=True)
@@ -161,7 +164,7 @@ def _read_stat_identity(pid: int) -> tuple[str, tuple[str, str]]:
     except OSError:
         boot = ""
     # Some sandboxes hide the boot id: the start time alone still identifies a PID.
-    return state, (start, boot or "no-boot-id")
+    return state, (start, boot or _NO_BOOT_ID)
 
 
 def _read_argv(pid: int) -> list[str]:
@@ -370,6 +373,13 @@ def _pid_to_classify(name: str, expected_pid: int | None) -> int | str:
     return pid
 
 
+def _identity_matches(recorded: tuple[str, str], identity: tuple[str, str]) -> bool:
+    """Compare start times, and boot ids only when both sides could read one."""
+    if recorded[0] != identity[0]:
+        return False
+    return _NO_BOOT_ID in (recorded[1], identity[1]) or recorded[1] == identity[1]
+
+
 def _classify_linux(pid: int, name: str) -> str:
     try:
         tgid = _read_tgid(pid)
@@ -380,7 +390,7 @@ def _classify_linux(pid: int, name: str) -> str:
             return "unknown"
         recorded = _recorded_identity(name, pid)
         if recorded is not None:
-            return "current" if recorded == identity else "stale"
+            return "current" if _identity_matches(recorded, identity) else "stale"
         return _classify_legacy(pid, name)
     except (FileNotFoundError, ProcessLookupError):
         return "stale"
