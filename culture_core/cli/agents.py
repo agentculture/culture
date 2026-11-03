@@ -49,7 +49,7 @@ from culture_core.config import (
     unarchive_manifest_agent,
 )
 from culture_core.pidfile import (
-    is_process_alive,
+    classify_pidfile,
     read_pid,
     remove_pid,
     write_pid,
@@ -642,7 +642,7 @@ def _probe_server_connection(host: str, port: int, server_name: str) -> None:
         conn.close()
     except OSError as exc:
         server_pid = read_pid(f"server-{server_name}")
-        if not server_pid or not is_process_alive(server_pid):
+        if not server_pid or classify_pidfile(f"server-{server_name}", server_pid) != "current":
             remediation = f"start the server first: culture server start --name {server_name}"
         else:
             remediation = (
@@ -1480,7 +1480,7 @@ def _cmd_archive(args: argparse.Namespace) -> None:
 
     # Stop the agent if it's running
     pid = read_pid(f"agent-{args.nick}")
-    if pid and is_process_alive(pid):
+    if pid and classify_pidfile(f"agent-{args.nick}", pid) == "current":
         stop_agent(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
@@ -1547,7 +1547,7 @@ def _cmd_delete(args: argparse.Namespace) -> None:
 
     # Stop the agent if it's running
     pid = read_pid(f"agent-{args.nick}")
-    if pid and is_process_alive(pid):
+    if pid and classify_pidfile(f"agent-{args.nick}", pid) == "current":
         stop_agent(args.nick)
 
     remove_manifest_agent(args.config, args.nick)

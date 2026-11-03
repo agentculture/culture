@@ -62,7 +62,7 @@ culture server start --name spark --port 6667 --foreground
 | `--config` | `~/.culture/server.yaml` | `server.yaml` whose [`accounts:` block](../server/config.md#agent-accounts-accounts) the server applies when its `server.name` matches `--name` |
 | `--foreground` | off | Run in foreground instead of daemonizing. Required for service managers (systemd, launchd, Task Scheduler). |
 
-PID file: `~/.culture/pids/server-<name>.pid`
+PID file: `~/.culture/pids/server-<name>.pid`. Its first line is the PID; on Linux the second line records process start time and boot ID. A stale PID is ignored on start. If a live PID cannot be verified, start refuses and stop will not signal it. Identity verification for new pidfiles is Linux-only.
 Logs: `~/.culture/logs/server-<name>.log`
 
 To create a federated mesh, start servers with mutual `--link` flags:

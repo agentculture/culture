@@ -92,7 +92,13 @@ def pid_state(monkeypatch):
 
     monkeypatch.setattr(proc_mod, "read_pid", lambda name: pids.get(name))
     monkeypatch.setattr(proc_mod, "is_process_alive", lambda pid: _pop(alive, pid, True))
-    monkeypatch.setattr(proc_mod, "is_culture_process", lambda pid: _pop(culture, pid, True))
+    monkeypatch.setattr(
+        proc_mod,
+        "classify_pidfile",
+        lambda name, pid=None: (
+            "current" if _pop(alive, pid, True) and _pop(culture, pid, True) else "stale"
+        ),
+    )
     monkeypatch.setattr(proc_mod, "remove_pid", lambda name: removed.append(name))
 
     class State:
@@ -274,9 +280,18 @@ def test_pid_shutdown_removes_non_culture_pidfile(pid_state, capsys, fake_os):
 
     proc_mod._try_pid_shutdown("ada")
 
-    assert "not a culture process" in capsys.readouterr().out
+    assert "stale PID" in capsys.readouterr().out
     assert "agent-ada" in pid_state.removed
     assert fake_os.calls == []
+
+
+def test_pid_shutdown_unknown_never_signals(pid_state, monkeypatch, capsys, fake_os):
+    pid_state.set_pid("agent-ada", 4242)
+    monkeypatch.setattr(proc_mod, "classify_pidfile", lambda _n, _p=None: "unknown")
+    proc_mod._try_pid_shutdown("ada")
+    assert fake_os.calls == []
+    assert pid_state.removed == []
+    assert "Cannot verify" in capsys.readouterr().out
 
 
 def test_pid_shutdown_handles_sigterm_process_lookup_error(pid_state, capsys, fake_os):
@@ -317,8 +332,8 @@ def test_pid_shutdown_aborts_kill_when_pid_no_longer_culture(pid_state, capsys, 
 
     # Only SIGTERM was sent — SIGKILL was aborted.
     assert fake_os.calls == [(4242, signal.SIGTERM)]
-    assert "no longer a culture process" in capsys.readouterr().out
-    assert "agent-ada" in pid_state.removed
+    assert "identity changed" in capsys.readouterr().out
+    assert "agent-ada" not in pid_state.removed
 
 
 def test_pid_shutdown_sigkill_escalation_posix(posix_platform, pid_state, capsys, fake_os):

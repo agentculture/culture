@@ -8,8 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- `culture server start` no longer refuses to run when a stale pidfile points at a reused PID: it now requires a real culture server process (thread-group leader with a `server` argv token), so a reboot cannot wedge the IRCd (#518).
-- `culture mesh overview --serve` no longer signals another process, including a running IRCd, when its old pidfile holds a reused PID (#518).
+- On Linux, daemon pidfiles now record the process start time and boot ID. Server start ignores stale PID reuse, including another culture server, while stop and overview shutdown signal only a matching process. Legacy plain-integer pidfiles use a positional launcher and role check. If process identity cannot be checked, start refuses and stop leaves the process alone (#518).
 
 ## [14.13.1] - 2026-11-01
 

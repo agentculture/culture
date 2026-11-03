@@ -19,7 +19,14 @@ def write_pid(name: str, pid: int) -> Path:
     pid_dir = Path(PID_DIR)
     pid_dir.mkdir(parents=True, exist_ok=True)
     pid_path = pid_dir / f"{_safe_name(name)}.pid"
-    pid_path.write_text(str(pid))
+    identity = _process_identity(pid)
+    if identity:
+        pid_path.write_text(f"{pid}\n{identity[0]} {identity[1]}\n")
+    elif os.path.isdir("/proc"):
+        # A new file must never be mistaken for a legacy plain-integer file.
+        pid_path.write_text(f"{pid}\nunknown unknown\n")
+    else:
+        pid_path.write_text(f"{pid}\n")
     return pid_path
 
 
@@ -29,8 +36,8 @@ def read_pid(name: str) -> int | None:
     if not pid_path.exists():
         return None
     try:
-        return int(pid_path.read_text().strip())
-    except (ValueError, OSError):
+        return int(pid_path.read_text().splitlines()[0])
+    except (ValueError, OSError, IndexError):
         return None
 
 
@@ -97,37 +104,100 @@ def is_culture_process(pid: int) -> bool:
         return False
 
 
-def _is_culture_role(pid: int, role: str) -> bool:
-    """True if *pid* is a thread-group leader running ``culture ... <role>``.
-
-    Stricter than :func:`is_culture_process`, for deciding whether a pidfile
-    is still valid after a reboot, when its PID may have been reused. A reused
-    PID can be a *thread* of another process, which ``os.kill(pid, 0)`` accepts
-    and ``/proc/<pid>/cmdline`` answers for, or a culture process doing another
-    job. Follows :func:`is_culture_process` on platforms without /proc (assumes
-    valid) and on read failures (fails closed).
-    """
+def _process_identity(pid: int) -> tuple[str, str] | None:
+    """Return Linux start ticks and boot ID, or None if they cannot be read."""
     if not os.path.isdir("/proc"):
-        return True
+        return None
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        # The comm field is parenthesized, but may itself contain parentheses.
+        fields = stat[stat.rfind(")") + 2 :].split()
+        start = fields[19]  # field 22; first remaining field is field 3
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        if not boot:
+            return None
+        return start, boot
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _legacy_role(pid: int, name: str) -> bool:
+    """Recognize the command position of an older, plain integer pidfile."""
+    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    argv = [part for part in raw.decode(errors="replace").split("\x00") if part]
+    if not argv:
+        return False
+    if Path(argv[0]).name in {"culture", "culture-core", "culture_core"}:
+        args = argv[1:]
+    elif (
+        len(argv) >= 3
+        and Path(argv[0]).name.startswith(("python", "pypy"))
+        and argv[1:3] in (["-m", "culture"], ["-m", "culture_core"])
+    ):
+        args = argv[3:]
+    elif (
+        len(argv) >= 2
+        and Path(argv[1]).name in {"culture", "culture-core", "culture_core"}
+        and Path(argv[0]).name.startswith(("python", "pypy"))
+    ):
+        args = argv[2:]
+    else:
+        return False
+    if name.startswith("server-"):
+        return bool(args and args[0] == "server")
+    if name.startswith("overview-"):
+        return len(args) >= 2 and args[:2] == ["mesh", "overview"]
+    # Older agent files had only a loose culture-process check. Preserve that
+    # compatibility without inventing an agent command shape.
+    return True
+
+
+def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
+    """Classify a pidfile as 'current', 'stale', or 'unknown'.
+
+    Self-PIDs are stale for both startup and stop, so no stop path signals its
+    own process. Unknown means a live PID cannot be safely identified.
+    """
+    path = Path(PID_DIR) / f"{_safe_name(name)}.pid"
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        return "stale"
+    except OSError:
+        return "unknown"
+    try:
+        pid = int(lines[0])
+    except (IndexError, ValueError):
+        return "stale"
+    if pid <= 0 or (expected_pid is not None and pid != expected_pid):
+        return "stale"
+    if pid == os.getpid() or not is_process_alive(pid):
+        return "stale"
+    if not os.path.isdir("/proc"):
+        return "unknown"
     try:
         status = Path(f"/proc/{pid}/status").read_text(errors="replace")
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        tgid = next(
+            int(line.split()[1]) for line in status.splitlines() if line.startswith("Tgid:")
+        )
+    except (OSError, StopIteration, ValueError, IndexError):
+        return "unknown"
+    if tgid != pid:
+        return "stale"
+    identity = _process_identity(pid)
+    if identity is None:
+        return "unknown"
+    if len(lines) > 1:
+        recorded = lines[1].split()
+        if len(recorded) != 2:
+            return "unknown"
+        if recorded == ["unknown", "unknown"]:
+            return "unknown"
+        return "current" if tuple(recorded) == identity else "stale"
+    try:
+        return "current" if _legacy_role(pid, name) else "stale"
     except OSError:
-        return False
-    if f"\nTgid:\t{pid}\n" not in status:
-        return False
-    tokens = raw.decode(errors="replace").split("\x00")
-    return is_culture_process(pid) and role in tokens
-
-
-def is_server_process(pid: int) -> bool:
-    """Check whether the given PID is a running ``culture server`` process."""
-    return _is_culture_role(pid, "server")
-
-
-def is_overview_process(pid: int) -> bool:
-    """Check whether the given PID is a running ``culture mesh overview`` process."""
-    return _is_culture_role(pid, "overview")
+        return "unknown"
 
 
 def is_process_alive(pid: int) -> bool:
@@ -156,7 +226,7 @@ def list_servers() -> list[dict]:
         pid_name = pid_path.stem  # e.g. "server-spark"
         name = pid_name[len(prefix) :]  # e.g. "spark"
         pid = read_pid(pid_name)
-        if pid is None or not is_process_alive(pid) or not is_culture_process(pid):
+        if pid is None or classify_pidfile(pid_name, pid) != "current":
             continue
         port = read_port(pid_name) or 6667
         servers.append({"name": name, "pid": pid, "port": port})

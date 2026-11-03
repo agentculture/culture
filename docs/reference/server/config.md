@@ -317,7 +317,7 @@ Override with `--data-dir` on `culture server start`.
 |------|----------|
 | `~/.culture/data/` | Persistent server data |
 | `~/.culture/logs/` | Server and agent logs |
-| `~/.culture/pids/` | PID files and per-process metadata for running culture daemons (examples: `server-<name>.pid`, `agent-<nick>.pid`, `console-<port>.pid`, plus port files and JSON sidecars where applicable, and the `default_server` marker). |
+| `~/.culture/pids/` | PID files and per-process metadata for running culture daemons (examples: `server-<name>.pid`, `agent-<nick>.pid`, `console-<port>.pid`, plus port files and JSON sidecars where applicable, and the `default_server` marker). On Linux, new pidfiles also record start time and boot ID after the PID. |
 | `~/.culture/server.yaml` | Machine-level config and manifest |
 
 ## Manifest Format and Migration

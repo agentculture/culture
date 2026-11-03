@@ -515,7 +515,7 @@ def _wait_for_server_port(
     """
     import socket as _socket
 
-    from culture_core.pidfile import is_culture_process, read_pid
+    from culture_core.pidfile import classify_pidfile, read_pid
 
     probe = "localhost" if host in ("0.0.0.0", "::", "") else host
     for _ in range(retries):
@@ -523,7 +523,10 @@ def _wait_for_server_port(
             with _socket.create_connection((probe, port), timeout=1):
                 if server_name:
                     pid = read_pid(f"server-{server_name}")
-                    if pid is not None and not is_culture_process(pid):
+                    if (
+                        pid is not None
+                        and classify_pidfile(f"server-{server_name}", pid) != "current"
+                    ):
                         return False
                 return True
         except OSError:

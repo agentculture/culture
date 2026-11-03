@@ -49,9 +49,8 @@ from culture_core.cli._errors import (
 )
 from culture_core.cli._passthrough import _translate_exit
 from culture_core.pidfile import (
-    is_culture_process,
+    classify_pidfile,
     is_process_alive,
-    is_server_process,
     read_default_server,
     read_pid,
     remove_pid,
@@ -363,7 +362,7 @@ def _server_rename(args: argparse.Namespace) -> None:
     """Rename the server: update config, agent nicks, and PID files."""
     from culture_core.config import rename_manifest_server, sanitize_agent_name
     from culture_core.pidfile import (
-        is_process_alive,
+        classify_pidfile,
         read_default_server,
         read_pid,
         rename_pid,
@@ -407,7 +406,7 @@ def _server_rename(args: argparse.Namespace) -> None:
         print(f"  Agent: {old_nick} → {new_nick}")
 
     server_pid = read_pid(f"server-{new_name}")
-    server_running = server_pid and is_process_alive(server_pid)
+    server_running = server_pid and classify_pidfile(f"server-{new_name}", server_pid) == "current"
 
     print()
     if server_running:
@@ -562,18 +561,25 @@ def _check_server_archived(args: argparse.Namespace) -> None:
 def _check_already_running(pid_name: str, name: str) -> None:
     """Raise if the server is already running."""
     existing = read_pid(pid_name)
-    if not existing or not is_process_alive(existing):
+    if not existing:
         return
-    if not is_server_process(existing):
+    state = classify_pidfile(pid_name, existing)
+    if state == "stale":
         # The pidfile outlived an unclean shutdown and its PID was reused. Leave
         # the file for write_pid to overwrite: removing it here could delete the
         # pidfile a concurrent start has just written.
         print(
             f"note: ignoring stale pidfile for server '{name}' "
-            f"(PID {existing} is not a culture server)",
+            f"(PID {existing} does not match this server)",
             file=sys.stderr,
         )
         return
+    if state == "unknown":
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify PID {existing} for server '{name}'",
+            "check the pidfile and process before retrying",
+        )
     raise CultureError(
         EXIT_USER_ERROR,
         f"Server '{name}' is already running (PID {existing})",
@@ -889,8 +895,11 @@ def _wait_for_graceful_stop(pid: int, timeout_ticks: int = 50) -> bool:
     return False
 
 
-def _force_kill(pid: int, name: str) -> None:
+def _force_kill(pid: int, name: str) -> bool:
     """Force-kill a process that didn't stop gracefully."""
+    if classify_pidfile(f"server-{name}", pid) != "current":
+        print(f"Warning: PID {pid} identity changed or cannot be verified — aborting kill")
+        return False
     if sys.platform == "win32":
         print(f"Server '{name}' did not stop gracefully, terminating")
         sig = signal.SIGTERM
@@ -898,12 +907,10 @@ def _force_kill(pid: int, name: str) -> None:
         print(f"Server '{name}' did not stop gracefully, sending SIGKILL")
         sig = signal.SIGKILL
     try:
-        # NOSONAR S4828: PID was validated by is_process_alive +
-        # is_culture_process in _server_stop before reaching this
-        # graceful-stop fallback; we are signaling our own daemon.
         os.kill(pid, sig)
     except ProcessLookupError:
         pass
+    return True
 
 
 def _server_stop(args: argparse.Namespace) -> None:
@@ -918,20 +925,17 @@ def _server_stop(args: argparse.Namespace) -> None:
             f"or start it with 'culture server start --name {args.name}'",
         )
 
-    if not is_process_alive(pid):
+    state = classify_pidfile(pid_name, pid)
+    if state == "stale":
         print(f"Server '{args.name}' is not running (stale PID {pid})")
         remove_pid(pid_name)
         return
 
-    if not is_culture_process(pid):
-        print(f"PID {pid} is not a culture process — removing stale PID file")
-        remove_pid(pid_name)
+    if state == "unknown":
+        print(f"Cannot verify server '{args.name}' (PID {pid}); leaving PID file and not signaling")
         return
 
     print(f"Stopping server '{args.name}' (PID {pid})...")
-    # NOSONAR S4828: PID validated above by read_pid + is_process_alive +
-    # is_culture_process — we only signal our own daemon, never an
-    # arbitrary system process.
     os.kill(pid, signal.SIGTERM)
 
     if _wait_for_graceful_stop(pid):
@@ -939,7 +943,11 @@ def _server_stop(args: argparse.Namespace) -> None:
         remove_pid(pid_name)
         return
 
-    _force_kill(pid, args.name)
+    if classify_pidfile(pid_name, pid) != "current":
+        print(f"Warning: PID {pid} identity changed or cannot be verified — aborting kill")
+        return
+    if not _force_kill(pid, args.name):
+        return
     remove_pid(pid_name)
     print(f"Server '{args.name}' killed")
 
@@ -952,11 +960,14 @@ def _server_status(args: argparse.Namespace) -> None:
         print(f"Server '{args.name}': not running (no PID file)")
         return
 
-    if is_process_alive(pid):
+    state = classify_pidfile(pid_name, pid)
+    if state == "current":
         print(f"Server '{args.name}': running (PID {pid})")
-    else:
+    elif state == "stale":
         print(f"Server '{args.name}': not running (stale PID {pid})")
         remove_pid(pid_name)
+    else:
+        print(f"Server '{args.name}': unknown (cannot verify PID {pid})")
 
 
 # -----------------------------------------------------------------------
@@ -1142,16 +1153,23 @@ def _server_archive(args: argparse.Namespace) -> None:
     # Stop server if running
     pid_name = f"server-{server_name}"
     pid = read_pid(pid_name)
-    if pid and is_process_alive(pid):
+    state = classify_pidfile(pid_name, pid) if pid else "stale"
+    if state == "current":
         print(f"Stopping server '{server_name}'...")
         _server_stop(args)
+    elif state == "unknown":
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify server '{server_name}' (PID {pid})",
+            "check the pidfile and process before archiving",
+        )
 
     # Stop all running agents
     from culture_core.cli.shared.process import stop_agent
 
     for agent in config.agents:
         agent_pid = read_pid(f"agent-{agent.nick}")
-        if agent_pid and is_process_alive(agent_pid):
+        if agent_pid and classify_pidfile(f"agent-{agent.nick}", agent_pid) == "current":
             stop_agent(agent.nick)
 
     # Archive server + agents in config

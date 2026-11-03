@@ -1293,7 +1293,7 @@ class TestCmdArchive:
         cfg = _make_config(_make_agent(suffix="ada"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
-        monkeypatch.setattr(agent_mod, "is_process_alive", lambda pid: True)
+        monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
         monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
         archived = []
@@ -1349,7 +1349,7 @@ class TestCmdDelete:
         cfg = _make_config(_make_agent(suffix="ada"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
-        monkeypatch.setattr(agent_mod, "is_process_alive", lambda pid: True)
+        monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
         monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
         removed = []

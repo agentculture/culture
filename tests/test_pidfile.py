@@ -1,5 +1,6 @@
 """Tests for culture_core.pidfile — PID file management and process validation."""
 
+import argparse
 import os
 import subprocess
 import sys
@@ -11,10 +12,10 @@ from unittest.mock import patch
 import pytest
 
 from culture_core.pidfile import (
+    _process_identity,
+    classify_pidfile,
     is_culture_process,
-    is_overview_process,
     is_process_alive,
-    is_server_process,
     list_servers,
     read_default_server,
     read_pid,
@@ -42,6 +43,10 @@ class TestWriteReadRemove:
 
     def test_read_missing(self, pid_dir):
         assert read_pid("nonexistent") is None
+
+    def test_plain_integer_read(self, pid_dir):
+        (pid_dir / "server-old.pid").write_text("12345\n")
+        assert read_pid("server-old") == 12345
 
     def test_remove(self, pid_dir):
         write_pid("agent-bot", 12345)
@@ -208,99 +213,185 @@ class TestIsProcessAliveErrorPaths:
 
 
 @pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
-class TestIsServerProcess:
-    """Uses real processes and threads: the failure is about what /proc reports."""
-
+class TestClassification:
     @staticmethod
-    def _spawn(*argv):
-        # Extra argv tokens land in sys.argv and are ignored by the sleep.
-        code = "import time; time.sleep(30)"
-        proc = subprocess.Popen([sys.executable, "-c", code, *argv])
-        deadline = time.monotonic() + 5
-        expected = argv[-1].encode()
+    def _spawn(tmp_path, *args):
+        launcher = tmp_path / "culture"
+        launcher.write_text(f"#!{sys.executable}\nimport time; time.sleep(30)\n")
+        launcher.chmod(0o755)
+        proc = subprocess.Popen([str(launcher), *args])
         path = Path(f"/proc/{proc.pid}/cmdline")
-        while expected not in path.read_bytes() and time.monotonic() < deadline:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if path.exists() and str(launcher).encode() in path.read_bytes():
+                return proc
             time.sleep(0.01)
-        return proc
-
-    @pytest.mark.parametrize(
-        "argv",
-        [
-            ("-m", "culture_core", "server", "start"),
-            ("/usr/local/bin/culture", "server", "start"),
-        ],
-    )
-    def test_true_for_culture_server(self, argv):
-        proc = self._spawn(*argv)
-        try:
-            assert is_server_process(proc.pid) is True
-        finally:
-            proc.kill()
-            proc.wait()
-
-    def test_false_for_culture_agent(self):
-        proc = self._spawn("/usr/local/bin/culture", "agents", "start")
-        try:
-            assert is_server_process(proc.pid) is False
-        finally:
-            proc.kill()
-            proc.wait()
-
-    def test_overview_accepts_overview_and_refuses_a_server(self):
-        overview = self._spawn("/usr/local/bin/culture", "mesh", "overview", "--serve")
-        server = self._spawn("/usr/local/bin/culture", "server", "start")
-        try:
-            assert is_overview_process(overview.pid) is True
-            assert is_overview_process(server.pid) is False
-        finally:
-            for proc in (overview, server):
-                proc.kill()
-                proc.wait()
-
-    def test_false_for_unrelated_process(self):
-        proc = self._spawn("server", "start")
-        try:
-            assert is_server_process(proc.pid) is False
-        finally:
-            proc.kill()
-            proc.wait()
-
-    def test_false_for_thread_id_of_a_server(self):
-        """A reused PID can be a thread, whose /proc entry shows the owner's argv."""
-        ready = threading.Event()
-        stop = threading.Event()
-        tid = {}
-
-        def _run():
-            tid["value"] = threading.get_native_id()
-            ready.set()
-            stop.wait(5)
-
-        worker = threading.Thread(target=_run)
-        worker.start()
-        ready.wait(5)
-        try:
-            argv = b"culture\x00server\x00start\x00"
-            real_read_bytes = Path.read_bytes
-
-            def _read_bytes(path):
-                if str(path).endswith("/cmdline"):
-                    return argv
-                return real_read_bytes(path)
-
-            # Prove argv alone would pass, so the thread check is what refuses it.
-            with patch.object(Path, "read_bytes", _read_bytes):
-                assert is_server_process(os.getpid()) is True
-                assert is_server_process(tid["value"]) is False
-        finally:
-            stop.set()
-            worker.join()
-
-    def test_false_for_missing_pid(self):
-        proc = self._spawn("culture", "server", "start")
         proc.kill()
         proc.wait()
-        assert is_server_process(proc.pid) is False
+        pytest.fail("launcher did not start")
+
+    def test_recorded_identity_and_other_server(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start", "--name", "sbx")
+        try:
+            write_pid("server-spark", proc.pid)
+            path = pid_dir / "server-spark.pid"
+            pid, identity = path.read_text().splitlines()
+            start, boot = identity.split()
+            path.write_text(f"{pid}\n{int(start) + 1} {boot}\n")
+            assert classify_pidfile("server-spark") == "stale"
+            path.write_text(f"{pid}\n{start} different-boot\n")
+            assert classify_pidfile("server-spark") == "stale"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_agent_recorded_identity(self, pid_dir):
+        proc = self._spawn(pid_dir, "agents", "start", "ada")
+        try:
+            write_pid("agent-ada", proc.pid)
+            assert classify_pidfile("agent-ada") == "current"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_own_pid_and_thread_id_are_stale(self, pid_dir):
+        write_pid("server-self", os.getpid())
+        assert classify_pidfile("server-self") == "stale"
+        ready, done = threading.Event(), threading.Event()
+        tid = {}
+
+        def worker():
+            tid["value"] = threading.get_native_id()
+            ready.set()
+            done.wait(5)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        assert ready.wait(5)
+        try:
+            write_pid("server-thread", tid["value"])
+            assert classify_pidfile("server-thread") == "stale"
+        finally:
+            done.set()
+            thread.join()
+
+    @pytest.mark.parametrize(
+        "args, name, expected",
+        [
+            (("server", "start", "--name", "overview"), "overview-spark", "stale"),
+            (("mesh", "overview", "--room", "server"), "server-spark", "stale"),
+            (("mesh", "overview", "--serve"), "overview-spark", "current"),
+            (("server", "start"), "server-spark", "current"),
+        ],
+    )
+    def test_old_format_positional_role(self, pid_dir, args, name, expected):
+        proc = self._spawn(pid_dir, *args)
+        try:
+            (pid_dir / f"{name}.pid").write_text(str(proc.pid))
+            assert classify_pidfile(name) == expected
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_tail_with_culture_words_is_not_a_launcher(self, pid_dir):
+        (pid_dir / "culture").touch()
+        (pid_dir / "server").touch()
+        proc = subprocess.Popen(
+            ["tail", "-f", "culture", "server"],
+            cwd=pid_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            path = Path(f"/proc/{proc.pid}/cmdline")
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and b"culture\x00server" not in path.read_bytes():
+                time.sleep(0.01)
+            assert is_process_alive(proc.pid)
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            assert classify_pidfile("server-spark") == "stale"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_transient_proc_failure_is_unknown(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-spark", proc.pid)
+            real_read_text = Path.read_text
+
+            def fail_stat(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/stat":
+                    raise OSError("transient /proc error")
+                return real_read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", fail_stat):
+                assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_no_proc_is_unknown(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            (pid_dir / "server-spark.pid").write_text(f"{proc.pid}\n")
+            with patch("culture_core.pidfile.os.path.isdir", return_value=False):
+                assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_stop_never_signals_real_stale_or_unknown_process(self, pid_dir):
+        from culture_core.cli import server as server_cli
+
+        proc = self._spawn(pid_dir, "server", "start", "--name", "sbx")
+        try:
+            write_pid("server-spark", proc.pid)
+            path = pid_dir / "server-spark.pid"
+            pid, identity = path.read_text().splitlines()
+            start, boot = identity.split()
+            path.write_text(f"{pid}\n{int(start) + 1} {boot}\n")
+            real_kill = os.kill
+            signals = []
+
+            def capture_kill(target, sig):
+                if sig == 0:
+                    return real_kill(target, sig)
+                signals.append((target, sig))
+
+            with patch.object(os, "kill", capture_kill):
+                server_cli._server_stop(argparse.Namespace(name="spark"))
+            assert signals == []
+            assert is_process_alive(proc.pid)
+
+            write_pid("server-spark", proc.pid)
+            real_read_text = Path.read_text
+
+            def fail_stat(proc_path, *args, **kwargs):
+                if str(proc_path) == f"/proc/{proc.pid}/stat":
+                    raise OSError("transient /proc error")
+                return real_read_text(proc_path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", fail_stat), patch.object(os, "kill", capture_kill):
+                with pytest.raises(server_cli.CultureError, match="Cannot verify"):
+                    server_cli._check_already_running("server-spark", "spark")
+                server_cli._server_stop(argparse.Namespace(name="spark"))
+            assert signals == []
+            assert path.exists()
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_stat_parser_uses_last_closing_parenthesis(self):
+        real_read_text = Path.read_text
+
+        def synthetic_stat(path, *args, **kwargs):
+            if str(path) == "/proc/4242/stat":
+                return "4242 (a name ) with (parens) S " + " ".join(["0"] * 18 + ["123456"])
+            return real_read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", synthetic_stat):
+            assert _process_identity(4242)[0] == "123456"
 
 
 class TestDefaultServer:
@@ -329,6 +420,19 @@ class TestRenamePid:
         assert read_pid("server-new") == 1234
         assert read_port("server-new") == 6667
 
+    @pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
+    def test_rename_preserves_recorded_identity(self, pid_dir):
+        proc = TestClassification._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-old", proc.pid)
+            before = (pid_dir / "server-old.pid").read_text()
+            assert rename_pid("server-old", "server-new")
+            assert (pid_dir / "server-new.pid").read_text() == before
+            assert classify_pidfile("server-new") == "current"
+        finally:
+            proc.kill()
+            proc.wait()
+
     def test_rename_pid_only(self, pid_dir):
         write_pid("server-noport", 1234)
         assert rename_pid("server-noport", "server-renamed") is True
@@ -356,34 +460,25 @@ class TestListServers:
     def test_lists_running_culture_servers(self, pid_dir):
         write_pid("server-alpha", 1234)
         write_port("server-alpha", 6667)
-        with (
-            patch("culture_core.pidfile.is_process_alive", return_value=True),
-            patch("culture_core.pidfile.is_culture_process", return_value=True),
-        ):
+        with patch("culture_core.pidfile.classify_pidfile", return_value="current"):
             servers = list_servers()
         assert servers == [{"name": "alpha", "pid": 1234, "port": 6667}]
 
     def test_skips_dead_pids(self, pid_dir):
         write_pid("server-zombie", 9999)
         write_port("server-zombie", 6667)
-        with patch("culture_core.pidfile.is_process_alive", return_value=False):
+        with patch("culture_core.pidfile.classify_pidfile", return_value="stale"):
             assert list_servers() == []
 
     def test_skips_non_culture_processes(self, pid_dir):
         write_pid("server-rogue", 1234)
         write_port("server-rogue", 6667)
-        with (
-            patch("culture_core.pidfile.is_process_alive", return_value=True),
-            patch("culture_core.pidfile.is_culture_process", return_value=False),
-        ):
+        with patch("culture_core.pidfile.classify_pidfile", return_value="stale"):
             assert list_servers() == []
 
     def test_defaults_port_when_missing(self, pid_dir):
         write_pid("server-noport", 1234)
-        with (
-            patch("culture_core.pidfile.is_process_alive", return_value=True),
-            patch("culture_core.pidfile.is_culture_process", return_value=True),
-        ):
+        with patch("culture_core.pidfile.classify_pidfile", return_value="current"):
             servers = list_servers()
         assert servers == [{"name": "noport", "pid": 1234, "port": 6667}]
 

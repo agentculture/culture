@@ -627,10 +627,10 @@ def _data_dir_from_argv(argv: list[str]) -> tuple[Path | None, bool]:
 
 def _running_server_argv(server_name: str) -> list[str] | None:
     """Command line of the running ``server-<name>`` process (Linux /proc)."""
-    from culture_core.pidfile import is_process_alive, read_pid
+    from culture_core.pidfile import classify_pidfile, read_pid
 
     pid = read_pid(f"server-{server_name}")
-    if not pid or not is_process_alive(pid):
+    if not pid or classify_pidfile(f"server-{server_name}", pid) != "current":
         return None
     try:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()

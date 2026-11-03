@@ -9,7 +9,7 @@ import sys
 import time
 
 from culture_core.pidfile import (
-    is_culture_process,
+    classify_pidfile,
     is_process_alive,
     read_pid,
     remove_pid,
@@ -68,14 +68,14 @@ def _try_pid_shutdown(nick: str) -> None:
         remove_pid(pid_name)
         return
 
-    if not is_process_alive(pid):
+    state = classify_pidfile(pid_name, pid)
+    if state == "stale":
         print(f"Agent '{nick}' is not running (stale PID {pid})")
         remove_pid(pid_name)
         return
 
-    if not is_culture_process(pid):
-        print(f"PID {pid} is not a culture process — removing stale PID file")
-        remove_pid(pid_name)
+    if state == "unknown":
+        print(f"Cannot verify agent '{nick}' (PID {pid}); leaving PID file and not signaling")
         return
 
     print(f"Stopping agent '{nick}' (PID {pid})...")
@@ -92,9 +92,8 @@ def _try_pid_shutdown(nick: str) -> None:
             return
         time.sleep(0.1)
 
-    if not is_culture_process(pid):
-        print(f"PID {pid} is no longer a culture process — aborting kill")
-        remove_pid(pid_name)
+    if classify_pidfile(pid_name, pid) != "current":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
         return
 
     if sys.platform == "win32":
@@ -115,13 +114,16 @@ def server_stop_by_name(name: str) -> None:
     """Stop a server by name (helper for setup --uninstall and update)."""
     pid_name = f"server-{name}"
     pid = read_pid(pid_name)
-    if not pid or not is_process_alive(pid):
+    if not pid:
+        return
+    state = classify_pidfile(pid_name, pid)
+    if state == "stale":
         if pid:
             remove_pid(pid_name)
         return
 
-    if not is_culture_process(pid):
-        remove_pid(pid_name)
+    if state == "unknown":
+        print(f"Cannot verify server '{name}' (PID {pid}); leaving PID file and not signaling")
         return
 
     os.kill(pid, signal.SIGTERM)
@@ -131,6 +133,9 @@ def server_stop_by_name(name: str) -> None:
             return
         time.sleep(0.1)
 
+    if classify_pidfile(pid_name, pid) != "current":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
+        return
     if sys.platform == "win32":
         try:
             os.kill(pid, signal.SIGTERM)

@@ -8,8 +8,8 @@ resolution, and the archive cascade. Integration-territory functions
 
 OS surface mocked at module boundary:
 
-- `culture_core.pidfile.{read_pid, write_pid, remove_pid, is_process_alive,
-  is_culture_process, read_default_server, write_default_server,
+- `culture_core.pidfile.{read_pid, write_pid, remove_pid, classify_pidfile,
+  is_process_alive, read_default_server, write_default_server,
   rename_pid, list_servers}` — patched on the `culture_core.cli.server` module
   (where they're imported at module top).
 - `os.kill`, `time.sleep`, `socket.create_connection`.
@@ -20,6 +20,7 @@ OS surface mocked at module boundary:
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 from dataclasses import dataclass, field
 
@@ -85,16 +86,18 @@ def pids(monkeypatch):
             return True
         return seq.pop(0) if len(seq) > 1 else seq[0]
 
-    # server.py imports read_pid, write_pid, remove_pid, is_process_alive,
-    # is_culture_process, read_default_server at module top — patch on srv_mod.
+    # server.py imports these helpers at module top — patch on srv_mod.
     monkeypatch.setattr(srv_mod, "read_pid", lambda name: table.get(name))
     monkeypatch.setattr(srv_mod, "write_pid", lambda name, pid: written.append((name, pid)))
     monkeypatch.setattr(srv_mod, "remove_pid", lambda name: removed.append(name))
     monkeypatch.setattr(srv_mod, "is_process_alive", _pop_alive)
     monkeypatch.setattr(
-        srv_mod, "is_culture_process", lambda pid: pid in culture_set or not culture_set
+        srv_mod,
+        "classify_pidfile",
+        lambda name, pid=None: (
+            "current" if _pop_alive(pid) and (pid in culture_set or not culture_set) else "stale"
+        ),
     )
-    monkeypatch.setattr(srv_mod, "is_server_process", lambda pid: True)
     monkeypatch.setattr(srv_mod, "read_default_server", lambda: default_server["current"])
     # write_default_server and rename_pid are lazy-imported inside handlers —
     # patch them at the source so the lazy imports pick up the mock.
@@ -386,10 +389,25 @@ class TestCheckAlreadyRunning:
     def test_ignores_pidfile_when_pid_was_reused(self, pids, monkeypatch, capsys):
         """A reboot can hand the old PID to something else; start must proceed."""
         pids.set_pid("server-spark", 4242, alive_seq=[True])
-        monkeypatch.setattr(srv_mod, "is_server_process", lambda pid: False)
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda name, pid=None: "stale")
         srv_mod._check_already_running("server-spark", "spark")  # no raise
         assert "stale pidfile" in capsys.readouterr().err
         # Left for write_pid: removing it could delete a concurrent start's pidfile.
+        assert pids.removed == []
+
+    def test_own_pid_is_stale_for_start(self, tmp_path, monkeypatch, capsys):
+        import culture_core.pidfile as pidfile
+
+        monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+        pidfile.write_pid("server-self", os.getpid())
+        srv_mod._check_already_running("server-self", "self")
+        assert "stale pidfile" in capsys.readouterr().err
+
+    def test_unknown_pid_refuses_start(self, pids, monkeypatch):
+        pids.set_pid("server-spark", 4242, alive_seq=[True])
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "unknown")
+        with pytest.raises(CultureError, match="Cannot verify"):
+            srv_mod._check_already_running("server-spark", "spark")
         assert pids.removed == []
 
 
@@ -434,12 +452,14 @@ class TestWaitForGracefulStop:
 class TestForceKill:
     def test_posix_sends_sigkill(self, monkeypatch, fake_os_kill, capsys):
         monkeypatch.setattr(srv_mod.sys, "platform", "linux")
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "current")
         srv_mod._force_kill(1234, "spark")
         assert fake_os_kill.calls == [(1234, signal.SIGKILL)]
         assert "sending SIGKILL" in capsys.readouterr().out
 
     def test_win32_sends_sigterm(self, monkeypatch, fake_os_kill, capsys):
         monkeypatch.setattr(srv_mod.sys, "platform", "win32")
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "current")
         srv_mod._force_kill(1234, "spark")
         assert fake_os_kill.calls == [(1234, signal.SIGTERM)]
         assert "terminating" in capsys.readouterr().out
@@ -470,6 +490,14 @@ class TestServerStop:
         assert "server-spark" in pids.removed
         assert "stale PID" in capsys.readouterr().out
 
+    def test_unknown_never_signals(self, pids, monkeypatch, fake_os_kill, capsys):
+        pids.set_pid("server-spark", 4242)
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "unknown")
+        srv_mod._server_stop(_args(name="spark"))
+        assert fake_os_kill.calls == []
+        assert pids.removed == []
+        assert "Cannot verify" in capsys.readouterr().out
+
     def test_removes_non_culture_pid(self, pids, capsys):
         # alive but not in culture_set → fallback predicate is_culture_process
         # returns True when set is empty; force the empty-set guard off by
@@ -478,7 +506,7 @@ class TestServerStop:
         pids.set_pid("server-spark", 4242, alive_seq=[True], is_culture=False)
         srv_mod._server_stop(_args(name="spark"))
         assert "server-spark" in pids.removed
-        assert "not a culture process" in capsys.readouterr().out
+        assert "stale PID" in capsys.readouterr().out
 
     def test_sigterm_success(self, monkeypatch, pids, fake_os_kill, capsys):
         pids.set_pid("server-spark", 4242, alive_seq=[True, False])
@@ -755,7 +783,7 @@ class TestServerRename:
         wrote_default = []
         monkeypatch.setattr("culture_core.pidfile.write_default_server", wrote_default.append)
         monkeypatch.setattr("culture_core.pidfile.read_pid", lambda _n: None)
-        monkeypatch.setattr("culture_core.pidfile.is_process_alive", lambda _p: False)
+        monkeypatch.setattr("culture_core.pidfile.classify_pidfile", lambda _n, _p=None: "stale")
 
         srv_mod._server_rename(_args(new_name="thor", config="~/.culture/server.yaml"))
 
@@ -770,7 +798,7 @@ class TestServerRename:
         monkeypatch.setattr("culture_core.pidfile.rename_pid", lambda old, new: None)
         monkeypatch.setattr("culture_core.pidfile.read_default_server", lambda: None)
         monkeypatch.setattr("culture_core.pidfile.read_pid", lambda _n: 4242)
-        monkeypatch.setattr("culture_core.pidfile.is_process_alive", lambda _p: True)
+        monkeypatch.setattr("culture_core.pidfile.classify_pidfile", lambda _n, _p=None: "current")
 
         srv_mod._server_rename(_args(new_name="thor", config="~/.culture/server.yaml"))
 
