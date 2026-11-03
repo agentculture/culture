@@ -388,7 +388,15 @@ def test_pid_shutdown_win32_escalates_with_sigterm_not_sigkill(
 
 
 def test_server_stop_no_pidfile(pid_state, fake_os):
-    proc_mod.server_stop_by_name("spark")
+    assert proc_mod.server_stop_by_name("spark") is True
+    assert fake_os.calls == []
+    assert pid_state.removed == []
+
+
+def test_server_stop_unknown_reports_failure(pid_state, fake_os, monkeypatch):
+    pid_state.set_pid("server-spark", 4242)
+    monkeypatch.setattr(proc_mod, "classify_pidfile", lambda *_a: "unknown")
+    assert proc_mod.server_stop_by_name("spark") is False
     assert fake_os.calls == []
     assert pid_state.removed == []
 

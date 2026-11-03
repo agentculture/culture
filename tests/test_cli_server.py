@@ -493,10 +493,24 @@ class TestServerStop:
     def test_unknown_never_signals(self, pids, monkeypatch, fake_os_kill, capsys):
         pids.set_pid("server-spark", 4242)
         monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "unknown")
-        srv_mod._server_stop(_args(name="spark"))
+        with pytest.raises(CultureError) as exc:
+            srv_mod._server_stop(_args(name="spark"))
+        assert exc.value.code == 1
         assert fake_os_kill.calls == []
         assert pids.removed == []
-        assert "Cannot verify" in capsys.readouterr().out
+        assert "Cannot verify" in exc.value.message
+
+    def test_identity_changed_before_force_kill_exits_nonzero(
+        self, pids, monkeypatch, fake_os_kill
+    ):
+        pids.set_pid("server-spark", 4242, alive_seq=[True])
+        monkeypatch.setattr(srv_mod, "_wait_for_graceful_stop", lambda _pid: False)
+        monkeypatch.setattr(srv_mod, "_force_kill", lambda _pid, _name: False)
+        with pytest.raises(CultureError) as exc:
+            srv_mod._server_stop(_args(name="spark"))
+        assert exc.value.code == 1
+        assert "aborting kill" in exc.value.message
+        assert pids.removed == []
 
     def test_removes_non_culture_pid(self, pids, capsys):
         # alive but not in culture_set → fallback predicate is_culture_process
@@ -664,6 +678,23 @@ class TestSetBotsArchiveState:
 
 
 class TestServerArchive:
+    def test_stop_failure_does_not_archive(self, monkeypatch, pids):
+        cfg = _StubConfig(server=_StubServerCfg(name="spark", archived=False))
+        monkeypatch.setattr("culture_core.config.load_config_or_default", lambda _p: cfg)
+        pids.set_pid("server-spark", 4242)
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda *_a: "current")
+        monkeypatch.setattr(
+            srv_mod,
+            "_server_stop",
+            lambda _a: (_ for _ in ()).throw(CultureError(1, "stop failed")),
+        )
+        monkeypatch.setattr(
+            "culture_core.config.archive_manifest_server",
+            lambda *_a, **_kw: pytest.fail("archive after failed stop"),
+        )
+        with pytest.raises(CultureError, match="stop failed"):
+            srv_mod._server_archive(_args(name="spark", reason=""))
+
     def test_already_archived_returns_silently(self, monkeypatch, capsys):
         cfg = _StubConfig(server=_StubServerCfg(name="spark", archived=True))
         monkeypatch.setattr("culture_core.config.load_config_or_default", lambda _p: cfg)

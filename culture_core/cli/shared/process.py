@@ -18,14 +18,14 @@ from culture_core.pidfile import (
 from .ipc import agent_socket_path, ipc_shutdown
 
 
-def stop_agent(nick: str) -> None:
+def stop_agent(nick: str) -> bool:
     """Stop a single agent by trying IPC shutdown first, then PID file."""
     socket_path = agent_socket_path(nick)
 
     if _try_ipc_shutdown(nick, socket_path):
-        return
+        return True
 
-    _try_pid_shutdown(nick)
+    return _try_pid_shutdown(nick)
 
 
 def _try_ipc_shutdown(nick: str, socket_path: str) -> bool:
@@ -54,47 +54,47 @@ def _try_ipc_shutdown(nick: str, socket_path: str) -> bool:
     return False
 
 
-def _try_pid_shutdown(nick: str) -> None:
+def _try_pid_shutdown(nick: str) -> bool:
     """Stop an agent via PID file with SIGTERM/SIGKILL fallback."""
     pid_name = f"agent-{nick}"
     pid = read_pid(pid_name)
 
     if pid is None:
         print(f"No PID file for agent '{nick}'")
-        return
+        return True
 
     if pid <= 0:
         print(f"Invalid PID {pid} for agent '{nick}' — removing corrupt PID file")
         remove_pid(pid_name)
-        return
+        return True
 
     state = classify_pidfile(pid_name, pid)
     if state == "stale":
         print(f"Agent '{nick}' is not running (stale PID {pid})")
         remove_pid(pid_name)
-        return
+        return True
 
     if state == "unknown":
         print(f"Cannot verify agent '{nick}' (PID {pid}); leaving PID file and not signaling")
-        return
+        return False
 
     print(f"Stopping agent '{nick}' (PID {pid})...")
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         remove_pid(pid_name)
-        return
+        return True
 
     for _ in range(50):
         if not is_process_alive(pid):
             print(f"Agent '{nick}' stopped")
             remove_pid(pid_name)
-            return
+            return True
         time.sleep(0.1)
 
     if classify_pidfile(pid_name, pid) != "current":
         print(f"PID {pid} identity changed or cannot be verified — aborting kill")
-        return
+        return False
 
     if sys.platform == "win32":
         print(f"Agent '{nick}' did not stop gracefully, terminating")
@@ -108,34 +108,34 @@ def _try_pid_shutdown(nick: str) -> None:
         pass
     remove_pid(pid_name)
     print(f"Agent '{nick}' killed")
+    return True
 
 
-def server_stop_by_name(name: str) -> None:
+def server_stop_by_name(name: str) -> bool:
     """Stop a server by name (helper for setup --uninstall and update)."""
     pid_name = f"server-{name}"
     pid = read_pid(pid_name)
     if not pid:
-        return
+        return True
     state = classify_pidfile(pid_name, pid)
     if state == "stale":
-        if pid:
-            remove_pid(pid_name)
-        return
+        remove_pid(pid_name)
+        return True
 
     if state == "unknown":
         print(f"Cannot verify server '{name}' (PID {pid}); leaving PID file and not signaling")
-        return
+        return False
 
     os.kill(pid, signal.SIGTERM)
     for _ in range(50):
         if not is_process_alive(pid):
             remove_pid(pid_name)
-            return
+            return True
         time.sleep(0.1)
 
     if classify_pidfile(pid_name, pid) != "current":
         print(f"PID {pid} identity changed or cannot be verified — aborting kill")
-        return
+        return False
     if sys.platform == "win32":
         try:
             os.kill(pid, signal.SIGTERM)
@@ -147,3 +147,4 @@ def server_stop_by_name(name: str) -> None:
         except ProcessLookupError:
             pass
     remove_pid(pid_name)
+    return True

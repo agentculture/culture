@@ -381,7 +381,12 @@ def _cmd_setup(args: argparse.Namespace) -> None:
             if svc in expected:
                 print(f"  Removing {svc}")
                 uninstall_service(svc)
-        server_stop_by_name(server_name)
+        if not server_stop_by_name(server_name):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Cannot stop server '{server_name}'",
+                "inspect its pidfile before uninstalling",
+            )
         for agent in mesh.agents:
             full_nick = f"{server_name}-{agent.nick}"
             stop_agent(full_nick)
@@ -597,7 +602,9 @@ def _restart_mesh_services(
         stop_agent(full_nick)
 
     print(f"  Stopping server {server_name}...")
-    server_stop_by_name(server_name)
+    if not server_stop_by_name(server_name):
+        print(f"Cannot stop server '{server_name}'; mesh update aborted", file=sys.stderr)
+        return False
 
     from culture_core.persistence import install_service, restart_service
 

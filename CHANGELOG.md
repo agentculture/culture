@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- On Linux, daemon pidfiles now record the process start time and boot ID. Server start ignores stale PID reuse, including another culture server, while stop and overview shutdown signal only a matching process. Legacy plain-integer pidfiles use a positional launcher and role check. If process identity cannot be checked, start refuses and stop leaves the process alone (#518).
+- On Linux, daemon `.pid` files remain bare integers for agentirc and cultureagent compatibility. A neighboring `.identity` file records the PID, process start time, and boot ID. Server start ignores stale PID reuse, including another culture server, while stop and overview shutdown signal only a matching process. Files without a valid sidecar use a positional launcher and role check; unrecognized culture launchers fail closed. If Linux process identity cannot be checked, start refuses and stop leaves the process alone. On systems without `/proc`, live PIDs retain the previous assumed-current behavior (#518, #520).
 
 ## [14.13.1] - 2026-11-01
 

@@ -849,7 +849,7 @@ class TestCmdStop:
         cfg = _make_config(_make_agent(suffix="ada"), _make_agent(suffix="bob"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
 
         agent_mod._cmd_stop(_args(all=True, nick=None))
 
@@ -1295,7 +1295,7 @@ class TestCmdArchive:
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
         monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         archived = []
         monkeypatch.setattr(
             agent_mod,
@@ -1351,7 +1351,7 @@ class TestCmdDelete:
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
         monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         removed = []
         monkeypatch.setattr(
             agent_mod,
@@ -1364,6 +1364,30 @@ class TestCmdDelete:
         assert stopped == ["spark-ada"]
         assert removed == ["spark-ada"]
         assert "Agent deleted: spark-ada" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("action", ["archive", "delete"])
+def test_agent_change_refuses_when_stop_fails(monkeypatch, action):
+    cfg = _make_config(_make_agent(suffix="ada"))
+    monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+    monkeypatch.setattr(agent_mod, "read_pid", lambda _name: 4242)
+    monkeypatch.setattr(agent_mod, "classify_pidfile", lambda _name, _pid: "unknown")
+    stopped = []
+    monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or False)
+    monkeypatch.setattr(
+        agent_mod,
+        "archive_manifest_agent",
+        lambda *_a, **_kw: pytest.fail("archived after failed stop"),
+    )
+    monkeypatch.setattr(
+        agent_mod,
+        "remove_manifest_agent",
+        lambda *_a, **_kw: pytest.fail("deleted after failed stop"),
+    )
+    handler = agent_mod._cmd_archive if action == "archive" else agent_mod._cmd_delete
+    with pytest.raises(CultureError, match="Could not stop agent"):
+        handler(_args(nick="spark-ada", reason=""))
+    assert stopped == ["spark-ada"]
 
 
 # ---------------------------------------------------------------------------

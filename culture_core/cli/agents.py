@@ -1478,10 +1478,7 @@ def _cmd_archive(args: argparse.Namespace) -> None:
         print(f"Agent '{args.nick}' is already archived")
         return
 
-    # Stop the agent if it's running
-    pid = read_pid(f"agent-{args.nick}")
-    if pid and classify_pidfile(f"agent-{args.nick}", pid) == "current":
-        stop_agent(args.nick)
+    _stop_before_agent_change(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
     _archive_unit(args.nick)
@@ -1545,14 +1542,24 @@ def _cmd_delete(args: argparse.Namespace) -> None:
             "run 'culture agents status --all' to list agents",
         )
 
-    # Stop the agent if it's running
-    pid = read_pid(f"agent-{args.nick}")
-    if pid and classify_pidfile(f"agent-{args.nick}", pid) == "current":
-        stop_agent(args.nick)
+    _stop_before_agent_change(args.nick)
 
     remove_manifest_agent(args.config, args.nick)
     _account_apply(args, config, args.nick, "revoked")
     print(f"Agent deleted: {args.nick}")
+
+
+def _stop_before_agent_change(nick: str) -> None:
+    """Require a successful IPC or PID shutdown before changing an agent."""
+    pid_name = f"agent-{nick}"
+    pid = read_pid(pid_name)
+    if pid is not None and classify_pidfile(pid_name, pid) != "stale":
+        if not stop_agent(nick):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Could not stop agent '{nick}'; leaving it unchanged",
+                "check its IPC socket and pidfile, then retry",
+            )
 
 
 # -----------------------------------------------------------------------

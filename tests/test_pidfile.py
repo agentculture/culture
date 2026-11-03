@@ -40,6 +40,17 @@ class TestWriteReadRemove:
     def test_write_and_read(self, pid_dir):
         write_pid("agent-bot", 12345)
         assert read_pid("agent-bot") == 12345
+        assert (pid_dir / "agent-bot.pid").read_text() == "12345"
+
+    def test_sibling_readers_accept_pid(self, pid_dir, monkeypatch):
+        from agentirc._internal import pidfile as agentirc_pidfile
+        from cultureagent import pidfile as cultureagent_pidfile
+
+        monkeypatch.setattr(agentirc_pidfile, "PID_DIR", str(pid_dir))
+        monkeypatch.setattr(cultureagent_pidfile, "PID_DIR", str(pid_dir))
+        write_pid("agent-bot", 12345)
+        assert agentirc_pidfile.read_pid("agent-bot") == 12345
+        assert cultureagent_pidfile.read_pid("agent-bot") == 12345
 
     def test_read_missing(self, pid_dir):
         assert read_pid("nonexistent") is None
@@ -49,9 +60,10 @@ class TestWriteReadRemove:
         assert read_pid("server-old") == 12345
 
     def test_remove(self, pid_dir):
-        write_pid("agent-bot", 12345)
+        write_pid("agent-bot", os.getpid())
         remove_pid("agent-bot")
         assert read_pid("agent-bot") is None
+        assert not (pid_dir / "agent-bot.identity").exists()
 
     def test_remove_missing_is_noop(self, pid_dir):
         remove_pid("nonexistent")  # should not raise
@@ -235,11 +247,11 @@ class TestClassification:
         try:
             write_pid("server-spark", proc.pid)
             path = pid_dir / "server-spark.pid"
-            pid, identity = path.read_text().splitlines()
-            start, boot = identity.split()
-            path.write_text(f"{pid}\n{int(start) + 1} {boot}\n")
+            identity_path = pid_dir / "server-spark.identity"
+            pid, start, boot = identity_path.read_text().split()
+            identity_path.write_text(f"{pid} {int(start) + 1} {boot}\n")
             assert classify_pidfile("server-spark") == "stale"
-            path.write_text(f"{pid}\n{start} different-boot\n")
+            identity_path.write_text(f"{pid} {start} different-boot\n")
             assert classify_pidfile("server-spark") == "stale"
         finally:
             proc.kill()
@@ -253,6 +265,71 @@ class TestClassification:
         finally:
             proc.kill()
             proc.wait()
+
+    def test_sibling_rewrite_same_pid_keeps_sidecar(self, pid_dir, monkeypatch):
+        from cultureagent import pidfile as cultureagent_pidfile
+
+        proc = self._spawn(pid_dir, "agents", "start", "ada")
+        monkeypatch.setattr(cultureagent_pidfile, "PID_DIR", str(pid_dir))
+        try:
+            write_pid("agent-ada", proc.pid)
+            cultureagent_pidfile.write_pid("agent-ada", proc.pid)
+            assert classify_pidfile("agent-ada") == "current"
+            assert (pid_dir / "agent-ada.identity").exists()
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_different_sidecar_pid_falls_back_to_legacy(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-spark", proc.pid)
+            identity_path = pid_dir / "server-spark.identity"
+            _, start, boot = identity_path.read_text().split()
+            identity_path.write_text(f"{proc.pid + 1} {start} {boot}\n")
+            assert classify_pidfile("server-spark") == "current"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_unreadable_identity_removes_old_sidecar(self, pid_dir):
+        write_pid("server-spark", os.getpid())
+        assert (pid_dir / "server-spark.identity").exists()
+        write_pid("server-spark", 4_000_000)
+        assert (pid_dir / "server-spark.pid").read_text() == "4000000"
+        assert not (pid_dir / "server-spark.identity").exists()
+
+    def test_zombie_is_stale(self, pid_dir):
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        try:
+            while Path(f"/proc/{proc.pid}/stat").read_text().split(")")[-1].strip()[0] != "Z":
+                time.sleep(0.01)
+            write_pid("server-zombie", proc.pid)
+            assert classify_pidfile("server-zombie") == "stale"
+        finally:
+            proc.wait()
+
+    @pytest.mark.parametrize("error", [FileNotFoundError, ProcessLookupError])
+    def test_proc_exit_race_is_stale(self, pid_dir, error):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-spark", proc.pid)
+            real_read_text = Path.read_text
+
+            def missing_stat(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/stat":
+                    raise error
+                return real_read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", missing_stat):
+                assert classify_pidfile("server-spark") == "stale"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_huge_pid_is_stale(self, pid_dir):
+        (pid_dir / "server-huge.pid").write_text("9" * 1000)
+        assert classify_pidfile("server-huge") == "stale"
 
     def test_own_pid_and_thread_id_are_stale(self, pid_dir):
         write_pid("server-self", os.getpid())
@@ -282,6 +359,8 @@ class TestClassification:
             (("mesh", "overview", "--room", "server"), "server-spark", "stale"),
             (("mesh", "overview", "--serve"), "overview-spark", "current"),
             (("server", "start"), "server-spark", "current"),
+            (("server", "start"), "agent-ada", "stale"),
+            (("agents", "start", "ada"), "agent-ada", "current"),
         ],
     )
     def test_old_format_positional_role(self, pid_dir, args, name, expected):
@@ -309,7 +388,33 @@ class TestClassification:
                 time.sleep(0.01)
             assert is_process_alive(proc.pid)
             (pid_dir / "server-spark.pid").write_text(str(proc.pid))
-            assert classify_pidfile("server-spark") == "stale"
+            assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_unrecognized_culture_launcher_is_unknown(self, pid_dir):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "culture"])
+        try:
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_python_flag_module_launcher(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            real_read_bytes = Path.read_bytes
+
+            def flagged_cmdline(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/cmdline":
+                    return b"python3\x00-u\x00-m\x00culture_core\x00server\x00start\x00"
+                return real_read_bytes(path, *args, **kwargs)
+
+            with patch.object(Path, "read_bytes", flagged_cmdline):
+                assert classify_pidfile("server-spark") == "current"
         finally:
             proc.kill()
             proc.wait()
@@ -331,12 +436,29 @@ class TestClassification:
             proc.kill()
             proc.wait()
 
-    def test_no_proc_is_unknown(self, pid_dir):
+    def test_missing_boot_id_is_unknown(self, pid_dir):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            write_pid("server-spark", proc.pid)
+            real_read_text = Path.read_text
+
+            def missing_boot(path, *args, **kwargs):
+                if str(path) == "/proc/sys/kernel/random/boot_id":
+                    raise FileNotFoundError
+                return real_read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", missing_boot):
+                assert classify_pidfile("server-spark") == "unknown"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_no_proc_is_current(self, pid_dir):
         proc = self._spawn(pid_dir, "server", "start")
         try:
             (pid_dir / "server-spark.pid").write_text(f"{proc.pid}\n")
-            with patch("culture_core.pidfile.os.path.isdir", return_value=False):
-                assert classify_pidfile("server-spark") == "unknown"
+            with patch("culture_core.pidfile.PROC_DIR", str(pid_dir / "no-proc")):
+                assert classify_pidfile("server-spark") == "current"
         finally:
             proc.kill()
             proc.wait()
@@ -348,9 +470,9 @@ class TestClassification:
         try:
             write_pid("server-spark", proc.pid)
             path = pid_dir / "server-spark.pid"
-            pid, identity = path.read_text().splitlines()
-            start, boot = identity.split()
-            path.write_text(f"{pid}\n{int(start) + 1} {boot}\n")
+            identity_path = pid_dir / "server-spark.identity"
+            recorded_pid, start, boot = identity_path.read_text().split()
+            identity_path.write_text(f"{recorded_pid} {int(start) + 1} {boot}\n")
             real_kill = os.kill
             signals = []
 
@@ -375,7 +497,8 @@ class TestClassification:
             with patch.object(Path, "read_text", fail_stat), patch.object(os, "kill", capture_kill):
                 with pytest.raises(server_cli.CultureError, match="Cannot verify"):
                     server_cli._check_already_running("server-spark", "spark")
-                server_cli._server_stop(argparse.Namespace(name="spark"))
+                with pytest.raises(server_cli.CultureError, match="Cannot verify"):
+                    server_cli._server_stop(argparse.Namespace(name="spark"))
             assert signals == []
             assert path.exists()
         finally:
@@ -425,9 +548,10 @@ class TestRenamePid:
         proc = TestClassification._spawn(pid_dir, "server", "start")
         try:
             write_pid("server-old", proc.pid)
-            before = (pid_dir / "server-old.pid").read_text()
+            before = (pid_dir / "server-old.identity").read_text()
             assert rename_pid("server-old", "server-new")
-            assert (pid_dir / "server-new.pid").read_text() == before
+            assert (pid_dir / "server-new.identity").read_text() == before
+            assert not (pid_dir / "server-old.identity").exists()
             assert classify_pidfile("server-new") == "current"
         finally:
             proc.kill()

@@ -932,8 +932,11 @@ def _server_stop(args: argparse.Namespace) -> None:
         return
 
     if state == "unknown":
-        print(f"Cannot verify server '{args.name}' (PID {pid}); leaving PID file and not signaling")
-        return
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify server '{args.name}' (PID {pid}); leaving PID file and not signaling",
+            "inspect the pidfile and process before stopping it",
+        )
 
     print(f"Stopping server '{args.name}' (PID {pid})...")
     os.kill(pid, signal.SIGTERM)
@@ -943,11 +946,12 @@ def _server_stop(args: argparse.Namespace) -> None:
         remove_pid(pid_name)
         return
 
-    if classify_pidfile(pid_name, pid) != "current":
-        print(f"Warning: PID {pid} identity changed or cannot be verified — aborting kill")
-        return
     if not _force_kill(pid, args.name):
-        return
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"PID {pid} identity changed or cannot be verified — aborting kill",
+            "inspect the pidfile and process before stopping it",
+        )
     remove_pid(pid_name)
     print(f"Server '{args.name}' killed")
 
