@@ -21,6 +21,7 @@ from culture_core.config import ServerConfig, load_config, load_config_or_defaul
 from culture_core.pidfile import classify_pidfile, read_pid
 
 from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
+from .shared.ipc import agent_socket_path
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
 from .shared.process import server_stop_by_name, stop_agent
 
@@ -35,6 +36,9 @@ def _pidfile_allows_teardown(kind: str, name: str) -> bool:
     pid = read_pid(pid_name)
     state = classify_pidfile(pid_name, pid)
     if state in {"current", "stale"}:
+        return True
+    # stop_agent tries IPC first, which doesn't depend on the pidfile.
+    if kind == "agent" and os.path.exists(agent_socket_path(name)):
         return True
     print(
         f"Cannot verify {kind} '{name}' (PID {pid or 'file'}); teardown aborted",

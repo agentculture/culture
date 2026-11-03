@@ -166,7 +166,7 @@ def test_stop_agent_falls_back_to_pid_when_socket_missing(monkeypatch, pid_state
     monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: False)
 
     assert proc_mod.stop_agent("ada") is True
-    assert capsys.readouterr().out == ""
+    assert "No PID file for agent 'ada'" in capsys.readouterr().out
 
 
 def test_stop_agent_falls_back_to_pid_when_ipc_returns_false(monkeypatch, pid_state, capsys):
@@ -179,7 +179,7 @@ def test_stop_agent_falls_back_to_pid_when_ipc_returns_false(monkeypatch, pid_st
     monkeypatch.setattr(proc_mod, "ipc_shutdown", _ipc_no)
 
     assert proc_mod.stop_agent("ada") is True
-    assert capsys.readouterr().out == ""
+    assert "No PID file for agent 'ada'" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +302,7 @@ def test_ipc_ack_never_signals_a_reused_pid(monkeypatch):
 
 def test_pid_shutdown_returns_when_no_pidfile(pid_state, capsys, fake_os):
     assert proc_mod._try_pid_shutdown("ada") is True
-    assert capsys.readouterr().out == ""
+    assert "No PID file for agent 'ada'" in capsys.readouterr().out
     assert fake_os.calls == []
 
 

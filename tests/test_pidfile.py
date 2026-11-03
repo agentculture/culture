@@ -91,6 +91,10 @@ class TestWriteReadRemove:
             "agent-bot.pid",
         }
 
+    def test_pidfile_stays_world_readable(self, pid_dir):
+        path = write_pid("server-spark", os.getpid())
+        assert path.stat().st_mode & 0o777 == 0o644
+
 
 class TestIsProcessAlive:
     def test_current_process_alive(self):
@@ -771,7 +775,8 @@ class TestTerminateVerified:
             patch("culture_core.pidfile.os.kill", lambda pid, sig: signals.append(sig)),
         ):
             assert terminate_verified("server-spark", 4242, timeout=0) == "killed"
-        assert signals == [signal.SIGTERM, signal.SIGTERM]
+        # Signal 0 is the liveness probe; the helper polls after escalating.
+        assert [sig for sig in signals if sig != 0] == [signal.SIGTERM, signal.SIGTERM]
 
 
 class TestDefaultServer:

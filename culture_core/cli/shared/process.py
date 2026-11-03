@@ -84,6 +84,7 @@ def _try_pid_shutdown(nick: str) -> bool:
 
     if pid is None:
         if state == "stale":
+            print(f"No PID file for agent '{nick}'")
             return True
         print(f"Cannot verify agent '{nick}' PID file; leaving it in place")
         return False

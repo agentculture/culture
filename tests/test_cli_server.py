@@ -37,6 +37,7 @@ from culture_core.cli._errors import CultureError
 class _StubAgent:
     nick: str
     archived: bool = False
+    backend: str = "claude"
 
 
 @dataclass
@@ -646,6 +647,22 @@ class TestSetBotsArchiveState:
 
 
 class TestServerArchive:
+    def test_unverifiable_server_stops_no_agent(self, monkeypatch):
+        """Checking the server last would leave every agent down and nothing archived."""
+        cfg = _StubConfig(
+            server=_StubServerCfg(name="spark"), agents=[_StubAgent(nick="spark-ada")]
+        )
+        monkeypatch.setattr("culture_core.config.load_config_or_default", lambda _p: cfg)
+        monkeypatch.setattr(srv_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _name, _pid: "unknown")
+        monkeypatch.setattr(
+            "culture_core.cli.shared.process.stop_agent",
+            lambda _nick: pytest.fail("stopped an agent"),
+        )
+        args = _args(name="spark", reason="")
+        with pytest.raises(CultureError, match="Cannot verify"):
+            srv_mod._server_archive(args)
+
     def test_stop_failure_does_not_archive(self, monkeypatch, pids):
         cfg = _StubConfig(server=_StubServerCfg(name="spark", archived=False))
         monkeypatch.setattr("culture_core.config.load_config_or_default", lambda _p: cfg)

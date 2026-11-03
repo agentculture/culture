@@ -40,6 +40,7 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w") as stream:
             stream.write(content)
+        os.chmod(temp_path, 0o644)
         os.replace(temp_path, path)  # NOSONAR S2083: caller uses _safe_name
     except BaseException:
         temp_path.unlink(missing_ok=True)
@@ -445,6 +446,10 @@ def _terminate_captured(pid: int, initial: tuple[str, str] | None, timeout: floa
         return "stopped"
     except PermissionError:
         return "refused"
+    for _ in range(10):  # the port can stay held until the process is gone
+        if _process_stopped(pid):
+            break
+        time.sleep(_POLL_INTERVAL)
     return "killed"
 
 

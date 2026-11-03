@@ -83,7 +83,8 @@ culture server stop --name spark
 
 After verifying the PID's identity, sends SIGTERM and waits 5 seconds. If the
 same PID and start time are still live, sends SIGKILL even when the daemon
-already removed its pidfile while shutting down. A reused PID is never killed.
+already removed its pidfile while shutting down. A PID whose start time has
+changed is treated as reused and is not signalled.
 
 ### `culture server status`
 

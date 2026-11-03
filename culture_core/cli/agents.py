@@ -1497,7 +1497,12 @@ def _cmd_archive(args: argparse.Namespace) -> None:
         print(f"Agent '{args.nick}' is already archived")
         return
 
-    _stop_before_agent_change(args.nick)
+    if is_external(agent):
+        print(
+            f"{agent.nick}: skipping stop — external agent (no signal, no IPC, no pidfile touched)"
+        )
+    else:
+        _stop_before_agent_change(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
     _archive_unit(args.nick)
@@ -1561,7 +1566,12 @@ def _cmd_delete(args: argparse.Namespace) -> None:
             "run 'culture agents status --all' to list agents",
         )
 
-    _stop_before_agent_change(args.nick)
+    if is_external(agent):
+        print(
+            f"{agent.nick}: skipping stop — external agent (no signal, no IPC, no pidfile touched)"
+        )
+    else:
+        _stop_before_agent_change(args.nick)
 
     remove_manifest_agent(args.config, args.nick)
     _account_apply(args, config, args.nick, "revoked")

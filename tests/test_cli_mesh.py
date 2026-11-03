@@ -757,6 +757,16 @@ class TestRestartMeshServices:
             mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
         )
 
+    def test_unknown_agent_reachable_over_ipc_allows_teardown(self, monkeypatch):
+        """stop_agent tries IPC first, so an unknown pidfile alone mustn't block it."""
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(mesh_mod, "classify_pidfile", lambda _name, _pid: "unknown")
+        monkeypatch.setattr(mesh_mod, "agent_socket_path", lambda _name: "/ipc/socket")
+        monkeypatch.setattr(mesh_mod.os.path, "exists", lambda path: path == "/ipc/socket")
+
+        assert mesh_mod._pidfile_allows_teardown("agent", "spark-ada") is True
+        assert mesh_mod._pidfile_allows_teardown("server", "spark") is False
+
     def test_dry_run_returns_true_and_prints_plan(self, monkeypatch, capsys):
         mesh = _StubMesh(server=_StubServerCfg(name="spark"))
         result = mesh_mod._restart_mesh_services(

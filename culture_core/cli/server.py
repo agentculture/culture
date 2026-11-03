@@ -1141,11 +1141,23 @@ def _server_archive(args: argparse.Namespace) -> None:
         print(f"Server '{server_name}' is already archived")
         return
 
-    # Stop all running agents
+    # Check the server first, so an unverifiable one can't leave every agent down.
+    pid_name = f"server-{server_name}"
+    pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
+    if state not in ("current", "stale"):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify server '{server_name}' (PID {pid})",
+            "check the pidfile and process before archiving",
+        )
+
+    # Stop all running agents. External residents are owned by their own process.
+    from culture_core.cli.shared.external import is_external
     from culture_core.cli.shared.process import stop_agent
 
     for agent in config.agents:
-        if not stop_agent(agent.nick):
+        if not is_external(agent) and not stop_agent(agent.nick):
             raise CultureError(
                 EXIT_USER_ERROR,
                 f"Could not stop agent '{agent.nick}'; server left running and not archived",
@@ -1153,18 +1165,9 @@ def _server_archive(args: argparse.Namespace) -> None:
             )
 
     # Stop server if running
-    pid_name = f"server-{server_name}"
-    pid = read_pid(pid_name)
-    state = classify_pidfile(pid_name, pid)
     if state == "current":
         print(f"Stopping server '{server_name}'...")
         _server_stop(args)
-    elif state != "stale":
-        raise CultureError(
-            EXIT_USER_ERROR,
-            f"Cannot verify server '{server_name}' (PID {pid})",
-            "check the pidfile and process before archiving",
-        )
 
     # Archive server + agents in config
     archived_nicks = archive_manifest_server(args.config, reason=args.reason)
