@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess  # nosec B404
 import sys
 import urllib.request
 from pathlib import Path
@@ -33,7 +34,7 @@ def check_readiness(local_address: str, public_address: str) -> int:
     """Probe both endpoints and report failure unless both return HTTP success.
 
     The grant-injected URL is read only at runtime. Return nonzero for missing
-    credentials, failed readiness, or a failed reporting request.
+    credentials or a failed reporting request, not for a site that isn't ready.
     """
     report_url = os.environ.get(SECRET_NAME, "").strip()
     if not report_url:
@@ -41,8 +42,9 @@ def check_readiness(local_address: str, public_address: str) -> int:
     local_ok = _request_ok(local_address.rstrip("/") + "/readyz")
     public_ok = _request_ok(public_address.rstrip("/") + "/readyz")
     ready = local_ok and public_ok
-    reported = _request_ok(report_url.rstrip("/") + ("" if ready else "/fail"))
-    return 0 if ready and reported else 1
+    # A /fail that gets through is a success for this job: exit status says only
+    # whether healthchecks.io heard. Silence is what its alert catches otherwise.
+    return 0 if _request_ok(report_url.rstrip("/") + ("" if ready else "/fail")) else 1
 
 
 def read_addresses(config_path: Path | None = None) -> tuple[str, str]:
@@ -72,6 +74,20 @@ def read_addresses(config_path: Path | None = None) -> tuple[str, str]:
     if bind not in {"0.0.0.0", "::", "127.0.0.1", "localhost"}:
         host = f"[{bind}]" if ":" in bind else bind
     return f"http://{host}:{port}", address
+
+
+def _systemctl(action: list[str]) -> bool:
+    """Run systemctl, true only on a zero exit: persistence._run_cmd ignores exit codes."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", *action],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def install_healthcheck(config_path: str | None, *, allow_dev_interpreter: bool) -> Path:
@@ -118,7 +134,7 @@ def install_healthcheck(config_path: str | None, *, allow_dev_interpreter: bool)
         ["enable", "--now", timer.name],
         ["start", f"{UNIT_NAME}.service"],
     ):
-        if not persistence._run_cmd(["systemctl", "--user", *action]):
+        if not _systemctl(action):
             raise CultureError(
                 EXIT_ENV_ERROR,
                 "could not activate the healthcheck service/timer",

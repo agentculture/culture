@@ -20,7 +20,7 @@ uninstalling something that isn't installed is a friendly no-op
 |------|------|-----------|
 | `culture server install [--config MESH_YAML]` | `culture-server-<name>.service` | `<python> -m culture_core server start --foreground --name <name> --host <host> --port <port> --mesh-config <mesh.yaml>` |
 | `culture server uninstall [--config MESH_YAML]` | removes the above | — |
-| `culture console install [--config LENS_CONFIG]` | `culture-console-<name>.service` | `<python> -m culture_core console serve [--config <path>]` |
+| `culture console install [--config LENS_CONFIG] [--healthcheck]` | `culture-console-<name>.service` | `<python> -m culture_core console serve [--config <path>]` |
 | `culture console uninstall` | removes the above | — |
 | `culture agents install <nick>` | `culture-agent-<server>-<nick>.service` | `<python> -m culture_core agents start <nick> --foreground` |
 | `culture agents uninstall <nick>` | removes the above | — |

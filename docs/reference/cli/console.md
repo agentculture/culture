@@ -46,7 +46,7 @@ invocation). See `irc-lens config init --help` for available flags.
 | `culture console overview` | Pure passthrough to `irc-lens overview`. |
 | `culture console learn` | Pure passthrough to `irc-lens learn`. |
 | `culture console stop` | **CULTURE.DEV-owned.** Stop the locally-running console. |
-| `culture console install [--config PATH]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
+| `culture console install [--config PATH] [--healthcheck]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
 | `culture console uninstall` | **CULTURE.DEV-owned.** Remove the auto-start unit (no-op if absent). |
 | `culture console --help` | irc-lens's own help. |
 
@@ -150,6 +150,7 @@ local console process for the requested port.
 culture console install                                   # ExecStart defers to irc-lens's default config
 culture console install --config ~/.config/irc-lens/config.yaml
 culture console install --allow-dev-interpreter            # override the interpreter provenance guard
+culture console install --healthcheck
 culture console uninstall
 ```
 

@@ -1,6 +1,7 @@
 """Health pings use real loopback HTTP and never a real service manager."""
 
 import argparse
+import subprocess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -9,6 +10,7 @@ import pytest
 
 from culture_core import persistence
 from culture_core.cli import console
+from culture_core.cli._errors import CultureError
 from culture_core.cli.shared import healthcheck
 
 SECRET_NAME = "CULTURE_HEALTHCHECK_URL"
@@ -62,7 +64,8 @@ def test_ping(local_status, public_status, missing, expected, monkeypatch):
         if not missing:
             monkeypatch.setenv(SECRET_NAME, ping[0] + "/ping")
         result = healthcheck.check_readiness(local[0], public[0])
-        assert result == (0 if expected == "/ping" else 1)
+        # Exit status says whether the report got through: /fail is a success.
+        assert result == (1 if missing else 0)
         assert ping[1] == ([] if missing else [expected])
         if not missing:
             assert local[1] == [READY]
@@ -85,7 +88,11 @@ def test_install_healthcheck(tmp_path, lens_config, monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(persistence, "get_platform", lambda: "linux")
     monkeypatch.setattr(persistence, "_systemd_user_dir", lambda: units)
-    monkeypatch.setattr(persistence, "_run_cmd", lambda cmd: calls.append(cmd) or True)
+    monkeypatch.setattr(
+        healthcheck.subprocess,
+        "run",
+        lambda cmd, **_kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0),
+    )
     monkeypatch.setattr(persistence, "resolve_grant_bin", lambda **kw: "/opt/bin/grant")
     monkeypatch.setattr(console.sys, "executable", "/usr/bin/python3")
     monkeypatch.setattr(console, "DEFAULT_CONFIG", str(tmp_path / "absent-server.yaml"))
@@ -131,3 +138,18 @@ def test_config_requires_public_address(tmp_path):
     path.write_text("web: {}\n")
     with pytest.raises(CultureError):
         healthcheck.read_addresses(path)
+
+
+def test_install_reports_failed_systemctl(tmp_path, lens_config, monkeypatch):
+    """A failing `enable --now` must not read as a working monitor."""
+    monkeypatch.setattr(persistence, "get_platform", lambda: "linux")
+    monkeypatch.setattr(persistence, "_systemd_user_dir", lambda: tmp_path / "units")
+    monkeypatch.setattr(persistence, "resolve_grant_bin", lambda **kw: "/opt/bin/grant")
+    monkeypatch.setattr(console.sys, "executable", "/usr/bin/python3")
+    monkeypatch.setattr(
+        healthcheck.subprocess,
+        "run",
+        lambda cmd, **_kw: subprocess.CompletedProcess(cmd, 1),
+    )
+    with pytest.raises(CultureError, match="could not activate"):
+        healthcheck.install_healthcheck(str(lens_config), allow_dev_interpreter=True)

@@ -10,7 +10,7 @@ the lens with culture-aware ergonomics:
     culture console serve --host ...  -> pure passthrough
     culture console explain           -> irc-lens explain (passthrough)
     culture console stop [--web-port] -> stop a locally-running console
-    culture console install [--config PATH] -> auto-start service unit
+    culture console install [--config PATH] [--healthcheck] -> auto-start service unit
     culture console uninstall        -> remove the service unit
 
 The full design lives in
