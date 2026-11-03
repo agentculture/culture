@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 PID_DIR = os.path.expanduser("~/.culture/pids")
+PROC_DIR = "/proc"
 
 
 def _safe_name(name: str) -> str:
@@ -21,12 +22,13 @@ def write_pid(name: str, pid: int) -> Path:
     pid_path = pid_dir / f"{_safe_name(name)}.pid"
     identity = _process_identity(pid)
     if identity:
-        pid_path.write_text(f"{pid}\n{identity[0]} {identity[1]}\n")
-    elif os.path.isdir("/proc"):
+        content = f"{pid}\n{identity[0]} {identity[1]}\n"
+    elif os.path.isdir(PROC_DIR):
         # A new file must never be mistaken for a legacy plain-integer file.
-        pid_path.write_text(f"{pid}\nunknown unknown\n")
+        content = f"{pid}\nunknown unknown\n"
     else:
-        pid_path.write_text(f"{pid}\n")
+        content = f"{pid}\n"
+    pid_path.write_text(content)  # NOSONAR S2083: _safe_name strips every path component
     return pid_path
 
 
@@ -82,17 +84,17 @@ def remove_port(name: str) -> None:
 def is_culture_process(pid: int) -> bool:
     """Check whether the given PID belongs to a culture process.
 
-    Reads /proc/<pid>/cmdline on Linux and checks NUL-separated argv
+    Reads the Linux process cmdline and checks NUL-separated argv
     tokens for an exact "culture" match (e.g. argv[0] basename or a
-    ``-m culture`` argument).  On platforms without /proc, returns True
+    ``-m culture`` argument). On platforms without the proc filesystem, returns True
     (assumes valid).  On Linux, read/parse failures return False (fail
     closed) to avoid killing unrelated processes after PID reuse.
     """
-    if not os.path.isdir("/proc"):
-        # /proc not available (macOS / Windows) — can't verify, assume valid
+    if not os.path.isdir(PROC_DIR):
+        # The proc filesystem is not available (macOS / Windows) — assume valid.
         return True
     try:
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        raw = Path(f"{PROC_DIR}/{pid}/cmdline").read_bytes()
         tokens = [t for t in raw.decode(errors="replace").split("\x00") if t]
         return any(
             os.path.basename(t) in {"culture", "culture-core", "culture_core"}
@@ -100,20 +102,20 @@ def is_culture_process(pid: int) -> bool:
             for t in tokens
         )
     except OSError:
-        # On Linux /proc exists but we can't read this PID — fail closed
+        # On Linux the proc filesystem exists but this PID cannot be read — fail closed.
         return False
 
 
 def _process_identity(pid: int) -> tuple[str, str] | None:
     """Return Linux start ticks and boot ID, or None if they cannot be read."""
-    if not os.path.isdir("/proc"):
+    if not os.path.isdir(PROC_DIR):
         return None
     try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
+        stat = Path(f"{PROC_DIR}/{pid}/stat").read_text()
         # The comm field is parenthesized, but may itself contain parentheses.
         fields = stat[stat.rfind(")") + 2 :].split()
         start = fields[19]  # field 22; first remaining field is field 3
-        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        boot = Path(f"{PROC_DIR}/sys/kernel/random/boot_id").read_text().strip()
         if not boot:
             return None
         return start, boot
@@ -121,27 +123,32 @@ def _process_identity(pid: int) -> tuple[str, str] | None:
         return None
 
 
-def _legacy_role(pid: int, name: str) -> bool:
-    """Recognize the command position of an older, plain integer pidfile."""
-    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+def _legacy_args(pid: int) -> list[str] | None:
+    raw = Path(f"{PROC_DIR}/{pid}/cmdline").read_bytes()
     argv = [part for part in raw.decode(errors="replace").split("\x00") if part]
     if not argv:
-        return False
+        return None
     if Path(argv[0]).name in {"culture", "culture-core", "culture_core"}:
-        args = argv[1:]
-    elif (
+        return argv[1:]
+    if (
         len(argv) >= 3
         and Path(argv[0]).name.startswith(("python", "pypy"))
         and argv[1:3] in (["-m", "culture"], ["-m", "culture_core"])
     ):
-        args = argv[3:]
-    elif (
+        return argv[3:]
+    if (
         len(argv) >= 2
         and Path(argv[1]).name in {"culture", "culture-core", "culture_core"}
         and Path(argv[0]).name.startswith(("python", "pypy"))
     ):
-        args = argv[2:]
-    else:
+        return argv[2:]
+    return None
+
+
+def _legacy_role(pid: int, name: str) -> bool:
+    """Recognize the command position of an older, plain integer pidfile."""
+    args = _legacy_args(pid)
+    if args is None:
         return False
     if name.startswith("server-"):
         return bool(args and args[0] == "server")
@@ -152,6 +159,32 @@ def _legacy_role(pid: int, name: str) -> bool:
     return True
 
 
+def _read_pidfile(path: Path) -> list[str] | str:
+    try:
+        return path.read_text().splitlines()
+    except FileNotFoundError:
+        return "stale"
+    except OSError:
+        return "unknown"
+
+
+def _read_tgid(pid: int) -> int | None:
+    try:
+        status = Path(f"{PROC_DIR}/{pid}/status").read_text(errors="replace")
+        return next(
+            int(line.split()[1]) for line in status.splitlines() if line.startswith("Tgid:")
+        )
+    except (OSError, StopIteration, ValueError, IndexError):
+        return None
+
+
+def _compare_identity(lines: list[str], identity: tuple[str, str]) -> str:
+    recorded = lines[1].split()
+    if len(recorded) != 2 or recorded == ["unknown", "unknown"]:
+        return "unknown"
+    return "current" if tuple(recorded) == identity else "stale"
+
+
 def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
     """Classify a pidfile as 'current', 'stale', or 'unknown'.
 
@@ -159,12 +192,9 @@ def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
     own process. Unknown means a live PID cannot be safely identified.
     """
     path = Path(PID_DIR) / f"{_safe_name(name)}.pid"
-    try:
-        lines = path.read_text().splitlines()
-    except FileNotFoundError:
-        return "stale"
-    except OSError:
-        return "unknown"
+    lines = _read_pidfile(path)
+    if isinstance(lines, str):
+        return lines
     try:
         pid = int(lines[0])
     except (IndexError, ValueError):
@@ -173,14 +203,10 @@ def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
         return "stale"
     if pid == os.getpid() or not is_process_alive(pid):
         return "stale"
-    if not os.path.isdir("/proc"):
+    if not os.path.isdir(PROC_DIR):
         return "unknown"
-    try:
-        status = Path(f"/proc/{pid}/status").read_text(errors="replace")
-        tgid = next(
-            int(line.split()[1]) for line in status.splitlines() if line.startswith("Tgid:")
-        )
-    except (OSError, StopIteration, ValueError, IndexError):
+    tgid = _read_tgid(pid)
+    if tgid is None:
         return "unknown"
     if tgid != pid:
         return "stale"
@@ -188,12 +214,7 @@ def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
     if identity is None:
         return "unknown"
     if len(lines) > 1:
-        recorded = lines[1].split()
-        if len(recorded) != 2:
-            return "unknown"
-        if recorded == ["unknown", "unknown"]:
-            return "unknown"
-        return "current" if tuple(recorded) == identity else "stale"
+        return _compare_identity(lines, identity)
     try:
         return "current" if _legacy_role(pid, name) else "stale"
     except OSError:
