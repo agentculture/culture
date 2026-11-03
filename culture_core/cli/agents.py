@@ -668,10 +668,21 @@ def _start_foreground(config: DaemonConfig, agents: list[AgentConfig]) -> None:
             "or drop --foreground to start all agents in the background",
         )
     agent = agents[0]
+    pid_name = f"agent-{agent.nick}"
+    existing = read_pid(pid_name)
+    if existing != os.getpid() and classify_pidfile(pid_name, existing) == "current":
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Agent '{agent.nick}' is already running (PID {existing})",
+            f"stop it first with 'culture agents stop {agent.nick}' if you want to restart it",
+        )
     _export_agent_secret(agent, config, single=True)
     print(f"Starting agent {agent.nick} in foreground...")
-    write_pid(f"agent-{agent.nick}", os.getpid())
-    asyncio.run(_run_single_agent(config, agent))
+    write_pid(pid_name, os.getpid())
+    try:
+        asyncio.run(_run_single_agent(config, agent))
+    finally:
+        remove_pid(pid_name, os.getpid())
 
 
 def _start_background(config: DaemonConfig, agents: list[AgentConfig]) -> None:
@@ -1139,13 +1150,13 @@ def _cmd_stop(args: argparse.Namespace) -> None:
         with tracer.start_as_current_span("culture.cli.agents.stop") as span:
             agents = _resolve_agents_to_stop(config, args)
             span.set_attribute("culture.agent.nicks", [a.nick for a in agents])
-            for agent in agents:
-                if not stop_agent(agent.nick):
-                    raise CultureError(
-                        EXIT_USER_ERROR,
-                        f"Could not stop agent '{agent.nick}'",
-                        "check its IPC socket and pidfile, then retry",
-                    )
+            failed = [agent.nick for agent in agents if not stop_agent(agent.nick)]
+            if failed:
+                raise CultureError(
+                    EXIT_USER_ERROR,
+                    f"Could not stop agents: {', '.join(failed)}",
+                    "check their IPC sockets and pidfiles, then retry",
+                )
     finally:
         shutdown_cli_tracing()
 
@@ -1557,15 +1568,12 @@ def _cmd_delete(args: argparse.Namespace) -> None:
 
 def _stop_before_agent_change(nick: str) -> None:
     """Require a successful IPC or PID shutdown before changing an agent."""
-    pid_name = f"agent-{nick}"
-    pid = read_pid(pid_name)
-    if classify_pidfile(pid_name, pid) != "stale":
-        if not stop_agent(nick):
-            raise CultureError(
-                EXIT_USER_ERROR,
-                f"Could not stop agent '{nick}'; leaving it unchanged",
-                "check its IPC socket and pidfile, then retry",
-            )
+    if not stop_agent(nick):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Could not stop agent '{nick}'; leaving it unchanged",
+            "check its IPC socket and pidfile, then retry",
+        )
 
 
 # -----------------------------------------------------------------------

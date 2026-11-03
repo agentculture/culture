@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -32,6 +33,19 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "_", Path(name).name)
 
 
+def _atomic_write(path: Path, content: str) -> None:
+    """Publish *content* without exposing a partially written file."""
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(content)
+        os.replace(temp_path, path)  # NOSONAR S2083: caller uses _safe_name
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
 def write_pid(name: str, pid: int) -> Path:
     """Write a PID file for the named daemon. Creates the directory if needed."""
     pid_dir = Path(PID_DIR)
@@ -40,12 +54,13 @@ def write_pid(name: str, pid: int) -> Path:
     identity_path = pid_dir / f"{_safe_name(name)}.identity"
     # Remove the old identity before publishing a new PID, including when /proc is unavailable.
     identity_path.unlink(missing_ok=True)
-    pid_path.write_text(str(pid))  # NOSONAR S2083: _safe_name strips every path component
     identity = _process_identity(pid)
     if identity:
-        identity_path.write_text(  # NOSONAR S2083: _safe_name strips every path component
-            f"{pid} {identity[0]} {identity[1]}\n"
+        _atomic_write(
+            identity_path,  # NOSONAR S2083: _safe_name strips every path component
+            f"{pid} {identity[0]} {identity[1]}\n",
         )
+    _atomic_write(pid_path, str(pid))  # NOSONAR S2083: _safe_name strips every path component
     return pid_path
 
 
@@ -238,6 +253,25 @@ def _single_agent_nick(args: list[str]) -> str | None:
     return nicks[0] if len(nicks) == 1 else None
 
 
+def _server_name_matches(args: list[str], name: str) -> bool:
+    """Return whether every explicit --name names this server."""
+    expected = name.removeprefix("server-")
+    values = []
+    position = 0
+    while position < len(args):
+        arg = args[position]
+        if arg == "--name":
+            if position + 1 >= len(args):
+                return False
+            values.append(args[position + 1])
+            position += 2
+            continue
+        if arg.startswith("--name="):
+            values.append(arg.partition("=")[2])
+        position += 1
+    return all(value == expected for value in values)
+
+
 def _legacy_role(pid: int, name: str) -> bool | None:
     """Recognize the command position of an older, plain integer pidfile."""
     command = _launcher_command(_read_argv(pid))
@@ -245,9 +279,13 @@ def _legacy_role(pid: int, name: str) -> bool | None:
         return False
     launcher, args = command
     if name.startswith("server-"):
-        return (launcher == "culture" and bool(args) and args[0] == "server") or (
-            launcher == _AGENTIRC and bool(args) and args[0] == "start"
-        )
+        if launcher == "culture" and args[:2] == ["server", "start"]:
+            server_args = args[2:]
+        elif launcher == _AGENTIRC and args[:1] == ["start"]:
+            server_args = args[1:]
+        else:
+            return False
+        return _server_name_matches(server_args, name)
     if name.startswith("overview-"):
         return launcher == "culture" and len(args) >= 2 and args[:2] == ["mesh", "overview"]
     if name.startswith("agent-"):
@@ -260,7 +298,7 @@ def _legacy_role(pid: int, name: str) -> bool | None:
         nick = _single_agent_nick(agent_args)
         if nick is None:
             return None
-        return nick == name.removeprefix("agent-")
+        return True if nick == name.removeprefix("agent-") else None
     return False
 
 
@@ -302,7 +340,7 @@ def _pid_to_classify(name: str, expected_pid: int | None) -> int | str:
     try:
         pid = int(content)
     except ValueError:
-        return "unknown" if not content else "stale"
+        return "stale"
     if expected_pid is not None and pid != expected_pid:
         return "changed"
     if pid <= 0:
@@ -345,13 +383,26 @@ def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
     return _classify_linux(pid, name)
 
 
-def terminate_verified(pid_name: str, pid: int, timeout: float = 5.0) -> str:
-    """Stop a verified process; return 'stopped', 'killed', or 'refused'."""
-    if classify_pidfile(pid_name, pid) != "current":
-        return "refused"
-    initial = _process_identity(pid) if os.path.isdir(PROC_DIR) else None
-    if os.path.isdir(PROC_DIR) and initial is None:
-        return "refused"
+def capture_process_identity(pid: int) -> tuple[str, str] | None:
+    """Capture the Linux start-time identity used for later safe signalling."""
+    return _process_identity(pid) if os.path.isdir(PROC_DIR) else None
+
+
+def _process_stopped(pid: int) -> bool:
+    if not is_process_alive(pid):
+        return True
+    if not os.path.isdir(PROC_DIR):
+        return False
+    try:
+        state, _ = _read_stat_identity(pid)
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+    except (OSError, ValueError, IndexError):
+        return False
+    return state in {"Z", "X"}
+
+
+def _terminate_captured(pid: int, initial: tuple[str, str] | None, timeout: float) -> str:
     try:
         os.kill(pid, signal.SIGTERM)  # NOSONAR S4828: verified PID identity
     except ProcessLookupError:
@@ -374,6 +425,36 @@ def terminate_verified(pid_name: str, pid: int, timeout: float = 5.0) -> str:
     except PermissionError:
         return "refused"
     return "killed"
+
+
+def terminate_captured(pid: int, initial: tuple[str, str] | None, timeout: float = 5.0) -> str:
+    """Stop only if *pid* still has the captured process start identity."""
+    if os.path.isdir(PROC_DIR):
+        if initial is None:
+            return "stopped" if _process_stopped(pid) else "refused"
+        try:
+            state, current = _read_stat_identity(pid)
+        except (FileNotFoundError, ProcessLookupError):
+            return "stopped"
+        except (OSError, ValueError, IndexError):
+            return "refused"
+        if state in {"Z", "X"}:
+            return "stopped"
+        if current != initial:
+            return "refused"
+    elif not is_process_alive(pid):
+        return "stopped"
+    return _terminate_captured(pid, initial, timeout)
+
+
+def terminate_verified(pid_name: str, pid: int, timeout: float = 5.0) -> str:
+    """Stop a verified process; return 'stopped', 'killed', or 'refused'."""
+    if classify_pidfile(pid_name, pid) != "current":
+        return "stopped" if _process_stopped(pid) else "refused"
+    initial = capture_process_identity(pid)
+    if os.path.isdir(PROC_DIR) and initial is None:
+        return "stopped" if _process_stopped(pid) else "refused"
+    return _terminate_captured(pid, initial, timeout)
 
 
 def _stopped_or_reused(pid: int, initial: tuple[str, str] | None) -> str:

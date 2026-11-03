@@ -23,9 +23,12 @@ not its execution at runtime.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from culture_core.cli.shared import process as proc_mod
+from culture_core.pidfile import remove_pid, write_pid
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -102,6 +105,16 @@ def pid_state(monkeypatch):
     )
     monkeypatch.setattr(proc_mod, "remove_pid", lambda name, _pid=None: removed.append(name))
     monkeypatch.setattr(proc_mod, "terminate_verified", lambda _name, _pid: termination["result"])
+    monkeypatch.setattr(
+        proc_mod,
+        "terminate_captured",
+        lambda _pid, _identity: termination["result"],
+    )
+    monkeypatch.setattr(
+        proc_mod,
+        "capture_process_identity",
+        lambda pid: (str(pid), "boot") if pid else None,
+    )
 
     class State:
         def __init__(self) -> None:
@@ -152,10 +165,8 @@ def test_stop_agent_falls_back_to_pid_when_socket_missing(monkeypatch, pid_state
     monkeypatch.setattr(proc_mod, "agent_socket_path", lambda nick: f"/tmp/{nick}.sock")
     monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: False)
 
-    # No pidfile registered → _try_pid_shutdown returns immediately with a notice.
-    proc_mod.stop_agent("ada")
-
-    assert "No PID file for agent 'ada'" in capsys.readouterr().out
+    assert proc_mod.stop_agent("ada") is True
+    assert capsys.readouterr().out == ""
 
 
 def test_stop_agent_falls_back_to_pid_when_ipc_returns_false(monkeypatch, pid_state, capsys):
@@ -167,10 +178,8 @@ def test_stop_agent_falls_back_to_pid_when_ipc_returns_false(monkeypatch, pid_st
 
     monkeypatch.setattr(proc_mod, "ipc_shutdown", _ipc_no)
 
-    proc_mod.stop_agent("ada")
-
-    # IPC said no → pid path runs and complains about no pidfile.
-    assert "No PID file for agent 'ada'" in capsys.readouterr().out
+    assert proc_mod.stop_agent("ada") is True
+    assert capsys.readouterr().out == ""
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +189,7 @@ def test_stop_agent_falls_back_to_pid_when_ipc_returns_false(monkeypatch, pid_st
 
 def test_ipc_shutdown_returns_false_when_socket_missing(monkeypatch):
     monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: False)
-    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is False
+    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is None
 
 
 def test_ipc_shutdown_returns_false_when_ipc_raises(monkeypatch):
@@ -190,7 +199,7 @@ def test_ipc_shutdown_returns_false_when_ipc_raises(monkeypatch):
         raise RuntimeError("broken pipe")
 
     monkeypatch.setattr(proc_mod, "ipc_shutdown", _boom)
-    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is False
+    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is None
 
 
 def test_ipc_shutdown_returns_false_when_ipc_returns_false(monkeypatch):
@@ -200,7 +209,7 @@ def test_ipc_shutdown_returns_false_when_ipc_returns_false(monkeypatch):
         return False
 
     monkeypatch.setattr(proc_mod, "ipc_shutdown", _no)
-    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is False
+    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is None
 
 
 def test_ipc_shutdown_returns_true_when_pid_unknown(monkeypatch, pid_state, capsys):
@@ -232,7 +241,7 @@ def test_ipc_shutdown_polls_until_process_exits(monkeypatch, pid_state, capsys):
     assert "stopped" in capsys.readouterr().out
 
 
-def test_ipc_shutdown_returns_false_when_polls_exhausted(monkeypatch, pid_state):
+def test_ipc_shutdown_escalates_when_polls_exhausted(monkeypatch, pid_state):
     monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: True)
 
     async def _ok(_path):
@@ -242,8 +251,48 @@ def test_ipc_shutdown_returns_false_when_polls_exhausted(monkeypatch, pid_state)
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)  # always alive
 
-    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is False
-    assert "agent-ada" not in pid_state.removed
+    assert proc_mod._try_ipc_shutdown("ada", "/tmp/x.sock") is True
+    assert "agent-ada" in pid_state.removed
+
+
+@pytest.mark.skipif(not proc_mod.os.path.isdir("/proc"), reason="needs /proc")
+def test_ipc_ack_pidfile_removal_still_terminates_real_child(monkeypatch):
+    child = subprocess.Popen([proc_mod.sys.executable, "-c", "import time; time.sleep(30)"])
+    write_pid("agent-ada", child.pid)
+    monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: True)
+
+    async def _ack_and_remove(_path):
+        remove_pid("agent-ada", child.pid)
+        return True
+
+    monkeypatch.setattr(proc_mod, "ipc_shutdown", _ack_and_remove)
+    try:
+        assert proc_mod.stop_agent("ada") is True
+        child.wait(timeout=5)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+
+
+def test_ipc_ack_never_signals_a_reused_pid(monkeypatch):
+    """An accepted IPC shutdown must not escalate onto a PID the agent no longer owns."""
+    child = subprocess.Popen([proc_mod.sys.executable, "-c", "import time; time.sleep(30)"])
+    path = write_pid("agent-ada", child.pid)
+    path.with_suffix(".identity").write_text(f"{child.pid} 1 not-this-boot\n")
+    monkeypatch.setattr(proc_mod.os.path, "exists", lambda _p: True)
+
+    async def _ack(_path):
+        return True
+
+    monkeypatch.setattr(proc_mod, "ipc_shutdown", _ack)
+    monkeypatch.setattr(proc_mod.time, "sleep", lambda _s: None)
+    try:
+        assert proc_mod.stop_agent("ada") is True
+        assert child.poll() is None, "a reused PID must never be signalled"
+    finally:
+        child.kill()
+        child.wait()
 
 
 # ---------------------------------------------------------------------------
@@ -252,8 +301,8 @@ def test_ipc_shutdown_returns_false_when_polls_exhausted(monkeypatch, pid_state)
 
 
 def test_pid_shutdown_returns_when_no_pidfile(pid_state, capsys, fake_os):
-    proc_mod._try_pid_shutdown("ada")
-    assert "No PID file for agent 'ada'" in capsys.readouterr().out
+    assert proc_mod._try_pid_shutdown("ada") is True
+    assert capsys.readouterr().out == ""
     assert fake_os.calls == []
 
 

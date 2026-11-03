@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 from culture_core.cli.shared.display import (
     _fetch_ipc_data,
@@ -93,6 +100,33 @@ def test_agent_process_status_changed_pidfile_is_left_alone():
         status, pid = agent_process_status(agent)
     assert (status, pid) == ("unknown", 12345)
     remove_pid.assert_not_called()
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
+def test_renamed_legacy_agent_is_unknown_and_pidfile_survives(monkeypatch, tmp_path):
+    from culture_core import pidfile
+
+    launcher = tmp_path / "culture"
+    launcher.write_text(f"#!{sys.executable}\nimport time; time.sleep(30)\n")
+    launcher.chmod(0o755)
+    child = subprocess.Popen([str(launcher), "agents", "start", "spark-old"])
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+    pid_path = tmp_path / "agent-spark-new.pid"
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if Path(f"/proc/{child.pid}/cmdline").read_bytes().startswith(str(launcher).encode()):
+                break
+            time.sleep(0.01)
+        pid_path.write_text(str(child.pid))
+
+        status, pid = agent_process_status(_make_agent(nick="spark-new"))
+
+        assert (status, pid) == ("unknown", child.pid)
+        assert pid_path.exists()
+    finally:
+        child.kill()
+        child.wait()
 
 
 # --- _format_agent_status ---

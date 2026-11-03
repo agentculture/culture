@@ -1157,9 +1157,7 @@ def _server_archive(args: argparse.Namespace) -> None:
     from culture_core.cli.shared.process import stop_agent
 
     for agent in config.agents:
-        agent_pid_name = f"agent-{agent.nick}"
-        agent_pid = read_pid(agent_pid_name)
-        if classify_pidfile(agent_pid_name, agent_pid) != "stale" and not stop_agent(agent.nick):
+        if not stop_agent(agent.nick):
             raise CultureError(
                 EXIT_USER_ERROR,
                 f"Could not stop agent '{agent.nick}'; server was not archived",

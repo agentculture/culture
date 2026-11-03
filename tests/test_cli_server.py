@@ -681,7 +681,10 @@ class TestServerArchive:
         monkeypatch.setattr(srv_mod, "_set_bots_archive_state", lambda *a, **kw: ["bot1"])
         # stop_agent shim — agent.archive cascade
         stopped = []
-        monkeypatch.setattr("culture_core.cli.shared.process.stop_agent", stopped.append)
+        monkeypatch.setattr(
+            "culture_core.cli.shared.process.stop_agent",
+            lambda nick: stopped.append(nick) or True,
+        )
 
         srv_mod._server_archive(_args(name="spark", reason="cleanup"))
 
@@ -690,6 +693,7 @@ class TestServerArchive:
         assert "Agents: spark-ada, spark-bob" in out
         assert "Bots:   bot1" in out
         assert "cleanup" in out
+        assert stopped == ["spark-ada", "spark-bob"]
 
     def test_agent_stop_failure_does_not_archive(self, monkeypatch, pids):
         cfg = _StubConfig(
@@ -825,6 +829,13 @@ class TestServerRename:
 
 
 class TestServerStart:
+    def test_empty_pidfile_allows_start(self, monkeypatch, tmp_path):
+        from culture_core import pidfile
+
+        monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+        (tmp_path / "server-spark.pid").write_text("")
+        srv_mod._check_already_running("server-spark", "spark")
+
     def test_routes_to_foreground_branch(self, monkeypatch, pids):
         monkeypatch.setattr(srv_mod, "_check_server_archived", lambda _a: None)
         monkeypatch.setattr(srv_mod, "_resolve_server_links", lambda _a: [])

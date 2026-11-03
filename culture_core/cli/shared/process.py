@@ -8,10 +8,12 @@ import sys
 import time
 
 from culture_core.pidfile import (
+    capture_process_identity,
     classify_pidfile,
     is_process_alive,
     read_pid,
     remove_pid,
+    terminate_captured,
     terminate_verified,
 )
 
@@ -22,27 +24,32 @@ def stop_agent(nick: str) -> bool:
     """Stop a single agent by trying IPC shutdown first, then PID file."""
     socket_path = agent_socket_path(nick)
 
-    if _try_ipc_shutdown(nick, socket_path):
-        return True
+    ipc_result = _try_ipc_shutdown(nick, socket_path)
+    if ipc_result is not None:
+        return ipc_result
 
     return _try_pid_shutdown(nick)
 
 
-def _try_ipc_shutdown(nick: str, socket_path: str) -> bool:
-    """Attempt graceful IPC shutdown. Return True if the agent stopped."""
+def _try_ipc_shutdown(nick: str, socket_path: str) -> bool | None:
+    """Return an accepted IPC result, or None when PID fallback should run."""
+    pid_name = f"agent-{nick}"
+    pid = read_pid(pid_name)
+    # Decide before IPC: once the agent acts, its pidfile may be gone. Only a PID
+    # verified as this agent's may ever be escalated against.
+    state = classify_pidfile(pid_name, pid) if pid and pid > 0 else "stale"
+    identity = capture_process_identity(pid) if state == "current" else None
     if not os.path.exists(socket_path):
-        return False
+        return None
     try:
         success = asyncio.run(ipc_shutdown(socket_path))
         if not success:
-            return False
+            return None
     except Exception:
-        return False
+        return None
 
     print(f"Agent '{nick}' shutdown requested via IPC")
-    pid_name = f"agent-{nick}"
-    pid = read_pid(pid_name)
-    if not pid:
+    if state == "stale":  # no PID belongs to this agent, so there is nothing to watch
         print(f"Agent '{nick}' stopped")
         return True
     for _ in range(50):
@@ -51,7 +58,22 @@ def _try_ipc_shutdown(nick: str, socket_path: str) -> bool:
             print(f"Agent '{nick}' stopped")
             return True
         time.sleep(0.1)
-    return False
+    result = terminate_captured(pid, identity)
+    if result == "refused":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
+        return False
+    if result == "killed":
+        _print_escalation(nick)
+    remove_pid(pid_name, pid)
+    print(f"Agent '{nick}' {'killed' if result == 'killed' else 'stopped'}")
+    return True
+
+
+def _print_escalation(nick: str) -> None:
+    if sys.platform == "win32":
+        print(f"Agent '{nick}' did not stop gracefully, terminating")
+    else:
+        print(f"Agent '{nick}' did not stop gracefully, sending SIGKILL")
 
 
 def _try_pid_shutdown(nick: str) -> bool:
@@ -62,7 +84,6 @@ def _try_pid_shutdown(nick: str) -> bool:
 
     if pid is None:
         if state == "stale":
-            print(f"No PID file for agent '{nick}'")
             return True
         print(f"Cannot verify agent '{nick}' PID file; leaving it in place")
         return False
@@ -87,10 +108,7 @@ def _try_pid_shutdown(nick: str) -> bool:
         print(f"PID {pid} identity changed or cannot be verified — aborting kill")
         return False
     if result == "killed":
-        if sys.platform == "win32":
-            print(f"Agent '{nick}' did not stop gracefully, terminating")
-        else:
-            print(f"Agent '{nick}' did not stop gracefully, sending SIGKILL")
+        _print_escalation(nick)
     remove_pid(pid_name, pid)
     print(f"Agent '{nick}' {'killed' if result == 'killed' else 'stopped'}")
     return True

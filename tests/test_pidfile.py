@@ -76,9 +76,16 @@ class TestWriteReadRemove:
         remove_pid("server-spark", 222)
         assert (pid_dir / "server-spark.pid").read_text() == "111"
 
-    def test_empty_mid_write_is_unknown(self, pid_dir):
+    def test_empty_pidfile_is_stale(self, pid_dir):
         (pid_dir / "server-spark.pid").write_text("")
-        assert classify_pidfile("server-spark") == "unknown"
+        assert classify_pidfile("server-spark") == "stale"
+
+    def test_atomic_write_leaves_no_temporary_files(self, pid_dir):
+        write_pid("agent-bot", os.getpid())
+        assert {path.name for path in pid_dir.iterdir()} == {
+            "agent-bot.identity",
+            "agent-bot.pid",
+        }
 
 
 class TestIsProcessAlive:
@@ -459,8 +466,37 @@ class TestClassification:
     @pytest.mark.parametrize(
         "cmdline, expected",
         [
+            (b"culture\x00server\x00status\x00--name\x00spark\x00", "stale"),
+            (b"culture\x00server\x00start\x00--name\x00spark\x00", "current"),
+            (b"culture\x00server\x00start\x00--name=thor\x00", "stale"),
+            (b"agentirc\x00start\x00--name=spark\x00", "current"),
+            (b"agentirc\x00start\x00--name\x00thor\x00", "stale"),
+        ],
+    )
+    def test_legacy_server_launcher_requires_start_and_matching_name(
+        self, pid_dir, cmdline, expected
+    ):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            real_read_bytes = Path.read_bytes
+
+            def launcher_cmdline(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/cmdline":
+                    return cmdline
+                return real_read_bytes(path, *args, **kwargs)
+
+            with patch.object(Path, "read_bytes", launcher_cmdline):
+                assert classify_pidfile("server-spark") == expected
+        finally:
+            proc.kill()
+            proc.wait()
+
+    @pytest.mark.parametrize(
+        "cmdline, expected",
+        [
             (b"culture\x00agents\x00start\x00spark-ada\x00--foreground\x00", "current"),
-            (b"culture\x00agents\x00start\x00spark-bob\x00", "stale"),
+            (b"culture\x00agents\x00start\x00spark-bob\x00", "unknown"),
             (b"culture\x00agents\x00start\x00spark-ada\x00spark-bob\x00", "unknown"),
             (b"culture\x00agents\x00start\x00--all\x00", "unknown"),
             (b"cultureagent\x00start\x00spark-ada\x00", "current"),
@@ -623,6 +659,18 @@ class TestClassification:
 
 @pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
 class TestTerminateVerified:
+    def test_process_exit_between_classification_and_termination_is_stopped(self, pid_dir):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        write_pid("server-spark", proc.pid)
+
+        def exits_before_recheck(_name, _pid):
+            proc.terminate()
+            proc.wait(timeout=5)
+            return "stale"
+
+        with patch("culture_core.pidfile.classify_pidfile", exits_before_recheck):
+            assert terminate_verified("server-spark", proc.pid) == "stopped"
+
     def test_kills_child_that_removes_pidfile_and_ignores_sigterm(self, pid_dir):
         pid_path = pid_dir / "server-spark.pid"
         ready_path = pid_dir / "ready"
