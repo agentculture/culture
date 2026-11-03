@@ -80,6 +80,10 @@ class TestWriteReadRemove:
         (pid_dir / "server-spark.pid").write_text("")
         assert classify_pidfile("server-spark") == "stale"
 
+    def test_non_utf8_pidfile_is_stale(self, pid_dir):
+        (pid_dir / "server-bad.pid").write_bytes(b"\xff\xfe\x80")
+        assert classify_pidfile("server-bad") == "stale"
+
     def test_atomic_write_leaves_no_temporary_files(self, pid_dir):
         write_pid("agent-bot", os.getpid())
         assert {path.name for path in pid_dir.iterdir()} == {
@@ -468,9 +472,11 @@ class TestClassification:
         [
             (b"culture\x00server\x00status\x00--name\x00spark\x00", "stale"),
             (b"culture\x00server\x00start\x00--name\x00spark\x00", "current"),
-            (b"culture\x00server\x00start\x00--name=thor\x00", "stale"),
+            (b"culture\x00server\x00start\x00--name=thor\x00", "unknown"),
+            (b"culture\x00server\x00restart\x00--name\x00spark\x00", "current"),
             (b"agentirc\x00start\x00--name=spark\x00", "current"),
-            (b"agentirc\x00start\x00--name\x00thor\x00", "stale"),
+            (b"agentirc\x00start\x00--name\x00thor\x00", "unknown"),
+            (b"agentirc\x00restart\x00--name\x00spark\x00", "current"),
         ],
     )
     def test_legacy_server_launcher_requires_start_and_matching_name(
@@ -562,10 +568,9 @@ class TestClassification:
             proc.kill()
             proc.wait()
 
-    def test_missing_boot_id_is_unknown(self, pid_dir):
+    def test_missing_boot_id_uses_start_time(self, pid_dir):
         proc = self._spawn(pid_dir, "server", "start")
         try:
-            write_pid("server-spark", proc.pid)
             real_read_text = Path.read_text
 
             def missing_boot(path, *args, **kwargs):
@@ -574,7 +579,8 @@ class TestClassification:
                 return real_read_text(path, *args, **kwargs)
 
             with patch.object(Path, "read_text", missing_boot):
-                assert classify_pidfile("server-spark") == "unknown"
+                write_pid("server-spark", proc.pid)
+                assert classify_pidfile("server-spark") == "current"
         finally:
             proc.kill()
             proc.wait()
@@ -620,6 +626,7 @@ class TestClassification:
                     raise OSError("transient /proc error")
                 return real_read_bytes(proc_path, *args, **kwargs)
 
+            stop_args = argparse.Namespace(name="spark")
             with (
                 patch.object(Path, "read_bytes", fail_stat),
                 patch.object(os, "kill", capture_kill),
@@ -627,7 +634,7 @@ class TestClassification:
                 with pytest.raises(server_cli.CultureError, match="Cannot verify"):
                     server_cli._check_already_running("server-spark", "spark")
                 with pytest.raises(server_cli.CultureError, match="Cannot verify"):
-                    server_cli._server_stop(argparse.Namespace(name="spark"))
+                    server_cli._server_stop(stop_args)
             assert signals == []
             assert path.exists()
         finally:

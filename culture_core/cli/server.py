@@ -80,6 +80,8 @@ NAME = "server"
 
 _DEFAULT_SERVER = "culture"
 
+_INSPECT_PIDFILE_HINT = "inspect the pidfile and process before stopping it"
+
 # Verbs that fall through to agentirc.cli.dispatch verbatim. Each is
 # registered as a thin subparser with REMAINDER so all flags pass
 # through unchanged. New verbs added in future agentirc versions can be
@@ -897,7 +899,7 @@ def _server_stop(args: argparse.Namespace) -> None:
             raise CultureError(
                 EXIT_USER_ERROR,
                 f"Cannot verify server '{args.name}' PID file; leaving it in place",
-                "inspect the pidfile and process before stopping it",
+                _INSPECT_PIDFILE_HINT,
             )
         raise CultureError(
             EXIT_USER_ERROR,
@@ -915,7 +917,7 @@ def _server_stop(args: argparse.Namespace) -> None:
         raise CultureError(
             EXIT_USER_ERROR,
             f"Cannot verify server '{args.name}' (PID {pid}); leaving PID file and not signaling",
-            "inspect the pidfile and process before stopping it",
+            _INSPECT_PIDFILE_HINT,
         )
 
     print(f"Stopping server '{args.name}' (PID {pid})...")
@@ -928,7 +930,7 @@ def _server_stop(args: argparse.Namespace) -> None:
         raise CultureError(
             EXIT_USER_ERROR,
             f"PID {pid} identity changed or cannot be verified — aborting kill",
-            "inspect the pidfile and process before stopping it",
+            _INSPECT_PIDFILE_HINT,
         )
     if sys.platform == "win32":
         print(f"Server '{args.name}' did not stop gracefully, terminating")
@@ -1139,6 +1141,17 @@ def _server_archive(args: argparse.Namespace) -> None:
         print(f"Server '{server_name}' is already archived")
         return
 
+    # Stop all running agents
+    from culture_core.cli.shared.process import stop_agent
+
+    for agent in config.agents:
+        if not stop_agent(agent.nick):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Could not stop agent '{agent.nick}'; server left running and not archived",
+                "check its IPC socket and pidfile, then retry",
+            )
+
     # Stop server if running
     pid_name = f"server-{server_name}"
     pid = read_pid(pid_name)
@@ -1152,17 +1165,6 @@ def _server_archive(args: argparse.Namespace) -> None:
             f"Cannot verify server '{server_name}' (PID {pid})",
             "check the pidfile and process before archiving",
         )
-
-    # Stop all running agents
-    from culture_core.cli.shared.process import stop_agent
-
-    for agent in config.agents:
-        if not stop_agent(agent.nick):
-            raise CultureError(
-                EXIT_USER_ERROR,
-                f"Could not stop agent '{agent.nick}'; server was not archived",
-                "check its IPC socket and pidfile, then retry",
-            )
 
     # Archive server + agents in config
     archived_nicks = archive_manifest_server(args.config, reason=args.reason)

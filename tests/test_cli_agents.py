@@ -921,8 +921,9 @@ class TestCmdStop:
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "stop_agent", lambda _nick: False)
 
+        args = _args(all=False, nick="spark-ada")
         with pytest.raises(CultureError, match="Could not stop agent") as exc:
-            agent_mod._cmd_stop(_args(all=False, nick="spark-ada"))
+            agent_mod._cmd_stop(args)
         assert exc.value.code != 0
 
     def test_stop_all_continues_and_names_every_failure(self, monkeypatch):
@@ -939,8 +940,9 @@ class TestCmdStop:
             return nick == "spark-bob"
 
         monkeypatch.setattr(agent_mod, "stop_agent", stop)
+        args = _args(all=True, nick=None)
         with pytest.raises(CultureError) as exc:
-            agent_mod._cmd_stop(_args(all=True, nick=None))
+            agent_mod._cmd_stop(args)
 
         assert calls == ["spark-ada", "spark-bob", "spark-cy"]
         assert "spark-ada" in exc.value.message
@@ -1476,8 +1478,9 @@ def test_agent_change_refuses_when_stop_fails(monkeypatch, action):
         lambda *_a, **_kw: pytest.fail("deleted after failed stop"),
     )
     handler = agent_mod._cmd_archive if action == "archive" else agent_mod._cmd_delete
+    args = _args(nick="spark-ada", reason="")
     with pytest.raises(CultureError, match="Could not stop agent"):
-        handler(_args(nick="spark-ada", reason=""))
+        handler(args)
     assert stopped == ["spark-ada"]
 
 

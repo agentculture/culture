@@ -78,7 +78,8 @@ def read_pid(name: str) -> int | None:
 def remove_pid(name: str, expected_pid: int | None = None) -> None:
     """Remove a daemon's files only while its PID still matches, when supplied."""
     pid_dir = Path(PID_DIR)
-    if expected_pid is not None and read_pid(name) != expected_pid:
+    current = read_pid(name)
+    if expected_pid is not None and current not in (expected_pid, None):
         return
     for suffix in (".pid", ".identity"):
         (pid_dir / f"{_safe_name(name)}{suffix}").unlink(missing_ok=True)
@@ -156,12 +157,10 @@ def _read_stat_identity(pid: int) -> tuple[str, tuple[str, str]]:
     start = fields[19].decode("ascii")  # field 22; first remaining field is field 3
     try:
         boot = Path(f"{PROC_DIR}/sys/kernel/random/boot_id").read_text().strip()
-    except (FileNotFoundError, ProcessLookupError) as exc:
-        # A missing global boot ID does not imply that this PID has exited.
-        raise OSError("boot ID unavailable") from exc
-    if not boot:
-        raise ValueError("empty boot ID")
-    return state, (start, boot)
+    except OSError:
+        boot = ""
+    # Some sandboxes hide the boot id: the start time alone still identifies a PID.
+    return state, (start, boot or "no-boot-id")
 
 
 def _read_argv(pid: int) -> list[str]:
@@ -272,33 +271,55 @@ def _server_name_matches(args: list[str], name: str) -> bool:
     return all(value == expected for value in values)
 
 
+def _is_opaque_python_culture(argv: list[str]) -> bool:
+    """True when a Python command names culture but stops the parser at an unknown flag."""
+    if not argv or not Path(argv[0]).name.startswith(_PYTHON_PREFIXES):
+        return False
+    position = _python_command_position(argv)
+    if position is None or not argv[position].startswith("-") or argv[position] in ("-c", "-m"):
+        return False
+    return any(
+        Path(arg).name in _CULTURE_LAUNCHERS or arg.removeprefix("-m") in _CULTURE_MODULES
+        for arg in argv[position:]
+    )
+
+
+def _legacy_server_role(launcher: str, args: list[str], name: str) -> bool | None:
+    if launcher == "culture" and args[:2] in (["server", "start"], ["server", "restart"]):
+        server_args = args[2:]
+    elif launcher == _AGENTIRC and args[:1] in (["start"], ["restart"]):
+        server_args = args[1:]
+    else:
+        return False
+    return True if _server_name_matches(server_args, name) else None
+
+
+def _legacy_agent_role(launcher: str, args: list[str], name: str) -> bool | None:
+    if launcher == "culture" and len(args) >= 2 and args[:2] == ["agents", "start"]:
+        agent_args = args[2:]
+    elif launcher == _CULTUREAGENT and args[:1] == ["start"]:
+        agent_args = args[1:]
+    else:
+        return False
+    nick = _single_agent_nick(agent_args)
+    if nick is None:
+        return None
+    return True if nick == name.removeprefix("agent-") else None
+
+
 def _legacy_role(pid: int, name: str) -> bool | None:
     """Recognize the command position of an older, plain integer pidfile."""
-    command = _launcher_command(_read_argv(pid))
+    argv = _read_argv(pid)
+    command = _launcher_command(argv)
     if command is None:
-        return False
+        return None if _is_opaque_python_culture(argv) else False
     launcher, args = command
     if name.startswith("server-"):
-        if launcher == "culture" and args[:2] == ["server", "start"]:
-            server_args = args[2:]
-        elif launcher == _AGENTIRC and args[:1] == ["start"]:
-            server_args = args[1:]
-        else:
-            return False
-        return _server_name_matches(server_args, name)
+        return _legacy_server_role(launcher, args, name)
     if name.startswith("overview-"):
         return launcher == "culture" and len(args) >= 2 and args[:2] == ["mesh", "overview"]
     if name.startswith("agent-"):
-        if launcher == "culture" and len(args) >= 2 and args[:2] == ["agents", "start"]:
-            agent_args = args[2:]
-        elif launcher == _CULTUREAGENT and args[:1] == ["start"]:
-            agent_args = args[1:]
-        else:
-            return False
-        nick = _single_agent_nick(agent_args)
-        if nick is None:
-            return None
-        return True if nick == name.removeprefix("agent-") else None
+        return _legacy_agent_role(launcher, args, name)
     return False
 
 
@@ -333,7 +354,7 @@ def _pid_to_classify(name: str, expected_pid: int | None) -> int | str:
     path = Path(PID_DIR) / f"{_safe_name(name)}.pid"
     try:
         content = path.read_text().strip()
-    except FileNotFoundError:
+    except (FileNotFoundError, UnicodeDecodeError):
         return "stale"
     except OSError:
         return "unknown"
@@ -499,7 +520,7 @@ def list_servers() -> list[dict]:
         pid_name = pid_path.stem  # e.g. "server-spark"
         name = pid_name[len(prefix) :]  # e.g. "spark"
         pid = read_pid(pid_name)
-        if pid is None or classify_pidfile(pid_name, pid) != "current":
+        if pid is None or classify_pidfile(pid_name, pid) not in ("current", "unknown"):
             continue
         port = read_port(pid_name) or 6667
         servers.append({"name": name, "pid": pid, "port": port})

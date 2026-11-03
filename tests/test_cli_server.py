@@ -462,8 +462,9 @@ class TestServerStop:
     def test_unknown_never_signals(self, pids, monkeypatch, fake_os_kill, capsys):
         pids.set_pid("server-spark", 4242)
         monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "unknown")
+        args = _args(name="spark")
         with pytest.raises(CultureError) as exc:
-            srv_mod._server_stop(_args(name="spark"))
+            srv_mod._server_stop(args)
         assert exc.value.code == 1
         assert fake_os_kill.calls == []
         assert pids.removed == []
@@ -474,8 +475,9 @@ class TestServerStop:
     ):
         pids.set_pid("server-spark", 4242, alive_seq=[True])
         pids.termination_result("refused")
+        args = _args(name="spark")
         with pytest.raises(CultureError) as exc:
-            srv_mod._server_stop(_args(name="spark"))
+            srv_mod._server_stop(args)
         assert exc.value.code == 1
         assert "aborting kill" in exc.value.message
         assert pids.removed == []
@@ -658,8 +660,9 @@ class TestServerArchive:
             "culture_core.config.archive_manifest_server",
             lambda *_a, **_kw: pytest.fail("archive after failed stop"),
         )
+        args = _args(name="spark", reason="")
         with pytest.raises(CultureError, match="stop failed"):
-            srv_mod._server_archive(_args(name="spark", reason=""))
+            srv_mod._server_archive(args)
 
     def test_already_archived_returns_silently(self, monkeypatch, capsys):
         cfg = _StubConfig(server=_StubServerCfg(name="spark", archived=True))
@@ -708,8 +711,9 @@ class TestServerArchive:
             lambda *_a, **_kw: pytest.fail("archived after failed agent stop"),
         )
 
+        args = _args(name="spark", reason="")
         with pytest.raises(CultureError, match="Could not stop agent"):
-            srv_mod._server_archive(_args(name="spark", reason=""))
+            srv_mod._server_archive(args)
 
 
 class TestServerUnarchive:

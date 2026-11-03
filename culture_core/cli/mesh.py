@@ -374,9 +374,42 @@ def _install_mesh_services(
         print(f"  Installed {agent_svc} → {path}")
 
 
+def _uninstall_mesh(mesh, server_name: str) -> None:
+    from culture_core.persistence import list_services, uninstall_service
+
+    if not _mesh_pidfiles_allow_teardown(mesh, server_name):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify every daemon for server '{server_name}'",
+            "inspect the server and agent pidfiles before uninstalling",
+        )
+    print("Uninstalling culture services...")
+    expected = {f"culture-server-{server_name}"}
+    for agent in mesh.agents:
+        expected.add(f"culture-agent-{server_name}-{agent.nick}")
+    for svc in list_services():
+        if svc in expected:
+            print(f"  Removing {svc}")
+            uninstall_service(svc)
+    if not server_stop_by_name(server_name):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot stop server '{server_name}'",
+            "inspect its pidfile before uninstalling",
+        )
+    for agent in mesh.agents:
+        full_nick = f"{server_name}-{agent.nick}"
+        if not stop_agent(full_nick):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Cannot stop agent '{full_nick}'",
+                "inspect its IPC socket and pidfile before uninstalling",
+            )
+    print("Done.")
+
+
 def _cmd_setup(args: argparse.Namespace) -> None:
     from culture_core.mesh_config import load_mesh_config
-    from culture_core.persistence import list_services, uninstall_service
 
     # Same resolution `culture server install` uses (see
     # shared.mesh.load_mesh_or_generate) — kept inline here because the
@@ -397,35 +430,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
     server_name = mesh.server.name
 
     if args.uninstall:
-        if not _mesh_pidfiles_allow_teardown(mesh, server_name):
-            raise CultureError(
-                EXIT_USER_ERROR,
-                f"Cannot verify every daemon for server '{server_name}'",
-                "inspect the server and agent pidfiles before uninstalling",
-            )
-        print("Uninstalling culture services...")
-        expected = {f"culture-server-{server_name}"}
-        for agent in mesh.agents:
-            expected.add(f"culture-agent-{server_name}-{agent.nick}")
-        for svc in list_services():
-            if svc in expected:
-                print(f"  Removing {svc}")
-                uninstall_service(svc)
-        if not server_stop_by_name(server_name):
-            raise CultureError(
-                EXIT_USER_ERROR,
-                f"Cannot stop server '{server_name}'",
-                "inspect its pidfile before uninstalling",
-            )
-        for agent in mesh.agents:
-            full_nick = f"{server_name}-{agent.nick}"
-            if not stop_agent(full_nick):
-                raise CultureError(
-                    EXIT_USER_ERROR,
-                    f"Cannot stop agent '{full_nick}'",
-                    "inspect its IPC socket and pidfile before uninstalling",
-                )
-        print("Done.")
+        _uninstall_mesh(mesh, server_name)
         return
 
     _store_mesh_credentials(mesh)

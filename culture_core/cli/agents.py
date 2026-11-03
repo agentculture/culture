@@ -670,7 +670,9 @@ def _start_foreground(config: DaemonConfig, agents: list[AgentConfig]) -> None:
     agent = agents[0]
     pid_name = f"agent-{agent.nick}"
     existing = read_pid(pid_name)
-    if existing != os.getpid() and classify_pidfile(pid_name, existing) == "current":
+    # Without /proc a live PID can't be verified, and refusing could wedge a service.
+    verifiable = os.path.isdir("/proc")
+    if verifiable and existing != os.getpid() and classify_pidfile(pid_name, existing) == "current":
         raise CultureError(
             EXIT_USER_ERROR,
             f"Agent '{agent.nick}' is already running (PID {existing})",

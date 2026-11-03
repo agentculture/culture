@@ -327,8 +327,9 @@ class TestCmdSetup:
         )
         monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: pytest.fail("stopped agent"))
 
+        args = _args(mesh_command="setup", uninstall=True)
         with pytest.raises(CultureError, match="Cannot verify every daemon"):
-            mesh_mod._cmd_setup(_args(mesh_command="setup", uninstall=True))
+            mesh_mod._cmd_setup(args)
 
     def test_uninstall_unknown_agent_aborts_before_unit_removal(self, monkeypatch):
         mesh = _StubMesh(
@@ -347,8 +348,9 @@ class TestCmdSetup:
         )
         monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: pytest.fail("stopped"))
 
+        args = _args(mesh_command="setup", uninstall=True)
         with pytest.raises(CultureError, match="Cannot verify every daemon"):
-            mesh_mod._cmd_setup(_args(mesh_command="setup", uninstall=True))
+            mesh_mod._cmd_setup(args)
 
     def test_install_path_invokes_credential_and_service_install(self, monkeypatch, capsys):
         mesh = _StubMesh(
