@@ -41,7 +41,8 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w") as stream:
             stream.write(content)
-        umask = os.umask(0)
+        # Reading the umask means setting it: use a value that never widens access.
+        umask = os.umask(0o077)
         os.umask(umask)
         os.chmod(temp_path, 0o666 & ~umask)
         os.replace(temp_path, path)  # NOSONAR S2083: caller uses _safe_name
