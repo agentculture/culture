@@ -49,14 +49,13 @@ class TestWaitForServerPort:
         port, srv = _start_listener()
         try:
             # Mock read_pid to return current process PID
-            # Mock is_culture_process to return True
             monkeypatch.setattr(
                 "culture_core.pidfile.read_pid",
                 lambda name: os.getpid(),
             )
             monkeypatch.setattr(
-                "culture_core.pidfile.is_culture_process",
-                lambda pid: True,
+                "culture_core.pidfile.classify_pidfile",
+                lambda name, pid: "current",
             )
             assert _wait_for_server_port("127.0.0.1", port, retries=5, server_name="test") is True
         finally:
@@ -73,8 +72,8 @@ class TestWaitForServerPort:
                 lambda name: os.getpid(),
             )
             monkeypatch.setattr(
-                "culture_core.pidfile.is_culture_process",
-                lambda pid: False,
+                "culture_core.pidfile.classify_pidfile",
+                lambda name, pid: "stale",
             )
             assert _wait_for_server_port("127.0.0.1", port, retries=5, server_name="test") is False
         finally:

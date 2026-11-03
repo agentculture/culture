@@ -300,8 +300,12 @@ class TestCmdSetup:
         monkeypatch.setattr("culture_core.persistence.uninstall_service", removed.append)
         stopped_servers = []
         stopped_agents = []
-        monkeypatch.setattr(mesh_mod, "server_stop_by_name", stopped_servers.append)
-        monkeypatch.setattr(mesh_mod, "stop_agent", stopped_agents.append)
+        monkeypatch.setattr(
+            mesh_mod, "server_stop_by_name", lambda name: stopped_servers.append(name) or True
+        )
+        monkeypatch.setattr(
+            mesh_mod, "stop_agent", lambda nick: stopped_agents.append(nick) or True
+        )
 
         mesh_mod._cmd_setup(_args(mesh_command="setup", uninstall=True))
 
@@ -309,6 +313,44 @@ class TestCmdSetup:
         assert stopped_servers == ["spark"]
         assert stopped_agents == ["spark-ada"]
         assert "Uninstalling" in capsys.readouterr().out
+
+    def test_uninstall_unknown_server_aborts_before_teardown(self, monkeypatch):
+        mesh = _StubMesh(
+            server=_StubServerCfg(name="spark"),
+            agents=[_StubAgent(nick="ada")],
+        )
+        self._setup(monkeypatch, mesh_load=lambda _p: mesh)
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(mesh_mod, "classify_pidfile", lambda *_a: "unknown")
+        monkeypatch.setattr(
+            "culture_core.persistence.list_services", lambda: pytest.fail("listed services")
+        )
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: pytest.fail("stopped agent"))
+
+        args = _args(mesh_command="setup", uninstall=True)
+        with pytest.raises(CultureError, match="Cannot verify every daemon"):
+            mesh_mod._cmd_setup(args)
+
+    def test_uninstall_unknown_agent_aborts_before_unit_removal(self, monkeypatch):
+        mesh = _StubMesh(
+            server=_StubServerCfg(name="spark"),
+            agents=[_StubAgent(nick="ada")],
+        )
+        self._setup(monkeypatch, mesh_load=lambda _p: mesh)
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(
+            mesh_mod,
+            "classify_pidfile",
+            lambda name, _pid: "unknown" if name == "agent-spark-ada" else "current",
+        )
+        monkeypatch.setattr(
+            "culture_core.persistence.list_services", lambda: pytest.fail("listed services")
+        )
+        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: pytest.fail("stopped"))
+
+        args = _args(mesh_command="setup", uninstall=True)
+        with pytest.raises(CultureError, match="Cannot verify every daemon"):
+            mesh_mod._cmd_setup(args)
 
     def test_install_path_invokes_credential_and_service_install(self, monkeypatch, capsys):
         mesh = _StubMesh(
@@ -651,6 +693,95 @@ class TestRestartSingleService:
 
 
 class TestRestartMeshServices:
+    def test_stop_failure_aborts_restart(self, monkeypatch):
+        mesh = _StubMesh(server=_StubServerCfg(name="spark"))
+        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: False)
+        monkeypatch.setattr(
+            "culture_core.persistence.install_service",
+            lambda *_a, **_kw: pytest.fail("installed after failed stop"),
+        )
+        assert not mesh_mod._restart_mesh_services(
+            mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+        )
+
+    def test_unknown_server_aborts_before_agent_teardown(self, monkeypatch):
+        mesh = _StubMesh(server=_StubServerCfg(name="spark"), agents=[_StubAgent(nick="ada")])
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(mesh_mod, "classify_pidfile", lambda *_a: "unknown")
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: pytest.fail("stopped agent"))
+        monkeypatch.setattr(
+            "culture_core.persistence.install_service",
+            lambda *_a, **_kw: pytest.fail("installed service"),
+        )
+
+        assert not mesh_mod._restart_mesh_services(
+            mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+        )
+
+    def test_agent_stop_failure_reports_partial_teardown(self, monkeypatch, capsys):
+        mesh = _StubMesh(
+            server=_StubServerCfg(name="spark"),
+            agents=[_StubAgent(nick="ada"), _StubAgent(nick="bob")],
+        )
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda nick: nick == "spark-ada")
+        monkeypatch.setattr(
+            mesh_mod, "server_stop_by_name", lambda _n: pytest.fail("stopped server")
+        )
+        monkeypatch.setattr(
+            "culture_core.persistence.install_service",
+            lambda *_a, **_kw: pytest.fail("installed service"),
+        )
+
+        assert not mesh_mod._restart_mesh_services(
+            mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+        )
+        err = capsys.readouterr().err
+        assert "Stopped and not restarted: agent 'spark-ada'" in err
+        assert "Stopped and not restarted: agent 'spark-bob'" not in err
+        assert "culture mesh update --skip-upgrade --config /tmp/mesh.yaml" in err
+
+    def test_unknown_agent_aborts_before_any_teardown(self, monkeypatch):
+        mesh = _StubMesh(server=_StubServerCfg(name="spark"), agents=[_StubAgent(nick="ada")])
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(
+            mesh_mod,
+            "classify_pidfile",
+            lambda name, _pid: "unknown" if name == "agent-spark-ada" else "current",
+        )
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: pytest.fail("stopped agent"))
+        monkeypatch.setattr(
+            mesh_mod, "server_stop_by_name", lambda _n: pytest.fail("stopped server")
+        )
+
+        assert not mesh_mod._restart_mesh_services(
+            mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+        )
+
+    def test_external_resident_never_blocks_or_gets_stopped(self, monkeypatch):
+        """An external resident owns its process, so mesh leaves it entirely alone."""
+        external = _StubAgent(nick="ext")
+        external.backend = "external"
+        mesh = _StubMesh(server=_StubServerCfg(name="spark"), agents=[external])
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(
+            mesh_mod,
+            "classify_pidfile",
+            lambda name, _pid: "unknown" if name == "agent-spark-ext" else "current",
+        )
+
+        assert mesh_mod._mesh_pidfiles_allow_teardown(mesh, "spark") is True
+        assert mesh_mod._managed_agents(mesh) == []
+
+    def test_unknown_agent_reachable_over_ipc_allows_teardown(self, monkeypatch):
+        """stop_agent tries IPC first, so an unknown pidfile alone mustn't block it."""
+        monkeypatch.setattr(mesh_mod, "read_pid", lambda _name: 4242)
+        monkeypatch.setattr(mesh_mod, "classify_pidfile", lambda _name, _pid: "unknown")
+        monkeypatch.setattr(mesh_mod, "agent_socket_path", lambda _name: "/ipc/socket")
+        monkeypatch.setattr(mesh_mod.os.path, "exists", lambda path: path == "/ipc/socket")
+
+        assert mesh_mod._pidfile_allows_teardown("agent", "spark-ada") is True
+        assert mesh_mod._pidfile_allows_teardown("server", "spark") is False
+
     def test_dry_run_returns_true_and_prints_plan(self, monkeypatch, capsys):
         mesh = _StubMesh(server=_StubServerCfg(name="spark"))
         result = mesh_mod._restart_mesh_services(
@@ -661,8 +792,8 @@ class TestRestartMeshServices:
 
     def test_returns_false_when_server_does_not_come_up(self, monkeypatch, capsys):
         mesh = _StubMesh(server=_StubServerCfg(name="spark"))
-        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: None)
-        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: None)
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: True)
+        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: True)
         monkeypatch.setattr("culture_core.persistence.install_service", lambda *a, **kw: None)
         monkeypatch.setattr("culture_core.persistence.restart_service", lambda _svc: True)
         monkeypatch.setattr(mesh_mod, "_wait_for_server_port", lambda *a, **kw: False)
@@ -678,8 +809,9 @@ class TestRestartMeshServices:
             server=_StubServerCfg(name="spark"),
             agents=[_StubAgent(nick="ada")],
         )
-        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: None)
-        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: None)
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: True)
+        monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: True)
+
         monkeypatch.setattr("culture_core.persistence.install_service", lambda *a, **kw: None)
         monkeypatch.setattr("culture_core.persistence.restart_service", lambda _svc: True)
         monkeypatch.setattr(mesh_mod, "_wait_for_server_port", lambda *a, **kw: True)

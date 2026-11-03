@@ -254,6 +254,10 @@ class TestServerStartAlreadyRunningStaysTransient:
     def test_already_running_exits_1_not_78(self, isolated_cli_state, monkeypatch, capsys):
         name = "t2clirunning"
         write_pid(f"server-{name}", os.getpid())  # our own test process: genuinely alive
+        # Vouch for the synthetic process in this exit-code boundary test.
+        monkeypatch.setattr(
+            "culture_core.cli.server.classify_pidfile", lambda _n, _p=None: "current"
+        )
         monkeypatch.setattr(sys, "argv", ["culture", "server", "start", "--name", name])
         with pytest.raises(SystemExit) as exc:
             cli_main()

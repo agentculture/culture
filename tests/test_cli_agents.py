@@ -26,6 +26,7 @@ Mocking conventions (matches `tests/test_cli_server.py`):
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -623,6 +624,66 @@ class TestCmdStartDispatcher:
         agent_mod._cmd_start(_args(all=False, nick="spark-ada", foreground=False))
         assert called == ["bg"]
 
+    def test_foreground_writes_identity_before_cultureagent_rewrite(self, monkeypatch, tmp_path):
+        from cultureagent import pidfile as cultureagent_pidfile
+
+        from culture_core import pidfile as core_pidfile
+
+        cfg = _make_config(_make_agent(suffix="ada"))
+        agent = cfg.agents[0]
+        monkeypatch.setattr(core_pidfile, "PID_DIR", str(tmp_path))
+        monkeypatch.setattr(cultureagent_pidfile, "PID_DIR", str(tmp_path))
+        monkeypatch.setattr(agent_mod, "_export_agent_secret", lambda *_a, **_kw: None)
+        observed = []
+
+        def sibling_run(coroutine):
+            coroutine.close()
+            cultureagent_pidfile.write_pid(f"agent-{agent.nick}", os.getpid())
+            observed.append((tmp_path / f"agent-{agent.nick}.identity").exists())
+
+        monkeypatch.setattr(agent_mod.asyncio, "run", sibling_run)
+        agent_mod._start_foreground(cfg, [agent])
+
+        assert observed == [True]
+        assert not (tmp_path / f"agent-{agent.nick}.pid").exists()
+        assert not (tmp_path / f"agent-{agent.nick}.identity").exists()
+
+    def test_foreground_refuses_live_duplicate(self, monkeypatch, tmp_path):
+        from culture_core import pidfile as core_pidfile
+
+        launcher = tmp_path / "culture"
+        launcher.write_text(f"#!{sys.executable}\nimport time; time.sleep(30)\n")
+        launcher.chmod(0o755)
+        child = subprocess.Popen([str(launcher), "agents", "start", "spark-ada"])
+        cfg = _make_config(_make_agent(suffix="ada"))
+        monkeypatch.setattr(core_pidfile, "PID_DIR", str(tmp_path))
+        try:
+            core_pidfile.write_pid("agent-spark-ada", child.pid)
+            with pytest.raises(CultureError, match="already running"):
+                agent_mod._start_foreground(cfg, cfg.agents)
+        finally:
+            child.kill()
+            child.wait()
+
+    def test_foreground_cleanup_does_not_remove_replacement(self, monkeypatch, tmp_path):
+        from culture_core import pidfile as core_pidfile
+
+        cfg = _make_config(_make_agent(suffix="ada"))
+        agent = cfg.agents[0]
+        pid_path = tmp_path / f"agent-{agent.nick}.pid"
+        monkeypatch.setattr(core_pidfile, "PID_DIR", str(tmp_path))
+        monkeypatch.setattr(agent_mod, "_export_agent_secret", lambda *_a, **_kw: None)
+
+        def replace_while_running(coroutine):
+            coroutine.close()
+            pid_path.write_text("4242")
+
+        monkeypatch.setattr(agent_mod.asyncio, "run", replace_while_running)
+        agent_mod._start_foreground(cfg, [agent])
+
+        assert pid_path.read_text() == "4242"
+        assert (tmp_path / f"agent-{agent.nick}.identity").exists()
+
 
 # ---------------------------------------------------------------------------
 # Backend daemon factories — parametrized
@@ -849,11 +910,43 @@ class TestCmdStop:
         cfg = _make_config(_make_agent(suffix="ada"), _make_agent(suffix="bob"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
 
         agent_mod._cmd_stop(_args(all=True, nick=None))
 
         assert sorted(stopped) == ["spark-ada", "spark-bob"]
+
+    def test_failed_stop_exits_nonzero(self, monkeypatch):
+        cfg = _make_config(_make_agent(suffix="ada"))
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda _nick: False)
+
+        args = _args(all=False, nick="spark-ada")
+        with pytest.raises(CultureError, match="Could not stop agent") as exc:
+            agent_mod._cmd_stop(args)
+        assert exc.value.code != 0
+
+    def test_stop_all_continues_and_names_every_failure(self, monkeypatch):
+        cfg = _make_config(
+            _make_agent(suffix="ada"),
+            _make_agent(suffix="bob"),
+            _make_agent(suffix="cy"),
+        )
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        calls = []
+
+        def stop(nick):
+            calls.append(nick)
+            return nick == "spark-bob"
+
+        monkeypatch.setattr(agent_mod, "stop_agent", stop)
+        args = _args(all=True, nick=None)
+        with pytest.raises(CultureError) as exc:
+            agent_mod._cmd_stop(args)
+
+        assert calls == ["spark-ada", "spark-bob", "spark-cy"]
+        assert "spark-ada" in exc.value.message
+        assert "spark-cy" in exc.value.message
 
 
 # ---------------------------------------------------------------------------
@@ -1293,9 +1386,9 @@ class TestCmdArchive:
         cfg = _make_config(_make_agent(suffix="ada"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
-        monkeypatch.setattr(agent_mod, "is_process_alive", lambda pid: True)
+        monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         archived = []
         monkeypatch.setattr(
             agent_mod,
@@ -1349,9 +1442,9 @@ class TestCmdDelete:
         cfg = _make_config(_make_agent(suffix="ada"))
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         monkeypatch.setattr(agent_mod, "read_pid", lambda name: 4242)
-        monkeypatch.setattr(agent_mod, "is_process_alive", lambda pid: True)
+        monkeypatch.setattr(agent_mod, "classify_pidfile", lambda name, pid: "current")
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         removed = []
         monkeypatch.setattr(
             agent_mod,
@@ -1364,6 +1457,31 @@ class TestCmdDelete:
         assert stopped == ["spark-ada"]
         assert removed == ["spark-ada"]
         assert "Agent deleted: spark-ada" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("action", ["archive", "delete"])
+def test_agent_change_refuses_when_stop_fails(monkeypatch, action):
+    cfg = _make_config(_make_agent(suffix="ada"))
+    monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+    monkeypatch.setattr(agent_mod, "read_pid", lambda _name: 4242)
+    monkeypatch.setattr(agent_mod, "classify_pidfile", lambda _name, _pid: "unknown")
+    stopped = []
+    monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or False)
+    monkeypatch.setattr(
+        agent_mod,
+        "archive_manifest_agent",
+        lambda *_a, **_kw: pytest.fail("archived after failed stop"),
+    )
+    monkeypatch.setattr(
+        agent_mod,
+        "remove_manifest_agent",
+        lambda *_a, **_kw: pytest.fail("deleted after failed stop"),
+    )
+    handler = agent_mod._cmd_archive if action == "archive" else agent_mod._cmd_delete
+    args = _args(nick="spark-ada", reason="")
+    with pytest.raises(CultureError, match="Could not stop agent"):
+        handler(args)
+    assert stopped == ["spark-ada"]
 
 
 # ---------------------------------------------------------------------------
@@ -1474,7 +1592,7 @@ class TestExternalResidents:
         cfg, _ = _external_cfg()
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         agent_mod._cmd_stop(_args(all=True, nick=None))
         assert stopped == ["spark-ada"]
 

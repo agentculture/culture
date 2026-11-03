@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 from culture_core.cli.shared.display import (
     _fetch_ipc_data,
@@ -46,7 +53,7 @@ def test_agent_process_status_running(tmp_path):
     sock.touch()
     with (
         patch("culture_core.cli.shared.display.read_pid", return_value=12345),
-        patch("culture_core.cli.shared.display.is_process_alive", return_value=True),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="current"),
         patch("culture_core.cli.shared.display.agent_socket_path", return_value=str(sock)),
     ):
         status, pid = agent_process_status(agent)
@@ -60,12 +67,66 @@ def test_agent_process_status_starting(tmp_path):
     missing_sock = tmp_path / "culture-spark-claude.sock"  # not created
     with (
         patch("culture_core.cli.shared.display.read_pid", return_value=12345),
-        patch("culture_core.cli.shared.display.is_process_alive", return_value=True),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="current"),
         patch("culture_core.cli.shared.display.agent_socket_path", return_value=str(missing_sock)),
     ):
         status, pid = agent_process_status(agent)
     assert status == "starting"
     assert pid == 12345
+
+
+def test_agent_process_status_unknown(tmp_path):
+    """An unclassifiable PID is surfaced as unknown without being removed."""
+    agent = _make_agent()
+    with (
+        patch("culture_core.cli.shared.display.read_pid", return_value=12345),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="unknown"),
+        patch("culture_core.cli.shared.display.remove_pid") as remove_pid,
+    ):
+        status, pid = agent_process_status(agent)
+    assert status == "unknown"
+    assert pid == 12345
+    remove_pid.assert_not_called()
+
+
+def test_agent_process_status_changed_pidfile_is_left_alone():
+    """A replacement daemon's pidfile is never deleted after an older read."""
+    agent = _make_agent()
+    with (
+        patch("culture_core.cli.shared.display.read_pid", return_value=12345),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="changed"),
+        patch("culture_core.cli.shared.display.remove_pid") as remove_pid,
+    ):
+        status, pid = agent_process_status(agent)
+    assert (status, pid) == ("unknown", 12345)
+    remove_pid.assert_not_called()
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
+def test_renamed_legacy_agent_is_unknown_and_pidfile_survives(monkeypatch, tmp_path):
+    from culture_core import pidfile
+
+    launcher = tmp_path / "culture"
+    launcher.write_text(f"#!{sys.executable}\nimport time; time.sleep(30)\n")
+    launcher.chmod(0o755)
+    child = subprocess.Popen([str(launcher), "agents", "start", "spark-old"])
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+    pid_path = tmp_path / "agent-spark-new.pid"
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if Path(f"/proc/{child.pid}/cmdline").read_bytes().startswith(str(launcher).encode()):
+                break
+            time.sleep(0.01)
+        pid_path.write_text(str(child.pid))
+
+        status, pid = agent_process_status(_make_agent(nick="spark-new"))
+
+        assert (status, pid) == ("unknown", child.pid)
+        assert pid_path.exists()
+    finally:
+        child.kill()
+        child.wait()
 
 
 # --- _format_agent_status ---
@@ -115,7 +176,7 @@ def _mock_running_agent_overview(agents, ipc_data, capsys, show_activity=False):
     """Helper: mock agent as running and capture overview output."""
     with (
         patch("culture_core.cli.shared.display.read_pid", return_value=999),
-        patch("culture_core.cli.shared.display.is_process_alive", return_value=True),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="current"),
         patch("culture_core.cli.shared.display.agent_socket_path", return_value="/tmp/x.sock"),
         patch("os.path.exists", return_value=True),
         patch("culture_core.cli.shared.display.ipc_request", return_value=ipc_data),
@@ -176,7 +237,7 @@ def _mock_agent_detail(agent, ipc_data, capsys, full=False):
     args = argparse.Namespace(full=full)
     with (
         patch("culture_core.cli.shared.display.read_pid", return_value=999),
-        patch("culture_core.cli.shared.display.is_process_alive", return_value=True),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="current"),
         patch("culture_core.cli.shared.display.agent_socket_path", return_value="/tmp/x.sock"),
         patch("os.path.exists", return_value=True),
         patch("culture_core.cli.shared.display.ipc_request", return_value=ipc_data),

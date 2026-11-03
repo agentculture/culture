@@ -14,7 +14,6 @@ import os
 import re
 import signal
 import threading
-import time
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,11 +22,12 @@ import mistune
 
 from culture_core.config import ServerConfig, ServerConnConfig
 from culture_core.pidfile import (
-    is_process_alive,
+    classify_pidfile,
     read_pid,
     read_port,
     remove_pid,
     remove_port,
+    terminate_verified,
     write_pid,
     write_port,
 )
@@ -128,41 +128,20 @@ def render_html(
 </html>"""
 
 
-def _terminate_process(pid, timeout=2.0):
-    """Send SIGTERM, poll until dead, fall back to SIGKILL. Returns True if killed."""
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except (PermissionError, ProcessLookupError):
-        return False
-    steps = int(timeout / 0.1)
-    for _ in range(steps):
-        if not is_process_alive(pid):
-            return True
-        time.sleep(0.1)
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        pass
-    return not is_process_alive(pid)
-
-
 def _stop_existing_overview(pid_name: str) -> None:
-    """Kill a previous overview instance if running, clean up its files."""
+    """Stop a verified previous overview; startup overwrites stale files."""
     existing_pid = read_pid(pid_name)
-    if existing_pid and is_process_alive(existing_pid):
+    state = classify_pidfile(pid_name, existing_pid)
+    if existing_pid and state == "current":
         existing_port = read_port(pid_name)
-        if not _terminate_process(existing_pid):
-            remove_pid(pid_name)
-            remove_port(pid_name)
+        if terminate_verified(pid_name, existing_pid, timeout=2.0) == "refused":
             port_msg = f", port {existing_port}" if existing_port else ""
             print(
                 f"Warning: could not stop previous overview (PID {existing_pid}{port_msg})",
                 flush=True,
             )
             return
-        remove_pid(pid_name)
+        remove_pid(pid_name, existing_pid)
         remove_port(pid_name)
         port_msg = f", port {existing_port}" if existing_port else ""
         print(
@@ -170,9 +149,11 @@ def _stop_existing_overview(pid_name: str) -> None:
             f" (PID {existing_pid}{port_msg})",
             flush=True,
         )
-    elif existing_pid:
-        remove_pid(pid_name)
-        remove_port(pid_name)
+    elif state != "stale":
+        raise RuntimeError(
+            f"Cannot verify previous overview (PID {existing_pid or 'file'}); "
+            "not signaling or starting another"
+        )
 
 
 class _OverviewHandler(SimpleHTTPRequestHandler):

@@ -49,7 +49,7 @@ from culture_core.config import (
     unarchive_manifest_agent,
 )
 from culture_core.pidfile import (
-    is_process_alive,
+    classify_pidfile,
     read_pid,
     remove_pid,
     write_pid,
@@ -642,7 +642,7 @@ def _probe_server_connection(host: str, port: int, server_name: str) -> None:
         conn.close()
     except OSError as exc:
         server_pid = read_pid(f"server-{server_name}")
-        if not server_pid or not is_process_alive(server_pid):
+        if not server_pid or classify_pidfile(f"server-{server_name}", server_pid) == "stale":
             remediation = f"start the server first: culture server start --name {server_name}"
         else:
             remediation = (
@@ -668,9 +668,23 @@ def _start_foreground(config: DaemonConfig, agents: list[AgentConfig]) -> None:
             "or drop --foreground to start all agents in the background",
         )
     agent = agents[0]
+    pid_name = f"agent-{agent.nick}"
+    existing = read_pid(pid_name)
+    # Without /proc a live PID can't be verified, and refusing could wedge a service.
+    verifiable = os.path.isdir("/proc")
+    if verifiable and existing != os.getpid() and classify_pidfile(pid_name, existing) == "current":
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Agent '{agent.nick}' is already running (PID {existing})",
+            f"stop it first with 'culture agents stop {agent.nick}' if you want to restart it",
+        )
     _export_agent_secret(agent, config, single=True)
     print(f"Starting agent {agent.nick} in foreground...")
-    asyncio.run(_run_single_agent(config, agent))
+    write_pid(pid_name, os.getpid())
+    try:
+        asyncio.run(_run_single_agent(config, agent))
+    finally:
+        remove_pid(pid_name, os.getpid())
 
 
 def _start_background(config: DaemonConfig, agents: list[AgentConfig]) -> None:
@@ -1138,8 +1152,13 @@ def _cmd_stop(args: argparse.Namespace) -> None:
         with tracer.start_as_current_span("culture.cli.agents.stop") as span:
             agents = _resolve_agents_to_stop(config, args)
             span.set_attribute("culture.agent.nicks", [a.nick for a in agents])
-            for agent in agents:
-                stop_agent(agent.nick)
+            failed = [agent.nick for agent in agents if not stop_agent(agent.nick)]
+            if failed:
+                raise CultureError(
+                    EXIT_USER_ERROR,
+                    f"Could not stop agents: {', '.join(failed)}",
+                    "check their IPC sockets and pidfiles, then retry",
+                )
     finally:
         shutdown_cli_tracing()
 
@@ -1478,10 +1497,12 @@ def _cmd_archive(args: argparse.Namespace) -> None:
         print(f"Agent '{args.nick}' is already archived")
         return
 
-    # Stop the agent if it's running
-    pid = read_pid(f"agent-{args.nick}")
-    if pid and is_process_alive(pid):
-        stop_agent(args.nick)
+    if is_external(agent):
+        print(
+            f"{agent.nick}: skipping stop — external agent (no signal, no IPC, no pidfile touched)"
+        )
+    else:
+        _stop_before_agent_change(args.nick)
 
     archive_manifest_agent(args.config, args.nick, reason=args.reason)
     _archive_unit(args.nick)
@@ -1545,14 +1566,26 @@ def _cmd_delete(args: argparse.Namespace) -> None:
             "run 'culture agents status --all' to list agents",
         )
 
-    # Stop the agent if it's running
-    pid = read_pid(f"agent-{args.nick}")
-    if pid and is_process_alive(pid):
-        stop_agent(args.nick)
+    if is_external(agent):
+        print(
+            f"{agent.nick}: skipping stop — external agent (no signal, no IPC, no pidfile touched)"
+        )
+    else:
+        _stop_before_agent_change(args.nick)
 
     remove_manifest_agent(args.config, args.nick)
     _account_apply(args, config, args.nick, "revoked")
     print(f"Agent deleted: {args.nick}")
+
+
+def _stop_before_agent_change(nick: str) -> None:
+    """Require a successful IPC or PID shutdown before changing an agent."""
+    if not stop_agent(nick):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Could not stop agent '{nick}'; leaving it unchanged",
+            "check its IPC socket and pidfile, then retry",
+        )
 
 
 # -----------------------------------------------------------------------

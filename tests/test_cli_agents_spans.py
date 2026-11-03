@@ -81,7 +81,7 @@ async def test_cmd_stop_emits_span(tracing_exporter, tmp_path, monkeypatch):
     server_yaml = _write_config(tmp_path)
 
     stopped: list[str] = []
-    monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+    monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
 
     args = argparse.Namespace(nick="spark-claude", all=False, config=str(server_yaml))
     agent_mod._cmd_stop(args)

@@ -7,7 +7,7 @@ import asyncio
 import logging
 import os
 
-from culture_core.pidfile import is_process_alive, read_pid, remove_pid
+from culture_core.pidfile import classify_pidfile, read_pid, remove_pid
 from culture_core.resource_view import fetch_residents_async
 
 from .constants import BOT_CONFIG_FILE
@@ -22,13 +22,16 @@ def agent_process_status(agent) -> tuple[str, int | None]:
     """Return (status_str, pid_or_none) for an agent."""
     pid_name = f"agent-{agent.nick}"
     pid = read_pid(pid_name)
-    if pid and is_process_alive(pid):
+    state = classify_pidfile(pid_name, pid)
+    if pid and state == "current":
         socket_path = agent_socket_path(agent.nick)
         if os.path.exists(socket_path):
             return "running", pid
         return "starting", pid
+    if state not in {"current", "stale"}:
+        return "unknown", pid
     if pid:
-        remove_pid(pid_name)
+        remove_pid(pid_name, pid)
     return "stopped", None
 
 

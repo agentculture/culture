@@ -4,141 +4,134 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import sys
 import time
 
 from culture_core.pidfile import (
-    is_culture_process,
+    capture_process_identity,
+    classify_pidfile,
     is_process_alive,
     read_pid,
     remove_pid,
+    terminate_captured,
+    terminate_verified,
 )
 
 from .ipc import agent_socket_path, ipc_shutdown
 
 
-def stop_agent(nick: str) -> None:
+def stop_agent(nick: str) -> bool:
     """Stop a single agent by trying IPC shutdown first, then PID file."""
     socket_path = agent_socket_path(nick)
 
-    if _try_ipc_shutdown(nick, socket_path):
-        return
+    ipc_result = _try_ipc_shutdown(nick, socket_path)
+    if ipc_result is not None:
+        return ipc_result
 
-    _try_pid_shutdown(nick)
+    return _try_pid_shutdown(nick)
 
 
-def _try_ipc_shutdown(nick: str, socket_path: str) -> bool:
-    """Attempt graceful IPC shutdown. Return True if the agent stopped."""
+def _try_ipc_shutdown(nick: str, socket_path: str) -> bool | None:
+    """Return an accepted IPC result, or None when PID fallback should run."""
+    pid_name = f"agent-{nick}"
+    pid = read_pid(pid_name)
+    # Decide before IPC: once the agent acts, its pidfile may be gone. Only a PID
+    # verified as this agent's may ever be escalated against.
+    state = classify_pidfile(pid_name, pid) if pid and pid > 0 else "stale"
+    identity = capture_process_identity(pid) if state == "current" else None
     if not os.path.exists(socket_path):
-        return False
+        return None
     try:
         success = asyncio.run(ipc_shutdown(socket_path))
         if not success:
-            return False
+            return None
     except Exception:
-        return False
+        return None
 
     print(f"Agent '{nick}' shutdown requested via IPC")
-    pid_name = f"agent-{nick}"
-    pid = read_pid(pid_name)
-    if not pid:
+    if state == "stale":  # no PID belongs to this agent, so there is nothing to watch
         print(f"Agent '{nick}' stopped")
         return True
     for _ in range(50):
         if not is_process_alive(pid):
-            remove_pid(pid_name)
+            remove_pid(pid_name, pid)
             print(f"Agent '{nick}' stopped")
             return True
         time.sleep(0.1)
-    return False
+    result = terminate_captured(pid, identity)
+    if result == "refused":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
+        return False
+    if result == "killed":
+        _print_escalation(nick)
+    remove_pid(pid_name, pid)
+    print(f"Agent '{nick}' {'killed' if result == 'killed' else 'stopped'}")
+    return True
 
 
-def _try_pid_shutdown(nick: str) -> None:
+def _print_escalation(nick: str) -> None:
+    if sys.platform == "win32":
+        print(f"Agent '{nick}' did not stop gracefully, terminating")
+    else:
+        print(f"Agent '{nick}' did not stop gracefully, sending SIGKILL")
+
+
+def _try_pid_shutdown(nick: str) -> bool:
     """Stop an agent via PID file with SIGTERM/SIGKILL fallback."""
     pid_name = f"agent-{nick}"
     pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
 
     if pid is None:
-        print(f"No PID file for agent '{nick}'")
-        return
+        if state == "stale":
+            print(f"No PID file for agent '{nick}'")
+            return True
+        print(f"Cannot verify agent '{nick}' PID file; leaving it in place")
+        return False
 
     if pid <= 0:
         print(f"Invalid PID {pid} for agent '{nick}' — removing corrupt PID file")
-        remove_pid(pid_name)
-        return
+        remove_pid(pid_name, pid)
+        return True
 
-    if not is_process_alive(pid):
+    if state == "stale":
         print(f"Agent '{nick}' is not running (stale PID {pid})")
-        remove_pid(pid_name)
-        return
+        remove_pid(pid_name, pid)
+        return True
 
-    if not is_culture_process(pid):
-        print(f"PID {pid} is not a culture process — removing stale PID file")
-        remove_pid(pid_name)
-        return
+    if state != "current":
+        print(f"Cannot verify agent '{nick}' (PID {pid}); leaving PID file and not signaling")
+        return False
 
     print(f"Stopping agent '{nick}' (PID {pid})...")
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        remove_pid(pid_name)
-        return
-
-    for _ in range(50):
-        if not is_process_alive(pid):
-            print(f"Agent '{nick}' stopped")
-            remove_pid(pid_name)
-            return
-        time.sleep(0.1)
-
-    if not is_culture_process(pid):
-        print(f"PID {pid} is no longer a culture process — aborting kill")
-        remove_pid(pid_name)
-        return
-
-    if sys.platform == "win32":
-        print(f"Agent '{nick}' did not stop gracefully, terminating")
-        sig = signal.SIGTERM
-    else:
-        print(f"Agent '{nick}' did not stop gracefully, sending SIGKILL")
-        sig = signal.SIGKILL
-    try:
-        os.kill(pid, sig)
-    except ProcessLookupError:
-        pass
-    remove_pid(pid_name)
-    print(f"Agent '{nick}' killed")
+    result = terminate_verified(pid_name, pid)
+    if result == "refused":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
+        return False
+    if result == "killed":
+        _print_escalation(nick)
+    remove_pid(pid_name, pid)
+    print(f"Agent '{nick}' {'killed' if result == 'killed' else 'stopped'}")
+    return True
 
 
-def server_stop_by_name(name: str) -> None:
+def server_stop_by_name(name: str) -> bool:
     """Stop a server by name (helper for setup --uninstall and update)."""
     pid_name = f"server-{name}"
     pid = read_pid(pid_name)
-    if not pid or not is_process_alive(pid):
-        if pid:
-            remove_pid(pid_name)
-        return
+    state = classify_pidfile(pid_name, pid)
+    if pid is None:
+        return state == "stale"
+    if state == "stale":
+        remove_pid(pid_name, pid)
+        return True
 
-    if not is_culture_process(pid):
-        remove_pid(pid_name)
-        return
+    if state != "current":
+        print(f"Cannot verify server '{name}' (PID {pid}); leaving PID file and not signaling")
+        return False
 
-    os.kill(pid, signal.SIGTERM)
-    for _ in range(50):
-        if not is_process_alive(pid):
-            remove_pid(pid_name)
-            return
-        time.sleep(0.1)
-
-    if sys.platform == "win32":
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    else:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    remove_pid(pid_name)
+    if terminate_verified(pid_name, pid) == "refused":
+        print(f"PID {pid} identity changed or cannot be verified — aborting kill")
+        return False
+    remove_pid(pid_name, pid)
+    return True

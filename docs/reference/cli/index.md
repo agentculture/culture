@@ -62,7 +62,7 @@ culture server start --name spark --port 6667 --foreground
 | `--config` | `~/.culture/server.yaml` | `server.yaml` whose [`accounts:` block](../server/config.md#agent-accounts-accounts) the server applies when its `server.name` matches `--name` |
 | `--foreground` | off | Run in foreground instead of daemonizing. Required for service managers (systemd, launchd, Task Scheduler). |
 
-PID file: `~/.culture/pids/server-<name>.pid`
+PID file: `~/.culture/pids/server-<name>.pid` contains only the PID. On Linux, `server-<name>.identity` records the PID, process start time, and boot ID. A stale PID is ignored on start. Older bare pidfiles are recognized from Culture or agentirc only when the launcher and server role are in their actual argv positions. If a live PID cannot be verified on Linux, start refuses and stop will not signal it. Without `/proc`, a live PID is assumed current, as before.
 Logs: `~/.culture/logs/server-<name>.log`
 
 To create a federated mesh, start servers with mutual `--link` flags:
@@ -81,7 +81,10 @@ culture server start --name thor --port 6667 --link spark:machineA:6667:secret
 culture server stop --name spark
 ```
 
-Sends SIGTERM, waits 5 seconds, then SIGKILL if needed.
+After verifying the PID's identity, sends SIGTERM and waits 5 seconds. If the
+same PID and start time are still live, sends SIGKILL even when the daemon
+already removed its pidfile while shutting down. A PID whose start time has
+changed is treated as reused and is not signalled.
 
 ### `culture server status`
 
@@ -254,7 +257,12 @@ culture agents stop spark-my-project
 culture agents stop --all
 ```
 
-Sends shutdown via IPC socket, falls back to PID file + SIGTERM.
+Sends shutdown via IPC socket, falling back to a verified PID file, SIGTERM,
+and then SIGKILL when necessary. Linux foreground units write the same
+`.identity` sidecar as background agents. A legacy bare pidfile is accepted
+only when the launcher is Culture or cultureagent and its argv identifies this
+single nick; `--all` and multi-nick command lines remain unknown rather than
+risk signalling the wrong agent.
 External residents are skipped with the same owner line — no signal, no IPC,
 no pidfile touched.
 
@@ -283,6 +291,7 @@ culture agents status spark-culture     # detailed view for one agent
 | `circuit-open` | Daemon alive but agent runner crashed repeatedly — circuit breaker opened |
 | `starting` | PID exists but IPC socket not yet available |
 | `stopped` | No running daemon process |
+| `unknown` | A live process holds the PID, but it can't be verified as this agent, for example after a rename. It isn't signalled, and its pidfile is left in place |
 
 External residents (`backend: external`) have no daemon; their row shows the
 live state from the server's `PRESENCE` registry instead (`idle`,

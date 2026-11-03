@@ -18,14 +18,48 @@ import time
 from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 from culture_core.cli.console import dispatch_resolved_argv as console_dispatch
 from culture_core.config import ServerConfig, load_config, load_config_or_default
+from culture_core.pidfile import classify_pidfile, read_pid
 
 from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
+from .shared.ipc import agent_socket_path
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
 from .shared.process import server_stop_by_name, stop_agent
 
 logger = logging.getLogger("culture")
 
 NAME = "mesh"
+
+
+def _pidfile_allows_teardown(kind: str, name: str) -> bool:
+    """Return False when daemon identity is ambiguous and teardown must not begin."""
+    pid_name = f"{kind}-{name}"
+    pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
+    if state in {"current", "stale"}:
+        return True
+    # stop_agent tries IPC first, which doesn't depend on the pidfile.
+    if kind == "agent" and os.path.exists(agent_socket_path(name)):
+        return True
+    print(
+        f"Cannot verify {kind} '{name}' (PID {pid or 'file'}); teardown aborted",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _managed_agents(mesh) -> list:
+    """Agents this mesh stops: external residents are owned by their own process."""
+    return [agent for agent in mesh.agents if getattr(agent, "backend", "") != "external"]
+
+
+def _mesh_pidfiles_allow_teardown(mesh, server_name: str) -> bool:
+    """Preflight every managed pidfile before changing any service."""
+    checks = [_pidfile_allows_teardown("server", server_name)]
+    checks.extend(
+        _pidfile_allows_teardown("agent", f"{server_name}-{agent.nick}")
+        for agent in _managed_agents(mesh)
+    )
+    return all(checks)
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -350,9 +384,42 @@ def _install_mesh_services(
         print(f"  Installed {agent_svc} → {path}")
 
 
+def _uninstall_mesh(mesh, server_name: str) -> None:
+    from culture_core.persistence import list_services, uninstall_service
+
+    if not _mesh_pidfiles_allow_teardown(mesh, server_name):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot verify every daemon for server '{server_name}'",
+            "inspect the server and agent pidfiles before uninstalling",
+        )
+    print("Uninstalling culture services...")
+    expected = {f"culture-server-{server_name}"}
+    for agent in mesh.agents:
+        expected.add(f"culture-agent-{server_name}-{agent.nick}")
+    for svc in list_services():
+        if svc in expected:
+            print(f"  Removing {svc}")
+            uninstall_service(svc)
+    if not server_stop_by_name(server_name):
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"Cannot stop server '{server_name}'",
+            "inspect its pidfile before uninstalling",
+        )
+    for agent in _managed_agents(mesh):
+        full_nick = f"{server_name}-{agent.nick}"
+        if not stop_agent(full_nick):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Cannot stop agent '{full_nick}'",
+                "inspect its IPC socket and pidfile before uninstalling",
+            )
+    print("Done.")
+
+
 def _cmd_setup(args: argparse.Namespace) -> None:
     from culture_core.mesh_config import load_mesh_config
-    from culture_core.persistence import list_services, uninstall_service
 
     # Same resolution `culture server install` uses (see
     # shared.mesh.load_mesh_or_generate) — kept inline here because the
@@ -373,19 +440,7 @@ def _cmd_setup(args: argparse.Namespace) -> None:
     server_name = mesh.server.name
 
     if args.uninstall:
-        print("Uninstalling culture services...")
-        expected = {f"culture-server-{server_name}"}
-        for agent in mesh.agents:
-            expected.add(f"culture-agent-{server_name}-{agent.nick}")
-        for svc in list_services():
-            if svc in expected:
-                print(f"  Removing {svc}")
-                uninstall_service(svc)
-        server_stop_by_name(server_name)
-        for agent in mesh.agents:
-            full_nick = f"{server_name}-{agent.nick}"
-            stop_agent(full_nick)
-        print("Done.")
+        _uninstall_mesh(mesh, server_name)
         return
 
     _store_mesh_credentials(mesh)
@@ -515,7 +570,7 @@ def _wait_for_server_port(
     """
     import socket as _socket
 
-    from culture_core.pidfile import is_culture_process, read_pid
+    from culture_core.pidfile import classify_pidfile, read_pid
 
     probe = "localhost" if host in ("0.0.0.0", "::", "") else host
     for _ in range(retries):
@@ -523,7 +578,10 @@ def _wait_for_server_port(
             with _socket.create_connection((probe, port), timeout=1):
                 if server_name:
                     pid = read_pid(f"server-{server_name}")
-                    if pid is not None and not is_culture_process(pid):
+                    if (
+                        pid is not None
+                        and classify_pidfile(f"server-{server_name}", pid) != "current"
+                    ):
                         return False
                 return True
         except OSError:
@@ -588,13 +646,29 @@ def _restart_mesh_services(
         _dry_run_restart(mesh, server_name)
         return True
 
-    for agent in mesh.agents:
+    if not _mesh_pidfiles_allow_teardown(mesh, server_name):
+        return False
+
+    stopped = []
+    for agent in _managed_agents(mesh):
         full_nick = f"{server_name}-{agent.nick}"
         print(f"  Stopping {full_nick}...")
-        stop_agent(full_nick)
+        if not stop_agent(full_nick):
+            return _stop_failure(
+                f"Cannot stop agent '{full_nick}'; mesh update aborted",
+                stopped,
+                config_path,
+            )
+        stopped.append(f"agent '{full_nick}'")
 
     print(f"  Stopping server {server_name}...")
-    server_stop_by_name(server_name)
+    if not server_stop_by_name(server_name):
+        return _stop_failure(
+            f"Cannot stop server '{server_name}'; mesh update aborted",
+            stopped,
+            config_path,
+        )
+    stopped.append(f"server '{server_name}'")
 
     from culture_core.persistence import install_service, restart_service
 
@@ -668,6 +742,20 @@ def _restart_mesh_services(
 
     print()
     return True
+
+
+def _stop_failure(message: str, stopped: list[str], config_path: str) -> bool:
+    """Report a partial teardown and its explicit recovery command."""
+    print(message, file=sys.stderr)
+    if stopped:
+        print(f"Stopped and not restarted: {', '.join(stopped)}", file=sys.stderr)
+    else:
+        print("No services were stopped.", file=sys.stderr)
+    print(
+        "Recover by rerunning: " f"culture mesh update --skip-upgrade --config {config_path}",
+        file=sys.stderr,
+    )
+    return False
 
 
 def _resolve_mesh_for_server(server_name: str, config_path: str):

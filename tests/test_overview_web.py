@@ -4,6 +4,8 @@ import os
 import threading
 import time
 
+import pytest
+
 from culture_core import pidfile
 from culture_core.overview.model import Agent, MeshState, Message, Room
 from culture_core.overview.renderer_web import (
@@ -153,7 +155,7 @@ def test_serve_web_writes_and_cleans_pid_port(tmp_path, monkeypatch):
     assert pid_path.exists(), "PID file should be created"
     assert port_path.exists(), "Port file should be created"
 
-    stored_pid = int(pid_path.read_text().strip())
+    stored_pid = int(pid_path.read_text().splitlines()[0])
     stored_port = int(port_path.read_text().strip())
     assert stored_pid == os.getpid()
     assert stored_port > 0
@@ -174,31 +176,47 @@ def test_stop_existing_overview_kills_previous(tmp_path, monkeypatch):
     (tmp_path / f"{pid_name}.pid").write_text("99999")
     (tmp_path / f"{pid_name}.port").write_text("12345")
 
-    # Simulate: process alive on first check, dead after SIGTERM
-    alive_calls = {"count": 0}
-
-    def _fake_alive(pid):
-        alive_calls["count"] += 1
-        return alive_calls["count"] == 1  # alive first, dead after
-
-    killed_pids = []
-    monkeypatch.setattr(os, "kill", lambda pid, sig: killed_pids.append((pid, sig)))
-
     import culture_core.overview.renderer_web as rweb
 
-    monkeypatch.setattr(rweb, "is_process_alive", _fake_alive)
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda name, pid=None: "current")
+    terminated = []
+    monkeypatch.setattr(
+        rweb,
+        "terminate_verified",
+        lambda name, pid, timeout: terminated.append((name, pid, timeout)) or "stopped",
+    )
 
     _stop_existing_overview(pid_name)
 
-    import signal
-
-    assert (99999, signal.SIGTERM) in killed_pids, "SIGTERM should be sent"
+    assert terminated == [(pid_name, 99999, 2.0)]
     assert not (tmp_path / f"{pid_name}.pid").exists()
     assert not (tmp_path / f"{pid_name}.port").exists()
 
 
-def test_stop_existing_overview_cleans_stale_pid(tmp_path, monkeypatch):
-    """Stale PID files (dead process) are cleaned without sending signals."""
+def test_stop_existing_overview_never_signals_a_reused_pid(tmp_path, monkeypatch):
+    """A reused PID is never signalled; startup will overwrite its files."""
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+
+    pid_name = "overview-reused"
+    (tmp_path / f"{pid_name}.pid").write_text("22222")
+    (tmp_path / f"{pid_name}.port").write_text("9999")
+
+    kills = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+
+    import culture_core.overview.renderer_web as rweb
+
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda name, pid=None: "stale")
+
+    _stop_existing_overview(pid_name)
+
+    assert kills == [], "No signals should be sent to an unrelated process"
+    assert (tmp_path / f"{pid_name}.pid").exists()
+    assert (tmp_path / f"{pid_name}.port").exists()
+
+
+def test_stop_existing_overview_keeps_stale_pid(tmp_path, monkeypatch):
+    """Stale PID files remain for startup to overwrite, without signals."""
     monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
 
     pid_name = "overview-stale"
@@ -210,10 +228,38 @@ def test_stop_existing_overview_cleans_stale_pid(tmp_path, monkeypatch):
 
     import culture_core.overview.renderer_web as rweb
 
-    monkeypatch.setattr(rweb, "is_process_alive", lambda pid: False)
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda name, pid=None: "stale")
 
     _stop_existing_overview(pid_name)
 
-    assert not (tmp_path / f"{pid_name}.pid").exists()
-    assert not (tmp_path / f"{pid_name}.port").exists()
+    assert (tmp_path / f"{pid_name}.pid").exists()
+    assert (tmp_path / f"{pid_name}.port").exists()
     assert kills == [], "No signals should be sent for a dead process"
+
+
+def test_overview_unknown_never_signals_or_deletes(tmp_path, monkeypatch):
+    import culture_core.overview.renderer_web as rweb
+
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+    (tmp_path / "overview-spark.pid").write_text("4242\n")
+    (tmp_path / "overview-spark.port").write_text("9000\n")
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda _n, _p=None: "unknown")
+    kills = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    with pytest.raises(RuntimeError, match="Cannot verify"):
+        _stop_existing_overview("overview-spark")
+    assert kills == []
+    assert (tmp_path / "overview-spark.pid").exists()
+    assert (tmp_path / "overview-spark.port").exists()
+
+
+def test_overview_sigkill_aborts_after_identity_change(tmp_path, monkeypatch):
+    import culture_core.overview.renderer_web as rweb
+
+    monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
+    (tmp_path / "overview-spark.pid").write_text("4242\n")
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda _n, _p=None: "current")
+    monkeypatch.setattr(rweb, "terminate_verified", lambda *_a, **_kw: "refused")
+    _stop_existing_overview("overview-spark")
+
+    assert (tmp_path / "overview-spark.pid").exists()
