@@ -23,8 +23,6 @@ not its execution at runtime.
 
 from __future__ import annotations
 
-import signal
-
 import pytest
 
 from culture_core.cli.shared import process as proc_mod
@@ -83,6 +81,7 @@ def pid_state(monkeypatch):
     pids: dict[str, int] = {}
     alive: dict[int, list[bool]] = {}  # pid -> queue of is_process_alive answers
     culture: dict[int, list[bool]] = {}  # pid -> queue of is_culture_process answers
+    termination = {"result": "stopped"}
 
     def _pop(table: dict[int, list[bool]], pid: int, default: bool) -> bool:
         seq = table.get(pid)
@@ -96,10 +95,13 @@ def pid_state(monkeypatch):
         proc_mod,
         "classify_pidfile",
         lambda name, pid=None: (
-            "current" if _pop(alive, pid, True) and _pop(culture, pid, True) else "stale"
+            "stale"
+            if pid is None
+            else "current" if _pop(alive, pid, True) and _pop(culture, pid, True) else "stale"
         ),
     )
-    monkeypatch.setattr(proc_mod, "remove_pid", lambda name: removed.append(name))
+    monkeypatch.setattr(proc_mod, "remove_pid", lambda name, _pid=None: removed.append(name))
+    monkeypatch.setattr(proc_mod, "terminate_verified", lambda _name, _pid: termination["result"])
 
     class State:
         def __init__(self) -> None:
@@ -107,6 +109,7 @@ def pid_state(monkeypatch):
             self.pids = pids
             self.alive = alive
             self.culture = culture
+            self.termination = termination
 
         def set_pid(self, name: str, pid: int) -> None:
             self.pids[name] = pid
@@ -117,6 +120,9 @@ def pid_state(monkeypatch):
 
         def culture_sequence(self, pid: int, *answers: bool) -> None:
             self.culture[pid] = list(answers)
+
+        def termination_result(self, result: str) -> None:
+            self.termination["result"] = result
 
     return State()
 
@@ -298,12 +304,11 @@ def test_pid_shutdown_handles_sigterm_process_lookup_error(pid_state, capsys, fa
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
-    fake_os.raise_on_call(1, ProcessLookupError)
+    pid_state.termination_result("stopped")
 
     proc_mod._try_pid_shutdown("ada")
 
-    # The SIGTERM call happened — and was the only kill attempted.
-    assert fake_os.calls == [(4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     assert "agent-ada" in pid_state.removed
 
 
@@ -314,7 +319,7 @@ def test_pid_shutdown_sigterm_success(pid_state, capsys, fake_os):
 
     proc_mod._try_pid_shutdown("ada")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     out = capsys.readouterr().out
     assert "Stopping agent 'ada'" in out
     assert "stopped" in out
@@ -323,15 +328,11 @@ def test_pid_shutdown_sigterm_success(pid_state, capsys, fake_os):
 
 def test_pid_shutdown_aborts_kill_when_pid_no_longer_culture(pid_state, capsys, fake_os):
     pid_state.set_pid("agent-ada", 4242)
-    # alive throughout the 50 polls; then post-poll check says "not culture"
-    pid_state.alive_sequence(4242, True)
-    # First call (pre-SIGTERM gate) culture=True; second call (post-poll) culture=False
-    pid_state.culture_sequence(4242, True, False)
+    pid_state.termination_result("refused")
 
     proc_mod._try_pid_shutdown("ada")
 
-    # Only SIGTERM was sent — SIGKILL was aborted.
-    assert fake_os.calls == [(4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     assert "identity changed" in capsys.readouterr().out
     assert "agent-ada" not in pid_state.removed
 
@@ -339,11 +340,11 @@ def test_pid_shutdown_aborts_kill_when_pid_no_longer_culture(pid_state, capsys, 
 def test_pid_shutdown_sigkill_escalation_posix(posix_platform, pid_state, capsys, fake_os):
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)  # never dies during polls
-    pid_state.culture_sequence(4242, True, True)  # still culture post-poll
+    pid_state.termination_result("killed")
 
     proc_mod._try_pid_shutdown("ada")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert fake_os.calls == []
     out = capsys.readouterr().out
     assert "sending SIGKILL" in out
     assert "killed" in out
@@ -355,12 +356,11 @@ def test_pid_shutdown_swallows_sigkill_process_lookup_error_posix(
 ):
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)
-    pid_state.culture_sequence(4242, True, True)
-    fake_os.raise_on_call(2, ProcessLookupError)  # SIGKILL throws
+    pid_state.termination_result("stopped")
 
     proc_mod._try_pid_shutdown("ada")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert fake_os.calls == []
     assert "agent-ada" in pid_state.removed
 
 
@@ -370,11 +370,11 @@ def test_pid_shutdown_win32_escalates_with_sigterm_not_sigkill(
     """On Windows, the second-attempt signal is SIGTERM, not SIGKILL."""
     pid_state.set_pid("agent-ada", 4242)
     pid_state.alive_sequence(4242, True)
-    pid_state.culture_sequence(4242, True, True)
+    pid_state.termination_result("killed")
 
     proc_mod._try_pid_shutdown("ada")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     out = capsys.readouterr().out
     assert "terminating" in out
     assert "sending SIGKILL" not in out
@@ -429,7 +429,7 @@ def test_server_stop_sigterm_success(pid_state, fake_os):
 
     proc_mod.server_stop_by_name("spark")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     assert "server-spark" in pid_state.removed
 
 
@@ -438,9 +438,10 @@ def test_server_stop_sigkill_escalation_posix(posix_platform, pid_state, fake_os
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
 
+    pid_state.termination_result("killed")
     proc_mod.server_stop_by_name("spark")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert fake_os.calls == []
     assert "server-spark" in pid_state.removed
 
 
@@ -450,9 +451,10 @@ def test_server_stop_win32_escalates_with_sigterm(win32_platform, pid_state, fak
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
 
+    pid_state.termination_result("killed")
     proc_mod.server_stop_by_name("spark")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGTERM)]
+    assert fake_os.calls == []
     assert "server-spark" in pid_state.removed
 
 
@@ -462,9 +464,9 @@ def test_server_stop_sigkill_swallows_process_lookup_error_posix(
     pid_state.set_pid("server-spark", 4242)
     pid_state.alive_sequence(4242, True)
     pid_state.culture_sequence(4242, True)
-    fake_os.raise_on_call(2, ProcessLookupError)  # SIGKILL throws
+    pid_state.termination_result("stopped")
 
     proc_mod.server_stop_by_name("spark")
 
-    assert fake_os.calls == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert fake_os.calls == []
     assert "server-spark" in pid_state.removed

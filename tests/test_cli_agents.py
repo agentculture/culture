@@ -26,6 +26,7 @@ Mocking conventions (matches `tests/test_cli_server.py`):
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -623,6 +624,29 @@ class TestCmdStartDispatcher:
         agent_mod._cmd_start(_args(all=False, nick="spark-ada", foreground=False))
         assert called == ["bg"]
 
+    def test_foreground_writes_identity_before_cultureagent_rewrite(self, monkeypatch, tmp_path):
+        from cultureagent import pidfile as cultureagent_pidfile
+
+        from culture_core import pidfile as core_pidfile
+
+        cfg = _make_config(_make_agent(suffix="ada"))
+        agent = cfg.agents[0]
+        monkeypatch.setattr(core_pidfile, "PID_DIR", str(tmp_path))
+        monkeypatch.setattr(cultureagent_pidfile, "PID_DIR", str(tmp_path))
+        monkeypatch.setattr(agent_mod, "_export_agent_secret", lambda *_a, **_kw: None)
+        observed = []
+
+        def sibling_run(coroutine):
+            coroutine.close()
+            cultureagent_pidfile.write_pid(f"agent-{agent.nick}", os.getpid())
+            observed.append((tmp_path / f"agent-{agent.nick}.identity").exists())
+
+        monkeypatch.setattr(agent_mod.asyncio, "run", sibling_run)
+        agent_mod._start_foreground(cfg, [agent])
+
+        assert observed == [True]
+        assert (tmp_path / f"agent-{agent.nick}.pid").read_text() == str(os.getpid())
+
 
 # ---------------------------------------------------------------------------
 # Backend daemon factories — parametrized
@@ -854,6 +878,15 @@ class TestCmdStop:
         agent_mod._cmd_stop(_args(all=True, nick=None))
 
         assert sorted(stopped) == ["spark-ada", "spark-bob"]
+
+    def test_failed_stop_exits_nonzero(self, monkeypatch):
+        cfg = _make_config(_make_agent(suffix="ada"))
+        monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda _nick: False)
+
+        with pytest.raises(CultureError, match="Could not stop agent") as exc:
+            agent_mod._cmd_stop(_args(all=False, nick="spark-ada"))
+        assert exc.value.code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -1498,7 +1531,7 @@ class TestExternalResidents:
         cfg, _ = _external_cfg()
         monkeypatch.setattr(agent_mod, "load_config_or_default", lambda _p: cfg)
         stopped = []
-        monkeypatch.setattr(agent_mod, "stop_agent", stopped.append)
+        monkeypatch.setattr(agent_mod, "stop_agent", lambda nick: stopped.append(nick) or True)
         agent_mod._cmd_stop(_args(all=True, nick=None))
         assert stopped == ["spark-ada"]
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import signal
 from dataclasses import dataclass, field
 
 import pytest
@@ -79,6 +78,7 @@ def pids(monkeypatch):
     removed: list[str] = []
     written: list[tuple[str, int]] = []
     default_server: dict[str, str | None] = {"current": None}
+    termination = {"result": "stopped"}
 
     def _pop_alive(pid):
         seq = alive.get(pid)
@@ -89,15 +89,22 @@ def pids(monkeypatch):
     # server.py imports these helpers at module top — patch on srv_mod.
     monkeypatch.setattr(srv_mod, "read_pid", lambda name: table.get(name))
     monkeypatch.setattr(srv_mod, "write_pid", lambda name, pid: written.append((name, pid)))
-    monkeypatch.setattr(srv_mod, "remove_pid", lambda name: removed.append(name))
+    monkeypatch.setattr(srv_mod, "remove_pid", lambda name, _pid=None: removed.append(name))
     monkeypatch.setattr(srv_mod, "is_process_alive", _pop_alive)
     monkeypatch.setattr(
         srv_mod,
         "classify_pidfile",
         lambda name, pid=None: (
-            "current" if _pop_alive(pid) and (pid in culture_set or not culture_set) else "stale"
+            "stale"
+            if pid is None
+            else (
+                "current"
+                if _pop_alive(pid) and (pid in culture_set or not culture_set)
+                else "stale"
+            )
         ),
     )
+    monkeypatch.setattr(srv_mod, "terminate_verified", lambda _name, _pid: termination["result"])
     monkeypatch.setattr(srv_mod, "read_default_server", lambda: default_server["current"])
     # write_default_server and rename_pid are lazy-imported inside handlers —
     # patch them at the source so the lazy imports pick up the mock.
@@ -114,6 +121,7 @@ def pids(monkeypatch):
             self.removed = removed
             self.written = written
             self.default_server = default_server
+            self.termination = termination
 
         def set_pid(self, name, pid, *, alive_seq=None, is_culture=True):
             self.table[name] = pid
@@ -121,6 +129,9 @@ def pids(monkeypatch):
                 self.alive[pid] = list(alive_seq)
             if is_culture:
                 self.culture_set.add(pid)
+
+        def termination_result(self, result):
+            self.termination["result"] = result
 
     return State()
 
@@ -430,48 +441,6 @@ class TestResolveServerLinks:
 
 
 # ---------------------------------------------------------------------------
-# _wait_for_graceful_stop
-# ---------------------------------------------------------------------------
-
-
-class TestWaitForGracefulStop:
-    def test_returns_true_when_process_exits(self, pids):
-        pids.alive[1234] = [True, True, False]
-        assert srv_mod._wait_for_graceful_stop(1234, timeout_ticks=5) is True
-
-    def test_returns_false_when_polls_exhausted(self, pids):
-        pids.alive[1234] = [True]  # always alive
-        assert srv_mod._wait_for_graceful_stop(1234, timeout_ticks=3) is False
-
-
-# ---------------------------------------------------------------------------
-# _force_kill
-# ---------------------------------------------------------------------------
-
-
-class TestForceKill:
-    def test_posix_sends_sigkill(self, monkeypatch, fake_os_kill, capsys):
-        monkeypatch.setattr(srv_mod.sys, "platform", "linux")
-        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "current")
-        srv_mod._force_kill(1234, "spark")
-        assert fake_os_kill.calls == [(1234, signal.SIGKILL)]
-        assert "sending SIGKILL" in capsys.readouterr().out
-
-    def test_win32_sends_sigterm(self, monkeypatch, fake_os_kill, capsys):
-        monkeypatch.setattr(srv_mod.sys, "platform", "win32")
-        monkeypatch.setattr(srv_mod, "classify_pidfile", lambda _n, _p=None: "current")
-        srv_mod._force_kill(1234, "spark")
-        assert fake_os_kill.calls == [(1234, signal.SIGTERM)]
-        assert "terminating" in capsys.readouterr().out
-
-    def test_swallows_process_lookup_error(self, monkeypatch, fake_os_kill):
-        monkeypatch.setattr(srv_mod.sys, "platform", "linux")
-        fake_os_kill.raise_on_call(1, ProcessLookupError)
-        # No exception escapes
-        srv_mod._force_kill(1234, "spark")
-
-
-# ---------------------------------------------------------------------------
 # _server_stop
 # ---------------------------------------------------------------------------
 
@@ -504,8 +473,7 @@ class TestServerStop:
         self, pids, monkeypatch, fake_os_kill
     ):
         pids.set_pid("server-spark", 4242, alive_seq=[True])
-        monkeypatch.setattr(srv_mod, "_wait_for_graceful_stop", lambda _pid: False)
-        monkeypatch.setattr(srv_mod, "_force_kill", lambda _pid, _name: False)
+        pids.termination_result("refused")
         with pytest.raises(CultureError) as exc:
             srv_mod._server_stop(_args(name="spark"))
         assert exc.value.code == 1
@@ -528,20 +496,18 @@ class TestServerStop:
 
         srv_mod._server_stop(_args(name="spark"))
 
-        assert fake_os_kill.calls == [(4242, signal.SIGTERM)]
+        assert fake_os_kill.calls == []
         assert "server-spark" in pids.removed
         assert "stopped" in capsys.readouterr().out
 
     def test_sigkill_escalation(self, monkeypatch, pids, fake_os_kill, capsys):
         pids.set_pid("server-spark", 4242, alive_seq=[True])  # never dies
+        pids.termination_result("killed")
         monkeypatch.setattr(srv_mod.sys, "platform", "linux")
 
         srv_mod._server_stop(_args(name="spark"))
 
-        assert fake_os_kill.calls == [
-            (4242, signal.SIGTERM),
-            (4242, signal.SIGKILL),
-        ]
+        assert fake_os_kill.calls == []
         assert "killed" in capsys.readouterr().out
 
 
@@ -724,6 +690,22 @@ class TestServerArchive:
         assert "Agents: spark-ada, spark-bob" in out
         assert "Bots:   bot1" in out
         assert "cleanup" in out
+
+    def test_agent_stop_failure_does_not_archive(self, monkeypatch, pids):
+        cfg = _StubConfig(
+            server=_StubServerCfg(name="spark", archived=False),
+            agents=[_StubAgent(nick="spark-ada")],
+        )
+        monkeypatch.setattr("culture_core.config.load_config_or_default", lambda _p: cfg)
+        pids.set_pid("agent-spark-ada", 4242)
+        monkeypatch.setattr("culture_core.cli.shared.process.stop_agent", lambda _nick: False)
+        monkeypatch.setattr(
+            "culture_core.config.archive_manifest_server",
+            lambda *_a, **_kw: pytest.fail("archived after failed agent stop"),
+        )
+
+        with pytest.raises(CultureError, match="Could not stop agent"):
+            srv_mod._server_archive(_args(name="spark", reason=""))
 
 
 class TestServerUnarchive:

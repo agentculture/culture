@@ -54,6 +54,7 @@ from culture_core.pidfile import (
     read_default_server,
     read_pid,
     remove_pid,
+    terminate_verified,
     write_pid,
 )
 
@@ -561,9 +562,9 @@ def _check_server_archived(args: argparse.Namespace) -> None:
 def _check_already_running(pid_name: str, name: str) -> None:
     """Raise if the server is already running."""
     existing = read_pid(pid_name)
-    if not existing:
-        return
     state = classify_pidfile(pid_name, existing)
+    if existing is None and state == "stale":
+        return
     if state == "stale":
         # The pidfile outlived an unclean shutdown and its PID was reused. Leave
         # the file for write_pid to overwrite: removing it here could delete the
@@ -574,10 +575,10 @@ def _check_already_running(pid_name: str, name: str) -> None:
             file=sys.stderr,
         )
         return
-    if state == "unknown":
+    if state != "current":
         raise CultureError(
             EXIT_USER_ERROR,
-            f"Cannot verify PID {existing} for server '{name}'",
+            f"Cannot verify PID {existing or 'file'} for server '{name}'",
             "check the pidfile and process before retrying",
         )
     raise CultureError(
@@ -886,38 +887,18 @@ async def _run_server(
             logger.exception("ircd.stop failed")
 
 
-def _wait_for_graceful_stop(pid: int, timeout_ticks: int = 50) -> bool:
-    """Wait for a process to exit gracefully. Return True if it stopped."""
-    for _ in range(timeout_ticks):
-        if not is_process_alive(pid):
-            return True
-        time.sleep(0.1)
-    return False
-
-
-def _force_kill(pid: int, name: str) -> bool:
-    """Force-kill a process that didn't stop gracefully."""
-    if classify_pidfile(f"server-{name}", pid) != "current":
-        print(f"Warning: PID {pid} identity changed or cannot be verified — aborting kill")
-        return False
-    if sys.platform == "win32":
-        print(f"Server '{name}' did not stop gracefully, terminating")
-        sig = signal.SIGTERM
-    else:
-        print(f"Server '{name}' did not stop gracefully, sending SIGKILL")
-        sig = signal.SIGKILL
-    try:
-        os.kill(pid, sig)
-    except ProcessLookupError:
-        pass
-    return True
-
-
 def _server_stop(args: argparse.Namespace) -> None:
     pid_name = f"server-{args.name}"
     pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
 
     if pid is None:
+        if state != "stale":
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Cannot verify server '{args.name}' PID file; leaving it in place",
+                "inspect the pidfile and process before stopping it",
+            )
         raise CultureError(
             EXIT_USER_ERROR,
             f"No PID file for server '{args.name}' — it does not appear to be running",
@@ -925,13 +906,12 @@ def _server_stop(args: argparse.Namespace) -> None:
             f"or start it with 'culture server start --name {args.name}'",
         )
 
-    state = classify_pidfile(pid_name, pid)
     if state == "stale":
         print(f"Server '{args.name}' is not running (stale PID {pid})")
-        remove_pid(pid_name)
+        remove_pid(pid_name, pid)
         return
 
-    if state == "unknown":
+    if state != "current":
         raise CultureError(
             EXIT_USER_ERROR,
             f"Cannot verify server '{args.name}' (PID {pid}); leaving PID file and not signaling",
@@ -939,37 +919,42 @@ def _server_stop(args: argparse.Namespace) -> None:
         )
 
     print(f"Stopping server '{args.name}' (PID {pid})...")
-    os.kill(pid, signal.SIGTERM)
-
-    if _wait_for_graceful_stop(pid):
+    result = terminate_verified(pid_name, pid)
+    if result == "stopped":
         print(f"Server '{args.name}' stopped")
-        remove_pid(pid_name)
+        remove_pid(pid_name, pid)
         return
-
-    if not _force_kill(pid, args.name):
+    if result == "refused":
         raise CultureError(
             EXIT_USER_ERROR,
             f"PID {pid} identity changed or cannot be verified — aborting kill",
             "inspect the pidfile and process before stopping it",
         )
-    remove_pid(pid_name)
+    if sys.platform == "win32":
+        print(f"Server '{args.name}' did not stop gracefully, terminating")
+    else:
+        print(f"Server '{args.name}' did not stop gracefully, sending SIGKILL")
+    remove_pid(pid_name, pid)
     print(f"Server '{args.name}' killed")
 
 
 def _server_status(args: argparse.Namespace) -> None:
     pid_name = f"server-{args.name}"
     pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
 
     if pid is None:
-        print(f"Server '{args.name}': not running (no PID file)")
+        if state == "stale":
+            print(f"Server '{args.name}': not running (no PID file)")
+        else:
+            print(f"Server '{args.name}': unknown (cannot read PID file)")
         return
 
-    state = classify_pidfile(pid_name, pid)
     if state == "current":
         print(f"Server '{args.name}': running (PID {pid})")
     elif state == "stale":
         print(f"Server '{args.name}': not running (stale PID {pid})")
-        remove_pid(pid_name)
+        remove_pid(pid_name, pid)
     else:
         print(f"Server '{args.name}': unknown (cannot verify PID {pid})")
 
@@ -1157,11 +1142,11 @@ def _server_archive(args: argparse.Namespace) -> None:
     # Stop server if running
     pid_name = f"server-{server_name}"
     pid = read_pid(pid_name)
-    state = classify_pidfile(pid_name, pid) if pid else "stale"
+    state = classify_pidfile(pid_name, pid)
     if state == "current":
         print(f"Stopping server '{server_name}'...")
         _server_stop(args)
-    elif state == "unknown":
+    elif state != "stale":
         raise CultureError(
             EXIT_USER_ERROR,
             f"Cannot verify server '{server_name}' (PID {pid})",
@@ -1172,9 +1157,14 @@ def _server_archive(args: argparse.Namespace) -> None:
     from culture_core.cli.shared.process import stop_agent
 
     for agent in config.agents:
-        agent_pid = read_pid(f"agent-{agent.nick}")
-        if agent_pid and classify_pidfile(f"agent-{agent.nick}", agent_pid) == "current":
-            stop_agent(agent.nick)
+        agent_pid_name = f"agent-{agent.nick}"
+        agent_pid = read_pid(agent_pid_name)
+        if classify_pidfile(agent_pid_name, agent_pid) != "stale" and not stop_agent(agent.nick):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Could not stop agent '{agent.nick}'; server was not archived",
+                "check its IPC socket and pidfile, then retry",
+            )
 
     # Archive server + agents in config
     archived_nicks = archive_manifest_server(args.config, reason=args.reason)

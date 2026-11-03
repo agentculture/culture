@@ -4,13 +4,27 @@ from __future__ import annotations
 
 import os
 import re
+import signal
+import sys
+import time
 from pathlib import Path
 
 PID_DIR = os.path.expanduser("~/.culture/pids")
 PROC_DIR = "/proc"
 _CULTURE_LAUNCHERS = {"culture", "culture-core", "culture_core"}
 _CULTURE_MODULES = {"culture", "culture_core"}
+_AGENTIRC = "agentirc"
+_CULTUREAGENT = "cultureagent"
+_AGENTIRC_LAUNCHERS = {_AGENTIRC, "agentirc-cli"}
+_SIBLING_MODULES = {_AGENTIRC, _CULTUREAGENT}
+_CULTUREAGENT_MODULES = {
+    f"{_CULTUREAGENT}.clients.{backend}"
+    for backend in ("acp", "claude", "codex", "colleague", "copilot")
+}
 _PYTHON_PREFIXES = ("python", "pypy")
+_PYTHON_FLAGS = {"-b", "-B", "-d", "-E", "-i", "-I", "-O", "-OO", "-q", "-s", "-S", "-u", "-v"}
+_PYTHON_VALUE_FLAGS = {"-W", "-X", "--check-hash-based-pycs"}
+_POLL_INTERVAL = 0.1
 
 
 def _safe_name(name: str) -> str:
@@ -46,9 +60,11 @@ def read_pid(name: str) -> int | None:
         return None
 
 
-def remove_pid(name: str) -> None:
-    """Remove the PID file for the named daemon if it exists."""
+def remove_pid(name: str, expected_pid: int | None = None) -> None:
+    """Remove a daemon's files only while its PID still matches, when supplied."""
     pid_dir = Path(PID_DIR)
+    if expected_pid is not None and read_pid(name) != expected_pid:
+        return
     for suffix in (".pid", ".identity"):
         (pid_dir / f"{_safe_name(name)}{suffix}").unlink(missing_ok=True)
 
@@ -96,9 +112,10 @@ def is_culture_process(pid: int) -> bool:
         return True
     try:
         raw = Path(f"{PROC_DIR}/{pid}/cmdline").read_bytes()
-        tokens = [t for t in raw.decode(errors="replace").split("\x00") if t]
+        tokens = [token for token in raw.decode(errors="replace").split("\x00") if token]
         return any(
-            os.path.basename(t) in _CULTURE_LAUNCHERS or t in _CULTURE_MODULES for t in tokens
+            os.path.basename(token) in _CULTURE_LAUNCHERS or token in _CULTURE_MODULES
+            for token in tokens
         )
     except OSError:
         # On Linux the proc filesystem exists but this PID cannot be read — fail closed.
@@ -117,11 +134,11 @@ def _process_identity(pid: int) -> tuple[str, str] | None:
 
 
 def _read_stat_identity(pid: int) -> tuple[str, tuple[str, str]]:
-    stat = Path(f"{PROC_DIR}/{pid}/stat").read_text()
+    stat = Path(f"{PROC_DIR}/{pid}/stat").read_bytes()
     # comm may contain parentheses: fields begin after the last closing one.
-    fields = stat[stat.rfind(")") + 2 :].split()
-    state = fields[0]
-    start = fields[19]  # field 22; first remaining field is field 3
+    fields = stat[stat.rfind(b")") + 2 :].split()
+    state = fields[0].decode("ascii")
+    start = fields[19].decode("ascii")  # field 22; first remaining field is field 3
     try:
         boot = Path(f"{PROC_DIR}/sys/kernel/random/boot_id").read_text().strip()
     except (FileNotFoundError, ProcessLookupError) as exc:
@@ -132,42 +149,119 @@ def _read_stat_identity(pid: int) -> tuple[str, tuple[str, str]]:
     return state, (start, boot)
 
 
-def _legacy_args(pid: int) -> list[str] | None:
+def _read_argv(pid: int) -> list[str]:
     raw = Path(f"{PROC_DIR}/{pid}/cmdline").read_bytes()
-    argv = [part for part in raw.decode(errors="replace").split("\x00") if part]
+    return [part for part in raw.decode(errors="replace").split("\x00") if part]
+
+
+def _python_command_position(argv: list[str]) -> int | None:
+    """Return the Python script/module flag position, or None for an opaque command."""
+    position = 1
+    while position < len(argv):
+        arg = argv[position]
+        if arg in _PYTHON_FLAGS:
+            position += 1
+            continue
+        if arg in _PYTHON_VALUE_FLAGS:
+            position += 2
+            continue
+        if any(arg.startswith(prefix) and arg != prefix for prefix in ("-W", "-X")):
+            position += 1
+            continue
+        if arg.startswith("--check-hash-based-pycs="):
+            position += 1
+            continue
+        return position
+    return None
+
+
+def _launcher_kind(launcher: str) -> str | None:
+    if launcher in _CULTURE_LAUNCHERS:
+        return "culture"
+    if launcher in _AGENTIRC_LAUNCHERS:
+        return _AGENTIRC
+    if launcher == _CULTUREAGENT:
+        return _CULTUREAGENT
+    return None
+
+
+def _module_kind(module: str) -> str | None:
+    if module in _CULTURE_MODULES:
+        return "culture"
+    if module in _CULTUREAGENT_MODULES:
+        return _CULTUREAGENT
+    return module if module in _SIBLING_MODULES else None
+
+
+def _python_launcher_command(argv: list[str], position: int) -> tuple[str, list[str]] | None:
+    if position + 1 < len(argv) and argv[position] == "-m":
+        kind = _module_kind(argv[position + 1])
+        return (kind, argv[position + 2 :]) if kind else None
+    if position >= len(argv):
+        return None
+    kind = _launcher_kind(Path(argv[position]).name)
+    return (kind, argv[position + 1 :]) if kind else None
+
+
+def _launcher_command(argv: list[str]) -> tuple[str, list[str]] | None:
     if not argv:
         return None
-    if Path(argv[0]).name in _CULTURE_LAUNCHERS:
-        return argv[1:]
-    if Path(argv[0]).name.startswith(_PYTHON_PREFIXES):
-        position = 1
-        while position < len(argv) and argv[position] in {"-u", "-B", "-E", "-s", "-S", "-I"}:
+    launcher = Path(argv[0]).name
+    kind = _launcher_kind(launcher)
+    if kind:
+        return kind, argv[1:]
+    if not launcher.startswith(_PYTHON_PREFIXES):
+        return None
+    position = _python_command_position(argv)
+    return _python_launcher_command(argv, position) if position is not None else None
+
+
+def _single_agent_nick(args: list[str]) -> str | None:
+    """Extract one unambiguous nick from an agent-start argument tail."""
+    if "--all" in args:
+        return None
+    nicks: list[str] = []
+    position = 0
+    while position < len(args):
+        arg = args[position]
+        if arg == "--foreground":
             position += 1
-        if (
-            position + 1 < len(argv)
-            and argv[position] == "-m"
-            and argv[position + 1] in _CULTURE_MODULES
-        ):
-            return argv[position + 2 :]
-    if (
-        len(argv) >= 2
-        and Path(argv[1]).name in _CULTURE_LAUNCHERS
-        and Path(argv[0]).name.startswith(_PYTHON_PREFIXES)
-    ):
-        return argv[2:]
-    return None
+        elif arg == "--config":
+            position += 2
+        elif arg.startswith("--config="):
+            position += 1
+        elif arg.startswith("-"):
+            return None
+        else:
+            nicks.append(arg)
+            position += 1
+    return nicks[0] if len(nicks) == 1 else None
 
 
 def _legacy_role(pid: int, name: str) -> bool | None:
     """Recognize the command position of an older, plain integer pidfile."""
-    args = _legacy_args(pid)
-    if args is None:
-        return None
+    command = _launcher_command(_read_argv(pid))
+    if command is None:
+        return False
+    launcher, args = command
     if name.startswith("server-"):
-        return bool(args and args[0] == "server")
+        return (launcher == "culture" and bool(args) and args[0] == "server") or (
+            launcher == _AGENTIRC and bool(args) and args[0] == "start"
+        )
     if name.startswith("overview-"):
-        return len(args) >= 2 and args[:2] == ["mesh", "overview"]
-    return bool(args and args[0] == "agents")
+        return launcher == "culture" and len(args) >= 2 and args[:2] == ["mesh", "overview"]
+    if name.startswith("agent-"):
+        if launcher == "culture" and len(args) >= 2 and args[:2] == ["agents", "start"]:
+            agent_args = args[2:]
+        elif launcher == _CULTUREAGENT and args[:1] == ["start"]:
+            agent_args = args[1:]
+        else:
+            return False
+        nick = _single_agent_nick(agent_args)
+        if nick is None:
+            return None
+        return nick == name.removeprefix("agent-")
+    return False
 
 
 def _read_tgid(pid: int) -> int | None:
@@ -193,7 +287,7 @@ def _recorded_identity(name: str, pid: int) -> tuple[str, str] | None:
 def _classify_legacy(pid: int, name: str) -> str:
     role = _legacy_role(pid, name)
     if role is None:
-        return "unknown" if is_culture_process(pid) else "stale"
+        return "unknown"
     return "current" if role else "stale"
 
 
@@ -208,8 +302,10 @@ def _pid_to_classify(name: str, expected_pid: int | None) -> int | str:
     try:
         pid = int(content)
     except ValueError:
-        return "stale"
-    if pid <= 0 or (expected_pid is not None and pid != expected_pid):
+        return "unknown" if not content else "stale"
+    if expected_pid is not None and pid != expected_pid:
+        return "changed"
+    if pid <= 0:
         return "stale"
     return pid
 
@@ -233,7 +329,7 @@ def _classify_linux(pid: int, name: str) -> str:
 
 
 def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
-    """Classify a pidfile as 'current', 'stale', or 'unknown'.
+    """Classify a pidfile as 'current', 'stale', 'unknown', or 'changed'.
 
     Self-PIDs are stale for both startup and stop, so no stop path signals its
     own process. Unknown means a live PID cannot be safely identified.
@@ -249,10 +345,57 @@ def classify_pidfile(name: str, expected_pid: int | None = None) -> str:
     return _classify_linux(pid, name)
 
 
+def terminate_verified(pid_name: str, pid: int, timeout: float = 5.0) -> str:
+    """Stop a verified process; return 'stopped', 'killed', or 'refused'."""
+    if classify_pidfile(pid_name, pid) != "current":
+        return "refused"
+    initial = _process_identity(pid) if os.path.isdir(PROC_DIR) else None
+    if os.path.isdir(PROC_DIR) and initial is None:
+        return "refused"
+    try:
+        os.kill(pid, signal.SIGTERM)  # NOSONAR S4828: verified PID identity
+    except ProcessLookupError:
+        return "stopped"
+    except PermissionError:
+        return "refused"
+    for _ in range(max(0, int(timeout / _POLL_INTERVAL))):
+        state = _stopped_or_reused(pid, initial)
+        if state != "live":
+            return state
+        time.sleep(_POLL_INTERVAL)
+    state = _stopped_or_reused(pid, initial)
+    if state != "live":
+        return state
+    try:
+        sig = signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL
+        os.kill(pid, sig)  # NOSONAR S4828: start time unchanged since SIGTERM
+    except ProcessLookupError:
+        return "stopped"
+    except PermissionError:
+        return "refused"
+    return "killed"
+
+
+def _stopped_or_reused(pid: int, initial: tuple[str, str] | None) -> str:
+    if not is_process_alive(pid):
+        return "stopped"
+    if initial is None:
+        return "live"  # no /proc on this platform
+    try:
+        state, current = _read_stat_identity(pid)
+    except (FileNotFoundError, ProcessLookupError):
+        return "stopped"
+    except (OSError, ValueError, IndexError):
+        return "live"  # only proof of reuse can veto escalation
+    if state in {"Z", "X"}:
+        return "stopped"
+    return "refused" if current != initial else "live"
+
+
 def is_process_alive(pid: int) -> bool:
     """Check whether a process with the given PID is alive."""
     try:
-        os.kill(pid, 0)
+        os.kill(pid, 0)  # NOSONAR S4828: existence probe only
         return True
     except (ProcessLookupError, OverflowError):
         return False

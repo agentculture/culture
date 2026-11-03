@@ -176,26 +176,19 @@ def test_stop_existing_overview_kills_previous(tmp_path, monkeypatch):
     (tmp_path / f"{pid_name}.pid").write_text("99999")
     (tmp_path / f"{pid_name}.port").write_text("12345")
 
-    # Simulate: process alive on first check, dead after SIGTERM
-    alive_calls = {"count": 0}
-
-    def _fake_alive(pid):
-        alive_calls["count"] += 1
-        return alive_calls["count"] == 1  # alive first, dead after
-
-    killed_pids = []
-    monkeypatch.setattr(os, "kill", lambda pid, sig: killed_pids.append((pid, sig)))
-
     import culture_core.overview.renderer_web as rweb
 
-    monkeypatch.setattr(rweb, "is_process_alive", _fake_alive)
     monkeypatch.setattr(rweb, "classify_pidfile", lambda name, pid=None: "current")
+    terminated = []
+    monkeypatch.setattr(
+        rweb,
+        "terminate_verified",
+        lambda name, pid, timeout: terminated.append((name, pid, timeout)) or "stopped",
+    )
 
     _stop_existing_overview(pid_name)
 
-    import signal
-
-    assert (99999, signal.SIGTERM) in killed_pids, "SIGTERM should be sent"
+    assert terminated == [(pid_name, 99999, 2.0)]
     assert not (tmp_path / f"{pid_name}.pid").exists()
     assert not (tmp_path / f"{pid_name}.port").exists()
 
@@ -213,7 +206,6 @@ def test_stop_existing_overview_never_signals_a_reused_pid(tmp_path, monkeypatch
 
     import culture_core.overview.renderer_web as rweb
 
-    monkeypatch.setattr(rweb, "is_process_alive", lambda pid: True)
     monkeypatch.setattr(rweb, "classify_pidfile", lambda name, pid=None: "stale")
 
     _stop_existing_overview(pid_name)
@@ -266,14 +258,8 @@ def test_overview_sigkill_aborts_after_identity_change(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pidfile, "PID_DIR", str(tmp_path))
     (tmp_path / "overview-spark.pid").write_text("4242\n")
-    checks = iter(("current", "stale"))
-    monkeypatch.setattr(rweb, "classify_pidfile", lambda _n, _p=None: next(checks))
-    monkeypatch.setattr(rweb, "is_process_alive", lambda _pid: True)
-    monkeypatch.setattr(rweb.time, "sleep", lambda _s: None)
-    kills = []
-    monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.setattr(rweb, "classify_pidfile", lambda _n, _p=None: "current")
+    monkeypatch.setattr(rweb, "terminate_verified", lambda *_a, **_kw: "refused")
     _stop_existing_overview("overview-spark")
-    import signal
 
-    assert kills == [(4242, signal.SIGTERM)]
     assert (tmp_path / "overview-spark.pid").exists()

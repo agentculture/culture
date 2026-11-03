@@ -670,6 +670,7 @@ def _start_foreground(config: DaemonConfig, agents: list[AgentConfig]) -> None:
     agent = agents[0]
     _export_agent_secret(agent, config, single=True)
     print(f"Starting agent {agent.nick} in foreground...")
+    write_pid(f"agent-{agent.nick}", os.getpid())
     asyncio.run(_run_single_agent(config, agent))
 
 
@@ -1139,7 +1140,12 @@ def _cmd_stop(args: argparse.Namespace) -> None:
             agents = _resolve_agents_to_stop(config, args)
             span.set_attribute("culture.agent.nicks", [a.nick for a in agents])
             for agent in agents:
-                stop_agent(agent.nick)
+                if not stop_agent(agent.nick):
+                    raise CultureError(
+                        EXIT_USER_ERROR,
+                        f"Could not stop agent '{agent.nick}'",
+                        "check its IPC socket and pidfile, then retry",
+                    )
     finally:
         shutdown_cli_tracing()
 
@@ -1553,7 +1559,7 @@ def _stop_before_agent_change(nick: str) -> None:
     """Require a successful IPC or PID shutdown before changing an agent."""
     pid_name = f"agent-{nick}"
     pid = read_pid(pid_name)
-    if pid is not None and classify_pidfile(pid_name, pid) != "stale":
+    if classify_pidfile(pid_name, pid) != "stale":
         if not stop_agent(nick):
             raise CultureError(
                 EXIT_USER_ERROR,

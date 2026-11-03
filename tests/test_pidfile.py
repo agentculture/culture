@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -23,6 +24,7 @@ from culture_core.pidfile import (
     remove_pid,
     remove_port,
     rename_pid,
+    terminate_verified,
     write_default_server,
     write_pid,
     write_port,
@@ -67,6 +69,16 @@ class TestWriteReadRemove:
 
     def test_remove_missing_is_noop(self, pid_dir):
         remove_pid("nonexistent")  # should not raise
+
+    def test_expected_pid_does_not_remove_replacement(self, pid_dir):
+        (pid_dir / "server-spark.pid").write_text("111")
+        assert classify_pidfile("server-spark", 222) == "changed"
+        remove_pid("server-spark", 222)
+        assert (pid_dir / "server-spark.pid").read_text() == "111"
+
+    def test_empty_mid_write_is_unknown(self, pid_dir):
+        (pid_dir / "server-spark.pid").write_text("")
+        assert classify_pidfile("server-spark") == "unknown"
 
 
 class TestIsProcessAlive:
@@ -314,14 +326,14 @@ class TestClassification:
         proc = self._spawn(pid_dir, "server", "start")
         try:
             write_pid("server-spark", proc.pid)
-            real_read_text = Path.read_text
+            real_read_bytes = Path.read_bytes
 
             def missing_stat(path, *args, **kwargs):
                 if str(path) == f"/proc/{proc.pid}/stat":
                     raise error
-                return real_read_text(path, *args, **kwargs)
+                return real_read_bytes(path, *args, **kwargs)
 
-            with patch.object(Path, "read_text", missing_stat):
+            with patch.object(Path, "read_bytes", missing_stat):
                 assert classify_pidfile("server-spark") == "stale"
         finally:
             proc.kill()
@@ -388,16 +400,16 @@ class TestClassification:
                 time.sleep(0.01)
             assert is_process_alive(proc.pid)
             (pid_dir / "server-spark.pid").write_text(str(proc.pid))
-            assert classify_pidfile("server-spark") == "unknown"
+            assert classify_pidfile("server-spark") == "stale"
         finally:
             proc.kill()
             proc.wait()
 
-    def test_unrecognized_culture_launcher_is_unknown(self, pid_dir):
+    def test_unrecognized_culture_launcher_is_stale(self, pid_dir):
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "culture"])
         try:
             (pid_dir / "server-spark.pid").write_text(str(proc.pid))
-            assert classify_pidfile("server-spark") == "unknown"
+            assert classify_pidfile("server-spark") == "stale"
         finally:
             proc.kill()
             proc.wait()
@@ -419,18 +431,96 @@ class TestClassification:
             proc.kill()
             proc.wait()
 
+    @pytest.mark.parametrize(
+        "cmdline",
+        [
+            b"/usr/bin/agentirc\x00start\x00--name\x00spark\x00",
+            b"/usr/bin/agentirc-cli\x00start\x00--name\x00spark\x00",
+            b"python3\x00-u\x00-m\x00agentirc\x00start\x00--name\x00spark\x00",
+        ],
+    )
+    def test_agentirc_launcher_is_current(self, pid_dir, cmdline):
+        proc = self._spawn(pid_dir, "server", "start")
+        try:
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            real_read_bytes = Path.read_bytes
+
+            def sibling_cmdline(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/cmdline":
+                    return cmdline
+                return real_read_bytes(path, *args, **kwargs)
+
+            with patch.object(Path, "read_bytes", sibling_cmdline):
+                assert classify_pidfile("server-spark") == "current"
+        finally:
+            proc.kill()
+            proc.wait()
+
+    @pytest.mark.parametrize(
+        "cmdline, expected",
+        [
+            (b"culture\x00agents\x00start\x00spark-ada\x00--foreground\x00", "current"),
+            (b"culture\x00agents\x00start\x00spark-bob\x00", "stale"),
+            (b"culture\x00agents\x00start\x00spark-ada\x00spark-bob\x00", "unknown"),
+            (b"culture\x00agents\x00start\x00--all\x00", "unknown"),
+            (b"cultureagent\x00start\x00spark-ada\x00", "current"),
+            (
+                b"python3\x00-m\x00cultureagent.clients.claude\x00start\x00spark-ada\x00",
+                "current",
+            ),
+        ],
+    )
+    def test_legacy_agent_launcher_matches_one_nick(self, pid_dir, cmdline, expected):
+        proc = self._spawn(pid_dir, "agents", "start", "spark-ada")
+        try:
+            (pid_dir / "agent-spark-ada.pid").write_text(str(proc.pid))
+            real_read_bytes = Path.read_bytes
+
+            def launcher_cmdline(path, *args, **kwargs):
+                if str(path) == f"/proc/{proc.pid}/cmdline":
+                    return cmdline
+                return real_read_bytes(path, *args, **kwargs)
+
+            with patch.object(Path, "read_bytes", launcher_cmdline):
+                assert classify_pidfile("agent-spark-ada") == expected
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_orphan_identity_is_ignored_or_detects_reuse(self, pid_dir, monkeypatch):
+        from cultureagent import pidfile as cultureagent_pidfile
+
+        proc = self._spawn(pid_dir, "server", "start")
+        monkeypatch.setattr(cultureagent_pidfile, "PID_DIR", str(pid_dir))
+        try:
+            write_pid("server-spark", proc.pid)
+            identity_path = pid_dir / "server-spark.identity"
+            _, start, boot = identity_path.read_text().split()
+            cultureagent_pidfile.remove_pid("server-spark")
+            assert identity_path.exists()
+
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid + 1))
+            assert classify_pidfile("server-spark", proc.pid) == "changed"
+
+            (pid_dir / "server-spark.pid").write_text(str(proc.pid))
+            identity_path.write_text(f"{proc.pid} {int(start) + 1} {boot}\n")
+            assert classify_pidfile("server-spark") == "stale"
+        finally:
+            proc.kill()
+            proc.wait()
+
     def test_transient_proc_failure_is_unknown(self, pid_dir):
         proc = self._spawn(pid_dir, "server", "start")
         try:
             write_pid("server-spark", proc.pid)
-            real_read_text = Path.read_text
+            real_read_bytes = Path.read_bytes
 
             def fail_stat(path, *args, **kwargs):
                 if str(path) == f"/proc/{proc.pid}/stat":
                     raise OSError("transient /proc error")
-                return real_read_text(path, *args, **kwargs)
+                return real_read_bytes(path, *args, **kwargs)
 
-            with patch.object(Path, "read_text", fail_stat):
+            with patch.object(Path, "read_bytes", fail_stat):
                 assert classify_pidfile("server-spark") == "unknown"
         finally:
             proc.kill()
@@ -487,14 +577,17 @@ class TestClassification:
             assert is_process_alive(proc.pid)
 
             write_pid("server-spark", proc.pid)
-            real_read_text = Path.read_text
+            real_read_bytes = Path.read_bytes
 
             def fail_stat(proc_path, *args, **kwargs):
                 if str(proc_path) == f"/proc/{proc.pid}/stat":
                     raise OSError("transient /proc error")
-                return real_read_text(proc_path, *args, **kwargs)
+                return real_read_bytes(proc_path, *args, **kwargs)
 
-            with patch.object(Path, "read_text", fail_stat), patch.object(os, "kill", capture_kill):
+            with (
+                patch.object(Path, "read_bytes", fail_stat),
+                patch.object(os, "kill", capture_kill),
+            ):
                 with pytest.raises(server_cli.CultureError, match="Cannot verify"):
                     server_cli._check_already_running("server-spark", "spark")
                 with pytest.raises(server_cli.CultureError, match="Cannot verify"):
@@ -506,15 +599,124 @@ class TestClassification:
             proc.wait()
 
     def test_stat_parser_uses_last_closing_parenthesis(self):
-        real_read_text = Path.read_text
+        real_read_bytes = Path.read_bytes
 
         def synthetic_stat(path, *args, **kwargs):
             if str(path) == "/proc/4242/stat":
-                return "4242 (a name ) with (parens) S " + " ".join(["0"] * 18 + ["123456"])
-            return real_read_text(path, *args, **kwargs)
+                return b"4242 (a name ) with (parens) S " + b" ".join([b"0"] * 18 + [b"123456"])
+            return real_read_bytes(path, *args, **kwargs)
 
-        with patch.object(Path, "read_text", synthetic_stat):
+        with patch.object(Path, "read_bytes", synthetic_stat):
             assert _process_identity(4242)[0] == "123456"
+
+    def test_stat_parser_tolerates_non_utf8_comm(self):
+        real_read_bytes = Path.read_bytes
+
+        def synthetic_stat(path, *args, **kwargs):
+            if str(path) == "/proc/4242/stat":
+                return b"4242 (bad-\xff-name) S " + b" ".join([b"0"] * 18 + [b"654321"])
+            return real_read_bytes(path, *args, **kwargs)
+
+        with patch.object(Path, "read_bytes", synthetic_stat):
+            assert _process_identity(4242)[0] == "654321"
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc")
+class TestTerminateVerified:
+    def test_kills_child_that_removes_pidfile_and_ignores_sigterm(self, pid_dir):
+        pid_path = pid_dir / "server-spark.pid"
+        ready_path = pid_dir / "ready"
+        code = (
+            "import os,signal,time\n"
+            f"pid_path={str(pid_path)!r}\n"
+            f"ready_path={str(ready_path)!r}\n"
+            "def term(*_):\n"
+            "    try: os.unlink(pid_path)\n"
+            "    except FileNotFoundError: pass\n"
+            "signal.signal(signal.SIGTERM, term)\n"
+            "open(ready_path, 'w').close()\n"
+            "time.sleep(30)\n"
+        )
+        proc = subprocess.Popen([sys.executable, "-c", code])
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and not ready_path.exists():
+                time.sleep(0.01)
+            write_pid("server-spark", proc.pid)
+            assert terminate_verified("server-spark", proc.pid, timeout=0.1) == "killed"
+            assert not pid_path.exists()
+            assert proc.wait(timeout=5) == -signal.SIGKILL
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+    def test_zombie_after_sigterm_is_stopped_without_sigkill(self, pid_dir):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        write_pid("server-spark", proc.pid)
+        real_kill = os.kill
+        signals = []
+
+        def record_kill(pid, sig):
+            if sig:
+                signals.append(sig)
+            return real_kill(pid, sig)
+
+        try:
+            with patch("culture_core.pidfile.os.kill", record_kill):
+                assert terminate_verified("server-spark", proc.pid, timeout=1) == "stopped"
+            assert signals == [signal.SIGTERM]
+        finally:
+            proc.wait(timeout=5)
+
+    def test_aborts_sigkill_when_start_time_changes(self):
+        signals = []
+
+        with (
+            patch("culture_core.pidfile.classify_pidfile", return_value="current"),
+            patch("culture_core.pidfile._process_identity", return_value=("100", "boot")),
+            patch("culture_core.pidfile.is_process_alive", return_value=True),
+            patch(
+                "culture_core.pidfile._read_stat_identity",
+                return_value=("S", ("101", "boot")),
+            ),
+            patch("culture_core.pidfile.os.kill", lambda pid, sig: signals.append((pid, sig))),
+        ):
+            assert terminate_verified("server-spark", 4242, timeout=0) == "refused"
+        assert signals == [(4242, signal.SIGTERM)]
+
+    @pytest.mark.parametrize("fail_on", [signal.SIGTERM, signal.SIGKILL])
+    def test_process_lookup_on_signal_is_stopped(self, fail_on):
+        signals = []
+
+        def signal_process(pid, sig):
+            signals.append(sig)
+            if sig == fail_on:
+                raise ProcessLookupError
+
+        with (
+            patch("culture_core.pidfile.classify_pidfile", return_value="current"),
+            patch("culture_core.pidfile._process_identity", return_value=("100", "boot")),
+            patch("culture_core.pidfile._stopped_or_reused", return_value="live"),
+            patch("culture_core.pidfile.os.kill", signal_process),
+        ):
+            assert terminate_verified("server-spark", 4242, timeout=0) == "stopped"
+        expected = [signal.SIGTERM]
+        if fail_on == signal.SIGKILL:
+            expected.append(signal.SIGKILL)
+        assert signals == expected
+
+    def test_windows_escalation_repeats_sigterm(self):
+        signals = []
+        with (
+            patch("culture_core.pidfile.classify_pidfile", return_value="current"),
+            patch("culture_core.pidfile.os.path.isdir", return_value=False),
+            patch("culture_core.pidfile._stopped_or_reused", return_value="live"),
+            patch("culture_core.pidfile.sys.platform", "win32"),
+            patch("culture_core.pidfile.os.kill", lambda pid, sig: signals.append(sig)),
+        ):
+            assert terminate_verified("server-spark", 4242, timeout=0) == "killed"
+        assert signals == [signal.SIGTERM, signal.SIGTERM]
 
 
 class TestDefaultServer:

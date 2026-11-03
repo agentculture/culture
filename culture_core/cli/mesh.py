@@ -18,6 +18,7 @@ import time
 from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 from culture_core.cli.console import dispatch_resolved_argv as console_dispatch
 from culture_core.config import ServerConfig, load_config, load_config_or_default
+from culture_core.pidfile import classify_pidfile, read_pid
 
 from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
 from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
@@ -26,6 +27,20 @@ from .shared.process import server_stop_by_name, stop_agent
 logger = logging.getLogger("culture")
 
 NAME = "mesh"
+
+
+def _server_pidfile_allows_teardown(server_name: str) -> bool:
+    """Return False when server identity is ambiguous and teardown must not begin."""
+    pid_name = f"server-{server_name}"
+    pid = read_pid(pid_name)
+    state = classify_pidfile(pid_name, pid)
+    if state in {"current", "stale"}:
+        return True
+    print(
+        f"Cannot verify server '{server_name}' (PID {pid or 'file'}); teardown aborted",
+        file=sys.stderr,
+    )
+    return False
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -373,6 +388,12 @@ def _cmd_setup(args: argparse.Namespace) -> None:
     server_name = mesh.server.name
 
     if args.uninstall:
+        if not _server_pidfile_allows_teardown(server_name):
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"Cannot verify server '{server_name}'",
+                "inspect its pidfile before uninstalling",
+            )
         print("Uninstalling culture services...")
         expected = {f"culture-server-{server_name}"}
         for agent in mesh.agents:
@@ -389,7 +410,12 @@ def _cmd_setup(args: argparse.Namespace) -> None:
             )
         for agent in mesh.agents:
             full_nick = f"{server_name}-{agent.nick}"
-            stop_agent(full_nick)
+            if not stop_agent(full_nick):
+                raise CultureError(
+                    EXIT_USER_ERROR,
+                    f"Cannot stop agent '{full_nick}'",
+                    "inspect its IPC socket and pidfile before uninstalling",
+                )
         print("Done.")
         return
 
@@ -596,10 +622,15 @@ def _restart_mesh_services(
         _dry_run_restart(mesh, server_name)
         return True
 
+    if not _server_pidfile_allows_teardown(server_name):
+        return False
+
     for agent in mesh.agents:
         full_nick = f"{server_name}-{agent.nick}"
         print(f"  Stopping {full_nick}...")
-        stop_agent(full_nick)
+        if not stop_agent(full_nick):
+            print(f"Cannot stop agent '{full_nick}'; mesh update aborted", file=sys.stderr)
+            return False
 
     print(f"  Stopping server {server_name}...")
     if not server_stop_by_name(server_name):

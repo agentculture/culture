@@ -82,6 +82,19 @@ def test_agent_process_status_unknown(tmp_path):
     remove_pid.assert_not_called()
 
 
+def test_agent_process_status_changed_pidfile_is_left_alone():
+    """A replacement daemon's pidfile is never deleted after an older read."""
+    agent = _make_agent()
+    with (
+        patch("culture_core.cli.shared.display.read_pid", return_value=12345),
+        patch("culture_core.cli.shared.display.classify_pidfile", return_value="changed"),
+        patch("culture_core.cli.shared.display.remove_pid") as remove_pid,
+    ):
+        status, pid = agent_process_status(agent)
+    assert (status, pid) == ("unknown", 12345)
+    remove_pid.assert_not_called()
+
+
 # --- _format_agent_status ---
 
 

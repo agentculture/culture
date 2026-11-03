@@ -676,6 +676,16 @@ def _host_secret_store_guard(tmp_path_factory, monkeypatch):
     """
     root = tmp_path_factory.mktemp("host-guard")
     monkeypatch.setenv("GRANT_HOME", str(root / "grant"))
+    # Pidfiles too: a test that runs a real stop path must never read a pidfile
+    # from the host or another xdist worker, or it signals that process (#511).
+    # PID_DIR is fixed at import time, so HOME can't isolate it.
+    pid_dir = str(root / "pids")
+    monkeypatch.setattr("culture_core.pidfile.PID_DIR", pid_dir)
+    for sibling in ("cultureagent.pidfile", "agentirc._internal.pidfile"):
+        try:
+            monkeypatch.setattr(f"{sibling}.PID_DIR", pid_dir)
+        except (ImportError, AttributeError):  # pragma: no cover - sibling layout changed
+            pass
     try:
         import culture_core.accounts as _accounts
     except ImportError:  # pragma: no cover - module absent on old branches
