@@ -467,8 +467,7 @@ class TestServerStop:
     def test_removes_stale_pid(self, pids, capsys):
         pids.set_pid("server-spark", 4242, alive_seq=[False])
         srv_mod._server_stop(_args(name="spark"))
-        # Left for write_pid: removing it could delete a concurrent start's pidfile.
-        assert pids.removed == []
+        assert "server-spark" in pids.removed
         assert "stale PID" in capsys.readouterr().out
 
     def test_removes_non_culture_pid(self, pids, capsys):
@@ -478,8 +477,7 @@ class TestServerStop:
         pids.culture_set.add(9999)
         pids.set_pid("server-spark", 4242, alive_seq=[True], is_culture=False)
         srv_mod._server_stop(_args(name="spark"))
-        # Left for write_pid: removing it could delete a concurrent start's pidfile.
-        assert pids.removed == []
+        assert "server-spark" in pids.removed
         assert "not a culture process" in capsys.readouterr().out
 
     def test_sigterm_success(self, monkeypatch, pids, fake_os_kill, capsys):
@@ -489,8 +487,7 @@ class TestServerStop:
         srv_mod._server_stop(_args(name="spark"))
 
         assert fake_os_kill.calls == [(4242, signal.SIGTERM)]
-        # Left for write_pid: removing it could delete a concurrent start's pidfile.
-        assert pids.removed == []
+        assert "server-spark" in pids.removed
         assert "stopped" in capsys.readouterr().out
 
     def test_sigkill_escalation(self, monkeypatch, pids, fake_os_kill, capsys):
@@ -525,8 +522,7 @@ class TestServerStatus:
         pids.set_pid("server-spark", 4242, alive_seq=[False])
         srv_mod._server_status(_args(name="spark"))
         assert "stale PID" in capsys.readouterr().out
-        # Left for write_pid: removing it could delete a concurrent start's pidfile.
-        assert pids.removed == []
+        assert "server-spark" in pids.removed
 
 
 # ---------------------------------------------------------------------------
