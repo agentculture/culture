@@ -1,6 +1,7 @@
 """Health pings use real loopback HTTP and never a real service manager."""
 
 import argparse
+import socket
 import subprocess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -114,7 +115,7 @@ def test_install_healthcheck(tmp_path, lens_config, monkeypatch, capsys):
     assert "Restart=on-failure" not in service
     assert "OnUnitActiveSec=5min" in timer
     assert ["systemctl", "--user", "enable", "--now", TIMER] in calls
-    assert ["systemctl", "--user", "start", SERVICE] in calls
+    assert ["systemctl", "--user", "start", "--no-block", SERVICE] in calls
     assert secret_value not in service + timer + capsys.readouterr().out
     assert sorted(p.name for p in units.iterdir()) == [SERVICE, TIMER]
 
@@ -153,3 +154,91 @@ def test_install_reports_failed_systemctl(tmp_path, lens_config, monkeypatch):
     )
     with pytest.raises(CultureError, match="could not activate"):
         healthcheck.install_healthcheck(str(lens_config), allow_dev_interpreter=True)
+
+
+def test_probe_sends_its_own_user_agent(monkeypatch):
+    """Cloudflare answers Python's default user agent with 403."""
+    seen = []
+
+    class Opener:
+        def open(self, request, timeout):
+            seen.append(request.get_header("User-agent"))
+            raise OSError("not reached")
+
+    monkeypatch.setattr(healthcheck.urllib.request, "build_opener", lambda *_h: Opener())
+    assert healthcheck._request_ok("https://example.org/readyz") is False
+    assert seen == ["culture-healthcheck"]
+
+
+def test_malformed_response_counts_as_not_ok():
+    """http.client's errors aren't OSError, and must not kill the report."""
+    server = socket.create_server(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+
+    def answer():
+        conn, _ = server.accept()
+        conn.recv(1024)
+        conn.sendall(b"not http at all\r\n\r\n")
+        conn.close()
+
+    thread = Thread(target=answer, daemon=True)
+    thread.start()
+    try:
+        assert healthcheck._request_ok(f"http://127.0.0.1:{port}/readyz", use_proxy=False) is False
+    finally:
+        thread.join(5)
+        server.close()
+
+
+def test_report_retries_before_giving_up(monkeypatch):
+    calls = []
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append(request.full_url)
+            raise OSError("down")
+
+    monkeypatch.setattr(healthcheck.urllib.request, "build_opener", lambda *_h: Opener())
+    assert healthcheck._request_ok("https://example.org/ping", attempts=3) is False
+    assert len(calls) == 3
+
+
+def test_non_string_bind_gets_a_clean_result(tmp_path):
+    path = tmp_path / "lens.yaml"
+    path.write_text(f"web:\n  port: 9876\n  bind: 123\nmedia:\n  public_base_url: {PUBLIC_BASE}\n")
+    local, _public = healthcheck.read_addresses(path)
+    assert local == "http://123:9876"
+
+
+def test_uninstall_removes_units_and_is_safe_to_repeat(tmp_path, monkeypatch, capsys):
+    units = tmp_path / "units"
+    units.mkdir()
+    (units / SERVICE).write_text("x")
+    (units / TIMER).write_text("x")
+    calls = []
+    monkeypatch.setattr(persistence, "get_platform", lambda: "linux")
+    monkeypatch.setattr(persistence, "_systemd_user_dir", lambda: units)
+    monkeypatch.setattr(
+        healthcheck.subprocess,
+        "run",
+        lambda cmd, **_kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0),
+    )
+    healthcheck.uninstall_healthcheck()
+    healthcheck.uninstall_healthcheck()
+    assert not (units / SERVICE).exists()
+    assert not (units / TIMER).exists()
+    assert ["systemctl", "--user", "disable", "--now", TIMER] in calls
+
+
+def test_console_uninstall_flag_leaves_the_console_unit_alone(monkeypatch, capsys):
+    removed = []
+    monkeypatch.setattr(healthcheck, "uninstall_healthcheck", lambda: removed.append(True))
+    monkeypatch.setattr(
+        "culture_core.persistence.uninstall_service",
+        lambda *_a, **_kw: pytest.fail("touched the console unit"),
+    )
+    args = argparse.Namespace(console_args=["uninstall", "--healthcheck"])
+    with pytest.raises(SystemExit) as exc:
+        console.dispatch(args)
+    assert exc.value.code == 0
+    assert removed == [True]

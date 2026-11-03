@@ -185,6 +185,8 @@ Set the check's period to 5 minutes and grace time to 5 minutes on healthchecks.
 culture console install --healthcheck
 ```
 
+`culture console uninstall --healthcheck` removes the timer.
+
 ## See also
 
 - [`culture devex`](/reference/cli/devex/) — sibling passthrough for
