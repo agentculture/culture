@@ -475,6 +475,12 @@ def _cmd_install(args: argparse.Namespace) -> None:
     raw = list(getattr(args, "console_args", []) or [])
     lens_config = _parse_install_argv(raw)
     allow_dev = _install_allows_dev_interpreter(raw)
+    if "--healthcheck" in raw:
+        from culture_core.cli.shared.healthcheck import install_healthcheck
+
+        path = install_healthcheck(lens_config, allow_dev_interpreter=allow_dev)
+        print(f"Installed healthcheck timer → {path}")
+        return
     svc, server_name = _console_service_identity()
     command = [sys.executable, "-m", "culture_core", "console", "serve"]
     if lens_config:

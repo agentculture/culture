@@ -170,6 +170,20 @@ units), and idempotent: install twice rewrites the identical unit and
 re-enables; uninstall of an absent unit is a friendly no-op (exit 0).
 See [Durable mesh](../../durable-mesh.md).
 
+## Health check ping
+
+`culture console install --healthcheck` installs a systemd user timer that reports to healthchecks.io every 5 minutes. Linux only.
+Before installing, store the check's URL as the grant secret `CULTURE_HEALTHCHECK_URL`. It's read at runtime and never written to a file.
+Each run checks the local `/readyz` and the public `/readyz`. If both pass, it pings the check URL. Otherwise it pings the URL with `/fail` added.
+Both are checked because after a failover the public address may answer from another host, so a public check alone could hide a dead local IRC server.
+If the host is off, no pings arrive, and healthchecks.io alerts on the silence.
+The local port and public address come from the lens config: `web.port` and `media.public_base_url`. Use `--config PATH` for a config elsewhere.
+Set the check's period to 5 minutes and grace time to 5 minutes on healthchecks.io.
+
+```bash
+culture console install --healthcheck
+```
+
 ## See also
 
 - [`culture devex`](/reference/cli/devex/) — sibling passthrough for

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.14.0] - 2026-11-04
+
+### Added
+
+- `culture console install --healthcheck` installs a systemd user timer that reports chat readiness to healthchecks.io every 5 minutes, checking both the local and public `/readyz`. The check URL comes from the grant secret `CULTURE_HEALTHCHECK_URL`.
+
 ## [14.13.2] - 2026-11-03
 
 ### Fixed
