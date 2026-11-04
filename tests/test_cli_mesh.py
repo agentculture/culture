@@ -693,6 +693,75 @@ class TestRestartSingleService:
 
 
 class TestRestartMeshServices:
+    def test_grant_failure_aborts_before_teardown_when_unit_uses_link_injects(self, monkeypatch):
+        mesh = _StubMesh(server=_StubServerCfg(name="spark", links=[_StubLink(name="peer-a")]))
+        monkeypatch.setattr(mesh_mod, "_mesh_pidfiles_allow_teardown", lambda *_a: True)
+        monkeypatch.setattr(
+            mesh_mod,
+            "grant_link_injects",
+            lambda _mesh: (_ for _ in ()).throw(
+                CultureError(
+                    2,
+                    "cannot inspect grant link-secret names: listing failed",
+                    "repair grant",
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "culture_core.persistence.read_unit",
+            lambda _name: "ExecStart=/opt/grant run --inject "
+            "CULTURE_LINK_SECRET_PEER_A=CULTURE_LINK_SECRET_PEER_A -- culture server start\n",
+        )
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda _n: pytest.fail("stopped agent"))
+        monkeypatch.setattr(
+            mesh_mod, "server_stop_by_name", lambda _n: pytest.fail("stopped server")
+        )
+
+        with pytest.raises(CultureError, match="listing failed"):
+            mesh_mod._restart_mesh_services(
+                mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+            )
+
+    def test_grant_failure_warns_and_restarts_when_unit_has_no_link_injects(
+        self, monkeypatch, capsys
+    ):
+        mesh = _StubMesh(server=_StubServerCfg(name="spark", links=[_StubLink(name="peer-a")]))
+        stopped: list[str] = []
+        installed: list[dict] = []
+        monkeypatch.setattr(mesh_mod, "_mesh_pidfiles_allow_teardown", lambda *_a: True)
+        monkeypatch.setattr(
+            mesh_mod,
+            "grant_link_injects",
+            lambda _mesh: (_ for _ in ()).throw(
+                CultureError(2, "grant binary not found", "repair grant")
+            ),
+        )
+        monkeypatch.setattr(
+            "culture_core.persistence.read_unit",
+            lambda _name: "ExecStart=culture server start\n",
+        )
+        monkeypatch.setattr(mesh_mod, "stop_agent", lambda name: stopped.append(name) or True)
+        monkeypatch.setattr(
+            mesh_mod, "server_stop_by_name", lambda name: stopped.append(name) or True
+        )
+        monkeypatch.setattr(
+            "culture_core.persistence.install_service",
+            lambda *_a, **kwargs: installed.append(kwargs),
+        )
+        monkeypatch.setattr("culture_core.persistence.restart_service", lambda _svc: True)
+        monkeypatch.setattr(mesh_mod, "_wait_for_server_port", lambda *_a, **_kw: True)
+
+        assert mesh_mod._restart_mesh_services(
+            mesh, "spark", "/usr/bin/culture", "/tmp/mesh.yaml", dry_run=False
+        )
+
+        assert stopped == ["spark"]
+        assert installed[0]["grant_bin"] is None
+        assert installed[0]["injects"] == []
+        warning = capsys.readouterr().err
+        assert "grant binary not found" in warning
+        assert "without link-secret injects" in warning
+
     def test_stop_failure_aborts_restart(self, monkeypatch):
         mesh = _StubMesh(server=_StubServerCfg(name="spark"))
         monkeypatch.setattr(mesh_mod, "server_stop_by_name", lambda _n: False)

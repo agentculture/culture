@@ -332,6 +332,7 @@ def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
             "run 'grant list --json', fix the reported grant problem, then retry",
         ) from exc
 
+    incomplete = []
     for link in mesh.server.links:
         secret_name = names_by_peer[link.name]
         if secret_name in existing:
@@ -343,12 +344,40 @@ def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
             value = None
         if not value:
             print(f"{link.name}: skipped — keyring locked or empty")
+            incomplete.append(link.name)
             continue
         if store_grant_secret(grant_bin, secret_name, value):
             existing.add(secret_name)
             print(f"{link.name}: copied to grant")
         else:
             print(f"{link.name}: failed to copy to grant")
+            incomplete.append(link.name)
+    if incomplete:
+        raise CultureError(
+            EXIT_ENV_ERROR,
+            "not every configured peer was copied or already in grant",
+            "unlock or repair the OS keyring and grant store, then rerun "
+            "'culture mesh secrets-to-grant'",
+        )
+
+
+def _restart_link_injects(mesh, service_name: str) -> tuple[str | None, list[tuple[str, str]]]:
+    """Resolve link injects before teardown, preserving adopted grant units on failure."""
+    from culture_core.credentials import LINK_SECRET_PREFIX
+    from culture_core.persistence import exec_start_injected_secrets, read_unit
+
+    try:
+        return grant_link_injects(mesh)
+    except CultureError as exc:
+        unit_text = read_unit(service_name)
+        injected = exec_start_injected_secrets(unit_text or "")
+        if any(name.startswith(LINK_SECRET_PREFIX) for name in injected):
+            raise
+        print(
+            f"  Warning: {exc.message}; restarting without link-secret injects.",
+            file=sys.stderr,
+        )
+        return None, []
 
 
 def _store_mesh_credentials(mesh) -> None:
@@ -717,6 +746,9 @@ def _restart_mesh_services(
         _dry_run_restart(mesh, server_name)
         return True
 
+    server_svc = f"culture-server-{server_name}"
+    grant_bin, link_injects = _restart_link_injects(mesh, server_svc)
+
     if not _mesh_pidfiles_allow_teardown(mesh, server_name):
         return False
 
@@ -744,7 +776,6 @@ def _restart_mesh_services(
     from culture_core.persistence import install_service, restart_service
 
     server_cmd = build_server_start_cmd(mesh, culture_cmd, config_path)
-    grant_bin, link_injects = grant_link_injects(mesh)
     install_service(
         f"culture-server-{server_name}",
         server_cmd,
@@ -774,7 +805,6 @@ def _restart_mesh_services(
             inject_secret=_account_inject(full_nick, server_name, data_dir),
         )
 
-    server_svc = f"culture-server-{server_name}"
     server_fallback = [
         *culture_cmd,
         "server",

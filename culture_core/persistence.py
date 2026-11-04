@@ -565,10 +565,13 @@ def _exec_start_argv(unit_text: str) -> list[str] | None:
 
 def exec_start_has_inject(unit_text: str, secret: str) -> bool:
     """True if the unit's ExecStart carries the grant inject wrapper for *secret*."""
+    return secret in exec_start_injected_secrets(unit_text)
+
+
+def exec_start_injected_secrets(unit_text: str) -> set[str]:
+    """Grant secret names injected by a unit's ExecStart wrapper."""
     argv = _exec_start_argv(unit_text)
-    return bool(argv) and any(
-        spec.partition("=")[2] == secret for spec in _grant_inject_specs(argv)
-    )
+    return {spec.partition("=")[2] for spec in _grant_inject_specs(argv or [])}
 
 
 def unit_exec_start(name: str, *, unit_dir: Path | None = None) -> list[str] | None:

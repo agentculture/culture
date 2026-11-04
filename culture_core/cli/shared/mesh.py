@@ -14,26 +14,37 @@ from .constants import DEFAULT_CONFIG
 logger = logging.getLogger("culture")
 
 
-def link_secret_names(links: list) -> dict[str, str]:
-    """Map peer names to grant/env names, rejecting normalization collisions."""
+def _link_secret_index(links: list) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Return peer-to-secret names and normalized names shared by multiple peers."""
     from culture_core.credentials import link_secret_name
 
-    peers_by_secret: dict[str, str] = {}
     names_by_peer: dict[str, str] = {}
+    peers_by_secret: dict[str, list[str]] = {}
     for link in links:
         secret_name = link_secret_name(link.name)
-        previous = peers_by_secret.get(secret_name)
-        if previous is not None and previous != link.name:
-            from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
-
-            raise CultureError(
-                EXIT_USER_ERROR,
-                f"link secret name collision: peers '{previous}' and '{link.name}' "
-                f"both map to {secret_name}",
-                "rename one link in mesh.yaml so its normalized grant name is unique",
-            )
-        peers_by_secret[secret_name] = link.name
         names_by_peer[link.name] = secret_name
+        peers_by_secret.setdefault(secret_name, []).append(link.name)
+    collisions = {
+        name: list(dict.fromkeys(peers))
+        for name, peers in peers_by_secret.items()
+        if len(set(peers)) > 1
+    }
+    return names_by_peer, collisions
+
+
+def link_secret_names(links: list) -> dict[str, str]:
+    """Map peer names to grant/env names, rejecting normalization collisions."""
+    names_by_peer, collisions = _link_secret_index(links)
+    if collisions:
+        from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+        secret_name, peers = next(iter(collisions.items()))
+        quoted_peers = " and ".join(f"'{peer}'" for peer in peers)
+        raise CultureError(
+            EXIT_USER_ERROR,
+            f"link secret name collision: peers {quoted_peers} both map to {secret_name}",
+            "rename one link in mesh.yaml so its normalized grant name is unique",
+        )
     return names_by_peer
 
 
@@ -44,7 +55,7 @@ def grant_link_injects(
     from culture_core.credentials import grant_secret_names
     from culture_core.persistence import resolve_grant_bin
 
-    names_by_peer = link_secret_names(mesh.server.links)
+    names_by_peer, collisions = _link_secret_index(mesh.server.links)
     if not names_by_peer:
         return None, []
     grant_bin = resolve_grant_bin(allow_dev_interpreter=allow_dev_interpreter)
@@ -61,7 +72,7 @@ def grant_link_injects(
     injects = [
         (secret_name, secret_name)
         for secret_name in names_by_peer.values()
-        if secret_name in existing
+        if secret_name in existing and secret_name not in collisions
     ]
     return grant_bin, injects
 
@@ -95,27 +106,41 @@ def resolve_links_from_mesh(mesh_config_path: str) -> list:
     """Load link configs from mesh.yaml, looking up injected/keyring passwords."""
     from agentirc.config import LinkConfig
 
-    from culture_core.credentials import lookup_credential
+    from culture_core.credentials import lookup_credential, lookup_keyring_credential
     from culture_core.mesh_config import load_mesh_config
 
     mesh = load_mesh_config(mesh_config_path)
-    names_by_peer = link_secret_names(mesh.server.links)
+    names_by_peer, collisions = _link_secret_index(mesh.server.links)
+    colliding_peers = {peer for peers in collisions.values() for peer in peers}
+    for injected_name, peers in collisions.items():
+        logger.warning(
+            "Peers %s share injected name %s; ignoring injected values for these peers "
+            "and using the OS keyring.",
+            ", ".join(peers),
+            injected_name,
+        )
     links = []
     for lc in mesh.server.links:
         try:
-            password = lookup_credential(lc.name)
+            lookup = lookup_keyring_credential if lc.name in colliding_peers else lookup_credential
+            password = lookup(lc.name)
         except ValueError as exc:
             # A malformed link name in mesh.yaml must not crash server
             # start — skip the link with a pointer at the bad entry.
             logger.warning("Skipping link '%s': %s. Fix the link name in mesh.yaml.", lc.name, exc)
             continue
         if not password:
+            sources = (
+                "the OS keyring"
+                if lc.name in colliding_peers
+                else f"{names_by_peer[lc.name]} or the OS keyring"
+            )
             logger.warning(
-                "No credential found for peer '%s' in %s or the OS keyring — "
+                "No credential found for peer '%s' in %s — "
                 "link will not be established. Run 'culture mesh secrets-to-grant' "
                 "after storing the keyring password.",
                 lc.name,
-                names_by_peer[lc.name],
+                sources,
             )
             continue
         links.append(

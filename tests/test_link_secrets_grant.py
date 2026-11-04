@@ -97,7 +97,9 @@ def test_link_secret_name_normalizes_peer_exactly():
     assert credentials.link_secret_name("Thor.eu-west_1") == "CULTURE_LINK_SECRET_THOR_EU_WEST_1"
 
 
-def test_resolve_links_rejects_normalized_name_collision(monkeypatch):
+def test_resolve_links_collision_skips_injected_value_and_uses_each_keyring_entry(
+    monkeypatch, caplog
+):
     mesh = MeshConfig(
         server=MeshServerConfig(
             name="spark2",
@@ -108,13 +110,23 @@ def test_resolve_links_rejects_normalized_name_collision(monkeypatch):
         )
     )
     monkeypatch.setattr("culture_core.mesh_config.load_mesh_config", lambda _path: mesh)
+    monkeypatch.setenv("CULTURE_LINK_SECRET_PEER_A", "wrong-shared-injected-value")
+    keyring_values = {"peer-a": "first-keyring", "peer.a": "second-keyring"}
     monkeypatch.setattr(
-        "culture_core.credentials.lookup_credential",
-        lambda _name: pytest.fail("collision must be rejected before credential lookup"),
+        "culture_core.credentials.lookup_keyring_credential",
+        keyring_values.__getitem__,
     )
 
-    with pytest.raises(CultureError, match="collision.*peer-a.*peer\\.a"):
-        shared_mesh.resolve_links_from_mesh("/tmp/fake-mesh.yaml")
+    with caplog.at_level("WARNING", logger="culture"):
+        links = shared_mesh.resolve_links_from_mesh("/tmp/fake-mesh.yaml")
+
+    assert [(link.name, link.password) for link in links] == [
+        ("peer-a", "first-keyring"),
+        ("peer.a", "second-keyring"),
+    ]
+    warning = "\n".join(record.message for record in caplog.records)
+    assert "peer-a" in warning and "peer.a" in warning
+    assert "injected" in warning and "OS keyring" in warning
 
 
 def test_missing_credential_warning_names_environment_and_keyring(monkeypatch, caplog):
@@ -163,7 +175,7 @@ def test_grant_wrap_accepts_several_injects_and_parks_exit_64():
     assert persistence.exec_start_has_inject(unit, "CULTURE_LINK_SECRET_ZEUS")
 
 
-def test_server_install_injects_only_existing_grant_link_secrets(tmp_path, monkeypatch):
+def test_server_install_injects_only_existing_grant_link_secrets(tmp_path, monkeypatch, capsys):
     present = "CULTURE_LINK_SECRET_THOR"
     fake_grant, _log = _fake_grant(tmp_path, names=[present])
     mesh_path = _write_mesh(tmp_path, "thor", "missing")
@@ -192,6 +204,64 @@ def test_server_install_injects_only_existing_grant_link_secrets(tmp_path, monke
     ]
     assert "CULTURE_LINK_SECRET_MISSING" not in unit
     assert "RestartPreventExitStatus=78 64" in unit
+    warning = capsys.readouterr().err
+    assert "missing" in warning
+    assert "grant" in warning
+
+
+def test_server_install_without_any_grant_link_secrets_stays_silent(tmp_path, monkeypatch, capsys):
+    fake_grant, _log = _fake_grant(tmp_path, names=[])
+    mesh_path = _write_mesh(tmp_path, "thor", "missing")
+    monkeypatch.setattr(persistence, "resolve_grant_bin", lambda **_kwargs: str(fake_grant))
+    monkeypatch.setattr(persistence, "install_service", lambda *_args, **_kwargs: tmp_path / "unit")
+
+    server_cli._server_install(
+        argparse.Namespace(
+            config=str(mesh_path),
+            standalone=False,
+            allow_dev_interpreter=True,
+        )
+    )
+
+    assert capsys.readouterr().err == ""
+
+
+def test_server_install_rejects_link_secret_collision_before_install(tmp_path, monkeypatch):
+    mesh_path = _write_mesh(tmp_path, "peer-a", "peer.a")
+    monkeypatch.setattr(
+        persistence,
+        "install_service",
+        lambda *_args, **_kwargs: pytest.fail("installed colliding link secrets"),
+    )
+
+    with pytest.raises(CultureError, match="collision.*peer-a.*peer\\.a"):
+        server_cli._server_install(
+            argparse.Namespace(
+                config=str(mesh_path),
+                standalone=False,
+                allow_dev_interpreter=True,
+            )
+        )
+
+
+def test_shared_grant_inject_resolution_omits_colliding_names(monkeypatch):
+    mesh = MeshConfig(
+        server=MeshServerConfig(
+            name="spark2",
+            links=[
+                MeshLinkConfig(name="peer-a", host="one.example.test"),
+                MeshLinkConfig(name="peer.a", host="two.example.test"),
+            ],
+        )
+    )
+    monkeypatch.setattr(persistence, "resolve_grant_bin", lambda **_kwargs: "/tmp/grant")
+    monkeypatch.setattr(
+        credentials,
+        "grant_secret_names",
+        lambda _bin: {"CULTURE_LINK_SECRET_PEER_A"},
+    )
+
+    assert shared_mesh.grant_link_injects(mesh) == ("/tmp/grant", [])
 
 
 def test_secrets_to_grant_uses_names_only_and_stdin(tmp_path, monkeypatch, capsys):
@@ -213,7 +283,8 @@ def test_secrets_to_grant_uses_names_only_and_stdin(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(credentials, "lookup_keyring_credential", _fake_keyring)
 
     args = _build_parser().parse_args(["mesh", "secrets-to-grant", "--config", str(mesh_path)])
-    mesh_cli.dispatch(args)
+    with pytest.raises(CultureError) as exc:
+        mesh_cli.dispatch(args)
 
     captured = capsys.readouterr()
     output = captured.out + captured.err
@@ -224,8 +295,60 @@ def test_secrets_to_grant_uses_names_only_and_stdin(tmp_path, monkeypatch, capsy
     assert "locked" in output and "keyring locked or empty" in output
     grant_log = log.read_text()
     assert secret not in grant_log
+    assert exc.value.code != 0
     grant_argv = json.loads(grant_log)
     assert grant_argv[:3] == ["set", "CULTURE_LINK_SECRET_NEW_PEER", "-"]
+
+
+def test_secrets_to_grant_processes_every_peer_then_fails_for_uncopied(
+    tmp_path, monkeypatch, capsys
+):
+    mesh_path = _write_mesh(tmp_path, "locked", "copy-fails", "copied", "already")
+    looked_up: list[str] = []
+    stored: list[str] = []
+    monkeypatch.setattr(persistence, "resolve_grant_bin", lambda: "/tmp/fake-grant")
+    monkeypatch.setattr(
+        credentials,
+        "grant_secret_names",
+        lambda _bin: {"CULTURE_LINK_SECRET_ALREADY"},
+    )
+
+    def _lookup(peer: str) -> str | None:
+        looked_up.append(peer)
+        return None if peer == "locked" else f"secret-for-{peer}"
+
+    def _store(_bin: str, name: str, _value: str) -> bool:
+        stored.append(name)
+        return name != "CULTURE_LINK_SECRET_COPY_FAILS"
+
+    monkeypatch.setattr(credentials, "lookup_keyring_credential", _lookup)
+    monkeypatch.setattr(credentials, "store_grant_secret", _store)
+    args = _build_parser().parse_args(["mesh", "secrets-to-grant", "--config", str(mesh_path)])
+
+    with pytest.raises(CultureError) as exc:
+        mesh_cli.dispatch(args)
+
+    assert exc.value.code != 0
+    assert looked_up == ["locked", "copy-fails", "copied"]
+    assert stored == ["CULTURE_LINK_SECRET_COPY_FAILS", "CULTURE_LINK_SECRET_COPIED"]
+    output = capsys.readouterr().out
+    assert "locked: skipped" in output
+    assert "copy-fails: failed" in output
+    assert "copied: copied" in output
+    assert "already: already" in output
+
+
+def test_secrets_to_grant_rejects_link_secret_collision_before_grant_lookup(tmp_path, monkeypatch):
+    mesh_path = _write_mesh(tmp_path, "peer-a", "peer.a")
+    monkeypatch.setattr(
+        persistence,
+        "resolve_grant_bin",
+        lambda: pytest.fail("resolved grant before rejecting collision"),
+    )
+    args = _build_parser().parse_args(["mesh", "secrets-to-grant", "--config", str(mesh_path)])
+
+    with pytest.raises(CultureError, match="collision.*peer-a.*peer\\.a"):
+        mesh_cli.dispatch(args)
 
 
 def test_secrets_to_grant_parser_is_registered():
