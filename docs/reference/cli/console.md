@@ -46,7 +46,7 @@ invocation). See `irc-lens config init --help` for available flags.
 | `culture console overview` | Pure passthrough to `irc-lens overview`. |
 | `culture console learn` | Pure passthrough to `irc-lens learn`. |
 | `culture console stop` | **CULTURE.DEV-owned.** Stop the locally-running console. |
-| `culture console install [--config PATH]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
+| `culture console install [--config PATH] [--healthcheck]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
 | `culture console uninstall` | **CULTURE.DEV-owned.** Remove the auto-start unit (no-op if absent). |
 | `culture console --help` | irc-lens's own help. |
 
@@ -150,6 +150,7 @@ local console process for the requested port.
 culture console install                                   # ExecStart defers to irc-lens's default config
 culture console install --config ~/.config/irc-lens/config.yaml
 culture console install --allow-dev-interpreter            # override the interpreter provenance guard
+culture console install --healthcheck
 culture console uninstall
 ```
 
@@ -169,6 +170,22 @@ intercepted before passthrough (irc-lens knows nothing about service
 units), and idempotent: install twice rewrites the identical unit and
 re-enables; uninstall of an absent unit is a friendly no-op (exit 0).
 See [Durable mesh](../../durable-mesh.md).
+
+## Health check ping
+
+`culture console install --healthcheck` installs a systemd user timer that reports to healthchecks.io every 5 minutes. Linux only.
+Before installing, store the check's URL as the grant secret `CULTURE_HEALTHCHECK_URL`. It's read at runtime and never written to a file.
+Each run checks the local `/readyz` and the public `/readyz`. If both pass, it pings the check URL. Otherwise it pings the URL with `/fail` added.
+Both are checked because after a failover the public address may answer from another host, so a public check alone could hide a dead local IRC server.
+If the host is off, no pings arrive, and healthchecks.io alerts on the silence.
+The local port and public address come from the lens config: `web.port` and `media.public_base_url`. Use `--config PATH` for a config elsewhere.
+Set the check's period to 5 minutes and grace time to 5 minutes on healthchecks.io.
+
+```bash
+culture console install --healthcheck
+```
+
+`culture console uninstall --healthcheck` removes the timer.
 
 ## See also
 

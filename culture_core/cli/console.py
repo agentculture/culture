@@ -10,8 +10,8 @@ the lens with culture-aware ergonomics:
     culture console serve --host ...  -> pure passthrough
     culture console explain           -> irc-lens explain (passthrough)
     culture console stop [--web-port] -> stop a locally-running console
-    culture console install [--config PATH] -> auto-start service unit
-    culture console uninstall        -> remove the service unit
+    culture console install [--config PATH] [--healthcheck] -> auto-start service unit
+    culture console uninstall [--healthcheck] -> remove the service unit
 
 The full design lives in
 ``docs/superpowers/specs/2026-05-05-culture-console-design.md``. The
@@ -475,6 +475,12 @@ def _cmd_install(args: argparse.Namespace) -> None:
     raw = list(getattr(args, "console_args", []) or [])
     lens_config = _parse_install_argv(raw)
     allow_dev = _install_allows_dev_interpreter(raw)
+    if "--healthcheck" in raw:
+        from culture_core.cli.shared.healthcheck import install_healthcheck
+
+        path = install_healthcheck(lens_config, allow_dev_interpreter=allow_dev)
+        print(f"Installed healthcheck timer → {path}")
+        return
     svc, server_name = _console_service_identity()
     command = [sys.executable, "-m", "culture_core", "console", "serve"]
     if lens_config:
@@ -493,6 +499,13 @@ def _cmd_uninstall(args: argparse.Namespace) -> None:
     """Remove the console's service unit. Graceful no-op if not installed."""
     from culture_core.persistence import uninstall_service
 
+    raw = list(getattr(args, "console_args", []) or [])
+    if "--healthcheck" in raw:
+        from culture_core.cli.shared.healthcheck import uninstall_healthcheck
+
+        uninstall_healthcheck()
+        print("Removed healthcheck timer")
+        return
     del args  # no flags today; keep the uniform handler signature
     svc, _ = _console_service_identity()
     if uninstall_service(svc):
