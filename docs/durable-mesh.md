@@ -48,6 +48,69 @@ Config resolution:
   ExecStart deliberately carries no `--config`; the daemon falls
   through to the manifest at `~/.culture/server.yaml`.
 
+## Reboot-safe link secrets
+
+An unattended server cannot read a login keyring that stays locked after a
+reboot. Link passwords therefore live in `grant` for installed server units.
+The unit runs the server through `grant run` and injects one environment
+variable per configured peer. `culture` checks that variable first and falls
+back to the existing OS-keyring lookup, so machines that have not migrated
+continue to work interactively.
+
+Both the grant entry and environment variable are named
+`CULTURE_LINK_SECRET_<PEER>`: the peer is uppercased and every non-alphanumeric
+character becomes `_`. For example, `thor.eu-west` becomes
+`CULTURE_LINK_SECRET_THOR_EU_WEST`. Two peer names that normalize to the same
+name (such as `peer-a` and `peer.a`) are rejected; rename one link in
+`mesh.yaml`.
+
+### Initial setup and migration
+
+With link passwords already stored in the OS keyring by `culture mesh setup`,
+copy them into grant and rebuild the server unit:
+
+```bash
+culture mesh secrets-to-grant --config ~/.culture/mesh.yaml
+culture server install --config ~/.culture/mesh.yaml
+loginctl enable-linger "$USER"
+```
+
+`secrets-to-grant` lists grant names without reading their values, skips names
+already present, and reads each missing value from the OS keyring. It passes
+the value to `grant set NAME - --hidden` on stdin, never in argv, and prints
+only peer names and outcomes. A locked or empty keyring entry is reported and
+left unchanged; unlock/populate the keyring and rerun the command.
+
+The generated unit contains only mappings such as
+`CULTURE_LINK_SECRET_THOR=CULTURE_LINK_SECRET_THOR`; it never contains the
+password. Grant's store is owner-only (`0600`), not a world-readable config
+file. If grant cannot inject a configured entry, its exit status 64 parks the
+unit alongside culture's permanent-error exit 78 instead of crash-looping.
+
+### Rotation
+
+Each side of a server link must use the same new value. On **both peers**, set
+the corresponding grant entry from stdin (do not place the value on the
+command line):
+
+```bash
+read -rsp 'New link secret: ' CULTURE_ROTATED_LINK_SECRET; echo
+printf %s "$CULTURE_ROTATED_LINK_SECRET" \
+  | culture secret set CULTURE_LINK_SECRET_THOR -
+unset CULTURE_ROTATED_LINK_SECRET
+```
+
+After both grant entries hold the same value, restart **both server units**:
+
+```bash
+systemctl --user restart culture-server-spark2.service  # first endpoint
+systemctl --user restart culture-server-thor.service    # other endpoint
+```
+
+Run each restart on its own host. Rotating only one side temporarily breaks
+the link. Changing `mesh.yaml` is not part of rotation because it never stores
+the password.
+
 ## Start ordering
 
 On Linux, console and agent units carry ordering on the server unit:

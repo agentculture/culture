@@ -55,7 +55,7 @@ culture server start --name spark --port 6667 --foreground
 | `--host` | `0.0.0.0` | Listen address |
 | `--port` | `6667` | Listen port |
 | `--link` | none | Peer link: `name:host:port:password[:trust]` (repeatable). Trust is `full` (default) or `restricted`. |
-| `--mesh-config` | none | Read links from `mesh.yaml` + OS keyring (no passwords in CLI args) |
+| `--mesh-config` | none | Read links from `mesh.yaml`; passwords come from grant-injected `CULTURE_LINK_SECRET_<PEER>` variables, then the OS keyring fallback |
 | `--webhook-port` | `7680` | HTTP port for bot webhooks. `0` disables the webhook listener (no bind) — webhook-trigger bots get no HTTP ingress; event/mention bots are unaffected. |
 | `--data-dir` | `~/.culture/data` | Data directory for persistent storage |
 | `--no-persist` | off | Keep history and rooms in memory only; write nothing to `--data-dir`. Used by the [guest sandbox](../../guest-sandbox.md). |
@@ -620,8 +620,27 @@ culture mesh setup --data-dir ~/.culture/data  # accounts file to read (default:
 | `--uninstall` | off | Remove all auto-start entries and stop running services |
 | `--data-dir PATH` | the server's own (from its running process or installed unit), else `~/.culture/data` | Server data dir holding `accounts.json`; decides which agents get the `grant run --inject` wrapper in their unit |
 
-If any peer link in `mesh.yaml` has a blank password, `setup` prompts interactively
-and saves the password back to the file.
+For a peer link without a keyring credential, `setup` prompts interactively and
+stores the password in the OS keyring. Passwords are never saved in
+`mesh.yaml`.
+
+### `culture mesh secrets-to-grant`
+
+Copy link passwords from the OS keyring into grant so an installed server unit
+can reconnect after a reboot without an interactive keyring unlock:
+
+```bash
+culture mesh secrets-to-grant
+culture mesh secrets-to-grant --config /path/mesh.yaml
+```
+
+The grant entry and injected variable share the name
+`CULTURE_LINK_SECRET_<PEER>`, with the peer uppercased and each
+non-alphanumeric character replaced by `_`. Existing grant entries are
+skipped. Missing values are read from the keyring and sent to `grant set` over
+stdin; output contains peer names and outcomes only. Normalized-name
+collisions are rejected. See [Durable mesh](../../durable-mesh.md#reboot-safe-link-secrets)
+for setup and rotation instructions.
 
 ### `culture mesh update`
 

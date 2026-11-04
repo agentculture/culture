@@ -10,6 +10,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - `culture console replica`: copies approved accounts one way to a standby console over a private network, using sqlite's backup API, leaving out guest and consent data.
 
+## [14.15.0] - 2026-11-04
+
+### Added
+
+- Mesh link secrets can live in grant: `culture mesh secrets-to-grant` copies them from the keyring, `culture server install` injects them, and a server checks them before the keyring. A host can then rejoin the mesh after a reboot with its keyring locked. Hosts without grant secrets behave as before.
+
 ## [14.14.0] - 2026-11-04
 
 ### Added

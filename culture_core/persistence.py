@@ -440,13 +440,37 @@ GRANT_RUN_FAILED = 64
 
 
 def is_grant_wrapped(command: list[str]) -> bool:
-    """True if *command* is ``<grant> run --inject CULTURE_AGENT_SECRET=... -- ...``."""
-    return (
-        len(command) >= 5
-        and command[1:3] == ["run", "--inject"]
-        and command[3].startswith(f"{INJECT_ENV_VAR}=")
-        and command[4] == "--"
-    )
+    """True for ``<grant> run --inject VAR=SECRET [...] -- <command>``."""
+    return _grant_separator(command) is not None
+
+
+def _grant_separator(command: list[str]) -> int | None:
+    """Index of a valid grant wrapper's ``--`` separator, else ``None``."""
+    if len(command) < 6 or command[1] != "run":
+        return None
+    index = 2
+    inject_count = 0
+    while index < len(command) and command[index] == "--inject":
+        if index + 1 >= len(command) or "=" not in command[index + 1]:
+            return None
+        inject_count += 1
+        index += 2
+    if inject_count == 0 or index >= len(command) - 1 or command[index] != "--":
+        return None
+    return index
+
+
+def grant_unwrap(command: list[str]) -> list[str]:
+    """Return the wrapped child argv, or *command* unchanged."""
+    separator = _grant_separator(command)
+    return command if separator is None else command[separator + 1 :]
+
+
+def _grant_inject_specs(command: list[str]) -> list[str]:
+    separator = _grant_separator(command)
+    if separator is None:
+        return []
+    return command[3:separator:2]
 
 
 def _prevent_status(wrapped: bool) -> str:
@@ -499,17 +523,28 @@ def resolve_grant_bin(*, allow_dev_interpreter: bool | None = None) -> str:
 
 def grant_wrap(
     command: list[str],
-    secret: str,
+    secret: str | None = None,
     grant_bin: str | None = None,
     *,
     allow_dev_interpreter: bool | None = None,
+    injects: list[tuple[str, str]] | None = None,
 ) -> list[str]:
-    """``grant run --inject CULTURE_AGENT_SECRET=<secret> -- <command>``."""
+    """Wrap *command* in ``grant run`` with one or several injects.
+
+    The positional *secret* form remains the agent-account shorthand for
+    ``CULTURE_AGENT_SECRET=<secret>``.  *injects* carries explicit
+    ``(environment variable, grant entry)`` pairs for server link secrets.
+    """
+    pairs = list(injects or [])
+    if secret is not None:
+        pairs.insert(0, (INJECT_ENV_VAR, secret))
+    if not pairs:
+        raise ValueError("grant_wrap requires at least one secret inject")
+    inject_argv = [item for env, name in pairs for item in ("--inject", f"{env}={name}")]
     return [
         grant_bin or resolve_grant_bin(allow_dev_interpreter=allow_dev_interpreter),
         "run",
-        "--inject",
-        f"{INJECT_ENV_VAR}={secret}",
+        *inject_argv,
         "--",
         *command,
     ]
@@ -530,8 +565,13 @@ def _exec_start_argv(unit_text: str) -> list[str] | None:
 
 def exec_start_has_inject(unit_text: str, secret: str) -> bool:
     """True if the unit's ExecStart carries the grant inject wrapper for *secret*."""
+    return secret in exec_start_injected_secrets(unit_text)
+
+
+def exec_start_injected_secrets(unit_text: str) -> set[str]:
+    """Grant secret names injected by a unit's ExecStart wrapper."""
     argv = _exec_start_argv(unit_text)
-    return bool(argv) and is_grant_wrapped(argv) and argv[3] == f"{INJECT_ENV_VAR}={secret}"
+    return {spec.partition("=")[2] for spec in _grant_inject_specs(argv or [])}
 
 
 def unit_exec_start(name: str, *, unit_dir: Path | None = None) -> list[str] | None:
@@ -709,7 +749,7 @@ def wrap_installed_unit(
     if exec_start_has_inject(path.read_text(), secret):
         return False
     if is_grant_wrapped(argv):
-        argv = argv[5:]
+        argv = grant_unwrap(argv)
     _rewrite_unit(
         path, grant_wrap(argv, secret, grant_bin, allow_dev_interpreter=allow_dev_interpreter)
     )
@@ -731,9 +771,9 @@ def unwrap_installed_unit(
     argv = _exec_start_argv(path.read_text())
     if not argv or not is_grant_wrapped(argv):
         return False
-    if secret is not None and argv[3] != f"{INJECT_ENV_VAR}={secret}":
+    if secret is not None and not exec_start_has_inject(path.read_text(), secret):
         return False
-    _rewrite_unit(path, argv[5:])
+    _rewrite_unit(path, grant_unwrap(argv))
     return True
 
 
@@ -809,6 +849,7 @@ def install_service(
     allow_dev_interpreter: bool | None = None,
     inject_secret: str | None = None,
     grant_bin: str | None = None,
+    injects: list[tuple[str, str]] | None = None,
 ) -> Path:
     """Generate and install a platform-specific auto-start entry.
 
@@ -820,6 +861,11 @@ def install_service(
     *inject_secret* (a grant secret name) wraps ExecStart as
     ``grant run --inject CULTURE_AGENT_SECRET=<name> -- <cmd>`` so the agent's
     account secret reaches only the daemon process (culture#506).
+
+    *injects* accepts explicit ``(environment variable, grant entry)`` pairs;
+    server units use it to inject every link secret that already exists in
+    grant. Multiple pairs share one wrapper and never place a value in the
+    generated unit.
 
     *allow_dev_interpreter* engages the interpreter-provenance guard on
     ``command[0]`` (the interpreter baked into ExecStart):
@@ -847,12 +893,16 @@ def install_service(
     installer = _PLATFORM_INSTALLERS.get(platform)
     if installer is None:
         raise RuntimeError(f"Unsupported platform: {platform}")
-    if inject_secret:
-        # Agent has an account: grant injects CULTURE_AGENT_SECRET into the
-        # daemon only. The interpreter guard above ran on the bare command;
-        # the grant binary gets the same guard.
+    if inject_secret or injects:
+        # Grant injects account/link secrets into the daemon only. The
+        # interpreter guard above ran on the bare command; the grant binary
+        # gets the same guard.
         command = grant_wrap(
-            command, inject_secret, grant_bin, allow_dev_interpreter=allow_dev_interpreter
+            command,
+            inject_secret,
+            grant_bin,
+            allow_dev_interpreter=allow_dev_interpreter,
+            injects=injects,
         )
     return installer(name, command, description, after=after)
 
