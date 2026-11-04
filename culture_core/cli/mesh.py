@@ -1,4 +1,4 @@
-"""Mesh subcommands: culture mesh {overview,setup,update,console}.
+"""Mesh subcommands: culture mesh {overview,setup,update,secrets-to-grant,console}.
 
 `console` is a deprecation alias forwarding to `culture console`
 (see culture_core.cli.console). Removal target: 10.0.
@@ -15,14 +15,19 @@ import subprocess
 import sys
 import time
 
-from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+from culture_core.cli._errors import EXIT_ENV_ERROR, EXIT_USER_ERROR, CultureError
 from culture_core.cli.console import dispatch_resolved_argv as console_dispatch
 from culture_core.config import ServerConfig, load_config, load_config_or_default
 from culture_core.pidfile import classify_pidfile, read_pid
 
 from .shared.constants import _CONFIG_HELP, DEFAULT_CONFIG
 from .shared.ipc import agent_socket_path
-from .shared.mesh import build_server_start_cmd, generate_mesh_from_agents
+from .shared.mesh import (
+    build_server_start_cmd,
+    generate_mesh_from_agents,
+    grant_link_injects,
+    link_secret_names,
+)
 from .shared.process import server_stop_by_name, stop_agent
 
 logger = logging.getLogger("culture")
@@ -116,6 +121,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Show what would happen without executing",
     )
+
+    # -- secrets-to-grant ----------------------------------------------------
+    migrate_parser = mesh_sub.add_parser(
+        "secrets-to-grant",
+        help="Copy mesh link passwords from the OS keyring into grant",
+    )
+    migrate_parser.add_argument(
+        "--config",
+        default=os.path.expanduser("~/.culture/mesh.yaml"),
+        help="Path to mesh.yaml",
+    )
     update_parser.add_argument(
         "--skip-upgrade",
         action="store_true",
@@ -162,13 +178,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 def dispatch(args: argparse.Namespace) -> None:
     if not args.mesh_command:
-        print("Usage: culture mesh {overview|setup|update|console}", file=sys.stderr)
+        print(
+            "Usage: culture mesh {overview|setup|update|secrets-to-grant|console}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     handlers = {
         "overview": _cmd_overview,
         "setup": _cmd_setup,
         "update": _cmd_update,
+        "secrets-to-grant": _cmd_secrets_to_grant,
         "console": _cmd_console,
     }
     handler = handlers.get(args.mesh_command)
@@ -176,7 +196,8 @@ def dispatch(args: argparse.Namespace) -> None:
         raise CultureError(
             EXIT_USER_ERROR,
             f"Unknown mesh command: {args.mesh_command}",
-            "run 'culture mesh --help' to list subcommands (overview|setup|update|console)",
+            "run 'culture mesh --help' to list subcommands "
+            "(overview|setup|update|secrets-to-grant|console)",
         )
     handler(args)
 
@@ -287,6 +308,49 @@ def _cmd_console(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------
 
 
+def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
+    """Copy missing mesh-link secrets from the OS keyring into grant."""
+    from culture_core.credentials import (
+        grant_secret_names,
+        lookup_keyring_credential,
+        store_grant_secret,
+    )
+    from culture_core.mesh_config import load_mesh_config
+    from culture_core.persistence import resolve_grant_bin
+
+    mesh = load_mesh_config(args.config)
+    names_by_peer = link_secret_names(mesh.server.links)
+    if not names_by_peer:
+        return
+    grant_bin = resolve_grant_bin()
+    try:
+        existing = grant_secret_names(grant_bin)
+    except RuntimeError as exc:
+        raise CultureError(
+            EXIT_ENV_ERROR,
+            f"cannot inspect grant link-secret names: {exc}",
+            "run 'grant list --json', fix the reported grant problem, then retry",
+        ) from exc
+
+    for link in mesh.server.links:
+        secret_name = names_by_peer[link.name]
+        if secret_name in existing:
+            print(f"{link.name}: already in grant")
+            continue
+        try:
+            value = lookup_keyring_credential(link.name)
+        except ValueError:
+            value = None
+        if not value:
+            print(f"{link.name}: skipped — keyring locked or empty")
+            continue
+        if store_grant_secret(grant_bin, secret_name, value):
+            existing.add(secret_name)
+            print(f"{link.name}: copied to grant")
+        else:
+            print(f"{link.name}: failed to copy to grant")
+
+
 def _store_mesh_credentials(mesh) -> None:
     """Prompt for link passwords and store them in the OS keyring (never in files)."""
     import getpass
@@ -348,8 +412,15 @@ def _install_mesh_services(
     culture_cmd: list[str] = [culture_bin] if isinstance(culture_bin, str) else list(culture_bin)
 
     server_cmd = build_server_start_cmd(mesh, culture_cmd, config_path)
+    grant_bin, link_injects = grant_link_injects(mesh)
     svc_name = f"culture-server-{server_name}"
-    path = install_service(svc_name, server_cmd, f"culture-core server {server_name}")
+    path = install_service(
+        svc_name,
+        server_cmd,
+        f"culture-core server {server_name}",
+        grant_bin=grant_bin,
+        injects=link_injects,
+    )
     print(f"  Installed {svc_name} → {path}")
 
     for agent in mesh.agents:
@@ -673,8 +744,13 @@ def _restart_mesh_services(
     from culture_core.persistence import install_service, restart_service
 
     server_cmd = build_server_start_cmd(mesh, culture_cmd, config_path)
+    grant_bin, link_injects = grant_link_injects(mesh)
     install_service(
-        f"culture-server-{server_name}", server_cmd, f"culture-core server {server_name}"
+        f"culture-server-{server_name}",
+        server_cmd,
+        f"culture-core server {server_name}",
+        grant_bin=grant_bin,
+        injects=link_injects,
     )
 
     for agent in mesh.agents:

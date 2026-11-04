@@ -14,6 +14,58 @@ from .constants import DEFAULT_CONFIG
 logger = logging.getLogger("culture")
 
 
+def link_secret_names(links: list) -> dict[str, str]:
+    """Map peer names to grant/env names, rejecting normalization collisions."""
+    from culture_core.credentials import link_secret_name
+
+    peers_by_secret: dict[str, str] = {}
+    names_by_peer: dict[str, str] = {}
+    for link in links:
+        secret_name = link_secret_name(link.name)
+        previous = peers_by_secret.get(secret_name)
+        if previous is not None and previous != link.name:
+            from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
+
+            raise CultureError(
+                EXIT_USER_ERROR,
+                f"link secret name collision: peers '{previous}' and '{link.name}' "
+                f"both map to {secret_name}",
+                "rename one link in mesh.yaml so its normalized grant name is unique",
+            )
+        peers_by_secret[secret_name] = link.name
+        names_by_peer[link.name] = secret_name
+    return names_by_peer
+
+
+def grant_link_injects(
+    mesh, *, allow_dev_interpreter: bool | None = None
+) -> tuple[str | None, list[tuple[str, str]]]:
+    """Grant binary and inject specs for link secrets present in grant."""
+    from culture_core.credentials import grant_secret_names
+    from culture_core.persistence import resolve_grant_bin
+
+    names_by_peer = link_secret_names(mesh.server.links)
+    if not names_by_peer:
+        return None, []
+    grant_bin = resolve_grant_bin(allow_dev_interpreter=allow_dev_interpreter)
+    try:
+        existing = grant_secret_names(grant_bin)
+    except RuntimeError as exc:
+        from culture_core.cli._errors import EXIT_ENV_ERROR, CultureError
+
+        raise CultureError(
+            EXIT_ENV_ERROR,
+            f"cannot inspect grant link-secret names: {exc}",
+            "run 'grant list --json', fix the reported grant problem, then retry",
+        ) from exc
+    injects = [
+        (secret_name, secret_name)
+        for secret_name in names_by_peer.values()
+        if secret_name in existing
+    ]
+    return grant_bin, injects
+
+
 def parse_link(value: str):
     """Parse a link spec: name:host:port:password[:trust]
 
@@ -40,13 +92,14 @@ def parse_link(value: str):
 
 
 def resolve_links_from_mesh(mesh_config_path: str) -> list:
-    """Load link configs from mesh.yaml, looking up passwords from OS keyring."""
+    """Load link configs from mesh.yaml, looking up injected/keyring passwords."""
     from agentirc.config import LinkConfig
 
     from culture_core.credentials import lookup_credential
     from culture_core.mesh_config import load_mesh_config
 
     mesh = load_mesh_config(mesh_config_path)
+    names_by_peer = link_secret_names(mesh.server.links)
     links = []
     for lc in mesh.server.links:
         try:
@@ -58,9 +111,11 @@ def resolve_links_from_mesh(mesh_config_path: str) -> list:
             continue
         if not password:
             logger.warning(
-                "No credential found for peer '%s' — link will not be established. "
-                "Run 'culture mesh setup' to store link passwords.",
+                "No credential found for peer '%s' in %s or the OS keyring — "
+                "link will not be established. Run 'culture mesh secrets-to-grant' "
+                "after storing the keyring password.",
                 lc.name,
+                names_by_peer[lc.name],
             )
             continue
         links.append(

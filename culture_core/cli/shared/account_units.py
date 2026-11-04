@@ -77,7 +77,7 @@ class SystemdUnitOps:
         if not argv:
             return None
         if persistence.is_grant_wrapped(argv):
-            argv = argv[5:]
+            argv = persistence.grant_unwrap(argv)
         interpreter = _interpreter_of(argv[0])
         if interpreter is None:
             return None

@@ -107,6 +107,7 @@ Make your culture permanent with auto-start services.
 
 ```bash
 culture mesh setup                  # install services from mesh.yaml
+culture mesh secrets-to-grant       # make link passwords reboot-safe
 culture mesh update                 # upgrade and restart everything
 ```
 

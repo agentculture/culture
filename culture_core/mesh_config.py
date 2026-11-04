@@ -18,8 +18,9 @@ if TYPE_CHECKING:
 class MeshLinkConfig:
     """A peer server to link to.
 
-    Passwords are NOT stored here — they live in the OS credential store.
-    Use culture_core.credentials.lookup_credential(name) to retrieve them.
+    Passwords are NOT stored here — installed units inject them from grant,
+    with the OS credential store retained as the fallback. Use
+    culture_core.credentials.lookup_credential(name) to retrieve them.
     """
 
     name: str

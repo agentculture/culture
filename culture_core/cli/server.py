@@ -69,6 +69,7 @@ from .shared.mesh import (
     SANDBOX_LOOPBACK_HOST,
     build_server_start_cmd,
     build_standalone_server_start_cmd,
+    grant_link_injects,
     load_mesh_or_generate,
     parse_link,
     resolve_links_from_mesh,
@@ -1041,12 +1042,16 @@ def _server_install(args: argparse.Namespace) -> None:
 
     culture_cmd = [sys.executable, "-m", "culture_core"]
     server_cmd = build_server_start_cmd(mesh, culture_cmd, args.config)
+    allow_dev = getattr(args, "allow_dev_interpreter", False)
+    grant_bin, injects = grant_link_injects(mesh, allow_dev_interpreter=allow_dev)
     svc = f"culture-server-{server_name}"
     path = install_service(
         svc,
         server_cmd,
         f"culture-core server {server_name}",
-        allow_dev_interpreter=getattr(args, "allow_dev_interpreter", False),
+        allow_dev_interpreter=allow_dev,
+        grant_bin=grant_bin,
+        injects=injects,
     )
     print(f"Installed {svc} → {path}")
 
