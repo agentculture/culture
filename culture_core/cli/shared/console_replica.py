@@ -598,7 +598,7 @@ def _prepare_destination(destination: Path) -> None:
     if not tables:
         GuestStore(destination)
         AccessStore(destination)
-        os.chmod(destination, 0o600)
+        os.chmod(destination, 0o600)  # NOSONAR - validated by _validated_destination
         return
     if not set(_COLUMNS).issubset(tables):
         raise _culture_error(
