@@ -12,6 +12,7 @@ the lens with culture-aware ergonomics:
     culture console stop [--web-port] -> stop a locally-running console
     culture console install [--config PATH] [--healthcheck] -> auto-start service unit
     culture console uninstall [--healthcheck] -> remove the service unit
+    culture console replica ...       -> push approved accounts to a private standby
 
 The full design lives in
 ``docs/superpowers/specs/2026-05-05-culture-console-design.md``. The
@@ -49,10 +50,10 @@ NAME = "console"
 # request for help rather than a server name (common typo for `--help`).
 _IRC_LENS_VERBS = frozenset({"learn", "explain", "overview", "serve", "cli", "help"})
 
-# `stop`, `install`, and `uninstall` are the culture-owned verbs —
+# `stop`, `install`, `uninstall`, and `replica` are the culture-owned verbs —
 # handled in dispatch() before passthrough (irc-lens knows nothing
-# about pidfiles or service units). They shadow any culture server
-# literally named "stop"/"install"/"uninstall".
+# about pidfiles, service units, or replicas). They shadow any culture server
+# literally named "stop"/"install"/"uninstall"/"replica".
 
 # Per-port slot keys under ~/.culture/pids/. A `culture console` on port
 # 8765 owns `console-8765.{pid,port,json}`; a side-by-side run on 8766
@@ -712,6 +713,11 @@ def dispatch(args: argparse.Namespace) -> None:
     if verb == "uninstall":
         _cmd_uninstall(args)
         sys.exit(0)
+    if verb == "replica":
+        from culture_core.cli.shared import console_replica
+
+        console_replica.main(raw[1:])
+        return
     argv, server_name = _resolve_argv(raw)
     if argv and argv[0] == "serve":
         _passthrough.run(_make_serve_entry(server_name), argv)

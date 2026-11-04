@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.16.0] - 2026-11-04
+
+### Added
+
+- `culture console replica`: copies approved accounts one way to a standby console over a private network, using sqlite's backup API, leaving out guest and consent data.
+
 ## [14.14.0] - 2026-11-04
 
 ### Added

@@ -708,7 +708,7 @@ wheels = [
 
 [[package]]
 name = "culture"
-version = "14.14.0"
+version = "14.16.0"
 source = { editable = "." }
 dependencies = [
     { name = "agentfront" },
