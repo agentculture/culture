@@ -94,7 +94,7 @@ def test_empty_injected_environment_falls_back_to_keyring(monkeypatch):
 
 
 def test_link_secret_name_normalizes_peer_exactly():
-    assert credentials.link_secret_name("Thor.eu-west_1") == "CULTURE_LINK_SECRET_THOR_EU_WEST_1"
+    assert credentials.link_env_name("Thor.eu-west_1") == "CULTURE_LINK_SECRET_THOR_EU_WEST_1"
 
 
 def test_resolve_links_collision_skips_injected_value_and_uses_each_keyring_entry(
@@ -125,8 +125,8 @@ def test_resolve_links_collision_skips_injected_value_and_uses_each_keyring_entr
         ("peer.a", "second-keyring"),
     ]
     warning = "\n".join(record.message for record in caplog.records)
-    assert "peer-a" in warning and "peer.a" in warning
-    assert "injected" in warning and "OS keyring" in warning
+    for expected in ("peer-a", "peer.a", "injected", "OS keyring"):
+        assert expected in warning
 
 
 def test_missing_credential_warning_names_environment_and_keyring(monkeypatch, caplog):
@@ -234,14 +234,14 @@ def test_server_install_rejects_link_secret_collision_before_install(tmp_path, m
         lambda *_args, **_kwargs: pytest.fail("installed colliding link secrets"),
     )
 
+    install_args = argparse.Namespace(
+        config=str(mesh_path),
+        standalone=False,
+        allow_dev_interpreter=True,
+    )
+
     with pytest.raises(CultureError, match="collision.*peer-a.*peer\\.a"):
-        server_cli._server_install(
-            argparse.Namespace(
-                config=str(mesh_path),
-                standalone=False,
-                allow_dev_interpreter=True,
-            )
-        )
+        server_cli._server_install(install_args)
 
 
 def test_shared_grant_inject_resolution_omits_colliding_names(monkeypatch):
@@ -290,9 +290,8 @@ def test_secrets_to_grant_uses_names_only_and_stdin(tmp_path, monkeypatch, capsy
     output = captured.out + captured.err
     assert secret not in output
     assert looked_up == ["new-peer", "locked"]
-    assert "new-peer" in output and "copied" in output
-    assert "already.there" in output and "already" in output
-    assert "locked" in output and "keyring locked or empty" in output
+    for expected in ("new-peer", "copied", "already.there", "locked", "keyring locked or empty"):
+        assert expected in output
     grant_log = log.read_text()
     assert secret not in grant_log
     assert exc.value.code != 0

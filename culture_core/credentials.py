@@ -63,7 +63,7 @@ def _validate_peer_name(peer_name: str) -> None:
         raise ValueError(f"invalid peer name {peer_name!r}: must match [A-Za-z0-9._-]+")
 
 
-def link_secret_name(peer_name: str) -> str:
+def link_env_name(peer_name: str) -> str:
     """Grant entry and environment variable name for a mesh peer."""
     normalized = _NON_ALNUM_RE.sub("_", peer_name.upper())
     return f"{LINK_SECRET_PREFIX}{normalized}"
@@ -295,7 +295,7 @@ def lookup_credential(peer_name: str) -> str | None:
     server unit.  Hosts not migrated to grant take the existing keyring path
     unchanged.
     """
-    injected_name = link_secret_name(peer_name)
+    injected_name = link_env_name(peer_name)
     injected = os.environ.get(injected_name)
     if injected:
         return injected

@@ -70,7 +70,7 @@ from .shared.mesh import (
     build_server_start_cmd,
     build_standalone_server_start_cmd,
     grant_link_injects,
-    link_secret_names,
+    link_env_names,
     load_mesh_or_generate,
     parse_link,
     resolve_links_from_mesh,
@@ -1044,12 +1044,12 @@ def _server_install(args: argparse.Namespace) -> None:
     culture_cmd = [sys.executable, "-m", "culture_core"]
     server_cmd = build_server_start_cmd(mesh, culture_cmd, args.config)
     allow_dev = getattr(args, "allow_dev_interpreter", False)
-    names_by_peer = link_secret_names(mesh.server.links)
+    names_by_peer = link_env_names(mesh.server.links)
     grant_bin, injects = grant_link_injects(mesh, allow_dev_interpreter=allow_dev)
     if injects:
-        injected_names = {secret_name for _env_name, secret_name in injects}
-        for peer_name, secret_name in names_by_peer.items():
-            if secret_name not in injected_names:
+        injected_names = {env_var_name for _env_name, env_var_name in injects}
+        for peer_name, env_var_name in names_by_peer.items():
+            if env_var_name not in injected_names:
                 print(
                     f"Warning: configured peer '{peer_name}' is missing from grant; "
                     "its link will use the OS keyring when available.",

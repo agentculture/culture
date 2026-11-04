@@ -26,10 +26,12 @@ from .shared.mesh import (
     build_server_start_cmd,
     generate_mesh_from_agents,
     grant_link_injects,
-    link_secret_names,
+    link_env_names,
 )
 from .shared.process import server_stop_by_name, stop_agent
 
+_DEFAULT_MESH_CONFIG = "~/.culture/mesh.yaml"
+_MESH_CONFIG_HELP = "Path to mesh.yaml"
 logger = logging.getLogger("culture")
 
 NAME = "mesh"
@@ -97,8 +99,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     setup_parser = mesh_sub.add_parser("setup", help="Set up mesh from mesh.yaml")
     setup_parser.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/mesh.yaml"),
-        help="Path to mesh.yaml",
+        default=os.path.expanduser(_DEFAULT_MESH_CONFIG),
+        help=_MESH_CONFIG_HELP,
     )
     setup_parser.add_argument(
         "--uninstall",
@@ -129,8 +131,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     migrate_parser.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/mesh.yaml"),
-        help="Path to mesh.yaml",
+        default=os.path.expanduser(_DEFAULT_MESH_CONFIG),
+        help=_MESH_CONFIG_HELP,
     )
     update_parser.add_argument(
         "--skip-upgrade",
@@ -139,8 +141,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     update_parser.add_argument(
         "--config",
-        default=os.path.expanduser("~/.culture/mesh.yaml"),
-        help="Path to mesh.yaml",
+        default=os.path.expanduser(_DEFAULT_MESH_CONFIG),
+        help=_MESH_CONFIG_HELP,
     )
     update_parser.add_argument(
         "--upgrade-timeout",
@@ -319,7 +321,7 @@ def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
     from culture_core.persistence import resolve_grant_bin
 
     mesh = load_mesh_config(args.config)
-    names_by_peer = link_secret_names(mesh.server.links)
+    names_by_peer = link_env_names(mesh.server.links)
     if not names_by_peer:
         return
     grant_bin = resolve_grant_bin()
@@ -334,8 +336,8 @@ def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
 
     incomplete = []
     for link in mesh.server.links:
-        secret_name = names_by_peer[link.name]
-        if secret_name in existing:
+        env_var_name = names_by_peer[link.name]
+        if env_var_name in existing:
             print(f"{link.name}: already in grant")
             continue
         try:
@@ -346,8 +348,8 @@ def _cmd_secrets_to_grant(args: argparse.Namespace) -> None:
             print(f"{link.name}: skipped — keyring locked or empty")
             incomplete.append(link.name)
             continue
-        if store_grant_secret(grant_bin, secret_name, value):
-            existing.add(secret_name)
+        if store_grant_secret(grant_bin, env_var_name, value):
+            existing.add(env_var_name)
             print(f"{link.name}: copied to grant")
         else:
             print(f"{link.name}: failed to copy to grant")

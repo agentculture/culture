@@ -14,35 +14,35 @@ from .constants import DEFAULT_CONFIG
 logger = logging.getLogger("culture")
 
 
-def _link_secret_index(links: list) -> tuple[dict[str, str], dict[str, list[str]]]:
+def _link_env_index(links: list) -> tuple[dict[str, str], dict[str, list[str]]]:
     """Return peer-to-secret names and normalized names shared by multiple peers."""
-    from culture_core.credentials import link_secret_name
+    from culture_core.credentials import link_env_name
 
     names_by_peer: dict[str, str] = {}
-    peers_by_secret: dict[str, list[str]] = {}
+    peers_by_env_var: dict[str, list[str]] = {}
     for link in links:
-        secret_name = link_secret_name(link.name)
-        names_by_peer[link.name] = secret_name
-        peers_by_secret.setdefault(secret_name, []).append(link.name)
+        env_var_name = link_env_name(link.name)
+        names_by_peer[link.name] = env_var_name
+        peers_by_env_var.setdefault(env_var_name, []).append(link.name)
     collisions = {
         name: list(dict.fromkeys(peers))
-        for name, peers in peers_by_secret.items()
+        for name, peers in peers_by_env_var.items()
         if len(set(peers)) > 1
     }
     return names_by_peer, collisions
 
 
-def link_secret_names(links: list) -> dict[str, str]:
+def link_env_names(links: list) -> dict[str, str]:
     """Map peer names to grant/env names, rejecting normalization collisions."""
-    names_by_peer, collisions = _link_secret_index(links)
+    names_by_peer, collisions = _link_env_index(links)
     if collisions:
         from culture_core.cli._errors import EXIT_USER_ERROR, CultureError
 
-        secret_name, peers = next(iter(collisions.items()))
+        env_var_name, peers = next(iter(collisions.items()))
         quoted_peers = " and ".join(f"'{peer}'" for peer in peers)
         raise CultureError(
             EXIT_USER_ERROR,
-            f"link secret name collision: peers {quoted_peers} both map to {secret_name}",
+            f"link secret name collision: peers {quoted_peers} both map to {env_var_name}",
             "rename one link in mesh.yaml so its normalized grant name is unique",
         )
     return names_by_peer
@@ -55,7 +55,7 @@ def grant_link_injects(
     from culture_core.credentials import grant_secret_names
     from culture_core.persistence import resolve_grant_bin
 
-    names_by_peer, collisions = _link_secret_index(mesh.server.links)
+    names_by_peer, collisions = _link_env_index(mesh.server.links)
     if not names_by_peer:
         return None, []
     grant_bin = resolve_grant_bin(allow_dev_interpreter=allow_dev_interpreter)
@@ -70,9 +70,9 @@ def grant_link_injects(
             "run 'grant list --json', fix the reported grant problem, then retry",
         ) from exc
     injects = [
-        (secret_name, secret_name)
-        for secret_name in names_by_peer.values()
-        if secret_name in existing and secret_name not in collisions
+        (env_var_name, env_var_name)
+        for env_var_name in names_by_peer.values()
+        if env_var_name in existing and env_var_name not in collisions
     ]
     return grant_bin, injects
 
@@ -110,7 +110,7 @@ def resolve_links_from_mesh(mesh_config_path: str) -> list:
     from culture_core.mesh_config import load_mesh_config
 
     mesh = load_mesh_config(mesh_config_path)
-    names_by_peer, collisions = _link_secret_index(mesh.server.links)
+    names_by_peer, collisions = _link_env_index(mesh.server.links)
     colliding_peers = {peer for peers in collisions.values() for peer in peers}
     for injected_name, peers in collisions.items():
         logger.warning(
