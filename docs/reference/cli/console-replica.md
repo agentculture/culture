@@ -1,15 +1,32 @@
 # `culture console replica`
 
-`culture console replica` pushes approved irc-lens accounts from the active
-machine to a warm standby. Run it on `spark`; `spark2` only needs SSH access
-from `spark` and never needs credentials or network access back into `spark`.
+`culture console replica` synchronizes approved irc-lens accounts from the
+active machine into a warm standby. Run the push command on `spark`. The
+standby needs no credentials or network access back into `spark`.
 
 ```bash
-culture console replica \
+/usr/local/bin/culture console replica \
   --source /var/lib/irc-lens/accounts.db \
   --host spark2 \
-  --destination /var/lib/irc-lens/accounts.db
+  --destination /var/lib/irc-lens/accounts.db \
+  --remote-culture ~/.local/bin/culture
 ```
+
+The command takes a transactionally consistent snapshot through SQLite's
+online backup API, builds an allow-listed staging database, and hashes its
+rows. It pushes only when that hash differs from the last successful push,
+when the last success is older than `--max-age` (24 hours by default), or when
+`--force` is present. An unchanged run transfers nothing and exits zero.
+
+The successful hash and timestamp live in
+`~/.culture/state/console-replica.json` by default. `--state-file` selects a
+different file. The file is published atomically with mode `0600`; a failed
+push or mismatched standby hash leaves it unchanged, so the next timer run
+retries.
+
+`--max-age` accepts seconds or an `s`, `m`, `h`, or `d` suffix, such as `24h`.
+
+## Private transport
 
 `--host` must be one of:
 
@@ -18,59 +35,79 @@ culture console replica \
 - an RFC 1918, link-local, loopback, or Tailscale `100.64.0.0/10` address; or
 - a `.ts.net`, `.local`, `.lan`, or `.home.arpa` name.
 
-Public IP addresses and public DNS names are refused. The default transport is
-`scp`; `--transport rsync` uses rsync over SSH instead. Both use SSH batch mode,
-land a `0600` staging file in the destination directory, and atomically rename
-it over the destination. Create that directory on the standby in advance and
-make it writable by the SSH account. The command does not print database
-contents or paths.
+Public addresses and public DNS names are refused. Before transferring data,
+the command expands the host with `ssh -G`, rejects proxy hops, resolves the
+configured destination, and requires every returned address to be private,
+link-local, loopback, or in Tailscale's range.
 
-Before copying, the command expands the host with `ssh -G`, rejects SSH proxy
-hops, resolves the configured destination, and requires every returned address
-to be private, link-local, loopback, or in Tailscale's address range. Thus a
-short alias that secretly points at a public destination is refused too.
+The default transport is `scp`; `--transport rsync` uses rsync over SSH. Both
+copy a mode-`0600` staging file into the same directory as the destination.
+The primary then invokes this command over SSH:
 
-## What is copied
+```bash
+~/.local/bin/culture console replica apply STAGED \
+  --destination /var/lib/irc-lens/accounts.db
+```
 
-The command uses SQLite's online backup API, so a running lens may continue to
-read and write while a transactionally consistent snapshot is taken. It then
-builds a new SQLite file from an explicit allow-list:
+`--remote-culture` makes the executable explicit because a non-interactive SSH
+session often has a restricted `PATH`. It defaults to
+`~/.local/bin/culture`. The replica command never invokes a bare `irc-lens`
+command remotely.
+
+Create the destination directory in advance and make it writable by the SSH
+account. On any copy, apply, or hash-verification failure, the primary exits
+nonzero and also makes a best-effort `rm -f` of the remote stage. The standby
+apply command deletes its stage on every exit, including validation or merge
+failure.
+
+## What is synchronized
+
+The staging database contains this explicit allow-list:
 
 | Table | Columns | Rows |
 |---|---|---|
 | `users` | `email`, `role`, `state`, `nickname` | approved users only |
 | `passwords` | `email`, `hash` | approved users only |
 | `grants` | `email`, `resource_kind`, `resource`, `level` | approved users only |
-| `admin_imports` | `email_hash` | only the non-personal `store-initialised` marker |
 
-Nothing else is copied. In particular, the standby receives no guests,
-consents, inputs, flags, attempts, sessions, tokens, pending sign-ins, trusted
-devices, agent credentials, extensions, audit trail, bans, deletions, rooms, or
-sign-in budget. Because there are no guest rows, guest retention is vacuous and
-does not depend on matching `guest_mode.retention_days`. An active session on
-`spark` is deliberately not warm: an approved person signs in again on
-`spark2` with the same password, role, and grants. The initialization marker
-prevents the standby's legacy `auth.allowed_emails` list from changing those
-copied roles when the lens opens the fresh database.
+Approved users' Argon2 password hashes therefore reach the standby. Plaintext
+passwords do not. The command prints only row counts and the digest of the
+allow-listed rows; it does not print an email, password hash, host, or path.
 
-The source and standby `irc-lens` versions are checked before any private bytes
-are sent. A newer source version is conservatively treated as a newer schema;
-the command refuses to replace an older standby store and tells the operator to
-upgrade the standby lens first.
+On the standby, `apply` checks its installed irc-lens version and the source
+column metadata in the stage. It refuses a newer source without changing the
+destination. If the destination has no schema yet, apply constructs it by
+opening the real irc-lens `GuestStore` and `AccessStore` before merging.
+
+Apply uses one `BEGIN IMMEDIATE` transaction with a busy timeout. It replaces
+all rows in `users`, `passwords`, and `grants`, and records the irc-lens
+initialization marker. Accounts removed on the primary are consequently
+removed from the standby. Every other table and row remains in place,
+including guests, consents, inputs, flags, attempts, sessions, tokens, pending
+sign-ins, trusted devices, agent credentials, extensions, the audit trail,
+bans, deletions, rooms, sign-in budget, nickname history, and existing admin
+import records.
+
+Existing `GuestStore` and `AccessStore` objects continue to work because the
+live database file is not replaced. Existing app-session rows also remain.
+irc-lens rechecks each session's account approval on requests and in
+`app_session.sweep_once`; therefore a session belonging to an account removed
+by the merge stops authenticating, and its linked live IRC session is closed
+by the normal sweep.
 
 ## Schedule on the active machine
 
-Use the scheduler on `spark`. For example, a systemd user timer can run a
-wrapper containing the command above. A minimal service/timer pair is:
+Run the service every five minutes on `spark`. A systemd user service and timer
+can be:
 
 ```ini
 # ~/.config/systemd/user/culture-console-replica.service
 [Unit]
-Description=Copy approved console accounts to spark2
+Description=Synchronize approved console accounts to spark2
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/culture console replica --source /var/lib/irc-lens/accounts.db --host spark2 --destination /var/lib/irc-lens/accounts.db
+ExecStart=/usr/local/bin/culture console replica --source /var/lib/irc-lens/accounts.db --host spark2 --destination /var/lib/irc-lens/accounts.db --remote-culture ~/.local/bin/culture --max-age 24h
 ```
 
 ```ini
@@ -87,12 +124,12 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Then enable it on `spark` only:
+Enable the timer on the active machine only:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now culture-console-replica.timer
 ```
 
-Use the absolute path of the installed `culture` executable in `ExecStart`.
-Keep guest mode disabled in the standby's irc-lens configuration.
+Use the absolute path of the local `culture` executable in `ExecStart`. Keep
+guest mode disabled in the standby's irc-lens configuration.

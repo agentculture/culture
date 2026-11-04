@@ -2,46 +2,31 @@
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import socket
 import sqlite3
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from irc_lens.access_store import AccessStore
-from irc_lens.guest_store import GuestStore
+from irc_lens.guest_store import GuestStore, session_id_hash
 from irc_lens.web import app_session
 
 from culture_core.cli import console
-from culture_core.cli._errors import CultureError
+from culture_core.cli._errors import EXIT_ENV_ERROR, CultureError
 from culture_core.cli.shared import console_replica
 
 EMAIL = "ada@example.test"
-GUEST_EMAIL = "guest@example.test"
+REMOVED_EMAIL = "removed@example.test"
 HOST = "spark2"
 PASSWORD = "a correct horse battery staple"
 REMOTE_STORE = "/var/lib/irc-lens/accounts.db"
-PRIVATE_TABLES = {
-    "agent_credentials",
-    "agent_extensions",
-    "attempts",
-    "audit",
-    "bans",
-    "consents",
-    "deletions",
-    "flags",
-    "guests",
-    "inputs",
-    "rooms",
-    "sessions",
-    "signin_budget",
-    "signin_pending",
-    "tokens",
-    "trusted_devices",
-}
+VERSION = "0.18.1"
 
 
 def _seed_approved_store(path: Path) -> tuple[GuestStore, AccessStore]:
@@ -54,101 +39,226 @@ def _seed_approved_store(path: Path) -> tuple[GuestStore, AccessStore]:
     return guests, access
 
 
-@dataclass
-class LocalTransport:
-    """No-network transport exercising the same compatibility gate."""
-
-    target: Path
-    target_version: str = "0.18.1"
-    pushes: int = 0
-
-    def lens_version(self, host: str) -> str:
-        assert host == HOST
-        return self.target_version
-
-    def push(self, replica: Path, host: str, destination: str) -> None:
-        assert host == HOST
-        assert destination == REMOTE_STORE
-        console_replica.install_local(replica, self.target)
-        self.pushes += 1
+def _rows(path: Path, table: str) -> list[tuple]:
+    with sqlite3.connect(path) as connection:
+        query = f'SELECT * FROM "{table}" ORDER BY rowid'  # noqa: S608 - fixed test names
+        return [tuple(row) for row in connection.execute(query)]
 
 
 def _table_names(path: Path) -> set[str]:
     with sqlite3.connect(path) as connection:
-        rows = connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        rows = connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         return {row[0] for row in rows}
 
 
-def _row_count(path: Path, table: str) -> int:
-    with sqlite3.connect(path) as connection:
-        query = f'SELECT count(*) FROM "{table}"'  # noqa: S608 - fixed test table names
-        return connection.execute(query).fetchone()[0]
+@dataclass
+class LocalTransport:
+    """Injected, filesystem-only transport; no SSH or real service calls."""
+
+    target: Path
+    installed_version: str = VERSION
+    fail_apply: bool = False
+    wrong_hash: bool = False
+    stage_calls: int = 0
+    apply_calls: int = 0
+    remove_calls: int = 0
+    staged: Path | None = None
+
+    def stage(self, replica: Path, host: str, destination: str) -> str:
+        assert host == HOST
+        assert destination == REMOTE_STORE
+        self.staged = self.target.with_name(f".{self.target.name}.replica-test")
+        shutil.copyfile(replica, self.staged)
+        os.chmod(self.staged, 0o600)
+        self.stage_calls += 1
+        return str(self.staged)
+
+    def apply(self, host: str, staged: str, destination: str, remote_culture: str) -> str:
+        assert host == HOST
+        assert destination == REMOTE_STORE
+        assert remote_culture == "~/.local/bin/culture"
+        assert Path(staged) == self.staged
+        self.apply_calls += 1
+        if self.fail_apply:
+            raise CultureError(EXIT_ENV_ERROR, "injected apply failure", "retry")
+        summary = console_replica.apply_replica(
+            Path(staged), self.target, installed_version=self.installed_version
+        )
+        if self.wrong_hash:
+            summary = replace(summary, digest="0" * 64)
+        return console_replica._format_summary(summary)
+
+    def remove(self, host: str, staged: str) -> None:
+        assert host == HOST
+        Path(staged).unlink(missing_ok=True)
+        self.remove_calls += 1
 
 
-def test_two_real_stores_preserve_approved_signin_role_and_grants(tmp_path: Path) -> None:
-    source = tmp_path / "spark.db"
-    standby = tmp_path / "spark2.db"
-    guests, access = _seed_approved_store(source)
-    access.set_user("waiting@example.test", role="member", state="pending", actor=None)
-    guests.set_password("waiting@example.test", "not replicated")
-    guests.record_guest(GUEST_EMAIL, "visitor", "192.0.2.10")
-    guests.record_consent(
-        GUEST_EMAIL,
-        "192.0.2.10",
-        tos_version="1",
-        privacy_version="1",
-    )
-    guests.issue_token(EMAIL, purpose="signin")
-    guests.create_session(EMAIL)
-    transport = LocalTransport(standby)
-
-    copied = console_replica.replicate(
+def _replicate(
+    source: Path,
+    state: Path,
+    transport: LocalTransport,
+    *,
+    now: float = 100.0,
+    max_age: float = 86400,
+    force: bool = False,
+) -> console_replica.ReplicationResult:
+    return console_replica.replicate(
         source,
         host=HOST,
         destination=REMOTE_STORE,
+        state_path=state,
+        max_age=max_age,
+        force=force,
         transport=transport,
-        source_version="0.18.1",
+        source_version=VERSION,
+        clock=lambda: now,
     )
 
+
+def test_apply_keeps_open_stores_and_non_allow_listed_rows_working(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    staged = tmp_path / "staged.db"
+    _seed_approved_store(source)
+
+    # Both real stores predate apply. Their later calls open fresh connections
+    # to the same live file, which is the regression that file replacement broke.
     standby_guests = GuestStore(standby)
-    standby_config = SimpleNamespace(
-        access_enabled=True,
-        access_admins_only=False,
-        allowed_emails=("waiting@example.test",),
-        guest_store_path=str(standby),
-    )
-    standby_app = {"config": standby_config}
-    standby_access = app_session.install_access(standby_app)
-    assert copied == 1
-    assert transport.pushes == 1
-    assert standby_access is not None
-    assert app_session.can_sign_in(standby_app, EMAIL)
-    assert standby_guests.check_password(EMAIL, PASSWORD)
-    assert app_session.approved_on_signin(standby_app, EMAIL) == {
+    standby_access = AccessStore(standby)
+    standby_access.set_user(EMAIL, role="member", state="approved", actor=None)
+    standby_access.set_user(REMOVED_EMAIL, role="member", state="approved", actor=None)
+    standby_access.set_grant(REMOVED_EMAIL, "channel", "#old", "read", actor=None)
+    standby_guests.set_password(EMAIL, "old password")
+    standby_guests.set_password(REMOVED_EMAIL, "removed password")
+    token = standby_guests.issue_token(EMAIL, purpose="signin")
+    standby_guests.bind_signin("pending-browser", token)
+    session = standby_guests.create_session(EMAIL)
+    standby_access.record_audit("replica.test", "preserve-me")
+    before = {
+        table: _rows(standby, table) for table in ("tokens", "signin_pending", "sessions", "audit")
+    }
+    assert standby_access.get_user(EMAIL)["role"] == "member"  # prime its cache
+
+    expected = console_replica.create_replica(source, staged, source_version=VERSION)
+    applied = console_replica.apply_replica(staged, standby, installed_version=VERSION)
+
+    assert applied == expected
+    assert not staged.exists()
+    assert standby_access.get_user(EMAIL) == {
         "email": EMAIL,
         "role": "admin",
         "state": "approved",
         "nickname": "ada",
     }
     assert standby_access.grants_for(EMAIL) == [("channel", "#ops", "write")]
-    assert standby_access.get_user("waiting@example.test") is None
-    assert all(_row_count(standby, table) == 0 for table in PRIVATE_TABLES)
+    assert standby_access.get_user(REMOVED_EMAIL) is None
+    assert standby_guests.check_password(EMAIL, PASSWORD)
+    assert standby_guests.get_session(session) is not None
+    assert standby_guests.peek_signin_token(EMAIL, token, "pending-browser", purpose="signin")
+    assert {
+        table: _rows(standby, table) for table in ("tokens", "signin_pending", "sessions", "audit")
+    } == before
 
 
-def test_replica_is_allow_listed_and_omits_guest_only_tables(tmp_path: Path) -> None:
-    source = tmp_path / "source.db"
-    output = tmp_path / "replica.db"
-    guests, _ = _seed_approved_store(source)
-    guests.record_guest(GUEST_EMAIL, "visitor", "192.0.2.10")
+@pytest.mark.asyncio
+async def test_sweep_closes_session_of_account_removed_by_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    staged = tmp_path / "staged.db"
+    _seed_approved_store(source)
+    standby_guests = GuestStore(standby)
+    standby_access = AccessStore(standby)
+    standby_access.set_user(REMOVED_EMAIL, role="member", state="approved", actor=None)
+    raw_session = standby_guests.create_session(REMOVED_EMAIL)
+    console_replica.create_replica(source, staged, source_version=VERSION)
+    console_replica.apply_replica(staged, standby, installed_version=VERSION)
 
-    console_replica.create_replica(source, output)
+    class Registry:
+        def __init__(self) -> None:
+            self.open = {(REMOVED_EMAIL, "mesh")}
+            self.closed: list[tuple[str, str]] = []
 
-    assert _table_names(output) == {"admin_imports", "grants", "passwords", "users"}
-    assert PRIVATE_TABLES.isdisjoint(_table_names(output))
-    assert stat.S_IMODE(output.stat().st_mode) == 0o600
-    with sqlite3.connect(output) as connection:
-        user_columns = [row[1] for row in connection.execute("PRAGMA table_info(users)")]
-    assert user_columns == ["email", "role", "state", "nickname"]
+        def has(self, *key: str) -> bool:
+            return tuple(key) in self.open
+
+        async def close(self, *key: str) -> None:
+            item = tuple(key)
+            self.open.remove(item)
+            self.closed.append(item)
+
+    registry = Registry()
+    key = (REMOVED_EMAIL, "mesh")
+    config = SimpleNamespace(access_enabled=True, access_admins_only=False)
+    app = {
+        "config": config,
+        "guest_store": standby_guests,
+        app_session.ACCESS_STORE: standby_access,
+        app_session.LINKS: {key: session_id_hash(raw_session)},
+        app_session.REGISTRY_KEY: registry,
+    }
+
+    async def immediate(call, *args):
+        return call(*args)
+
+    # This sandbox cannot start worker threads. The sweep's decision and close
+    # path are the behavior under test, so execute its store lookup inline.
+    monkeypatch.setattr(app_session.asyncio, "to_thread", immediate)
+
+    ended = await app_session.sweep_once(app)
+
+    assert ended == [key]
+    assert registry.closed == [key]
+    assert standby_guests.get_session(raw_session) is not None
+
+
+def test_apply_initialises_empty_destination_through_real_stores(tmp_path: Path) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "new-standby.db"
+    staged = tmp_path / "staged.db"
+    _seed_approved_store(source)
+    console_replica.create_replica(source, staged, source_version=VERSION)
+
+    summary = console_replica.apply_replica(staged, standby, installed_version=VERSION)
+
+    assert summary.users == 1
+    assert GuestStore(standby).check_password(EMAIL, PASSWORD)
+    assert AccessStore(standby).get_user(EMAIL)["role"] == "admin"
+    assert "sessions" in _table_names(standby)
+    assert "nickname_holders" in _table_names(standby)
+    assert stat.S_IMODE(standby.stat().st_mode) == 0o600
+
+
+def test_newer_source_is_refused_without_destination_change(tmp_path: Path) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    staged = tmp_path / "staged.db"
+    _seed_approved_store(source)
+    _seed_approved_store(standby)
+    console_replica.create_replica(source, staged, source_version="0.19.0")
+    before = standby.read_bytes()
+
+    with pytest.raises(CultureError) as excinfo:
+        console_replica.apply_replica(staged, standby, installed_version=VERSION)
+
+    assert "newer irc-lens" in excinfo.value.message
+    assert standby.read_bytes() == before
+    assert not staged.exists()
+
+
+def test_failed_apply_always_removes_corrupt_stage(tmp_path: Path) -> None:
+    staged = tmp_path / "staged.db"
+    staged.write_bytes(b"not sqlite")
+
+    with pytest.raises(CultureError) as excinfo:
+        console_replica.apply_replica(staged, tmp_path / "standby.db")
+
+    assert "not a readable SQLite" in excinfo.value.message
+    assert not staged.exists()
 
 
 def test_online_backup_excludes_an_uncommitted_live_write(tmp_path: Path) -> None:
@@ -164,7 +274,7 @@ def test_online_backup_excludes_an_uncommitted_live_write(tmp_path: Path) -> Non
     )
 
     try:
-        console_replica.create_replica(source, output)
+        console_replica.create_replica(source, output, source_version=VERSION)
     finally:
         writer.rollback()
         writer.close()
@@ -174,52 +284,53 @@ def test_online_backup_excludes_an_uncommitted_live_write(tmp_path: Path) -> Non
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
     assert emails == {EMAIL}
     assert integrity == "ok"
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
 
 
-def test_install_local_is_mode_0600_and_replaces_atomically(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_hash_and_age_gate_changed_aged_and_forced_pushes(tmp_path: Path) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    state = tmp_path / "culture-state" / "replica.json"
+    _, access = _seed_approved_store(source)
+    transport = LocalTransport(standby)
+
+    first = _replicate(source, state, transport, now=100, max_age=50)
+    unchanged = _replicate(source, state, transport, now=120, max_age=50)
+    access.set_user("new@example.test", role="member", state="approved", actor=None)
+    changed = _replicate(source, state, transport, now=120, max_age=50)
+    aged = _replicate(source, state, transport, now=171, max_age=50)
+    forced = _replicate(source, state, transport, now=172, max_age=50, force=True)
+
+    assert first.pushed
+    assert not unchanged.pushed
+    assert changed.pushed
+    assert aged.pushed
+    assert forced.pushed
+    assert transport.stage_calls == 4
+    assert transport.apply_calls == 4
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600
+    assert json.loads(state.read_text())["digest"] == forced.summary.digest
+
+
+@pytest.mark.parametrize("wrong_hash", [False, True])
+def test_failed_run_preserves_state_and_removes_remote_stage(
+    tmp_path: Path, wrong_hash: bool
 ) -> None:
-    source = tmp_path / "replica.db"
-    destination = tmp_path / "standby.db"
-    source.write_bytes(b"new private database")
-    destination.write_bytes(b"old database")
-    replaced: list[tuple[Path, Path]] = []
-    real_replace = os.replace
-
-    def recording_replace(staged: Path, target: Path) -> None:
-        replaced.append((staged, target))
-        real_replace(staged, target)
-
-    monkeypatch.setattr(console_replica.os, "replace", recording_replace)
-    console_replica.install_local(source, destination)
-
-    assert destination.read_bytes() == b"new private database"
-    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
-    assert len(replaced) == 1
-    assert replaced[0][1] == destination
-    assert replaced[0][0].parent == destination.parent
-
-
-def test_newer_lens_refuses_to_replace_older_standby(tmp_path: Path) -> None:
-    source = tmp_path / "spark.db"
-    standby = tmp_path / "spark2.db"
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    state = tmp_path / "state.json"
     _seed_approved_store(source)
-    standby.write_bytes(b"keep me")
-    transport = LocalTransport(standby, target_version="0.17.0")
+    state.write_text(json.dumps({"digest": "1" * 64, "last_success": 1}) + "\n")
+    before = state.read_bytes()
+    transport = LocalTransport(standby, fail_apply=not wrong_hash, wrong_hash=wrong_hash)
 
-    with pytest.raises(CultureError) as excinfo:
-        console_replica.replicate(
-            source,
-            host=HOST,
-            destination=REMOTE_STORE,
-            transport=transport,
-            source_version="0.18.1",
-        )
+    with pytest.raises(CultureError):
+        _replicate(source, state, transport, now=100)
 
-    assert "newer irc-lens schema" in excinfo.value.message
-    assert f"upgrade irc-lens on {HOST}" in excinfo.value.remediation
-    assert standby.read_bytes() == b"keep me"
-    assert transport.pushes == 0
+    assert state.read_bytes() == before
+    assert transport.remove_calls == 1
+    assert transport.staged is not None
+    assert not transport.staged.exists()
 
 
 @pytest.mark.parametrize(
@@ -230,28 +341,27 @@ def test_private_transport_accepts_lan_and_tailnet_hosts(host: str) -> None:
     assert console_replica.validate_private_host(host) == host
 
 
-def test_private_transport_rejects_public_host() -> None:
-    with pytest.raises(CultureError) as excinfo:
-        console_replica.validate_private_host("203.0.113.20")
-    assert "tailnet or LAN" in excinfo.value.message
+@pytest.mark.parametrize("host", ["203.0.113.20", "-oProxyCommand=bad", "bad host"])
+def test_private_transport_rejects_public_or_unsafe_host(host: str) -> None:
+    with pytest.raises(CultureError):
+        console_replica.validate_private_host(host)
 
 
-def test_scp_transport_stages_mode_0600_then_renames_atomically(
+def test_ssh_transport_uses_explicit_remote_culture_and_safe_arguments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     replica = tmp_path / "accounts.db"
     replica.write_bytes(b"private")
     calls: list[tuple[list[str], str | None]] = []
+    summary = console_replica.RowSummary(1, 1, 1, "a" * 64)
 
     def fake_run(command: list[str], *, stdin: str | None = None):
         calls.append((command, stdin))
-        if command[:2] == ["ssh", "-G"]:
-            return type(
-                "Result",
-                (),
-                {"stdout": "hostname 100.64.0.8\nproxycommand none\nproxyjump none\n"},
-            )()
-        return type("Result", (), {"stdout": "irc-lens 0.18.1\n"})()
+        if command[:3] == ["ssh", "-G", "--"]:
+            return SimpleNamespace(
+                stdout="hostname 100.64.0.8\nproxycommand none\nproxyjump none\n"
+            )
+        return SimpleNamespace(stdout=console_replica._format_summary(summary) + "\n")
 
     monkeypatch.setattr(console_replica, "_run", fake_run)
     monkeypatch.setattr(
@@ -260,49 +370,45 @@ def test_scp_transport_stages_mode_0600_then_renames_atomically(
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.0.8", 0))],
     )
     transport = console_replica.SshTransport("scp")
-    version = transport.lens_version(HOST)
-    transport.push(replica, HOST, REMOTE_STORE)
+    staged = transport.stage(replica, HOST, REMOTE_STORE)
+    output = transport.apply(HOST, staged, REMOTE_STORE, "/opt/culture/bin/culture")
+    transport.remove(HOST, staged)
 
-    assert version == "irc-lens 0.18.1"
-    assert calls[0][0] == ["ssh", "-G", HOST]
-    assert calls[1][0] == ["ssh", "-o", "BatchMode=yes", HOST, "irc-lens", "--version"]
-    assert calls[2][0][:5] == ["scp", "-q", "-p", "-o", "BatchMode=yes"]
-    assert calls[2][0][-1].startswith(f"{HOST}:{REMOTE_STORE}.replica-")
-    assert calls[3][0][:4] == ["ssh", "-o", "BatchMode=yes", HOST]
-    assert calls[3][1] == 'set -eu\nchmod 600 -- "$1"\nmv -f -- "$1" "$2"\n'
-    assert calls[3][0][-1] == REMOTE_STORE
+    assert console_replica._parse_summary(output) == summary
+    assert calls[0][0] == ["ssh", "-G", "--", HOST]
+    assert calls[1][0][:6] == ["scp", "-q", "-p", "-o", "BatchMode=yes", "--"]
+    assert calls[1][0][-1].startswith(f"{HOST}:/var/lib/irc-lens/.accounts.db.replica-")
+    assert calls[2][0][:5] == ["ssh", "-o", "BatchMode=yes", "--", HOST]
+    assert "/opt/culture/bin/culture" in calls[2][0]
+    assert "irc-lens" not in calls[2][0]
+    assert 'exec "$culture" console replica apply' in (calls[2][1] or "")
+    assert calls[3][1] == 'rm -f -- "$1"\n'
 
 
 def test_ssh_transport_refuses_alias_resolving_to_public_ip(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(command: list[str], *, stdin: str | None = None):
-        del command, stdin
-        return type("Result", (), {"stdout": "hostname public.example\n"})()
-
-    monkeypatch.setattr(console_replica, "_run", fake_run)
+    replica = tmp_path / "accounts.db"
+    replica.write_bytes(b"private")
+    monkeypatch.setattr(
+        console_replica,
+        "_run",
+        lambda command, stdin=None: SimpleNamespace(stdout="hostname public.example\n"),
+    )
     monkeypatch.setattr(
         console_replica.socket,
         "getaddrinfo",
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))],
     )
-    transport = console_replica.SshTransport("scp")
 
     with pytest.raises(CultureError) as excinfo:
-        transport.lens_version(HOST)
+        console_replica.SshTransport().stage(replica, HOST, REMOTE_STORE)
 
     assert "does not stay on the tailnet or LAN" in excinfo.value.message
 
 
-def test_console_replica_verb_parses_and_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[Path, str, str, str]] = []
-
-    def fake_replicate(source: Path, *, host: str, destination: str, method: str) -> int:
-        calls.append((source, host, destination, method))
-        return 2
-
-    monkeypatch.setattr(console_replica, "replicate", fake_replicate)
-    args = console_replica.parse_args(
+def test_console_replica_parses_push_and_apply_verbs() -> None:
+    push = console_replica.parse_args(
         [
             "--source",
             "/srv/irc-lens/accounts.db",
@@ -310,53 +416,41 @@ def test_console_replica_verb_parses_and_dispatches(monkeypatch: pytest.MonkeyPa
             HOST,
             "--destination",
             REMOTE_STORE,
-            "--transport",
-            "scp",
+            "--remote-culture",
+            "/opt/culture/bin/culture",
+            "--state-file",
+            "/tmp/replica-state.json",
+            "--max-age",
+            "24h",
+            "--force",
         ]
     )
-    console_replica.run(args)
+    apply = console_replica.parse_args(["apply", "/tmp/staged.db", "--destination", REMOTE_STORE])
 
-    assert calls == [
-        (
-            Path("/srv/irc-lens/accounts.db"),
-            HOST,
-            REMOTE_STORE,
-            "scp",
-        )
-    ]
+    assert push.command == "push"
+    assert push.max_age == 86400
+    assert push.force
+    assert push.remote_culture == "/opt/culture/bin/culture"
+    assert apply.command == "apply"
+    assert apply.staged == Path("/tmp/staged.db")
 
 
 def test_console_dispatch_keeps_replica_out_of_irc_lens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: list[list[str]] = []
-
     monkeypatch.setattr(console_replica, "main", lambda argv: seen.append(argv))
+
     console.dispatch(
-        type(
-            "Args",
-            (),
-            {
-                "console_args": [
-                    "replica",
-                    "--source",
-                    "/source.db",
-                    "--host",
-                    "spark2",
-                    "--destination",
-                    "/destination.db",
-                ]
-            },
-        )()
+        SimpleNamespace(
+            console_args=[
+                "replica",
+                "apply",
+                "/tmp/staged.db",
+                "--destination",
+                REMOTE_STORE,
+            ]
+        )
     )
 
-    assert seen == [
-        [
-            "--source",
-            "/source.db",
-            "--host",
-            "spark2",
-            "--destination",
-            "/destination.db",
-        ]
-    ]
+    assert seen == [["apply", "/tmp/staged.db", "--destination", REMOTE_STORE]]
