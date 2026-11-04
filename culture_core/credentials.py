@@ -1,4 +1,8 @@
-"""OS credential store for culture link passwords.
+"""Secure lookup and migration helpers for culture link passwords.
+
+Installed server units receive grant-held link secrets through environment
+variables; interactive/legacy starts fall back to the platform-native store.
+Grant discovery is names-only and grant writes carry values on stdin.
 
 Uses platform-native secure storage:
 - Linux: secret-tool (libsecret / GNOME Keyring).
@@ -30,7 +34,9 @@ argv.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -38,6 +44,9 @@ import sys
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "culture"
+LINK_SECRET_PREFIX = "CULTURE_LINK_SECRET_"  # nosec B105 - identifier prefix, not a value
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]")
+_GRANT_TIMEOUT_SECONDS = 30.0
 
 #: Peer names are interpolated into keychain item names, PowerShell
 #: targets, and secret-tool attributes — restrict them to a safe charset.
@@ -52,6 +61,12 @@ def _validate_peer_name(peer_name: str) -> None:
     """Raise ValueError unless *peer_name* matches ``^[A-Za-z0-9._-]+$``."""
     if not _PEER_NAME_RE.match(peer_name):
         raise ValueError(f"invalid peer name {peer_name!r}: must match [A-Za-z0-9._-]+")
+
+
+def link_env_name(peer_name: str) -> str:
+    """Grant entry and environment variable name for a mesh peer."""
+    normalized = _NON_ALNUM_RE.sub("_", peer_name.upper())
+    return f"{LINK_SECRET_PREFIX}{normalized}"
 
 
 def _security_quote(value: str) -> str:
@@ -260,8 +275,8 @@ def store_credential(peer_name: str, password: str) -> bool:
     return rc == 0
 
 
-def lookup_credential(peer_name: str) -> str | None:
-    """Retrieve a link password from the OS credential store.
+def lookup_keyring_credential(peer_name: str) -> str | None:
+    """Retrieve a link password directly from the OS credential store.
 
     Raises ValueError if *peer_name* is not a valid peer name.
     Returns the password string, or None if not found.
@@ -271,6 +286,71 @@ def lookup_credential(peer_name: str) -> str | None:
     if sys.platform == "darwin":
         return out if rc == 0 else None
     return out if rc == 0 and out else None
+
+
+def lookup_credential(peer_name: str) -> str | None:
+    """Retrieve a link password from grant injection, then the OS keyring.
+
+    The environment variable is populated by ``grant run`` in an installed
+    server unit.  Hosts not migrated to grant take the existing keyring path
+    unchanged.
+    """
+    injected_name = link_env_name(peer_name)
+    injected = os.environ.get(injected_name)
+    if injected:
+        return injected
+    return lookup_keyring_credential(peer_name)
+
+
+def grant_secret_names(grant_bin: str) -> set[str]:
+    """Return grant entry names without reading any values."""
+    try:
+        result = subprocess.run(  # nosec B603 - resolved grant binary, fixed names-only argv
+            [grant_bin, "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=_GRANT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("grant names-only listing could not be executed") from exc
+    if result.returncode != 0:
+        raise RuntimeError(f"grant names-only listing exited {result.returncode}")
+    try:
+        payload = json.loads(result.stdout)
+        names = payload["names"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise RuntimeError("grant names-only listing returned invalid JSON") from exc
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise RuntimeError("grant names-only listing returned invalid names")
+    return set(names)
+
+
+def store_grant_secret(grant_bin: str, name: str, value: str) -> bool:
+    """Store *value* in grant through stdin, never argv."""
+    args = [
+        grant_bin,
+        "set",
+        name,
+        "-",
+        "--hidden",
+        "--purpose",
+        "culture mesh link secret",
+        "--rotate-howto",
+        "Set the same value on both peers, then restart both servers.",
+    ]
+    try:
+        result = subprocess.run(  # nosec B603 - resolved grant binary, no shell
+            args,
+            input=value,
+            capture_output=True,
+            text=True,
+            timeout=_GRANT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def delete_credential(peer_name: str) -> bool:
