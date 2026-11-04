@@ -73,7 +73,9 @@ class LocalTransport:
         self.stage_calls += 1
         return str(self.staged)
 
-    def apply(self, host: str, staged: str, destination: str, remote_culture: str) -> str:
+    def apply(
+        self, host: str, staged: str, destination: str, remote_culture: str, expected_digest: str
+    ) -> str:
         assert host == HOST
         assert destination == REMOTE_STORE
         assert remote_culture == "~/.local/bin/culture"
@@ -82,10 +84,11 @@ class LocalTransport:
         if self.fail_apply:
             raise CultureError(EXIT_ENV_ERROR, "injected apply failure", "retry")
         summary = console_replica.apply_replica(
-            Path(staged), self.target, installed_version=self.installed_version
+            Path(staged),
+            self.target,
+            expected_digest="0" * 64 if self.wrong_hash else expected_digest,
+            installed_version=self.installed_version,
         )
-        if self.wrong_hash:
-            summary = replace(summary, digest="0" * 64)
         return console_replica._format_summary(summary)
 
     def remove(self, host: str, staged: str) -> None:
@@ -143,7 +146,9 @@ def test_apply_keeps_open_stores_and_non_allow_listed_rows_working(
     assert standby_access.get_user(EMAIL)["role"] == "member"  # prime its cache
 
     expected = console_replica.create_replica(source, staged, source_version=VERSION)
-    applied = console_replica.apply_replica(staged, standby, installed_version=VERSION)
+    applied = console_replica.apply_replica(
+        staged, standby, expected_digest=expected.digest, installed_version=VERSION
+    )
 
     assert applied == expected
     assert not staged.exists()
@@ -175,8 +180,10 @@ async def test_sweep_closes_session_of_account_removed_by_apply(
     standby_access = AccessStore(standby)
     standby_access.set_user(REMOVED_EMAIL, role="member", state="approved", actor=None)
     raw_session = standby_guests.create_session(REMOVED_EMAIL)
-    console_replica.create_replica(source, staged, source_version=VERSION)
-    console_replica.apply_replica(staged, standby, installed_version=VERSION)
+    built = console_replica.create_replica(source, staged, source_version=VERSION)
+    console_replica.apply_replica(
+        staged, standby, expected_digest=built.digest, installed_version=VERSION
+    )
 
     class Registry:
         def __init__(self) -> None:
@@ -221,9 +228,11 @@ def test_apply_initialises_empty_destination_through_real_stores(tmp_path: Path)
     standby = tmp_path / "new-standby.db"
     staged = tmp_path / "staged.db"
     _seed_approved_store(source)
-    console_replica.create_replica(source, staged, source_version=VERSION)
+    built = console_replica.create_replica(source, staged, source_version=VERSION)
 
-    summary = console_replica.apply_replica(staged, standby, installed_version=VERSION)
+    summary = console_replica.apply_replica(
+        staged, standby, expected_digest=built.digest, installed_version=VERSION
+    )
 
     assert summary.users == 1
     assert GuestStore(standby).check_password(EMAIL, PASSWORD)
@@ -243,7 +252,9 @@ def test_newer_source_is_refused_without_destination_change(tmp_path: Path) -> N
     before = standby.read_bytes()
 
     with pytest.raises(CultureError) as excinfo:
-        console_replica.apply_replica(staged, standby, installed_version=VERSION)
+        console_replica.apply_replica(
+            staged, standby, expected_digest="0" * 64, installed_version=VERSION
+        )
 
     assert "newer irc-lens" in excinfo.value.message
     assert standby.read_bytes() == before
@@ -255,7 +266,7 @@ def test_failed_apply_always_removes_corrupt_stage(tmp_path: Path) -> None:
     staged.write_bytes(b"not sqlite")
 
     with pytest.raises(CultureError) as excinfo:
-        console_replica.apply_replica(staged, tmp_path / "standby.db")
+        console_replica.apply_replica(staged, tmp_path / "standby.db", expected_digest="0" * 64)
 
     assert "not a readable SQLite" in excinfo.value.message
     assert not staged.exists()
@@ -371,10 +382,12 @@ def test_ssh_transport_uses_explicit_remote_culture_and_safe_arguments(
     )
     transport = console_replica.SshTransport("scp")
     staged = transport.stage(replica, HOST, REMOTE_STORE)
-    output = transport.apply(HOST, staged, REMOTE_STORE, "/opt/culture/bin/culture")
+    output = transport.apply(HOST, staged, REMOTE_STORE, "/opt/culture/bin/culture", "a" * 64)
     transport.remove(HOST, staged)
 
-    assert console_replica._parse_summary(output) == summary
+    console_replica._require_verified(output, summary)
+    assert "a" * 64 not in output
+    assert "a" * 64 in calls[2][0]
     assert calls[0][0] == ["ssh", "-G", "--", HOST]
     assert calls[1][0][:6] == ["scp", "-q", "-p", "-o", "BatchMode=yes", "--"]
     assert calls[1][0][-1].startswith(f"{HOST}:/var/lib/irc-lens/.accounts.db.replica-")
@@ -401,8 +414,9 @@ def test_ssh_transport_refuses_alias_resolving_to_public_ip(
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))],
     )
 
+    transport = console_replica.SshTransport()
     with pytest.raises(CultureError) as excinfo:
-        console_replica.SshTransport().stage(replica, HOST, REMOTE_STORE)
+        transport.stage(replica, HOST, REMOTE_STORE)
 
     assert "does not stay on the tailnet or LAN" in excinfo.value.message
 
@@ -425,7 +439,16 @@ def test_console_replica_parses_push_and_apply_verbs() -> None:
             "--force",
         ]
     )
-    apply = console_replica.parse_args(["apply", "/tmp/staged.db", "--destination", REMOTE_STORE])
+    apply = console_replica.parse_args(
+        [
+            "apply",
+            "/tmp/staged.db",
+            "--destination",
+            REMOTE_STORE,
+            "--expected-hash",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ]
+    )
 
     assert push.command == "push"
     assert push.max_age == 86400
@@ -454,3 +477,30 @@ def test_console_dispatch_keeps_replica_out_of_irc_lens(
     )
 
     assert seen == [["apply", "/tmp/staged.db", "--destination", REMOTE_STORE]]
+
+
+def test_mismatched_hash_rolls_back_and_prints_no_digest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "primary.db"
+    standby = tmp_path / "standby.db"
+    staged = tmp_path / "accounts.stage"
+    _seed_approved_store(source)
+    built = console_replica.create_replica(source, staged, source_version=VERSION)
+    first = console_replica.apply_replica(
+        staged, standby, expected_digest=built.digest, installed_version=VERSION
+    )
+    before = _rows(standby, "users")
+    print(console_replica._format_summary(first))
+    assert built.digest not in capsys.readouterr().out
+
+    _, access = _seed_approved_store(source)
+    access.set_user("new@example.test", role="member", state="approved", actor=None)
+    console_replica.create_replica(source, staged, source_version=VERSION)
+    with pytest.raises(CultureError, match="unchanged"):
+        console_replica.apply_replica(
+            staged, standby, expected_digest="0" * 64, installed_version=VERSION
+        )
+
+    assert _rows(standby, "users") == before
+    assert not staged.exists()

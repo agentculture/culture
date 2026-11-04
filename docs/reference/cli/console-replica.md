@@ -46,7 +46,7 @@ The primary then invokes this command over SSH:
 
 ```bash
 ~/.local/bin/culture console replica apply STAGED \
-  --destination /var/lib/irc-lens/accounts.db
+  --destination /var/lib/irc-lens/accounts.db --expected-hash ROW_HASH
 ```
 
 `--remote-culture` makes the executable explicit because a non-interactive SSH
@@ -71,8 +71,10 @@ The staging database contains this explicit allow-list:
 | `grants` | `email`, `resource_kind`, `resource`, `level` | approved users only |
 
 Approved users' Argon2 password hashes therefore reach the standby. Plaintext
-passwords do not. The command prints only row counts and the digest of the
-allow-listed rows; it does not print an email, password hash, host, or path.
+passwords do not. The command prints only row counts; it does not print an email,
+password hash, row digest, host, or path. The primary passes its row digest to
+`apply`, which checks the merged rows against it before committing, so a mismatch
+leaves the standby unchanged.
 
 On the standby, `apply` checks its installed irc-lens version and the source
 column metadata in the stage. It refuses a newer source without changing the

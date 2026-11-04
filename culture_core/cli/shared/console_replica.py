@@ -91,6 +91,8 @@ _RELATED_QUERIES = {
     ),
 }
 _APPLIED_PREFIX = "Applied "
+_VERIFIED = "verified"
+_RERUN_HINT = "discard it and rerun culture console replica on the primary"
 
 
 @dataclass(frozen=True)
@@ -99,7 +101,7 @@ class RowSummary:
 
     users: int
     grants: int
-    passwords: int
+    login_rows: int
     digest: str
 
 
@@ -129,7 +131,9 @@ class ReplicaTransport(Protocol):
 
     def stage(self, replica: Path, host: str, destination: str) -> str: ...
 
-    def apply(self, host: str, staged: str, destination: str, remote_culture: str) -> str: ...
+    def apply(
+        self, host: str, staged: str, destination: str, remote_culture: str, expected_digest: str
+    ) -> str: ...
 
     def remove(self, host: str, staged: str) -> None: ...
 
@@ -236,12 +240,21 @@ def _validated_destination(raw: str) -> str:
     return raw
 
 
+def _validated_digest(raw: str) -> str:
+    if len(raw) != 64 or any(character not in "0123456789abcdef" for character in raw):
+        raise _culture_error(
+            "the expected row hash is not valid",
+            "pass the 64-character hex hash the primary computed",
+        )
+    return raw
+
+
 def _validated_remote_culture(raw: str) -> str:
     path_text = raw[2:] if raw.startswith("~/") else raw
     path = PurePosixPath(path_text)
     if (
         raw.startswith("-")
-        or not (raw.startswith("~/") or raw.startswith("/"))
+        or not raw.startswith(("~/", "/"))
         or any(character not in _REMOTE_EXEC_CHARS for character in raw)
         or ".." in path.parts
     ):
@@ -276,7 +289,9 @@ def _require_compatible(source_version: str, target_version: str) -> None:
 
 def _run(command: list[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(
+        # No local shell. Remote arguments are charset allow-listed before they get here,
+        # because ssh joins them into a remote shell command.
+        return subprocess.run(  # NOSONAR
             command,
             input=stdin,
             capture_output=True,
@@ -313,7 +328,10 @@ class SshTransport:
         self._copy(replica, host, staged)
         return staged
 
-    def apply(self, host: str, staged: str, destination: str, remote_culture: str) -> str:
+    def apply(
+        self, host: str, staged: str, destination: str, remote_culture: str, expected_digest: str
+    ) -> str:
+        expected_digest = _validated_digest(expected_digest)
         host = validate_private_host(host)
         staged = _validated_destination(staged)
         destination = _validated_destination(destination)
@@ -323,7 +341,7 @@ class SshTransport:
             "culture=$1\n"
             'case "$culture" in "~/"*) culture="$HOME/${culture#\\~/}" ;; esac\n'
             'chmod 600 -- "$2"\n'
-            'exec "$culture" console replica apply "$2" --destination "$3"\n'
+            'exec "$culture" console replica apply "$2" --destination "$3" --expected-hash "$4"\n'
         )
         result = _run(
             [
@@ -338,6 +356,7 @@ class SshTransport:
                 remote_culture,
                 staged,
                 destination,
+                expected_digest,
             ],
             stdin=script,
         )
@@ -432,7 +451,7 @@ def _summarise(
     return RowSummary(
         users=len(users),
         grants=len(grants),
-        passwords=len(passwords),
+        login_rows=len(passwords),
         digest=_digest_rows(users, grants, passwords),
     )
 
@@ -498,12 +517,12 @@ def _metadata(connection: sqlite3.Connection) -> tuple[str, dict[str, tuple[str,
     except (KeyError, json.JSONDecodeError) as exc:
         raise _culture_error(
             "the staged replica metadata is invalid",
-            "discard it and rerun culture console replica on the primary",
+            _RERUN_HINT,
         ) from exc
     if not isinstance(source_version, str) or not isinstance(raw_columns, dict):
         raise _culture_error(
             "the staged replica metadata is invalid",
-            "discard it and rerun culture console replica on the primary",
+            _RERUN_HINT,
         )
     columns: dict[str, tuple[str, ...]] = {}
     for table, raw in raw_columns.items():
@@ -514,7 +533,7 @@ def _metadata(connection: sqlite3.Connection) -> tuple[str, dict[str, tuple[str,
         ):
             raise _culture_error(
                 "the staged replica column metadata is invalid",
-                "discard it and rerun culture console replica on the primary",
+                _RERUN_HINT,
             )
         columns[table] = tuple(raw)
     return source_version, columns
@@ -532,7 +551,7 @@ def _read_replica(staged: Path) -> _ReplicaData:
             if marker_rows != ((_INITIALISED_MARK,),):
                 raise _culture_error(
                     "the staged initialization marker is invalid",
-                    "discard it and rerun culture console replica on the primary",
+                    _RERUN_HINT,
                 )
             users = tuple(
                 tuple(row)
@@ -555,7 +574,7 @@ def _read_replica(staged: Path) -> _ReplicaData:
     except sqlite3.Error as exc:
         raise _culture_error(
             "the staged replica is not a readable SQLite account database",
-            "discard it and rerun culture console replica on the primary",
+            _RERUN_HINT,
         ) from exc
 
 
@@ -563,7 +582,7 @@ def _table_names(path: Path) -> set[str]:
     if not path.exists():
         return set()
     try:
-        uri = f"{path.resolve().as_uri()}?mode=ro"
+        uri = f"{path.resolve().as_uri()}?mode=ro"  # NOSONAR - validated by _validated_destination
         with closing(sqlite3.connect(uri, uri=True)) as connection:
             rows = connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
             return {row[0] for row in rows}
@@ -601,9 +620,13 @@ def _validate_destination_columns(
             )
 
 
-def _merge_rows(destination: Path, data: _ReplicaData, busy_timeout_ms: int) -> RowSummary:
+def _merge_rows(
+    destination: Path, data: _ReplicaData, busy_timeout_ms: int, expected_digest: str
+) -> RowSummary:
     with closing(
-        sqlite3.connect(destination, timeout=busy_timeout_ms / 1000, isolation_level=None)
+        sqlite3.connect(  # NOSONAR - validated by _validated_destination
+            destination, timeout=busy_timeout_ms / 1000, isolation_level=None
+        )
     ) as connection:
         connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
         _validate_destination_columns(connection, data.source_columns)
@@ -618,7 +641,7 @@ def _merge_rows(destination: Path, data: _ReplicaData, busy_timeout_ms: int) -> 
                 data.users,
             )
             connection.executemany(
-                "INSERT INTO grants (email, resource_kind, resource, level) " "VALUES (?, ?, ?, ?)",
+                "INSERT INTO grants (email, resource_kind, resource, level) VALUES (?, ?, ?, ?)",
                 data.grants,
             )
             connection.executemany(
@@ -635,9 +658,16 @@ def _merge_rows(destination: Path, data: _ReplicaData, busy_timeout_ms: int) -> 
                 data.source_version,
                 data.source_columns,
             )
+            summary = applied.summary
+            if summary.digest != expected_digest:
+                raise _culture_error(
+                    "the applied rows do not match the primary; the standby is unchanged",
+                    "retry the replica from the primary",
+                    environment=True,
+                )
             connection.execute("COMMIT")
             committed = True
-            return applied.summary
+            return summary
         finally:
             if not committed:
                 connection.execute("ROLLBACK")
@@ -647,12 +677,13 @@ def apply_replica(
     staged: Path,
     destination: Path,
     *,
+    expected_digest: str,
     installed_version: str | None = None,
     busy_timeout_ms: int = 30_000,
 ) -> RowSummary:
     """Merge staged account rows into a live store and always remove the stage."""
-    staged = Path(staged)
-    destination = Path(destination)
+    staged = Path(_validated_destination(str(staged)))
+    destination = Path(_validated_destination(str(destination)))
     if staged.resolve() == destination.resolve():
         raise _culture_error(
             "the staged replica and destination must be different files",
@@ -663,48 +694,31 @@ def apply_replica(
         target_version = installed_version or importlib.metadata.version(_LENS_PACKAGE)
         _require_compatible(data.source_version, target_version)
         _prepare_destination(destination)
-        return _merge_rows(destination, data, busy_timeout_ms)
+        return _merge_rows(destination, data, busy_timeout_ms, _validated_digest(expected_digest))
     finally:
         staged.unlink(missing_ok=True)
 
 
 def _format_summary(summary: RowSummary) -> str:
+    """Counts only: nothing derived from the hashed credentials is ever printed."""
     return (
         f"{_APPLIED_PREFIX}users={summary.users} grants={summary.grants} "
-        f"passwords={summary.passwords} hash={summary.digest}"
+        f"logins={summary.login_rows} {_VERIFIED}"
     )
 
 
-def _parse_summary(output: str) -> RowSummary:
+def _require_verified(output: str, expected: RowSummary) -> None:
+    """Accept the standby's report only if it verified the rows and the counts agree."""
     line = next(
         (line for line in reversed(output.splitlines()) if line.startswith(_APPLIED_PREFIX)),
         "",
     )
-    values: dict[str, str] = {}
-    for field in line.removeprefix(_APPLIED_PREFIX).split():
-        key, separator, value = field.partition("=")
-        if separator:
-            values[key] = value
-    digest = values.get("hash", "")
-    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+    if line != _format_summary(expected):
         raise _culture_error(
-            "the standby did not return a valid applied-row hash",
-            "inspect the standby culture installation and retry",
+            "the standby did not confirm the applied rows",
+            "inspect the standby culture installation and retry; the state file was not updated",
             environment=True,
         )
-    try:
-        return RowSummary(
-            users=int(values["users"]),
-            grants=int(values["grants"]),
-            passwords=int(values["passwords"]),
-            digest=digest,
-        )
-    except (KeyError, ValueError) as exc:
-        raise _culture_error(
-            "the standby did not return valid applied-row counts",
-            "inspect the standby culture installation and retry",
-            environment=True,
-        ) from exc
 
 
 def _read_state(path: Path) -> tuple[str, float] | None:
@@ -810,19 +824,15 @@ def replicate(
         staged: str | None = None
         try:
             staged = selected_transport.stage(replica, host, destination)
-            output = selected_transport.apply(host, staged, destination, remote_culture)
-            returned = _parse_summary(output)
-            if returned.digest != expected.digest:
-                raise _culture_error(
-                    "the standby applied-row hash does not match the primary",
-                    "inspect the standby store and retry; the state file was not updated",
-                    environment=True,
-                )
+            output = selected_transport.apply(
+                host, staged, destination, remote_culture, expected.digest
+            )
+            _require_verified(output, expected)
         except BaseException:
             _best_effort_remove(selected_transport, host, staged)
             raise
         _write_state(Path(state_path), expected.digest, clock())
-        return ReplicationResult(True, returned)
+        return ReplicationResult(True, expected)
 
 
 def _parse_max_age(raw: str) -> float:
@@ -848,6 +858,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.set_defaults(command="apply")
         parser.add_argument("staged", type=Path, help="Sibling staging database")
         parser.add_argument("--destination", required=True, type=Path, help="Live standby store")
+        parser.add_argument(
+            "--expected-hash", required=True, help="Row hash computed by the primary"
+        )
         parser.add_argument("--busy-timeout", type=int, default=30_000, help=argparse.SUPPRESS)
         return parser.parse_args(argv[1:])
 
@@ -888,6 +901,7 @@ def run(args: argparse.Namespace) -> None:
         summary = apply_replica(
             args.staged,
             args.destination,
+            expected_digest=args.expected_hash,
             busy_timeout_ms=args.busy_timeout,
         )
         print(_format_summary(summary))
@@ -905,7 +919,7 @@ def run(args: argparse.Namespace) -> None:
     if result.pushed:
         print(_format_summary(result.summary))
     else:
-        print(f"Unchanged; no push. hash={result.summary.digest}")
+        print("Unchanged; no push.")
 
 
 def main(argv: list[str]) -> None:
