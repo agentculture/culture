@@ -48,9 +48,10 @@ invocation). See `irc-lens config init --help` for available flags.
 | `culture console stop` | **CULTURE.DEV-owned.** Stop the locally-running console. |
 | `culture console install [--config PATH] [--healthcheck]` | **CULTURE.DEV-owned.** Install the `culture-console-<name>` auto-start unit. |
 | `culture console uninstall` | **CULTURE.DEV-owned.** Remove the auto-start unit (no-op if absent). |
+| `culture console replica …` | **CULTURE.DEV-owned.** [Privately push approved accounts to a warm standby.](./console-replica.md) |
 | `culture console --help` | irc-lens's own help. |
 
-`stop`, `install`, and `uninstall` are reserved by culture and shadow
+`stop`, `install`, `uninstall`, and `replica` are reserved by culture and shadow
 any culture server literally named after them (use `culture console --
 <name>` to disambiguate, though the combination is unlikely to be
 useful).
