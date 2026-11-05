@@ -188,6 +188,25 @@ culture console install --healthcheck
 
 `culture console uninstall --healthcheck` removes the timer.
 
+### Extended checks
+
+`/readyz` covers the main IRC server only, so a guest sandbox fault can't trigger a failover for everyone. To be alerted about the rest of the host, create `~/.culture/healthcheck.yaml`:
+
+```yaml
+units:
+  - culture-server-sbx
+  - culture-agent-spark-culture
+agents:
+  - ~/.culture/sandbox/agent.yaml
+```
+
+- `units` lists systemd user units that must be `active`. A unit waiting to restart counts as down.
+- `agents` lists sandbox agent configs. Each run asks the agent's models for one token, using the same gateway, key, and model list as the agent. The check passes if any model answers. Agents sharing a model share one request.
+
+Any failure pings the same check URL with `/fail`, with the names of the failed parts in the body. healthchecks.io shows them in its log and alert. Key values and URLs aren't included. These checks never change `/readyz`, so they can't cause a failover.
+
+Without the file, only `/readyz` is checked. A file that can't be read, or has an invalid entry, reports a failure. Remove a unit from the file before stopping it on purpose. The file is read on each run, so there's nothing to reinstall.
+
 ## See also
 
 - [`culture devex`](/reference/cli/devex/) — sibling passthrough for

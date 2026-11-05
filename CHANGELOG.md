@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [14.16.0] - 2026-11-04
+## [14.17.0] - 2026-11-06
 
 ### Added
 
 - `culture console replica`: copies approved accounts one way to a standby console over a private network, using sqlite's backup API, leaving out guest and consent data.
+
+## [14.16.0] - 2026-11-05
+
+### Added
+
+- Extended health checks: an optional `~/.culture/healthcheck.yaml` makes `culture-healthcheck` alert when listed systemd user units are not active, or when a sandbox agent has no model that answers. Failures ping `/fail` naming the failed parts. `/readyz` is unchanged, so these checks cannot cause a failover.
 
 ## [14.15.0] - 2026-11-04
 
