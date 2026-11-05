@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import json
 import os
+import re
 import subprocess  # nosec B404
 import sys
 import urllib.request
@@ -21,17 +23,30 @@ CONFIG_FLAG = "--config"
 _HEALTHCHECK_LINUX_ERR = "healthcheck timer requires Linux systemd"
 _HEALTHCHECK_LINUX_HINT = "run this on a Linux host with systemd user services"
 
+CHECKS_PATH = Path("~/.culture/healthcheck.yaml")
 _USER_AGENT = "culture-healthcheck"  # Cloudflare refuses Python's default user agent
+_UNIT_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.@-]*")
+_MODEL_TIMEOUT_S = 30
 
 
-def _request_ok(url: str, *, use_proxy: bool = True, attempts: int = 1) -> bool:
+def _request_ok(
+    url: str,
+    *,
+    use_proxy: bool = True,
+    attempts: int = 1,
+    data: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: int = 15,
+) -> bool:
     """Return True on an HTTP 2xx. Exceptions can contain the secret URL: never print them."""
     handlers = [] if use_proxy else [urllib.request.ProxyHandler({})]
     opener = urllib.request.build_opener(*handlers)
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    request = urllib.request.Request(
+        url, data=data, headers={"User-Agent": _USER_AGENT, **(headers or {})}
+    )
     for _ in range(attempts):
         try:
-            with opener.open(request, timeout=15) as response:  # noqa: S310 # nosec B310
+            with opener.open(request, timeout=timeout) as response:  # noqa: S310 # nosec B310
                 if 200 <= response.status < 300:
                     return True
         except (OSError, ValueError, http.client.HTTPException):
@@ -39,8 +54,88 @@ def _request_ok(url: str, *, use_proxy: bool = True, attempts: int = 1) -> bool:
     return False
 
 
-def check_readiness(local_address: str, public_address: str) -> int:
-    """Probe both endpoints and report failure unless both return HTTP success.
+def _unit_failure(unit: str) -> str | None:
+    """Name a user unit that isn't active, including one waiting to restart."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", unit],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return f"unit {unit}: unknown"
+    state = result.stdout.strip() or "unknown"
+    return None if state == "active" else f"unit {unit}: {state}"
+
+
+def _model_answers(url: str, model: str, key: str) -> bool:
+    """Ask a sandbox model lane for one token: a live gateway can still refuse a model."""
+    body = {"model": model, "messages": [{"role": "user", "content": "Say ok"}], "max_tokens": 1}
+    return _request_ok(
+        url,
+        use_proxy=False,
+        attempts=2,
+        data=json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        timeout=_MODEL_TIMEOUT_S,
+    )
+
+
+def _agent_failure(config_path: str, asked: dict[tuple[str, str], bool]) -> str | None:
+    """Name a sandbox agent none of whose models answers, as its config resolves them."""
+    from culture_core.sandbox.agent import load_config, resolve_key
+
+    name = Path(config_path).name
+    try:
+        config = load_config(config_path)
+    except (OSError, ValueError, TypeError, AttributeError, KeyError, yaml.YAMLError):
+        return f"demo agent {name}: unreadable config"
+    for spec in config.models:
+        target = (spec.url or config.gateway_url, spec.name)
+        if target not in asked:
+            try:
+                key = resolve_key(spec.key_env or config.key_env, config.key_file)
+            except (OSError, RuntimeError):
+                asked[target] = False
+            else:
+                asked[target] = _model_answers(*target, key)
+        if asked[target]:
+            return None
+    return f"demo agent {name}: no model answers"
+
+
+def extended_failures(checks_path: Path) -> list[str]:
+    """Check what /readyz leaves out, so a demo fault alerts without moving anyone.
+
+    The file is opt-in: with none, only /readyz is checked. A file that can't be
+    read reports a failure, so a typo can't quietly turn these checks off.
+    """
+    path = checks_path.expanduser()
+    if not path.exists():
+        return []
+    try:
+        checks = yaml.safe_load(path.read_text()) or {}
+        units = checks.get("units") or []
+        agents = checks.get("agents") or []
+        names = [*units, *agents]
+    except (OSError, TypeError, AttributeError, yaml.YAMLError):
+        return ["healthcheck checks file: unreadable"]
+    if not all(isinstance(name, str) for name in names) or not all(
+        _UNIT_NAME_RE.fullmatch(unit) for unit in units
+    ):
+        return ["healthcheck checks file: invalid entry"]
+    found = [_unit_failure(unit) for unit in units]
+    asked: dict[tuple[str, str], bool] = {}
+    found += [_agent_failure(agent, asked) for agent in agents]
+    return [failure for failure in found if failure]
+
+
+def check_readiness(
+    local_address: str, public_address: str, checks_path: Path | None = None
+) -> int:
+    """Probe both endpoints and any extended checks, and report what failed.
 
     The grant-injected URL is read only at runtime. Return nonzero for missing
     credentials or a failed reporting request, not for a site that isn't ready.
@@ -48,13 +143,23 @@ def check_readiness(local_address: str, public_address: str) -> int:
     report_url = os.environ.get(SECRET_NAME, "").strip()
     if not report_url:
         return 1
-    local_ok = _request_ok(local_address.rstrip("/") + "/readyz", use_proxy=False)
-    public_ok = _request_ok(public_address.rstrip("/") + "/readyz")
-    ready = local_ok and public_ok
+    failures = []
+    if not _request_ok(local_address.rstrip("/") + "/readyz", use_proxy=False):
+        failures.append("local /readyz")
+    if not _request_ok(public_address.rstrip("/") + "/readyz"):
+        failures.append("public /readyz")
+    if checks_path is not None:
+        failures += extended_failures(checks_path)
     # A /fail that gets through is a success for this job: exit status says only
     # whether healthchecks.io heard. Silence is what its alert catches otherwise.
-    suffix = "" if ready else "/fail"
-    return 0 if _request_ok(report_url.rstrip("/") + suffix, attempts=3) else 1
+    # The body shows in healthchecks.io's alert and log, so it names parts, never values.
+    if failures:
+        delivered = _request_ok(
+            report_url.rstrip("/") + "/fail", attempts=3, data="\n".join(failures).encode()
+        )
+    else:
+        delivered = _request_ok(report_url.rstrip("/"), attempts=3)
+    return 0 if delivered else 1
 
 
 def read_addresses(config_path: Path | None = None) -> tuple[str, str]:
@@ -181,7 +286,7 @@ def main() -> int:
     except CultureError:
         print("Invalid healthcheck lens configuration", file=sys.stderr)
         return 1
-    return check_readiness(*addresses)
+    return check_readiness(*addresses, CHECKS_PATH)
 
 
 if __name__ == "__main__":
