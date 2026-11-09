@@ -91,7 +91,7 @@ class _Conn:
                 return None
             try:
                 raw = await asyncio.wait_for(self.reader.readline(), remaining)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return None
             if not raw:
                 raise ConnectionError("server closed the connection")
@@ -104,12 +104,12 @@ class _Conn:
     async def close(self) -> None:
         try:
             await self.send("QUIT :probe done")
-        except (OSError, ConnectionError):
+        except OSError:  # ConnectionError is an OSError
             pass
         self.writer.close()
         try:
             await self.writer.wait_closed()
-        except (OSError, ConnectionError):
+        except OSError:
             pass
 
 
@@ -149,10 +149,12 @@ async def _register(conn: _Conn, nick: str, deadline: float) -> None:
             raise ConnectionError(f"nick {nick} refused ({parts[1]})")
 
 
-async def _await_agents(conn: _Conn, room: str, agents: set[str], timeout: float) -> set[str]:
-    """Wait for the agents to follow the guest into its room; return who arrived."""
+async def _await_agents(conn: _Conn, room: str, agents: set[str], deadline: float) -> set[str]:
+    """Wait until ``deadline`` for the agents to follow the guest into its room.
+
+    Returns whoever arrived, so a missing agent is reported by name.
+    """
     present: set[str] = set()
-    deadline = time.monotonic() + timeout
     next_names = 0.0
     while not agents <= present:
         now = time.monotonic()
@@ -222,7 +224,7 @@ async def run_probe(cfg: ProbeConfig) -> dict:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(cfg.host, cfg.port), timeout=10
         )
-    except (OSError, asyncio.TimeoutError):
+    except OSError:  # asyncio.TimeoutError is TimeoutError, an OSError (3.11+)
         return summarize([], f"cannot connect to sandbox IRCd {cfg.host}:{cfg.port}")
     conn = _Conn(reader, writer)
     checks: list[Check] = []
@@ -230,7 +232,7 @@ async def run_probe(cfg: ProbeConfig) -> dict:
         await _register(conn, nick, time.monotonic() + 10)
         await conn.send(f"JOIN {room}")
         wanted = set(cfg.agents)
-        present = await _await_agents(conn, room, wanted, cfg.join_timeout)
+        present = await _await_agents(conn, room, wanted, time.monotonic() + cfg.join_timeout)
         for agent in cfg.agents:
             if agent not in present:
                 checks.append(
@@ -240,7 +242,7 @@ async def run_probe(cfg: ProbeConfig) -> dict:
                 )
                 continue
             checks.append(await _ask(conn, cfg, room, nick, agent))
-    except (OSError, ConnectionError, TimeoutError) as exc:
+    except OSError as exc:  # ConnectionError and TimeoutError are OSErrors
         return summarize(checks, f"sandbox IRCd: {exc}")
     finally:
         await conn.close()

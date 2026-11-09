@@ -184,7 +184,8 @@ def test_culture_sandbox_probe_is_wired(monkeypatch, capsys):
     from culture_core.cli import main as culture_main
 
     async def fake(cfg):
-        assert cfg.port == 7001 and cfg.agents == ("sbx-ask",)
+        assert cfg.port == 7001
+        assert cfg.agents == ("sbx-ask",)
         return {"ok": True, "summary": "Demo OK", "checks": []}
 
     monkeypatch.setattr(probe_mod, "run_probe", fake)
