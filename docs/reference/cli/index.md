@@ -179,6 +179,31 @@ culture sandbox agent --config ~/.culture/sandbox/agent.yaml --bundle-from ~/git
 
 See [Sandbox agent](../../sandbox-agent.md).
 
+### `culture sandbox probe`
+
+Check the guest demo end to end, the way a guest would use it: connect to the
+sandbox IRCd as a throwaway guest, join a private `#g-<nick>` room, wait for
+the agents to follow, ask each one a fixed question by @-tagging it, and check
+each answer against a regex. Prints one JSON object (`ok`, `summary`,
+`checks`).
+
+```bash
+culture sandbox probe                       # sbx-ask and sbx-bolt on 127.0.0.1:6668
+culture sandbox probe --agent sbx-ask --exit-code
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--host`, `--port` | `127.0.0.1`, `6668` | sandbox IRCd |
+| `--agent NICK` | `sbx-ask`, `sbx-bolt` | agent to ask (repeatable) |
+| `--question` | which IRC RFC culture's protocol is based on | the fixed question |
+| `--expect` | `\b2812\b` | regex (case-insensitive) a passing answer must match |
+| `--nick-prefix`, `--room-prefix` | `sbx-probe`, `#g-` | guest nick (a random suffix is added) and room prefix |
+| `--join-timeout`, `--answer-timeout` | `30`, `180` | seconds to wait for agents to join, and for each answer |
+| `--exit-code` | off | exit 1 when the demo failed (by default the exit is 0 whenever a report was printed) |
+
+See [Demo probe](../../sandbox-agent.md#demo-probe).
+
 ## Agent Lifecycle
 
 ### `culture agents create`

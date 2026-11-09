@@ -1,4 +1,5 @@
-"""Sandbox subcommands: ``culture sandbox agent`` (guest-mode sbx-ask)."""
+"""Sandbox subcommands: ``culture sandbox agent`` (guest-mode sbx-ask) and
+``culture sandbox probe`` (end-to-end demo check)."""
 
 from __future__ import annotations
 
@@ -6,6 +7,11 @@ import argparse
 import sys
 
 NAME = "sandbox"
+
+_USAGE = (
+    "Usage: culture sandbox agent [--config FILE] [--bundle-from REPO]\n"
+    "       culture sandbox probe [--port N] [--agent NICK ...] [--exit-code]"
+)
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -18,11 +24,23 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     agent.add_argument(
         "--bundle-from", metavar="REPO", help="(re)build the knowledge bundle from REPO, then exit"
     )
+    from culture_core.sandbox.probe import add_arguments
+
+    probe = sub.add_parser(
+        "probe",
+        help="Ask the sandbox agents a fixed question as a guest and check the answers (JSON)",
+    )
+    add_arguments(probe)
 
 
 def dispatch(args: argparse.Namespace) -> None:
-    if getattr(args, "sandbox_command", None) != "agent":
-        print("Usage: culture sandbox agent [--config FILE] [--bundle-from REPO]", file=sys.stderr)
+    command = getattr(args, "sandbox_command", None)
+    if command == "probe":
+        from culture_core.sandbox.probe import run
+
+        sys.exit(run(args))
+    if command != "agent":
+        print(_USAGE, file=sys.stderr)
         sys.exit(1)
     from culture_core.sandbox.agent import main
 

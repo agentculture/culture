@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.18.0] - 2026-11-09
+
+### Added
+
+- `culture sandbox probe`: an end-to-end check of the guest demo. It joins the sandbox IRCd as a throwaway guest, waits for the agents to follow it into its `#g-` room, asks each agent a fixed question, and checks the answer with a regex (deterministic, no model judge). It prints one JSON report (`ok`, `summary`, `checks`) and exits 0 whenever it reports, so a culture-rules probe trigger can run it daily; `--exit-code` exits 1 on failure.
+
 ## [14.17.0] - 2026-11-06
 
 ### Added
