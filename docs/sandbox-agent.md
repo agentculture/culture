@@ -207,7 +207,68 @@ retired.
   are crude by design; expect false negatives and tune as needed.
 - The gateway key is never logged or echoed.
 
+## Demo probe
+
+`culture sandbox probe` checks that the demo is live and working, end to end,
+the way a guest uses it. It connects to the sandbox IRCd as a throwaway guest
+(`sbx-probe-<random>`), joins its private room `#g-<nick>`, waits (polling
+`NAMES`) for the agents to follow it in, then asks each agent the same fixed
+question by @-tagging it, one at a time. One run covers the sandbox IRCd, the
+agents' room-following, their model call through the lobes gateway (whatever
+`models` lists, today `worker-thor`), and the reply.
+
+Grading is deterministic. Both the question and the pattern are fixed: by
+default, which IRC RFC culture's protocol is based on, which must match
+`\b2812\b`. The answer is a fact in the agents' docs bundle. The model's
+wording may vary, but the pass/fail decision is a regex in code, not a model
+judge. An answer that is split over several lines is joined before matching.
+A failing answer is kept as an excerpt of at most 200 characters in
+`checks[].answer`.
+
+```json
+{"ok": true, "summary": "Demo OK: sbx-ask 4.1s, sbx-bolt 2.3s",
+ "checks": [{"agent": "sbx-ask", "ok": true, "seconds": 4.1, "reason": "", "answer": "2812"},
+            {"agent": "sbx-bolt", "ok": true, "seconds": 2.3, "reason": "", "answer": "2812"}]}
+```
+
+A failure names the part that failed, for example `Demo FAILED: sbx-bolt: no
+answer in 180s`, `sbx-ask: did not join the guest room in 30s`, `sbx-ask:
+answer did not match the expected fact`, or `cannot connect to sandbox IRCd
+127.0.0.1:6668`. An agent that never joins is still reported, and the other
+agents are still asked.
+
+The exit status is 0 whenever a report was printed, pass or fail, because a
+culture-rules probe trigger emits nothing for a nonzero exit. Use
+`--exit-code` to exit 1 on failure (for a shell or a systemd timer).
+
+The probe costs one short model call per agent. It waits its turn behind real
+guests, because model calls are single-flight. Its room is a normal guest room
+that the agents sweep once the probe has left.
+
+### Running it daily (culture-rules)
+
+On spark the probe runs once a day from
+[culture-rules](https://github.com/agentculture/culture-rules) and posts its
+summary to Discord:
+
+- The runner actor `spark-server` registers the command `demo_probe`, with
+  argv `[<abs path to culture>, sandbox, probe]` and a 600 s timeout.
+- The rule `demo-probe-daily` uses a `probe` trigger
+  (`params.actor: spark-server`, `command: demo_probe`, `mode: condition`, a
+  `schedule` of `0 8 * * *` in `Asia/Jerusalem`, 08:00 daily) and has no condition, so every run
+  fires. The probe's JSON keys become `trigger.data`. Its `discord.message`
+  action posts `{{trigger.data.summary}}` to `#spark`, so a missing daily
+  post is itself a signal.
+
+This complements the 5-minute `culture-healthcheck` (see
+[console](reference/cli/console.md)). The healthcheck asks each model for one
+token. The probe asks the agents a real question, in a real guest room.
+
 ## Tests
 
 `tests/test_sandbox_agent.py` runs the IRC side against a real server on a
 random port and the model side against a local recording HTTP server.
+
+`tests/test_sandbox_probe.py` runs `culture sandbox probe` against a real
+server with fake agents: a passing run, a wrong answer, a silent agent, an
+agent that never joins, and an unreachable server.
