@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [14.18.1] - 2026-11-25
+
+### Added
+
+- docs/workspace-map.md: a short map of which product repo owns what, which repos are being consolidated into which and at which gate, the supporting services, and current status (part of culture-agents#2).
+
 ## [14.18.0] - 2026-11-09
 
 ### Added
